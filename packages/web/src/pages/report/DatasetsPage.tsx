@@ -752,7 +752,7 @@ export default function DatasetsPage() {
               {preview ? (
                 <>
                   <Space style={{ marginBottom: 8 }}>
-                    <Typography.Text type="tertiary" size="small">返回 {preview.total} 行</Typography.Text>
+                    <Typography.Text type="tertiary" size="small">返回 {preview.rows.length} 行</Typography.Text>
                     {preview.bytes != null ? <Typography.Text type="tertiary" size="small">约 {preview.bytes} bytes</Typography.Text> : null}
                     {preview.truncated ? <Tag color="orange" size="small">已截断{preview.truncatedReason ? `：${preview.truncatedReason}` : ''}</Tag> : null}
                   </Space>

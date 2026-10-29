@@ -36,3 +36,11 @@
 - 相关 Server 回归 5 个文件、53 项通过；投影调整后复跑文档与片段测试 10 项通过；Server TypeScript 与改动文件 ESLint 通过。
 - `NODE_ENV=development LOG_LEVEL=warn node --import tsx scripts/verify-wiki-projection.ts`：在本地 PostgreSQL 事务临时表中验证实际服务列表、正文召回、关闭 snippet 和生成 snippet。20 篇约 200 KiB 正文的文档，全行结果 4,106,323 bytes，元数据投影 9,763 bytes；元数据逐字段一致。临时表自动删除，未写入业务表。
 - 浏览器 `localhost:5373/wiki/docs`：正文详情、正文关键词“工牌”搜索及片段、收藏空态与添加/移除、最近访问均通过；收藏恢复原状。
+
+### 阶段 3
+
+- 主库、外部 PostgreSQL / MySQL / SQL Server 的非分页取数不执行 COUNT，返回 `total: null`；分页和空页仍返回精确总数。
+- 深查发现首屏表格覆盖参数可能为空，因此将表格查询推导提取为 Shared 纯函数，按组件配置决定首屏分页，Server 与 Demo 共用；非分页表格排序不再发送不完整分页参数。预览显示实际返回行数。
+- Server 6 个文件、55 项通过（包括四种 SQL 路径的查询次数、绑定参数和空页）；Shared 10 个文件、51 项与类型测试通过；Web 仪表盘查询回归 5 项通过。Shared 构建、Server / Web TypeScript 及改动文件 ESLint 通过。
+- `verify-report-counting.ts` 在真实 PostgreSQL 查询 250000 个生成值，非分页 / 分页分别记录 5 / 6 次执行（均包含相同的 4 条只读护栏）；分页总数为 125000，越界空页总数仍为 125000。一回性角色探测在观测前完成。
+- 浏览器：现有 SQL 数据集试跑显示实际“返回 2 行”，计算字段保留；`/report/dashboards/4/view` 的 KPI 和全部 6 行非分页表格正常。外部 MySQL / SQL Server 本轮使用驱动桩验证，未连接实际外部服务。

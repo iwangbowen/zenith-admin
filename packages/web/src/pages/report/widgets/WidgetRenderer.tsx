@@ -352,8 +352,7 @@ export const WidgetRenderer = memo(function WidgetRenderer({
               const sortOrder = sorter.sortOrder === 'ascend' ? 'asc' : sorter.sortOrder === 'descend' ? 'desc' : undefined;
               onWidgetQueryChange(widget.i, {
                 ...widgetQuery,
-                page: 1,
-                pageSize: widgetQuery?.pageSize ?? o.pageSize,
+                ...(paginated ? { page: 1, pageSize: activePageSize } : {}),
                 sortField,
                 sortOrder,
               });

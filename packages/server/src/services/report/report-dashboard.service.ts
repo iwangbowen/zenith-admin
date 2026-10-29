@@ -49,7 +49,7 @@ import {
   validateReportResourcePlacement,
 } from './report-resource.service';
 import type { ReportDashboardRow } from '../../db/schema';
-import { computeWidgetParams, reportDashboardContract, type CreateReportDashboardInput, type ReportCanvasItem, type ReportDashboard, type ReportDashboardConfig, type ReportDashboardSnapshot, type ReportDatasetQueryOptions, type ReportFilter, type ReportGridItem, type ReportLookupOption, type ReportMetricEvaluation, type ReportWidget, type ReportWidgetDataResult, type UpdateReportDashboardInput } from '@zenith/shared/report';
+import { computeWidgetParams, resolveReportWidgetQuery, reportDashboardContract, type CreateReportDashboardInput, type ReportCanvasItem, type ReportDashboard, type ReportDashboardConfig, type ReportDashboardSnapshot, type ReportDatasetQueryOptions, type ReportFilter, type ReportGridItem, type ReportLookupOption, type ReportMetricEvaluation, type ReportWidget, type ReportWidgetDataResult, type UpdateReportDashboardInput } from '@zenith/shared/report';
 
 type DashboardRowExt = ReportDashboardRow & {
   category?: { name: string } | null;
@@ -593,24 +593,6 @@ export function buildMetricWidgetDataResult(metric: ReportMetricEvaluation): Rep
   };
 }
 
-function resolveWidgetQuery(
-  widget: ReportWidget,
-  limit: number | undefined,
-  widgetQueries: Record<string, ReportDatasetQueryOptions> | undefined,
-): ReportDatasetQueryOptions {
-  const override = widgetQueries?.[widget.i] ?? {};
-  if (widget.type === 'table') {
-    return {
-      limit: override.limit,
-      page: override.page,
-      pageSize: override.pageSize ?? limit,
-      sortField: override.sortField,
-      sortOrder: override.sortOrder,
-    };
-  }
-  return { limit: override.limit ?? limit };
-}
-
 export async function getDashboardData(
   widgets: ReportWidget[],
   filterValues: Record<string, unknown>,
@@ -650,7 +632,7 @@ export async function getDashboardData(
     }
     if (!widget.datasetId) continue;
     const params = computeWidgetParams(widget, filterValues);
-    const query = resolveWidgetQuery(widget, limit, widgetQueries);
+    const query = resolveReportWidgetQuery(widget, limit, widgetQueries);
     const key = `${widget.datasetId}:${JSON.stringify(params)}:${JSON.stringify(query)}`;
     const entry = entryMap.get(key);
     if (entry) entry.widgetIds.push(widget.i);

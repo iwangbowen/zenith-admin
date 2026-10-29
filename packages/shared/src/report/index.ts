@@ -14,4 +14,5 @@ export * from './format';
 export * from './print';
 export * from './visual-sql';
 export * from './widget-params';
+export * from './widget-query';
 export * from './permissions';

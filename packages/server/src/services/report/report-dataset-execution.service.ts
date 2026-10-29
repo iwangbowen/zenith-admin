@@ -180,7 +180,9 @@ async function runReadonlySql(text: string, params: Record<string, unknown>, opt
   try {
     const result = await db.transaction(async (tx) => {
       await applyReadonlyTransactionGuards((s) => tx.execute(sql.raw(s)), { timeout: QUERY_TIMEOUT });
-      const countRows = await tx.execute<{ total: number }>(sql`SELECT COUNT(*)::int AS total FROM (${inner}) AS _count`);
+      const countRows = options.page !== undefined && options.pageSize !== undefined
+        ? await tx.execute<{ total: number }>(sql`SELECT COUNT(*)::int AS total FROM (${inner}) AS _count`)
+        : null;
       const suffix = `${queryParts.orderBy} LIMIT ${queryParts.limit}${queryParts.offset > 0 ? ` OFFSET ${queryParts.offset}` : ''}`;
       const dataRows = await tx.execute(sql`SELECT * FROM (${inner}) AS _sub ${sql.raw(suffix)}`);
       return { countRows, dataRows };
@@ -189,8 +191,8 @@ async function runReadonlySql(text: string, params: Record<string, unknown>, opt
     const metadata = ((result.dataRows as unknown as { columns?: ReportSqlColumnMetadata[] }).columns ?? []);
     const arr = coercePostgresNumericRows(rawRows, metadata);
     const columns = arr.length ? Object.keys(arr[0]) : [];
-    const total = Number((result.countRows as unknown as Array<{ total?: number }>)[0]?.total ?? arr.length);
-    return { columns, rows: arr, total: Number.isFinite(total) ? total : arr.length };
+    const total = result.countRows ? Number(result.countRows[0]?.total ?? 0) : null;
+    return { columns, rows: arr, total };
   } catch (err) {
     if (err instanceof HTTPException) throw err;
     const msg = err instanceof Error ? err.message : String(err);

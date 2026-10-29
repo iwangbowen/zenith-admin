@@ -90,7 +90,7 @@ export const reportDataResultSchema = z.object({
   columns: z.array(z.string()),
   fields: z.array(reportResultFieldSchema),
   rows: z.array(z.record(z.string(), z.unknown())).meta({ description: '数据行；键为列名' }),
-  total: z.number().nullable().optional(),
+  total: z.number().nullable().optional().meta({ description: '精确总数；分页 SQL 计数，非分页 SQL 返回 null，内存数据源可返回已知行数' }),
   bytes: z.int().nullable().optional(),
   truncated: z.boolean().optional(),
   truncatedReason: z.string().nullable().optional(),

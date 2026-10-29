@@ -15,6 +15,7 @@ import {
   reportPrintContract,
   reportPublicContract,
   reportSubscriptionContract,
+  resolveReportWidgetQuery,
 } from '@zenith/shared/report';
 import {
   mockReportDatasources, mockReportDatasets, mockReportDashboards, mockReportCategories,
@@ -56,7 +57,7 @@ function applyDatasetQuery(data: ReturnType<typeof getMockDatasetData>, query?: 
     return { ...data, rows: rows.slice(start, start + query.pageSize), total: data.total ?? rows.length };
   }
   const limit = query?.limit ?? data.rows.length;
-  return { ...data, rows: rows.slice(0, limit), total: data.total ?? rows.length };
+  return { ...data, rows: rows.slice(0, limit), total: null };
 }
 
 /** 按仪表盘取数请求体裁剪各组件数据：表格组件用组件级查询，其余用全局 limit */
@@ -69,7 +70,7 @@ function buildDashboardDataFor(
     if (!widget.datasetId || !data[widget.i]?.data) continue;
     data[widget.i] = {
       ...data[widget.i],
-      data: applyDatasetQuery(data[widget.i].data!, widget.type === 'table' ? body.widgetQueries?.[widget.i] : { limit: body.limit }),
+      data: applyDatasetQuery(data[widget.i].data!, resolveReportWidgetQuery(widget, body.limit, body.widgetQueries)),
     };
   }
   return data;
@@ -211,7 +212,7 @@ export const reportHandlers = [
   }),
 
   // ─── 数据集 ───────────────────────────────────────────────
-  mock(reportDatasetContract.preview, ({ ok }) => ok(getMockDatasetData(1))),
+  mock(reportDatasetContract.preview, ({ body, ok }) => ok(applyDatasetQuery(getMockDatasetData(1), { limit: body.limit }))),
   mock(reportDatasetContract.parseFile, ({ ok }) => ok({
     columns: ['name', 'value'],
     fields: [{ name: 'name', label: 'name', type: 'string', source: 'inferred' }, { name: 'value', label: 'value', type: 'string', source: 'inferred' }],

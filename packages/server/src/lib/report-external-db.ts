@@ -190,7 +190,7 @@ function buildWrappedSql(
   sqlText: string,
   options: ReportDatasetQueryOptions,
   dialect: 'postgresql' | 'mysql' | 'sqlserver',
-): { dataSql: string; countSql: string; pageSize: number; offset: number } {
+): { dataSql: string; countSql: string | null; pageSize: number; offset: number } {
   const page = options.page ?? 1;
   const pageSize = Math.max(1, Math.min(options.pageSize ?? options.limit ?? 100, MAX_ROWS));
   const offset = options.page && options.pageSize ? Math.max(0, (page - 1) * pageSize) : 0;
@@ -204,7 +204,7 @@ function buildWrappedSql(
     : ` LIMIT ${limit}${offset > 0 ? ` OFFSET ${offset}` : ''}`;
   return {
     dataSql: `SELECT * FROM (${sqlText}) AS _sub${orderBy}${limitSql}`,
-    countSql: `SELECT COUNT(*) AS total FROM (${sqlText}) AS _count`,
+    countSql: options.page !== undefined && options.pageSize !== undefined ? `SELECT COUNT(*) AS total FROM (${sqlText}) AS _count` : null,
     pageSize: limit,
     offset,
   };
@@ -228,13 +228,13 @@ export async function runExternalQuery(
       const sql = getPgPool(type, safeConfig, tlsServerName);
       const wrapped = buildWrappedSql(trimmed, options, 'postgresql');
       const [countRows, rows] = await Promise.all([
-       sql.unsafe(wrapped.countSql, values as never[]),
+       wrapped.countSql ? sql.unsafe(wrapped.countSql, values as never[]) : null,
        sql.unsafe(wrapped.dataSql, values as never[]),
       ]);
       const arr = Array.isArray(rows) ? rows : [];
       const columns = arr.length ? Object.keys(arr[0]) : [];
-      const total = Number((Array.isArray(countRows) ? countRows[0] : countRows)?.total ?? arr.length);
-      return { columns, fields: [], rows: arr, total: Number.isFinite(total) ? total : arr.length };
+      const total = countRows ? Number(countRows[0]?.total ?? 0) : null;
+      return { columns, fields: [], rows: arr, total };
     }
 
     if (type === 'sqlserver') {
@@ -242,16 +242,16 @@ export async function runExternalQuery(
       const wrapped = buildWrappedSql(stripSqlServerTopLevelOrderBy(trimmed), options, 'sqlserver');
       const dataRequest = pool.request();
       values.forEach((v, i) => dataRequest.input(`p${i}`, v as never));
-      const countRequest = pool.request();
-      values.forEach((v, i) => countRequest.input(`p${i}`, v as never));
+      const countRequest = wrapped.countSql ? pool.request() : null;
+      values.forEach((v, i) => countRequest?.input(`p${i}`, v as never));
       const [countResult, dataResult] = await Promise.all([
-       countRequest.query(wrapped.countSql),
+       countRequest && wrapped.countSql ? countRequest.query(wrapped.countSql) : null,
        dataRequest.query(wrapped.dataSql),
       ]);
       const arr = (dataResult.recordset ?? []) as Record<string, unknown>[];
       const columns = arr.length ? Object.keys(arr[0]) : [];
-      const total = Number((countResult.recordset ?? [])[0]?.total ?? arr.length);
-      return { columns, fields: [], rows: arr, total: Number.isFinite(total) ? total : arr.length };
+      const total = countResult ? Number(countResult.recordset[0]?.total ?? 0) : null;
+      return { columns, fields: [], rows: arr, total };
     }
 
     // mysql
@@ -260,16 +260,16 @@ export async function runExternalQuery(
     try {
       const wrapped = buildWrappedSql(trimmed, options, 'mysql');
       const [countResult, dataResult] = await Promise.all([
-       conn.query({ sql: wrapped.countSql, values, timeout: QUERY_TIMEOUT_MS }),
+       wrapped.countSql ? conn.query({ sql: wrapped.countSql, values, timeout: QUERY_TIMEOUT_MS }) : null,
        conn.query({ sql: wrapped.dataSql, values, timeout: QUERY_TIMEOUT_MS }),
       ]);
-      const countRows = countResult[0];
+      const countRows = countResult?.[0];
       const rows = dataResult[0];
       const arr = (Array.isArray(rows) ? rows : []) as Record<string, unknown>[];
       const columns = arr.length ? Object.keys(arr[0]) : [];
       const totalRow = Array.isArray(countRows) ? (countRows[0] as { total?: number } | undefined) : undefined;
-      const total = Number(totalRow?.total ?? arr.length);
-      return { columns, fields: [], rows: arr, total: Number.isFinite(total) ? total : arr.length };
+      const total = countResult ? Number(totalRow?.total ?? 0) : null;
+      return { columns, fields: [], rows: arr, total };
     } finally { conn.release(); }
   } catch (err) {
     if (err instanceof HTTPException) throw err;
