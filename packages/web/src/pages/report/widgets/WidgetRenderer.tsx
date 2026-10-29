@@ -18,6 +18,7 @@ import { useElementSize } from '@/hooks/useElementSize';
 import { TABLE_PAGE_SIZE_OPTIONS } from '@/hooks/usePagination';
 import { DataBar } from '@/components/data-viz/DataBar';
 import { iframeSandboxFor, safeHttpUrl, safeLinkUrl } from '@/utils/safe-url';
+import { reportTableColumnSortOrder, reportTableSortQuery } from './table-query';
 
 // ─── 工具 ────────────────────────────────────────────────────────────────────
 function toNumber(v: unknown): number {
@@ -292,6 +293,7 @@ export const WidgetRenderer = memo(function WidgetRenderer({
         title: c.label || c.name,
         dataIndex: c.name,
         sorter: !!onWidgetQueryChange,
+        sortOrder: onWidgetQueryChange ? reportTableColumnSortOrder(widgetQuery, c.name) : undefined,
         render: (val: unknown, record: Record<string, unknown>) => {
           if (record.__rk === '__summary' && c.name === cols[0]?.name) {
             return <span style={cellStyle(c.name, val, o.conditionalFormats)}>{val == null ? '' : String(val)}</span>;
@@ -345,17 +347,9 @@ export const WidgetRenderer = memo(function WidgetRenderer({
                 }
               },
             } : false}
-            onChange={onWidgetQueryChange ? (...args: unknown[]) => {
-              const sorter = (args[2] ?? args[1]) as { field?: unknown; sortOrder?: 'ascend' | 'descend' | false | null } | undefined;
-              if (!sorter || Array.isArray(sorter)) return;
-              const sortField = typeof sorter.field === 'string' ? sorter.field : undefined;
-              const sortOrder = sorter.sortOrder === 'ascend' ? 'asc' : sorter.sortOrder === 'descend' ? 'desc' : undefined;
-              onWidgetQueryChange(widget.i, {
-                ...widgetQuery,
-                ...(paginated ? { page: 1, pageSize: activePageSize } : {}),
-                sortField,
-                sortOrder,
-              });
+            onChange={onWidgetQueryChange ? (change) => {
+              const next = reportTableSortQuery(change, widgetQuery, paginated ? activePageSize : undefined);
+              if (next) onWidgetQueryChange(widget.i, next);
             } : undefined}
             {...(useVirtual ? { virtualized: { itemSize: 36 }, scroll: { y: Math.max(80, chartHeight - 36), x: cols.length * 140 } } : {})}
             onRow={interactive ? (record) => ({ onClick: () => handleCat(String((record as Record<string, unknown>)[cols[0]?.name] ?? '')), style: { cursor: 'pointer' } }) : undefined}
