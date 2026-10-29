@@ -16,6 +16,7 @@ export default defineConfig(async () => {
       ...config.test,
       include,
       maxWorkers: 8,
+      fsModuleCache: false,
       setupFiles: [...config.test.setupFiles, resolve(import.meta.dirname, 'scripts/testing/benchmark-setup.ts')],
       reporters: ['dot', 'json', resolve(import.meta.dirname, 'scripts/testing/benchmark-reporter.mjs')],
       outputFile: { json: process.env.ZENITH_BENCH_JSON },

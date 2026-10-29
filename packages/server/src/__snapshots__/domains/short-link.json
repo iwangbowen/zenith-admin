@@ -1,0 +1,16 @@
+[
+  "DELETE /api/short-links/:id",
+  "DELETE /api/short-links/batch",
+  "GET /api/docs",
+  "GET /api/growth/channel-analysis",
+  "GET /api/openapi.json",
+  "GET /api/short-links",
+  "GET /api/short-links/:id",
+  "GET /api/short-links/:id/stats",
+  "GET /metrics",
+  "GET /s/:code",
+  "POST /api/short-links",
+  "POST /api/short-links/ensure",
+  "PUT /api/short-links/:id",
+  "PUT /api/short-links/batch/status"
+]

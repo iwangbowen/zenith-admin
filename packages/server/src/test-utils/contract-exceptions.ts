@@ -1,4 +1,11 @@
 /** Full-replacement operations whose creation defaults also apply to PUT. */
+export const PROTOCOL_OPERATIONS = new Map([
+  ['POST /api/oauth2/token', 'RFC 6749 form endpoint with a top-level token response'],
+  ['POST /api/oauth2/token/revoke', 'RFC 7009 token revocation endpoint'],
+  ['POST /api/oauth2/token/introspect', 'RFC 7662 token introspection endpoint'],
+  ['GET /api/oauth2/userinfo', 'OIDC UserInfo claims without a business envelope'],
+]);
+
 export const FULL_REPLACE_OPERATIONS = new Map<string, string>([
     ['PUT /api/broadcasts/{id}', '群发活动编辑复用创建 schema，标题 / 内容 / 渠道 / 受众类型必填'],
     ['PUT /api/channels/admin/messages/{id}', '草稿 / 定时消息编辑即整体重写消息内容与投递配置'],

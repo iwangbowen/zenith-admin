@@ -4,6 +4,9 @@ on:
   push:
     branches: [master]
   pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 19 * * *"
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -46,7 +49,9 @@ jobs:
         run: npm run lint
 
       - name: Test
-        run: npm run test
+        run: |
+          npm run test:shared
+          npm run test:web
 
       - name: Build
         env:
@@ -56,6 +61,96 @@ jobs:
       # 产物预算：入口关键路径文件数 / 体积、壳层增量、chunk 总数超过 packages/web/bundle-budget.json 即失败
       - name: Bundle budget
         run: npm run check:bundle -w @zenith/web
+
+  server-plan:
+    name: Plan Server tests
+    runs-on: ubuntu-latest
+    outputs:
+      mode: ${{ steps.plan.outputs.mode }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm install --global npm@12.2.0
+      - uses: actions/cache@v4
+        id: modules-cache
+        with:
+          path: |
+            node_modules
+            packages/*/node_modules
+          key: modules-${{ runner.os }}-node24-npm12.2.0-${{ hashFiles('package.json', 'package-lock.json') }}
+      - if: steps.modules-cache.outputs.cache-hit != 'true'
+        run: npm ci
+      - name: Test selector and domain boundaries
+        run: npm run test:graph -w @zenith/server
+      - name: Plan affected or full validation
+        id: plan
+        env:
+          TEST_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            node packages/server/scripts/test-ci-plan.mjs --base "$TEST_BASE_SHA"
+          else
+            node packages/server/scripts/test-ci-plan.mjs --full
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server-test-plans
+          path: .tmp/server-test-plans/
+          include-hidden-files: true
+
+  server-shards:
+    name: Server shard ${{ matrix.shard }}
+    needs: server-plan
+    if: needs.server-plan.outputs.mode != 'none'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.server-plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm install --global npm@12.2.0
+      - uses: actions/cache@v4
+        id: modules-cache
+        with:
+          path: |
+            node_modules
+            packages/*/node_modules
+          key: modules-${{ runner.os }}-node24-npm12.2.0-${{ hashFiles('package.json', 'package-lock.json') }}
+      - if: steps.modules-cache.outputs.cache-hit != 'true'
+        run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: server-test-plans
+          path: .tmp/server-test-plans/
+      - name: Execute exact Server test shard
+        run: npm run test:affected -w @zenith/server -- --plan .tmp/server-test-plans/${{ matrix.plan }}
+
+  server-tests:
+    name: Server tests (affected / full)
+    if: always()
+    needs: [server-plan, server-shards]
+    runs-on: ubuntu-latest
+    env:
+      PLAN_RESULT: ${{ needs.server-plan.result }}
+      PLAN_MODE: ${{ needs.server-plan.outputs.mode }}
+      SHARD_RESULT: ${{ needs.server-shards.result }}
+    steps:
+      - name: Require all planned tests to pass
+        run: |
+          test "$PLAN_RESULT" = "success"
+          if [ "$PLAN_MODE" != "none" ]; then
+            test "$SHARD_RESULT" = "success"
+          fi
 
   smoke:
     name: Web boot smoke (demo build)

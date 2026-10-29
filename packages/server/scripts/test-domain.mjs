@@ -8,11 +8,13 @@ const args = process.argv.slice(2);
 let contractOnly = false;
 let dryRun = false;
 let output;
+let update = false;
 const domains = [];
 const groups = [];
 for (let i = 0; i < args.length; i++) {
   const arg = args[i];
   if (arg === '--contract-only') contractOnly = true;
+  else if (arg === '--update') update = true;
   else if (arg === '--dry-run') dryRun = true;
   else if (arg === '--plan-out') output = args[++i];
   else if (arg === '--group') groups.push(args[++i]);
@@ -25,4 +27,4 @@ if (!selected.length && !groups.length) throw new Error('Specify domains, all, o
 const plan = planDomainTests(selected, buildFileGraph(), { contractOnly, groups });
 if (output) writeFileSync(resolve(workspaceRoot, output), `${JSON.stringify(plan, null, 2)}\n`);
 if (dryRun) console.log(JSON.stringify(plan, null, 2));
-else process.exitCode = runTestPlan(plan);
+else process.exitCode = runTestPlan(plan, update ? ['--update'] : []);

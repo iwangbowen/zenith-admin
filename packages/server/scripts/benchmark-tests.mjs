@@ -27,6 +27,7 @@ const manifest = { node: process.version, platform: process.platform, arch: proc
   cpus: cpus().length, memoryGiB: totalmem() / 1024 ** 3, maxWorkers: 8, pool: 'forks', isolate: true,
   lockHash: createHash('sha256').update(readFileSync(join(workspaceRoot, 'package-lock.json'))).digest('hex'),
   runnerCommit: sha, sourceCommit: options['source-ref'] ?? (target === serverRoot ? sha : null),
+  fsModuleCache: false, dotenv: 'disabled for benchmark',
   target, label, startedAt: new Date().toISOString(), samples: [] };
 for (const suite of suites) {
   if (!/^[a-z-]+$/.test(suite)) throw new Error(`Invalid suite: ${suite}`);
@@ -40,6 +41,7 @@ for (const suite of suites) {
     console.log(`Benchmark ${label}/${suite} ${i + 1}/${repetitions}`);
     const run = spawnSync(process.execPath, [vitestBin, 'run', '--config', join(serverRoot, 'vitest.benchmark.config.ts')], {
       cwd: target, stdio: ['ignore', fd, fd], env: { ...process.env, ZENITH_BENCH_SERVER_ROOT: target,
+        DOTENV_CONFIG_PATH: join(output, '__benchmark_no_dotenv__.env'),
         ZENITH_BENCH_SUITE: suite, ZENITH_BENCH_JSON: jsonFile, ZENITH_BENCH_RESOURCES: resourcesFile },
     });
     closeSync(fd);

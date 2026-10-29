@@ -1,0 +1,15 @@
+[
+  "DELETE /api/biz/leaves/:id",
+  "GET /api/biz/leaves",
+  "GET /api/biz/leaves/:id",
+  "GET /api/biz/leaves/:id/detail",
+  "GET /api/biz/leaves/:id/workflow",
+  "GET /api/docs",
+  "GET /api/openapi.json",
+  "GET /metrics",
+  "POST /api/biz/leaves",
+  "POST /api/biz/leaves/:id/reopen",
+  "POST /api/biz/leaves/:id/submit",
+  "POST /api/biz/leaves/workflow-preview",
+  "PUT /api/biz/leaves/:id"
+]

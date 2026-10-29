@@ -1,0 +1,20 @@
+[
+  "DELETE /api/marketing/campaigns/:campaignId/prizes/:prizeId",
+  "DELETE /api/marketing/campaigns/:id",
+  "GET /api/docs",
+  "GET /api/marketing/campaigns",
+  "GET /api/marketing/campaigns/:campaignId/participations",
+  "GET /api/marketing/campaigns/:campaignId/prizes",
+  "GET /api/marketing/campaigns/:id",
+  "GET /api/member/marketing/campaigns/:id",
+  "GET /api/member/marketing/campaigns/:id/my-records",
+  "GET /api/openapi.json",
+  "GET /metrics",
+  "POST /api/marketing/campaigns",
+  "POST /api/marketing/campaigns/:campaignId/prizes",
+  "POST /api/marketing/campaigns/:id/end",
+  "POST /api/marketing/campaigns/:id/publish",
+  "POST /api/member/marketing/campaigns/:id/draw",
+  "PUT /api/marketing/campaigns/:campaignId/prizes/:prizeId",
+  "PUT /api/marketing/campaigns/:id"
+]

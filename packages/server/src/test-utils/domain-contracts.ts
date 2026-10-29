@@ -18,7 +18,8 @@ const loaders = {
 };
 
 export async function loadDomainOperations(domain: ServerDomainName) {
-  const modules = domain === 'files' ? ['platform'] : [...manifest.domains[domain].shared, ...(domain === 'payment' ? ['biz', 'open-platform'] : [])];
+  const definition = manifest.domains[domain];
+  const modules = 'contracts' in definition ? definition.contracts : definition.shared;
   const operations = [];
   for (const name of modules) {
     const module: Record<string, unknown> = await loaders[name as keyof typeof loaders]();

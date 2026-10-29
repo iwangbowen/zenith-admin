@@ -1,9 +1,10 @@
 import { beforeAll, describe, expect, it } from 'vitest';
+import { fileURLToPath } from 'node:url';
 import { mockServerInfra, requestWithoutCredentials, listDefaultedBodyProperties } from './test-utils/contract';
 import { buildDomainContractApp, type DomainContractApp } from './test-utils/domain-contract';
 import { loadDomainOperations } from './test-utils/domain-contracts';
 import { accessMismatches } from './test-utils/contract-checks';
-import { FULL_REPLACE_OPERATIONS } from './test-utils/contract-exceptions';
+import { FULL_REPLACE_OPERATIONS, PROTOCOL_OPERATIONS } from './test-utils/contract-exceptions';
 import { SERVER_DOMAIN_NAMES, type ServerDomainName } from './routes/domain-loaders';
 import type { AnyOperation } from '@zenith/shared/core';
 
@@ -31,7 +32,13 @@ describe.each(domains)('%s domain contract', (domain) => {
     expect(built.operations.length).toBeGreaterThan(0);
     const declared = new Set(contracts.get(domain)!.map((op) => `${op.method.toUpperCase()} ${op.fullPath}`));
     const jsonOperations = built.operations.filter((operation) => operation.operation.responses?.['200']?.content?.['application/json']);
-    expect(jsonOperations.filter((operation) => !declared.has(operation.id)).map((operation) => operation.id)).toEqual([]);
+    expect(jsonOperations.filter((operation) => !declared.has(operation.id) && !PROTOCOL_OPERATIONS.has(operation.id)).map((operation) => operation.id)).toEqual([]);
+  });
+
+  it('preserves the complete method/path inventory for this domain', async () => {
+    const paths = [...new Set(apps.get(domain)!.routes.filter((route) => route.method !== 'ALL')
+      .map((route) => `${route.method} ${route.path}`))].sort();
+    await expect(`${JSON.stringify(paths, null, 2)}\n`).toMatchFileSnapshot(fileURLToPath(new URL(`./__snapshots__/domains/${domain}.json`, import.meta.url)));
   });
 
   it('enforces authentication before request validation for every declared operation', async () => {
