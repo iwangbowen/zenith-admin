@@ -9,6 +9,7 @@ import type {
 } from '@zenith/shared/payment';
 import { config } from '../../config';
 import { db } from '../../db';
+import type { DbTransaction } from '../../db/types';
 import { exactTenantCondition } from '../../lib/tenant';
 import { requireRow } from '../../lib/db-assert';
 import {
@@ -138,50 +139,58 @@ async function setTerminalSessionState(input: {
   expectedVersion?: number;
   allowedStatuses?: PaymentCashierSessionStatus[];
 }): Promise<PaymentCashierSessionRow> {
-  const [candidate] = await db
+  return db.transaction((tx) => setTerminalSessionStateWithin(tx, input));
+}
+
+async function setTerminalSessionStateWithin(tx: DbTransaction, input: {
+  id: number;
+  status: 'failed' | 'expired';
+  errorMessage: string;
+  expectedVersion?: number;
+  allowedStatuses?: PaymentCashierSessionStatus[];
+}): Promise<PaymentCashierSessionRow> {
+  const [candidate] = await tx
     .select({ linkId: paymentCashierSessions.linkId })
     .from(paymentCashierSessions)
     .where(eq(paymentCashierSessions.id, input.id))
     .limit(1);
   requireRow(candidate, '收银台会话不存在');
 
-  return db.transaction(async (tx) => {
-    // All link/session transactions lock the parent link first. Keeping one
-    // order prevents expiry/failure and payment-success redemption from
-    // deadlocking each other under concurrent provider callbacks.
+  // All link/session transactions lock the parent link first. Keeping one
+  // order prevents expiry/failure and payment-success redemption from
+  // deadlocking each other under concurrent provider callbacks.
+  await tx
+    .select({ id: paymentLinks.id })
+    .from(paymentLinks)
+    .where(eq(paymentLinks.id, candidate.linkId))
+    .for('update')
+    .limit(1);
+  const [session] = await tx
+    .select()
+    .from(paymentCashierSessions)
+    .where(eq(paymentCashierSessions.id, input.id))
+    .for('update')
+    .limit(1);
+  requireRow(session, '收银台会话不存在');
+  if ((input.expectedVersion !== undefined && session.version !== input.expectedVersion)
+    || (input.allowedStatuses && !input.allowedStatuses.includes(session.status))) return session;
+  if (session.useSlotStatus === 'reserved') {
     await tx
-      .select({ id: paymentLinks.id })
-      .from(paymentLinks)
-      .where(eq(paymentLinks.id, candidate.linkId))
-      .for('update')
-      .limit(1);
-    const [session] = await tx
-      .select()
-      .from(paymentCashierSessions)
-      .where(eq(paymentCashierSessions.id, input.id))
-      .for('update')
-      .limit(1);
-    requireRow(session, '收银台会话不存在');
-    if ((input.expectedVersion !== undefined && session.version !== input.expectedVersion)
-      || (input.allowedStatuses && !input.allowedStatuses.includes(session.status))) return session;
-    if (session.useSlotStatus === 'reserved') {
-      await tx
-        .update(paymentLinks)
-        .set({ reservedCount: sql`greatest(${paymentLinks.reservedCount} - 1, 0)` })
-        .where(eq(paymentLinks.id, session.linkId));
-    }
-    const [updated] = await tx
-      .update(paymentCashierSessions)
-      .set({
-        status: input.status,
-        useSlotStatus: session.useSlotStatus === 'reserved' ? 'released' : session.useSlotStatus,
-        errorMessage: input.errorMessage.slice(0, 500),
-        version: sql`${paymentCashierSessions.version} + 1`,
-      })
-      .where(eq(paymentCashierSessions.id, session.id))
-      .returning();
-    return updated ?? session;
-  });
+      .update(paymentLinks)
+      .set({ reservedCount: sql`greatest(${paymentLinks.reservedCount} - 1, 0)` })
+      .where(eq(paymentLinks.id, session.linkId));
+  }
+  const [updated] = await tx
+    .update(paymentCashierSessions)
+    .set({
+      status: input.status,
+      useSlotStatus: session.useSlotStatus === 'reserved' ? 'released' : session.useSlotStatus,
+      errorMessage: input.errorMessage.slice(0, 500),
+      version: sql`${paymentCashierSessions.version} + 1`,
+    })
+    .where(eq(paymentCashierSessions.id, session.id))
+    .returning();
+  return updated ?? session;
 }
 
 /** 回收指定链接已过期但仍占用的名额；可由公开查询和后台任务调用。 */
@@ -388,9 +397,24 @@ export async function updateCashierSessionFromPaymentEvent(
   event: PaymentEvent,
   status: 'succeeded' | 'failed',
 ): Promise<void> {
+  return db.transaction((tx) => updateCashierSessionFromPaymentEventWithin(tx, event, status));
+}
+
+export async function updateCashierSessionFromPaymentEventWithin(
+  tx: DbTransaction,
+  event: PaymentEvent,
+  status: 'succeeded' | 'failed',
+): Promise<void> {
   if (event.appId == null) return;
   const tenantScope = exactTenantCondition(paymentCashierSessions.tenantId, event.tenantId ?? null);
-  const [session] = await db
+  const [candidate] = await tx.select({ linkId: paymentCashierSessions.linkId }).from(paymentCashierSessions).where(and(
+    eq(paymentCashierSessions.orderNo, event.orderNo), eq(paymentCashierSessions.appId, event.appId), tenantScope,
+  )).limit(1);
+  if (!candidate) return;
+  await tx.select({ id: paymentLinks.id }).from(paymentLinks).where(and(
+    eq(paymentLinks.id, candidate.linkId), exactTenantCondition(paymentLinks.tenantId, event.tenantId ?? null),
+  )).for('update').limit(1);
+  const [session] = await tx
     .select()
     .from(paymentCashierSessions)
     .where(and(
@@ -398,16 +422,16 @@ export async function updateCashierSessionFromPaymentEvent(
       eq(paymentCashierSessions.appId, event.appId),
       tenantScope,
     ))
-    .limit(1);
+    .for('update').limit(1);
   if (!session) return;
   if (status === 'failed') {
     if (!['ready', 'creating', 'awaiting', 'processing', 'unknown'].includes(session.status)) return;
-    await setTerminalSessionState({ id: session.id, status: 'failed', errorMessage: '支付未完成' });
+    await setTerminalSessionStateWithin(tx, { id: session.id, status: 'failed', errorMessage: '支付未完成' });
     return;
   }
   if (session.status === 'succeeded') {
-    const { recordPaymentLinkRedemption } = await import('./payment-link.service');
-    await recordPaymentLinkRedemption({
+    const { recordPaymentLinkRedemptionWithin } = await import('./payment-link.service');
+    await recordPaymentLinkRedemptionWithin(tx, {
       orderNo: event.orderNo,
       bizType: event.bizType,
       bizId: event.bizId,
@@ -416,12 +440,12 @@ export async function updateCashierSessionFromPaymentEvent(
     });
     return;
   }
-  await db
+  await tx
     .update(paymentCashierSessions)
     .set({ status: 'succeeded', errorMessage: null, version: sql`${paymentCashierSessions.version} + 1` })
     .where(and(eq(paymentCashierSessions.id, session.id), eq(paymentCashierSessions.version, session.version)));
-  const { recordPaymentLinkRedemption } = await import('./payment-link.service');
-  await recordPaymentLinkRedemption({
+  const { recordPaymentLinkRedemptionWithin } = await import('./payment-link.service');
+  await recordPaymentLinkRedemptionWithin(tx, {
     orderNo: event.orderNo,
     bizType: event.bizType,
     bizId: event.bizId,

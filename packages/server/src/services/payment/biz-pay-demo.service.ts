@@ -22,6 +22,7 @@ import type { BizPayDemo } from '@zenith/shared/biz';
 import { BIZ_PAY_DEMO_STATUSES } from '@zenith/shared/biz';
 import type { PaymentMethod, PaymentCashierMethod, CreatePaymentResult } from '@zenith/shared/payment';
 import { db } from '../../db';
+import type { DbTransaction } from '../../db/types';
 import { listRows } from '../../lib/list-query';
 import { bizPayDemos, paymentOrders, type BizPayDemoRow } from '../../db/schema';
 import { requireRow } from '../../lib/db-assert';
@@ -176,7 +177,7 @@ export async function simulateBizPayDemoPaid(id: number): Promise<BizPayDemo> {
     throw new HTTPException(400, { message: `当前支付订单状态 ${order.status} 不可模拟成功` });
   }
   // 幂等兜底：订阅器异步履约可能尚未执行，此处复用同一履约函数保证响应内即时可见。
-  await markBizPayDemoPaid({ bizId: String(row.id), orderNo: order.orderNo, amount: row.amount });
+  await markBizPayDemoPaid({ bizId: String(row.id), orderNo: order.orderNo, amount: row.amount, appId: order.appId, tenantId: order.tenantId });
   return getBizPayDemo(id);
 }
 
@@ -186,14 +187,17 @@ export async function simulateBizPayDemoPaid(id: number): Promise<BizPayDemo> {
  * 仅当订单处于待支付/支付中（pending/paying）时才履约，重复投递（at-least-once）只生效一次。
  */
 export async function markBizPayDemoPaid(event: { bizId: string; orderNo: string; amount: number; appId?: number | null; tenantId?: number | null }): Promise<void> {
+  return db.transaction((tx) => markBizPayDemoPaidWithin(tx, event));
+}
+
+export async function markBizPayDemoPaidWithin(tx: DbTransaction, event: { bizId: string; orderNo: string; amount: number; appId?: number | null; tenantId?: number | null }): Promise<void> {
   const demoId = Number(event.bizId);
   if (!Number.isInteger(demoId) || demoId <= 0) {
-    logger.warn('[biz-pay-demo] 履约 bizId 非法', { bizId: event.bizId });
-    return;
+    throw new Error('Demo payment fact requires a valid business id');
   }
-  if (event.appId == null) return;
+  if (event.appId == null || event.tenantId === undefined) throw new Error('Demo payment fact requires an application and explicit tenant');
   const tenantScope = exactTenantCondition(paymentOrders.tenantId, event.tenantId ?? null);
-  const [order] = await db
+  const [order] = await tx
     .select({ id: paymentOrders.id, amount: paymentOrders.amount, paidAmount: paymentOrders.paidAmount })
     .from(paymentOrders)
     .where(and(
@@ -201,13 +205,13 @@ export async function markBizPayDemoPaid(event: { bizId: string; orderNo: string
       eq(paymentOrders.bizType, BIZ_PAY_DEMO_TYPE),
       eq(paymentOrders.bizId, String(demoId)),
       eq(paymentOrders.appId, event.appId),
-      eq(paymentOrders.status, 'success'),
+      inArray(paymentOrders.status, ['success', 'refunding', 'refunded']),
       tenantScope,
     ))
     .limit(1);
-  if (!order || (order.amount !== event.amount && order.paidAmount !== event.amount)) return;
+  if (!order || (order.amount !== event.amount && order.paidAmount !== event.amount)) throw new Error('Demo payment fact does not match its paid order');
   const demoTenant = exactTenantCondition(bizPayDemos.tenantId, event.tenantId ?? null);
-  const updated = await db.update(bizPayDemos)
+  const updated = await tx.update(bizPayDemos)
     .set({
       status: 'paid',
       paidAt: new Date(),

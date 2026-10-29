@@ -8,11 +8,11 @@
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
+import type { DbTransaction } from '../../db/types';
 import { exactTenantCondition } from '../../lib/tenant';
 import { members, memberVipRenewals, paymentApps, paymentContracts, paymentDeductPlans, paymentOrders, type MemberVipRenewalRow } from '../../db/schema';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { requireRow } from '../../lib/db-assert';
-import logger from '../../lib/logger';
 import {
   advanceVipExpiry,
   executeDeduction,
@@ -144,76 +144,75 @@ export async function deductMyRenewalNow(memberId: number, applicationId: number
  * 事务级咨询锁串行化并发重投；幂等检查与延期同一事务提交。
  */
 export async function extendVipOnRenewal(event: { bizId: string; orderNo: string; amount: number; appId?: number | null; tenantId?: number | null }): Promise<void> {
+  return db.transaction((tx) => extendVipOnRenewalWithin(tx, event));
+}
+
+export async function extendVipOnRenewalWithin(tx: DbTransaction, event: { bizId: string; orderNo: string; amount: number; appId?: number | null; tenantId?: number | null }): Promise<void> {
   const memberId = Number(event.bizId);
-  if (!Number.isInteger(memberId) || memberId <= 0) {
-    logger.warn('[MemberRenewal] 续费延期 bizId 非法', { bizId: event.bizId });
-    return;
+  if (!Number.isSafeInteger(memberId) || memberId <= 0 || event.appId == null || event.tenantId === undefined) {
+    throw new Error('VIP renewal fact requires a member, application and explicit tenant');
   }
-  const extended = await db.transaction(async (tx) => {
-    // Serialize all successful renewals for the same member, not only
-    // duplicate delivery of one order. The row lock makes the expiry read and
-    // write atomic even when two different orders settle concurrently.
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`vip-renewal-member:${memberId}`}))`);
-    const [exist] = await tx.select({ id: memberVipRenewals.id }).from(memberVipRenewals).where(eq(memberVipRenewals.orderNo, event.orderNo)).limit(1);
-    if (exist) return false;
+  const [order] = await tx.select({
+    appId: paymentOrders.appId,
+    currency: paymentOrders.currency,
+    tenantId: paymentOrders.tenantId,
+    status: paymentOrders.status,
+    bizType: paymentOrders.bizType,
+    bizId: paymentOrders.bizId,
+    amount: paymentOrders.amount,
+    paidAmount: paymentOrders.paidAmount,
+    paidAt: paymentOrders.paidAt,
+  }).from(paymentOrders).where(and(eq(paymentOrders.orderNo, event.orderNo), eq(paymentOrders.appId, event.appId), exactTenantCondition(paymentOrders.tenantId, event.tenantId))).for('update').limit(1);
+  if (!order || event.appId == null || order.appId !== event.appId || !['success', 'refunding', 'refunded'].includes(order.status) || !order.paidAt || (order.tenantId ?? null) !== event.tenantId || order.bizType !== MEMBER_RENEWAL_BIZ_TYPE || order.bizId !== event.bizId || (order.paidAmount ?? order.amount) !== event.amount) {
+    throw new Error('VIP renewal fact does not match its paid order');
+  }
 
-    const [order] = await tx.select({
-      appId: paymentOrders.appId,
-      currency: paymentOrders.currency,
-      tenantId: paymentOrders.tenantId,
-      status: paymentOrders.status,
-      bizType: paymentOrders.bizType,
-      bizId: paymentOrders.bizId,
-      amount: paymentOrders.amount,
-      paidAmount: paymentOrders.paidAmount,
-    }).from(paymentOrders).where(eq(paymentOrders.orderNo, event.orderNo)).limit(1);
-    if (!order || event.appId == null || order.appId !== event.appId || order.status !== 'success' || order.bizType !== MEMBER_RENEWAL_BIZ_TYPE || order.bizId !== event.bizId || (order.amount !== event.amount && order.paidAmount !== event.amount)) {
-      logger.warn('[MemberRenewal] 续费订单作用域或状态不匹配，跳过延期', { orderNo: event.orderNo });
-      return false;
-    }
+  // Serialize all successful renewals for the same member, not only
+  // duplicate delivery of one order. The row lock makes the expiry read and
+  // write atomic even when two different orders settle concurrently.
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`vip-renewal-member:${memberId}`}))`);
+  const [exist] = await tx.select({ id: memberVipRenewals.id }).from(memberVipRenewals).where(eq(memberVipRenewals.orderNo, event.orderNo)).limit(1);
+  if (exist) return;
 
-    const [member] = await tx.select({ vipExpireAt: members.vipExpireAt, status: members.status, deletedAt: members.deletedAt }).from(members).where(and(
-      eq(members.id, memberId),
-      isNull(members.deletedAt),
-      exactTenantCondition(members.tenantId, order.tenantId),
-    )).for('update').limit(1);
-    if (!member || member.status === 'banned') {
-      logger.warn('[MemberRenewal] 会员不存在，跳过延期', { memberId, orderNo: event.orderNo });
-      return false;
-    }
-    const [contract] = await tx
-      .select({ contractNo: paymentContracts.contractNo, planId: paymentContracts.planId })
-      .from(paymentContracts)
-      .where(and(
-        eq(paymentContracts.bizType, MEMBER_RENEWAL_BIZ_TYPE),
-        eq(paymentContracts.bizId, event.bizId),
-        eq(paymentContracts.appId, order.appId),
-        eq(paymentContracts.currency, order.currency),
-        exactTenantCondition(paymentContracts.tenantId, order.tenantId),
-      ))
-      .orderBy(desc(paymentContracts.id))
-      .limit(1);
-    const plan = contract
-      ? await tx.query.paymentDeductPlans.findFirst({ where: and(
-          eq(paymentDeductPlans.id, contract.planId),
-          exactTenantCondition(paymentDeductPlans.tenantId, order.tenantId),
-        ) })
-      : null;
+  const [member] = await tx.select({ vipExpireAt: members.vipExpireAt, status: members.status, deletedAt: members.deletedAt }).from(members).where(and(
+    eq(members.id, memberId),
+    isNull(members.deletedAt),
+    exactTenantCondition(members.tenantId, order.tenantId),
+  )).for('update').limit(1);
+  if (!member || member.status === 'banned') {
+    throw new Error('VIP renewal member is missing or unavailable');
+  }
+  const [contract] = await tx
+    .select({ contractNo: paymentContracts.contractNo, planId: paymentContracts.planId })
+    .from(paymentContracts)
+    .where(and(
+      eq(paymentContracts.bizType, MEMBER_RENEWAL_BIZ_TYPE),
+      eq(paymentContracts.bizId, event.bizId),
+      eq(paymentContracts.appId, order.appId),
+      eq(paymentContracts.currency, order.currency),
+      exactTenantCondition(paymentContracts.tenantId, order.tenantId),
+    ))
+    .orderBy(desc(paymentContracts.id))
+    .limit(1);
+  const plan = contract
+    ? await tx.query.paymentDeductPlans.findFirst({ where: and(
+        eq(paymentDeductPlans.id, contract.planId),
+        exactTenantCondition(paymentDeductPlans.tenantId, order.tenantId),
+      ) })
+    : null;
 
-    // 到期前续费从当前到期时间顺延；已过期/未开通从当下起算
-    const now = new Date();
-    const base = member.vipExpireAt && member.vipExpireAt > now ? member.vipExpireAt : now;
-    const newExpire = plan ? advanceVipExpiry(base, plan) : advanceVipExpiry(base, { period: 'monthly', customDays: null });
+  // 到期前续费从当前到期时间顺延；已过期/未开通从当下起算
+  const now = new Date();
+  const base = member.vipExpireAt && member.vipExpireAt > now ? member.vipExpireAt : now;
+  const newExpire = plan ? advanceVipExpiry(base, plan) : advanceVipExpiry(base, { period: 'monthly', customDays: null });
 
-    await tx.insert(memberVipRenewals).values({
-      memberId,
-      orderNo: event.orderNo,
-      contractNo: contract?.contractNo ?? null,
-      amount: order.amount,
-      vipExpireAfter: newExpire,
-    });
-    await tx.update(members).set({ vipExpireAt: newExpire }).where(eq(members.id, memberId));
-    return true;
+  await tx.insert(memberVipRenewals).values({
+    memberId,
+    orderNo: event.orderNo,
+    contractNo: contract?.contractNo ?? null,
+    amount: order.amount,
+    vipExpireAfter: newExpire,
   });
-  if (extended) logger.info('[MemberRenewal] VIP 续费延期成功', { memberId, orderNo: event.orderNo });
+  await tx.update(members).set({ vipExpireAt: newExpire }).where(eq(members.id, memberId));
+
 }

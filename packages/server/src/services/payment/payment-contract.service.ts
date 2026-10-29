@@ -18,6 +18,7 @@ import { randomInt, randomUUID } from 'node:crypto';
 import { allocateBusinessNumber, attachBusinessNumber } from '../platform/numbering-runtime';
 import dayjs from 'dayjs';
 import { db } from '../../db';
+import type { DbTransaction } from '../../db/types';
 import { buildListResult } from '../../lib/list-query';
 import { paymentChannelConfigs, paymentContracts, paymentDeductPlans, paymentOrders, type PaymentChannelConfigRow, type PaymentContractRow, type PaymentDeductPlanRow, type PaymentOrderRow } from '../../db/schema';
 import { requireRow } from '../../lib/db-assert';
@@ -852,53 +853,56 @@ export async function executeDueDeductions(): Promise<number> {
  * 幂等锚点为订单 paidAt：仅当 lastDeductAt 早于该单支付时间时生效，
  * outbox 重投 / 查单补单 / 运营模拟支付多路径安全。
  */
-export async function advanceContractOnPaid(event: { orderNo: string; bizType: string; bizId: string }): Promise<void> {
-  const [order] = await db
+export async function advanceContractOnPaid(event: { orderNo: string; bizType: string; bizId: string; appId?: number | null; tenantId?: number | null }): Promise<void> {
+  return db.transaction((tx) => advanceContractOnPaidWithin(tx, event));
+}
+
+export async function advanceContractOnPaidWithin(tx: DbTransaction, event: { orderNo: string; bizType: string; bizId: string; appId?: number | null; tenantId?: number | null }): Promise<void> {
+  if (event.appId == null || event.tenantId === undefined) throw new Error('Contract payment fact requires an application and explicit tenant');
+  const [order] = await tx
     .select()
     .from(paymentOrders)
-    .where(eq(paymentOrders.orderNo, event.orderNo))
+    .where(and(eq(paymentOrders.orderNo, event.orderNo), eq(paymentOrders.appId, event.appId), exactTenantCondition(paymentOrders.tenantId, event.tenantId)))
     .limit(1);
   // 成功事件可能在订单进入 refunding / refunded 后重放：paid 时间戳才是扣款事实，
   // 接受这些后续终态，恢复流程才能推进排期而不重复扣款。
   const paidAt = order?.paidAt;
-  if (!order || !['success', 'refunding', 'refunded'].includes(order.status) || !paidAt) return;
+  if (!order || !['success', 'refunding', 'refunded'].includes(order.status) || !paidAt) throw new Error('Contract payment fact does not match its paid order');
   // 仅代扣单推进排期（同业务的普通支付单，如手动购买，不影响协议周期）
   if (order.payMethod !== 'wechat_papay' && order.payMethod !== 'alipay_cycle') return;
-  if (order.bizType !== event.bizType || order.bizId !== event.bizId) return;
+  if (order.bizType !== event.bizType || order.bizId !== event.bizId) throw new Error('Contract payment fact business identity differs from its order');
   const paidAmount = order.paidAmount ?? order.amount;
-  await db.transaction(async (tx) => {
-    // A row lock serializes different successful periods for the same
-    // contract. The idempotency guard below then makes outbox replays no-ops.
-    const [row] = await tx.select().from(paymentContracts).where(and(
-      eq(paymentContracts.bizType, event.bizType),
-      eq(paymentContracts.bizId, event.bizId),
-      eq(paymentContracts.appId, order.appId),
-      eq(paymentContracts.currency, order.currency),
-      eq(paymentContracts.lastOrderNo, event.orderNo),
-      exactTenantCondition(paymentContracts.tenantId, order.tenantId),
-      inArray(paymentContracts.status, ['signed', 'paused', 'terminated']),
-    )).for('update').limit(1);
-    if (!row) return;
-    const plan = await tx.query.paymentDeductPlans.findFirst({ where: and(
-      eq(paymentDeductPlans.id, row.planId),
-      exactTenantCondition(paymentDeductPlans.tenantId, row.tenantId),
-    ) });
-    if (!plan || plan.amount !== paidAmount) return;
-    if (row.lastDeductAt && row.lastDeductAt >= paidAt) return;
-    const next = row.status === 'signed' ? advancePeriod(paidAt, plan) : null;
-    await tx.update(paymentContracts).set({
-      nextDeductAt: next,
-      lastDeductAt: paidAt,
-      failCount: 0,
-      totalDeductCount: sql`${paymentContracts.totalDeductCount} + 1`,
-      version: sql`${paymentContracts.version} + 1`,
-    }).where(and(
-      eq(paymentContracts.id, row.id),
-      eq(paymentContracts.version, row.version),
-      inArray(paymentContracts.status, ['signed', 'paused', 'terminated']),
-      or(isNull(paymentContracts.lastDeductAt), lt(paymentContracts.lastDeductAt, paidAt)),
-    ));
-  });
+  // A row lock serializes different successful periods for the same
+  // contract. The idempotency guard below then makes outbox replays no-ops.
+  const [row] = await tx.select().from(paymentContracts).where(and(
+    eq(paymentContracts.bizType, event.bizType),
+    eq(paymentContracts.bizId, event.bizId),
+    eq(paymentContracts.appId, order.appId),
+    eq(paymentContracts.currency, order.currency),
+    eq(paymentContracts.lastOrderNo, event.orderNo),
+    exactTenantCondition(paymentContracts.tenantId, order.tenantId),
+    inArray(paymentContracts.status, ['signed', 'paused', 'terminated']),
+  )).for('update').limit(1);
+  if (!row) return;
+  const plan = await tx.query.paymentDeductPlans.findFirst({ where: and(
+    eq(paymentDeductPlans.id, row.planId),
+    exactTenantCondition(paymentDeductPlans.tenantId, row.tenantId),
+  ) });
+  if (!plan || plan.amount !== paidAmount) return;
+  if (row.lastDeductAt && row.lastDeductAt >= paidAt) return;
+  const next = row.status === 'signed' ? advancePeriod(paidAt, plan) : null;
+  await tx.update(paymentContracts).set({
+    nextDeductAt: next,
+    lastDeductAt: paidAt,
+    failCount: 0,
+    totalDeductCount: sql`${paymentContracts.totalDeductCount} + 1`,
+    version: sql`${paymentContracts.version} + 1`,
+  }).where(and(
+    eq(paymentContracts.id, row.id),
+    eq(paymentContracts.version, row.version),
+    inArray(paymentContracts.status, ['signed', 'paused', 'terminated']),
+    or(isNull(paymentContracts.lastDeductAt), lt(paymentContracts.lastDeductAt, paidAt)),
+  ));
 }
 
 let contractSubscribersRegistered = false;
@@ -908,7 +912,7 @@ export function registerContractSubscribers(): void {
   if (contractSubscribersRegistered) return;
   contractSubscribersRegistered = true;
   paymentEventBus.on('payment.succeeded', async (e) => {
-    await advanceContractOnPaid({ orderNo: e.orderNo, bizType: e.bizType, bizId: e.bizId });
+    await advanceContractOnPaid(e);
   });
   logger.info('Payment contract subscribers registered');
 }

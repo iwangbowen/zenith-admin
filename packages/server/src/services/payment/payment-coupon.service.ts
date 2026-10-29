@@ -11,6 +11,7 @@ import { and, eq, gt, isNull, or } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { requireRow } from '../../lib/db-assert';
 import { db } from '../../db';
+import type { DbTransaction } from '../../db/types';
 import { memberCoupons, paymentOrders } from '../../db/schema';
 import { paymentEventBus } from '../../lib/payment-event-bus';
 import logger from '../../lib/logger';
@@ -72,7 +73,11 @@ export async function lockCouponForPayment(memberCouponId: number, expectedMembe
 
 /** 释放锁定的券（frozen→unused；下单落库失败/订单关闭/支付失败时调用，幂等） */
 export async function releaseCouponForPayment(memberCouponId: number): Promise<void> {
-  await db
+  return db.transaction((tx) => releaseCouponForPaymentWithin(tx, memberCouponId));
+}
+
+export async function releaseCouponForPaymentWithin(tx: DbTransaction, memberCouponId: number): Promise<void> {
+  await tx
     .update(memberCoupons)
     .set({ status: 'unused' })
     .where(and(eq(memberCoupons.id, memberCouponId), eq(memberCoupons.status, 'frozen')));
@@ -80,14 +85,18 @@ export async function releaseCouponForPayment(memberCouponId: number): Promise<v
 
 /** 支付成功核销（frozen→used，记录核销订单号；重投幂等：已 used 直接跳过） */
 export async function redeemCouponForPayment(memberCouponId: number, orderNo: string): Promise<void> {
-  await db
+  return db.transaction((tx) => redeemCouponForPaymentWithin(tx, memberCouponId, orderNo));
+}
+
+export async function redeemCouponForPaymentWithin(tx: DbTransaction, memberCouponId: number, orderNo: string): Promise<void> {
+  await tx
     .update(memberCoupons)
     .set({ status: 'used', usedAt: new Date(), bizType: 'payment', bizId: orderNo })
     .where(and(eq(memberCoupons.id, memberCouponId), eq(memberCoupons.status, 'frozen')));
 }
 
-async function couponIdOfOrder(orderNo: string): Promise<number | null> {
-  const [order] = await db
+async function couponIdOfOrder(orderNo: string, executor: Pick<DbTransaction, 'select'> = db): Promise<number | null> {
+  const [order] = await executor
     .select({ memberCouponId: paymentOrders.memberCouponId })
     .from(paymentOrders)
     .where(eq(paymentOrders.orderNo, orderNo))
@@ -116,4 +125,13 @@ export function registerCouponPaymentSubscribers(): void {
   paymentEventBus.on('payment.closed', (e) => release(e.orderNo));
   paymentEventBus.on('payment.failed', (e) => release(e.orderNo));
   logger.info('Payment coupon subscribers registered');
+}
+
+/** Apply the authoritative order's coupon effect in the settlement transaction. */
+export async function settlePaymentCouponWithin(tx: DbTransaction, event: { type: string; orderNo: string }): Promise<void> {
+  if (!['payment.succeeded', 'payment.closed', 'payment.failed'].includes(event.type)) return;
+  const couponId = await couponIdOfOrder(event.orderNo, tx);
+  if (couponId == null) return;
+  if (event.type === 'payment.succeeded') await redeemCouponForPaymentWithin(tx, couponId, event.orderNo);
+  else await releaseCouponForPaymentWithin(tx, couponId);
 }

@@ -35,12 +35,12 @@ vi.mock('../../lib/logger', () => ({
 }));
 
 import { db } from '../../db';
-import { postSystemJournal, postSystemJournalWithin } from './payment-journal.service';
+import { postSystemJournalWithin } from './payment-journal.service';
 import { computeFeeByRule, matchFeeRule, reverseFeeOnRefund, settleOrderFee } from './payment-fee.service';
 import type { PaymentFeeRuleRow } from '../../db/schema';
 
 const dbMock = vi.mocked(db);
-const journalMock = vi.mocked(postSystemJournal);
+const journalMock = vi.mocked(postSystemJournalWithin);
 const journalWithinMock = vi.mocked(postSystemJournalWithin);
 
 // ─── 工具：可 await 的链式 query builder mock ─────────────────────────────────
@@ -199,7 +199,7 @@ describe('settleOrderFee - 幂等结算', () => {
     expect(journalMock).not.toHaveBeenCalled();
   });
 
-  it('未计费订单：匹配规则计费 → 回写 feeAmount/netAmount + 记双分录凭证（带规则名）', async () => {
+  it('未计费订单：匹配规则计费 → 回写 feeAmount/netAmount + 记双分录凭证（使用稳定的幂等描述）', async () => {
     const order = makeOrder();
     const rule = makeRule({ name: '微信标准费率', rateBps: 60 }); // 10000 × 60bps = 60
     dbMock.select
@@ -212,10 +212,10 @@ describe('settleOrderFee - 幂等结算', () => {
 
     expect(claimChain.set).toHaveBeenCalledWith({ feeAmount: 60, netAmount: 9940 });
     expect(journalMock).toHaveBeenCalledWith(
-      expect.objectContaining({
+      dbMock, expect.objectContaining({
         sourceType: 'payment.fee',
         sourceId: order.orderNo,
-        description: `支付手续费（微信标准费率） ${order.orderNo}`,
+        description: `支付手续费 ${order.orderNo}`,
         currency: 'CNY',
         lines: [
           expect.objectContaining({ accountCode: 'merchant_available', debitAmount: '60' }),
@@ -250,7 +250,7 @@ describe('settleOrderFee - 幂等结算', () => {
 
     await settleOrderFee(order.orderNo);
 
-    expect(journalMock).toHaveBeenCalledWith(expect.objectContaining({
+    expect(journalMock).toHaveBeenCalledWith(dbMock, expect.objectContaining({
       description: `支付手续费 ${order.orderNo}`,
       lines: [
         expect.objectContaining({ debitAmount: '88' }),
@@ -269,7 +269,7 @@ describe('settleOrderFee - 幂等结算', () => {
 
     expect(dbMock.select).toHaveBeenCalledTimes(1); // 不再查询规则
     expect(fixChain.set).toHaveBeenCalledWith({ netAmount: 9940 });
-    expect(journalMock).toHaveBeenCalledWith(expect.objectContaining({
+    expect(journalMock).toHaveBeenCalledWith(dbMock, expect.objectContaining({
       lines: [expect.objectContaining({ debitAmount: '60' }), expect.objectContaining({ creditAmount: '60' })],
     }));
   });
@@ -281,7 +281,7 @@ describe('settleOrderFee - 幂等结算', () => {
     await settleOrderFee(order.orderNo);
 
     expect(dbMock.update).not.toHaveBeenCalled();
-    expect(journalMock).toHaveBeenCalledWith(expect.objectContaining({
+    expect(journalMock).toHaveBeenCalledWith(dbMock, expect.objectContaining({
       lines: [expect.objectContaining({ debitAmount: '60' }), expect.objectContaining({ creditAmount: '60' })],
     }));
   });
@@ -303,17 +303,18 @@ describe('settleOrderFee - 幂等结算', () => {
 
 // ─── reverseFeeOnRefund ───────────────────────────────────────────────────────
 describe('reverseFeeOnRefund - 退款手续费按比例返还', () => {
-  /** 事务内 select 依次返回：订单、累计成功退款、已返还手续费（::text 聚合返回字符串） */
+  /** 事务内 select 依次返回：订单、本笔冲销幂等记录、已过账的其他退款、已返还手续费（::text 聚合返回字符串） */
   function mockReverseQueries(order: OrderLike | null, refundedTotal: number, reversedTotal: number) {
     dbMock.execute.mockResolvedValueOnce([] as never); // SELECT ... FOR UPDATE
     dbMock.select
       .mockReturnValueOnce(createChain(order ? [order] : []))
+      .mockReturnValueOnce(createChain([])) // 本笔费用尚未冲销
       .mockReturnValueOnce(createChain([{ total: refundedTotal }]))
       .mockReturnValueOnce(createChain([{ total: String(reversedTotal) }]));
   }
 
   it('部分退款：按退款比例四舍五入返还（fee 60、实付 10000、退 3000 → 返 18）', async () => {
-    mockReverseQueries(makeOrder({ feeAmount: 60 }), 3000, 0);
+    mockReverseQueries(makeOrder({ feeAmount: 60 }), 0, 0);
     await reverseFeeOnRefund({ orderNo: 'PO20260705001', refundNo: 'REF1', refundAmount: 3000 });
     expect(journalWithinMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       sourceType: 'payment.fee_refund',
@@ -328,7 +329,7 @@ describe('reverseFeeOnRefund - 退款手续费按比例返还', () => {
 
   it('末笔全额退款：返还额 = fee − 已返还（消除多笔部分退的舍入残差）', async () => {
     // fee 59、已返 18；累计退款 10000 打满实付 → 返 59-18=41
-    mockReverseQueries(makeOrder({ feeAmount: 59 }), 10000, 18);
+    mockReverseQueries(makeOrder({ feeAmount: 59 }), 3000, 18);
     await reverseFeeOnRefund({ orderNo: 'PO20260705001', refundNo: 'REF2', refundAmount: 7000 });
     expect(journalWithinMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       description: '退款手续费返还（全额退款） REF2',
@@ -341,7 +342,7 @@ describe('reverseFeeOnRefund - 退款手续费按比例返还', () => {
 
   it('返还额被剩余可返上限截断（比例计算超过剩余时取剩余）', async () => {
     // fee 60、已返 55、部分退 5000/10000 → 比例 30 > 剩余 5 → 返 5
-    mockReverseQueries(makeOrder({ feeAmount: 60 }), 5000, 55);
+    mockReverseQueries(makeOrder({ feeAmount: 60 }), 0, 55);
     await reverseFeeOnRefund({ orderNo: 'PO20260705001', refundNo: 'REF3', refundAmount: 5000 });
     expect(journalWithinMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       lines: [expect.objectContaining({ debitAmount: '5' }), expect.objectContaining({ creditAmount: '5' })],
@@ -349,7 +350,7 @@ describe('reverseFeeOnRefund - 退款手续费按比例返还', () => {
   });
 
   it('手续费已全部返还 → 不再记账（重复投递幂等）', async () => {
-    mockReverseQueries(makeOrder({ feeAmount: 60 }), 10000, 60);
+    mockReverseQueries(makeOrder({ feeAmount: 60 }), 0, 60);
     await reverseFeeOnRefund({ orderNo: 'PO20260705001', refundNo: 'REF4', refundAmount: 10000 });
     expect(journalWithinMock).not.toHaveBeenCalled();
   });
@@ -361,10 +362,9 @@ describe('reverseFeeOnRefund - 退款手续费按比例返还', () => {
     expect(journalWithinMock).not.toHaveBeenCalled();
   });
 
-  it('缺 refundNo 或退款金额非正 → 跳过（不开事务不查库）', async () => {
-    await reverseFeeOnRefund({ orderNo: 'PO20260705001', refundAmount: 1000 });
-    await reverseFeeOnRefund({ orderNo: 'PO20260705001', refundNo: 'REF6', refundAmount: 0 });
-    expect(dbMock.transaction).not.toHaveBeenCalled();
+  it('缺 refundNo 或退款金额非正 → 明确拒绝非法事实，不查询或记账', async () => {
+    await expect(reverseFeeOnRefund({ orderNo: 'PO20260705001', refundAmount: 1000 })).rejects.toThrow('Fee reversal requires');
+    await expect(reverseFeeOnRefund({ orderNo: 'PO20260705001', refundNo: 'REF6', refundAmount: 0 })).rejects.toThrow('Fee reversal requires');
     expect(dbMock.select).not.toHaveBeenCalled();
     expect(journalWithinMock).not.toHaveBeenCalled();
   });

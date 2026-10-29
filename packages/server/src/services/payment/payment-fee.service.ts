@@ -3,13 +3,14 @@
  * 维护费率规则（按渠道/支付方式匹配，万分比 + 固定费，clamp 上下限），
  * 监听 payment.succeeded 计算手续费：回写订单 feeAmount/netAmount 并记资金台账（type=fee）。
  */
-import { and, desc, eq, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, ne, or, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
+import type { DbTransaction } from '../../db/types';
 import { paymentFeeRules, paymentJournalLines, paymentJournals, paymentLedgerAccounts, paymentOrders, paymentRefunds, type PaymentFeeRuleRow } from '../../db/schema';
 import { currentUser } from '../../lib/context';
 import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../../lib/tenant';
-import { postSystemJournal, postSystemJournalWithin } from './payment-journal.service';
+import { postSystemJournalWithin } from './payment-journal.service';
 import { paymentEventBus } from '../../lib/payment-event-bus';
 import logger from '../../lib/logger';
 import { PAYMENT_METHOD_CHANNEL, paymentFeeRuleContract, paymentFeeRuleSchema } from '@zenith/shared/payment';
@@ -109,9 +110,9 @@ export function computeFeeByRule(rule: PaymentFeeRuleRow, amount: number): numbe
 }
 
 /** 匹配最优费率规则（按 tenant + channel + payMethod，优先 payMethod 精确，再按 priority 降序）。 */
-export async function matchFeeRule(channel: PaymentChannel, payMethod: PaymentMethod, tenantId: number | null): Promise<PaymentFeeRuleRow | null> {
+export async function matchFeeRule(channel: PaymentChannel, payMethod: PaymentMethod, tenantId: number | null, executor: Pick<DbTransaction, 'select'> = db): Promise<PaymentFeeRuleRow | null> {
   const tenantCond = exactTenantCondition(paymentFeeRules.tenantId, tenantId);
-  const rows = await db
+  const rows = await executor
     .select()
     .from(paymentFeeRules)
     .where(and(eq(paymentFeeRules.status, 'enabled'), eq(paymentFeeRules.channel, channel), or(isNull(paymentFeeRules.payMethod), eq(paymentFeeRules.payMethod, payMethod)), tenantCond))
@@ -125,29 +126,30 @@ export async function matchFeeRule(channel: PaymentChannel, payMethod: PaymentMe
  * 幂等与并发安全：feeAmount 回写用条件 UPDATE（仅未计费订单命中）充当 claim，
  * Journal 以 orderNo 作为来源键，事件重复投递/并发双投均不会重复记账。 */
 export async function settleOrderFee(orderNo: string): Promise<void> {
-  const [order] = await db.select().from(paymentOrders).where(eq(paymentOrders.orderNo, orderNo)).limit(1);
+  return db.transaction((tx) => settleOrderFeeWithin(tx, orderNo));
+}
+
+export async function settleOrderFeeWithin(tx: DbTransaction, orderNo: string): Promise<void> {
+  const [order] = await tx.select().from(paymentOrders).where(eq(paymentOrders.orderNo, orderNo)).limit(1);
   if (!order) return;
   const amount = order.paidAmount ?? order.amount;
   let fee = order.feeAmount;
-  let ruleName: string | null = null;
 
   if (fee == null) {
-    const rule = await matchFeeRule(order.channel, order.payMethod, order.tenantId);
+    const rule = await matchFeeRule(order.channel, order.payMethod, order.tenantId, tx);
     fee = rule ? computeFeeByRule(rule, amount) : 0;
-    ruleName = rule?.name ?? null;
-    const claimed = await db
+    const claimed = await tx
       .update(paymentOrders)
       .set({ feeAmount: fee, netAmount: amount - fee })
       .where(and(eq(paymentOrders.id, order.id), isNull(paymentOrders.feeAmount)))
       .returning({ feeAmount: paymentOrders.feeAmount });
     if (claimed.length === 0) {
       // 竞争失败：另一次投递已计费，读回真实费用仅做台账补偿（崩溃恢复场景）
-      const [fresh] = await db.select({ feeAmount: paymentOrders.feeAmount }).from(paymentOrders).where(eq(paymentOrders.id, order.id)).limit(1);
+      const [fresh] = await tx.select({ feeAmount: paymentOrders.feeAmount }).from(paymentOrders).where(eq(paymentOrders.id, order.id)).limit(1);
       fee = fresh?.feeAmount ?? fee;
-      ruleName = null;
     }
   } else if (order.netAmount == null) {
-    await db
+    await tx
       .update(paymentOrders)
       .set({ netAmount: amount - fee })
       .where(and(eq(paymentOrders.id, order.id), isNull(paymentOrders.netAmount)));
@@ -155,8 +157,8 @@ export async function settleOrderFee(orderNo: string): Promise<void> {
 
   if (fee != null && fee > 0) {
     const amountString = fee.toString();
-    const description = ruleName ? `支付手续费（${ruleName}）` : '支付手续费';
-    await postSystemJournal({
+    const description = '支付手续费';
+    await postSystemJournalWithin(tx, {
       tenantId: order.tenantId ?? null,
       operatorId: null,
       sourceType: 'payment.fee',
@@ -202,59 +204,73 @@ export function registerFeeSubscribers(): void {
  * - 订单 feeAmount 保持下单时快照不变，资金事实以双分录凭证为准。
  */
 export async function reverseFeeOnRefund(e: { orderNo: string; refundNo?: string; refundAmount?: number }): Promise<void> {
-  if (!e.refundNo || !e.refundAmount || e.refundAmount <= 0) return;
+  return db.transaction((tx) => reverseFeeOnRefundWithin(tx, e));
+}
+
+export async function reverseFeeOnRefundWithin(tx: DbTransaction, e: { orderNo: string; refundNo?: string; refundAmount?: number }): Promise<void> {
+  if (!e.refundNo || typeof e.refundAmount !== 'number' || !Number.isSafeInteger(e.refundAmount) || e.refundAmount <= 0) throw new Error('Fee reversal requires a refund identity and positive amount');
   const refundNo = e.refundNo;
   const refundAmount = e.refundAmount;
-  await db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT id FROM payment_orders WHERE order_no = ${e.orderNo} FOR UPDATE`);
-    const [order] = await tx.select().from(paymentOrders).where(eq(paymentOrders.orderNo, e.orderNo)).limit(1);
-    if (!order || order.feeAmount == null || order.feeAmount <= 0) return;
-    const paidAmount = order.paidAmount ?? order.amount;
-    if (paidAmount <= 0) return;
+  await tx.execute(sql`SELECT id FROM payment_orders WHERE order_no = ${e.orderNo} FOR UPDATE`);
+  const [order] = await tx.select().from(paymentOrders).where(eq(paymentOrders.orderNo, e.orderNo)).limit(1);
+  if (!order || order.feeAmount == null || order.feeAmount <= 0) return;
+  const paidAmount = order.paidAmount ?? order.amount;
+  if (paidAmount <= 0) return;
 
-    const [refundedRow] = await tx
-      .select({ total: sql<number>`coalesce(sum(${paymentRefunds.refundAmount}),0)` })
-      .from(paymentRefunds)
-      .where(and(eq(paymentRefunds.orderId, order.id), eq(paymentRefunds.status, 'success')));
-    const [reversedRow] = await tx
-      .select({ total: sql<string>`coalesce(sum(${paymentJournalLines.debitAmount}), 0)::text` })
-      .from(paymentJournals)
-      .innerJoin(paymentJournalLines, eq(paymentJournalLines.journalId, paymentJournals.id))
-      .innerJoin(paymentLedgerAccounts, eq(paymentLedgerAccounts.id, paymentJournalLines.accountId))
-      .innerJoin(paymentRefunds, eq(paymentRefunds.refundNo, paymentJournals.sourceId))
-      .where(and(
-        eq(paymentRefunds.orderId, order.id),
-        eq(paymentJournals.sourceType, 'payment.fee_refund'),
-        eq(paymentJournals.appId, order.appId),
-        eq(paymentJournals.channelConfigId, order.channelConfigId),
-        eq(paymentJournals.currency, order.currency),
-        eq(paymentLedgerAccounts.code, 'platform_fee'),
-      ));
-    const refundedTotal = Number(refundedRow?.total ?? 0);
-    const reversedTotal = Number(reversedRow?.total ?? 0);
+  const [existing] = await tx.select({ id: paymentJournals.id }).from(paymentJournals).where(and(
+    eq(paymentJournals.sourceType, 'payment.fee_refund'), eq(paymentJournals.sourceId, refundNo),
+    eq(paymentJournals.appId, order.appId), eq(paymentJournals.channelConfigId, order.channelConfigId),
+    eq(paymentJournals.currency, order.currency), exactTenantCondition(paymentJournals.tenantId, order.tenantId),
+  )).limit(1);
+  if (existing) return;
 
-    const fullyRefunded = refundedTotal >= paidAmount;
-    let reverse = fullyRefunded
-      ? order.feeAmount - reversedTotal
-      : Math.round((order.feeAmount * refundAmount) / paidAmount);
-    reverse = Math.min(reverse, order.feeAmount - reversedTotal);
-    if (reverse <= 0) return;
+  const [refundedRow] = await tx
+    .select({ total: sql<number>`coalesce(sum(${paymentRefunds.refundAmount}),0)` })
+    .from(paymentRefunds)
+    .innerJoin(paymentJournals, and(eq(paymentJournals.sourceId, paymentRefunds.refundNo), eq(paymentJournals.sourceType, 'payment.refund')))
+    .where(and(eq(paymentRefunds.orderId, order.id), ne(paymentRefunds.refundNo, refundNo),
+      eq(paymentJournals.appId, order.appId), eq(paymentJournals.channelConfigId, order.channelConfigId),
+      eq(paymentJournals.currency, order.currency), exactTenantCondition(paymentJournals.tenantId, order.tenantId)));
+  const [reversedRow] = await tx
+    .select({ total: sql<string>`coalesce(sum(${paymentJournalLines.debitAmount}), 0)::text` })
+    .from(paymentJournals)
+    .innerJoin(paymentJournalLines, eq(paymentJournalLines.journalId, paymentJournals.id))
+    .innerJoin(paymentLedgerAccounts, eq(paymentLedgerAccounts.id, paymentJournalLines.accountId))
+    .innerJoin(paymentRefunds, eq(paymentRefunds.refundNo, paymentJournals.sourceId))
+    .where(and(
+      eq(paymentRefunds.orderId, order.id),
+      eq(paymentJournals.sourceType, 'payment.fee_refund'),
+      eq(paymentJournals.appId, order.appId),
+      eq(paymentJournals.channelConfigId, order.channelConfigId),
+      eq(paymentJournals.currency, order.currency),
+      eq(paymentLedgerAccounts.code, 'platform_fee'),
+    ));
+  // Later source refunds may already be successful before their events are
+  // consumed. Tail rounding belongs to the last locally settled refund.
+  const refundedTotal = Number(refundedRow?.total ?? 0) + refundAmount;
+  const reversedTotal = Number(reversedRow?.total ?? 0);
 
-    const description = fullyRefunded ? '退款手续费返还（全额退款）' : '退款手续费返还（按比例）';
-    const amountString = reverse.toString();
-    await postSystemJournalWithin(tx, {
-      tenantId: order.tenantId ?? null,
-      operatorId: null,
-      sourceType: 'payment.fee_refund',
-      sourceId: refundNo,
-      description: `${description} ${refundNo}`,
-      appId: order.appId,
-      channelConfigId: order.channelConfigId,
-      currency: order.currency,
-      lines: [
-        { accountCode: 'platform_fee', debitAmount: amountString, memo: '冲减平台手续费' },
-        { accountCode: 'merchant_available', creditAmount: amountString, memo: '返还商户可用余额' },
-      ],
-    });
+  const fullyRefunded = refundedTotal >= paidAmount;
+  let reverse = fullyRefunded
+    ? order.feeAmount - reversedTotal
+    : Math.round((order.feeAmount * refundAmount) / paidAmount);
+  reverse = Math.min(reverse, order.feeAmount - reversedTotal);
+  if (reverse <= 0) return;
+
+  const description = fullyRefunded ? '退款手续费返还（全额退款）' : '退款手续费返还（按比例）';
+  const amountString = reverse.toString();
+  await postSystemJournalWithin(tx, {
+    tenantId: order.tenantId ?? null,
+    operatorId: null,
+    sourceType: 'payment.fee_refund',
+    sourceId: refundNo,
+    description: `${description} ${refundNo}`,
+    appId: order.appId,
+    channelConfigId: order.channelConfigId,
+    currency: order.currency,
+    lines: [
+      { accountCode: 'platform_fee', debitAmount: amountString, memo: '冲减平台手续费' },
+      { accountCode: 'merchant_available', creditAmount: amountString, memo: '返还商户可用余额' },
+    ],
   });
 }

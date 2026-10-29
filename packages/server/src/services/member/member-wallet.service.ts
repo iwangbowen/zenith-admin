@@ -7,7 +7,7 @@ import type { QueryOutputOf } from '@zenith/shared/core';
  * - rechargeWallet() 发起充值：调用支付中心 createPayment（bizType='member_recharge'）
  * - creditWalletOnRecharge() 由支付成功事件触发入账，按支付单号幂等
  */
-import { and, desc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { memberWallets, memberWalletTransactions, members, paymentOrders, paymentRefunds } from '../../db/schema';
@@ -21,7 +21,6 @@ import { pageOffset } from '../../lib/pagination';
 import { buildWhere } from '../../lib/where-helpers';
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
-import logger from '../../lib/logger';
 import { createPayment } from '../payment/payment.service';
 import { memberReferenceCondition, mapLedgerTransaction } from './member-query-helpers';
 import type { WalletTxType } from '@zenith/shared/member';
@@ -242,81 +241,56 @@ export async function rechargeWallet(memberId: number, applicationId: number, am
 
 /** 支付成功事件触发钱包入账（按支付单号幂等，防重投重复入账）。
  * 事务级咨询锁串行化同一支付单的并发重投；幂等检查与入账同一事务提交，杜绝双入账。 */
-export async function creditWalletOnRecharge(event: { eventId: string; bizId: string; orderNo: string; amount: number; originalAmount?: number | null; appId?: number | null; tenantId?: number | null }): Promise<void> {
+type RechargePaymentFact = { eventId: string; bizId: string; orderNo: string; amount: number; originalAmount?: number | null; appId?: number | null; tenantId?: number | null };
+
+export async function creditWalletOnRecharge(event: RechargePaymentFact): Promise<void> {
+  return withOptimisticRetry(() => db.transaction((tx) => creditWalletOnRechargeWithin(tx, event)));
+}
+
+/** Validate the paid fact independently of the order's later refund state. */
+export async function creditWalletOnRechargeWithin(tx: DbTransaction, event: RechargePaymentFact): Promise<void> {
   const memberId = Number(event.bizId);
-  if (!Number.isInteger(memberId) || memberId <= 0) {
-    logger.warn('[MemberWallet] 充值入账 bizId 非法', { bizId: event.bizId });
-    return;
+  if (!Number.isSafeInteger(memberId) || memberId <= 0 || event.appId == null || event.tenantId === undefined) {
+    throw new Error('Wallet recharge fact requires a member, application and explicit tenant');
   }
-  if (event.appId == null) {
-    logger.warn('[MemberWallet] 充值事件缺少支付应用', { orderNo: event.orderNo });
-    return;
-  }
-  const tenantScope = exactTenantCondition(paymentOrders.tenantId, event.tenantId ?? null);
-  const [order] = await db
-    .select({
-      id: paymentOrders.id,
-      amount: paymentOrders.amount,
-      paidAmount: paymentOrders.paidAmount,
-      originalAmount: paymentOrders.originalAmount,
-      userId: paymentOrders.userId,
-    })
-    .from(paymentOrders)
-    .where(and(
-      eq(paymentOrders.orderNo, event.orderNo),
-      eq(paymentOrders.bizType, WALLET_RECHARGE_BIZ_TYPE),
-      eq(paymentOrders.bizId, event.bizId),
-      eq(paymentOrders.appId, event.appId),
-      eq(paymentOrders.status, 'success'),
-      tenantScope,
-    ))
-    .limit(1);
+  const [order] = await tx.select({
+    id: paymentOrders.id, amount: paymentOrders.amount, paidAmount: paymentOrders.paidAmount,
+    originalAmount: paymentOrders.originalAmount, userId: paymentOrders.userId, paidAt: paymentOrders.paidAt,
+  }).from(paymentOrders).where(and(
+    eq(paymentOrders.orderNo, event.orderNo), eq(paymentOrders.bizType, WALLET_RECHARGE_BIZ_TYPE),
+    eq(paymentOrders.bizId, event.bizId), eq(paymentOrders.appId, event.appId),
+    inArray(paymentOrders.status, ['success', 'refunding', 'refunded']),
+    exactTenantCondition(paymentOrders.tenantId, event.tenantId),
+  )).for('update').limit(1);
   const expectedPaidAmount = order?.paidAmount ?? order?.amount;
   const expectedOriginalAmount = order?.originalAmount ?? order?.amount;
-  const eventOriginalAmount = event.originalAmount ?? order?.amount;
-  if (!order || order.userId == null || event.amount !== expectedPaidAmount || eventOriginalAmount !== expectedOriginalAmount) {
-    logger.warn('[MemberWallet] 充值事件与支付订单不匹配', { orderNo: event.orderNo, bizId: event.bizId });
-    return;
+  const creditAmount = event.originalAmount ?? expectedOriginalAmount;
+  if (!order?.paidAt || order.userId !== memberId || event.amount !== expectedPaidAmount
+    || creditAmount !== expectedOriginalAmount || !Number.isSafeInteger(creditAmount) || creditAmount! <= 0) {
+    throw new Error('Wallet recharge fact does not match its paid order');
   }
-  const memberTenantScope = exactTenantCondition(members.tenantId, event.tenantId ?? null);
-  const [member] = await db
-    .select({ id: members.id })
-    .from(members)
-    .where(and(eq(members.id, memberId), memberTenantScope))
-    .limit(1);
-  if (!member || member.id !== order.userId) {
-    logger.warn('[MemberWallet] 充值事件会员归属不匹配', { orderNo: event.orderNo, memberId });
-    return;
-  }
-  await ensureWallet(memberId);
-  const credited = await withOptimisticRetry(() =>
-    db.transaction(async (tx) => {
-      // 按支付单号获取事务级咨询锁（事务结束自动释放），并发重投在此排队
-      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`wallet-recharge:${event.orderNo}`}))`);
-      // 拿到锁后检查是否已入账（可见先前持锁事务已提交的流水）
-      const [exist] = await tx
-        .select({ id: memberWalletTransactions.id })
-        .from(memberWalletTransactions)
-        .where(and(eq(memberWalletTransactions.bizType, WALLET_RECHARGE_BIZ_TYPE), eq(memberWalletTransactions.bizId, event.orderNo)))
-        .limit(1);
-      if (exist) return false;
+  const [member] = await tx.select({ id: members.id }).from(members).where(and(
+    eq(members.id, memberId), isNull(members.deletedAt), exactTenantCondition(members.tenantId, event.tenantId),
+  )).for('update').limit(1);
+  if (!member) throw new Error('Wallet recharge member is missing or outside the payment tenant');
+  await ensureSettlementWalletWithin(tx, memberId);
+  const [existing] = await tx.select({ id: memberWalletTransactions.id }).from(memberWalletTransactions).where(and(
+    eq(memberWalletTransactions.bizType, WALLET_RECHARGE_BIZ_TYPE), eq(memberWalletTransactions.bizId, event.orderNo),
+  )).limit(1);
+  if (existing) return;
+  await applyWalletChange(tx, {
+    memberId, type: 'recharge', amount: creditAmount!, bizType: WALLET_RECHARGE_BIZ_TYPE, bizId: event.orderNo,
+    paymentIntentNo: event.orderNo, paymentEventId: event.eventId,
+    remark: event.originalAmount != null ? '钱包充值到账（含充值满减补贴）' : '钱包充值到账',
+  });
+}
 
-      // 充值满减用券时实付为立减后金额，到账按优惠前原充值额（平台补贴优惠差额）
-      const creditAmount = event.originalAmount ?? event.amount;
-      await applyWalletChange(tx, {
-        memberId,
-        type: 'recharge',
-        amount: creditAmount,
-        bizType: WALLET_RECHARGE_BIZ_TYPE,
-        bizId: event.orderNo,
-        paymentIntentNo: event.orderNo,
-        paymentEventId: event.eventId,
-        remark: event.originalAmount != null ? '钱包充值到账（含充值满减补贴）' : '钱包充值到账',
-      });
-      return true;
-    }),
-  );
-  if (credited) logger.info('[MemberWallet] 充值到账', { memberId, orderNo: event.orderNo, amount: event.amount });
+/** The caller has already validated and locked the payment member. */
+async function ensureSettlementWalletWithin(tx: DbTransaction, memberId: number): Promise<void> {
+  await tx.insert(memberWallets).values({ memberId }).onConflictDoNothing();
+  const [wallet] = await tx.select({ id: memberWallets.id }).from(memberWallets)
+    .where(eq(memberWallets.memberId, memberId)).for('update').limit(1);
+  requireRow(wallet, '钱包创建后无法读取', 409);
 }
 
 /**
@@ -324,75 +298,45 @@ export async function creditWalletOnRecharge(event: { eventId: string; bizId: st
  * 退款属于支付域的终态事件，不能只退渠道资金而保留会员钱包余额；
  * 以 refundNo 作为幂等键，并允许余额暂时为负数形成可追收欠款。
  */
-export async function reverseWalletRechargeOnRefund(event: {
-  eventId: string;
-  orderNo: string;
-  refundNo?: string;
-  refundAmount?: number;
-  appId?: number | null;
-  tenantId?: number | null;
-}): Promise<void> {
-  if (event.appId == null || !event.refundNo || !event.refundAmount || event.refundAmount <= 0) return;
-  const tenantScope = exactTenantCondition(paymentOrders.tenantId, event.tenantId ?? null);
-  const [matched] = await db
-    .select({
-      orderNo: paymentOrders.orderNo,
-      userId: paymentOrders.userId,
-      bizType: paymentOrders.bizType,
-      appId: paymentOrders.appId,
-      tenantId: paymentOrders.tenantId,
-      refundAmount: paymentRefunds.refundAmount,
-    })
-    .from(paymentRefunds)
-    .innerJoin(paymentOrders, eq(paymentOrders.id, paymentRefunds.orderId))
-    .where(and(
-      eq(paymentRefunds.refundNo, event.refundNo),
-      eq(paymentRefunds.orderNo, event.orderNo),
-      eq(paymentRefunds.status, 'success'),
-      eq(paymentOrders.appId, event.appId),
-      inArray(paymentOrders.status, ['success', 'refunding', 'refunded']),
-      tenantScope,
-    ))
-    .limit(1);
+type RechargeRefundFact = { eventId: string; orderNo: string; refundNo?: string; refundAmount?: number; appId?: number | null; tenantId?: number | null };
+
+export async function reverseWalletRechargeOnRefund(event: RechargeRefundFact): Promise<void> {
+  return withOptimisticRetry(() => db.transaction((tx) => reverseWalletRechargeOnRefundWithin(tx, event)));
+}
+
+export async function reverseWalletRechargeOnRefundWithin(tx: DbTransaction, event: RechargeRefundFact): Promise<void> {
+  if (event.appId == null || event.tenantId === undefined || !event.refundNo
+    || !Number.isSafeInteger(event.refundAmount) || event.refundAmount! <= 0) {
+    throw new Error('Wallet refund fact requires an application, tenant, refund number and positive amount');
+  }
+  const [order] = await tx.select({ id: paymentOrders.id }).from(paymentOrders).where(and(
+    eq(paymentOrders.orderNo, event.orderNo), eq(paymentOrders.appId, event.appId),
+    exactTenantCondition(paymentOrders.tenantId, event.tenantId),
+  )).for('update').limit(1);
+  if (!order) throw new Error('Wallet refund order is missing or outside the payment scope');
+  const [matched] = await tx.select({
+    userId: paymentOrders.userId, bizType: paymentOrders.bizType, refundAmount: paymentRefunds.refundAmount,
+  }).from(paymentRefunds).innerJoin(paymentOrders, eq(paymentOrders.id, paymentRefunds.orderId)).where(and(
+    eq(paymentRefunds.refundNo, event.refundNo), eq(paymentRefunds.orderId, order.id),
+    eq(paymentRefunds.status, 'success'), inArray(paymentOrders.status, ['success', 'refunding', 'refunded']),
+  )).limit(1);
   if (!matched || matched.bizType !== WALLET_RECHARGE_BIZ_TYPE || matched.userId == null || matched.refundAmount !== event.refundAmount) {
-    logger.warn('[MemberWallet] 充值退款事件与支付退款单不匹配', { orderNo: event.orderNo, refundNo: event.refundNo });
-    return;
+    throw new Error('Wallet refund fact does not match its successful refund');
   }
-  const memberTenantScope = exactTenantCondition(members.tenantId, event.tenantId ?? null);
-  const [member] = await db
-    .select({ id: members.id })
-    .from(members)
-    .where(and(eq(members.id, matched.userId), isNull(members.deletedAt), memberTenantScope))
-    .limit(1);
-  if (!member) {
-    logger.warn('[MemberWallet] 充值退款会员不存在或已删除', { orderNo: event.orderNo, refundNo: event.refundNo, memberId: matched.userId });
-    return;
-  }
-  await ensureWallet(matched.userId);
-  await withOptimisticRetry(() => db.transaction(async (tx) => {
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`wallet-refund:${event.refundNo}`}))`);
-    const [existing] = await tx
-      .select({ id: memberWalletTransactions.id })
-      .from(memberWalletTransactions)
-      .where(and(
-        eq(memberWalletTransactions.bizType, 'member_recharge_refund'),
-        eq(memberWalletTransactions.bizId, event.refundNo!),
-      ))
-      .limit(1);
-    if (existing) return;
-    await applyWalletChange(tx, {
-      memberId: matched.userId!,
-      type: 'consume',
-      amount: -Math.abs(event.refundAmount!),
-      bizType: 'member_recharge_refund',
-      bizId: event.refundNo,
-      paymentIntentNo: matched.orderNo,
-      paymentEventId: event.eventId,
-      remark: '会员充值退款冲正（余额不足将形成待追收欠款）',
-      allowNegative: true,
-    });
-  }));
-  logger.info('[MemberWallet] 充值退款冲正完成', { memberId: matched.userId, orderNo: event.orderNo, refundNo: event.refundNo, amount: event.refundAmount });
+  const [member] = await tx.select({ id: members.id }).from(members).where(and(
+    eq(members.id, matched.userId), isNull(members.deletedAt), exactTenantCondition(members.tenantId, event.tenantId),
+  )).for('update').limit(1);
+  if (!member) throw new Error('Wallet refund member is missing or outside the payment tenant');
+  await ensureSettlementWalletWithin(tx, matched.userId);
+  const [existing] = await tx.select({ id: memberWalletTransactions.id }).from(memberWalletTransactions).where(and(
+    eq(memberWalletTransactions.bizType, 'member_recharge_refund'), eq(memberWalletTransactions.bizId, event.refundNo),
+  )).limit(1);
+  if (existing) return;
+  await applyWalletChange(tx, {
+    memberId: matched.userId, type: 'consume', amount: -event.refundAmount!, bizType: 'member_recharge_refund',
+    bizId: event.refundNo, paymentIntentNo: event.orderNo, paymentEventId: event.eventId,
+    remark: '会员充值退款冲正（余额不足将形成待追收欠款）', allowNegative: true,
+  });
 }
 
 // ─── 流水查询 ─────────────────────────────────────────────────────────────────

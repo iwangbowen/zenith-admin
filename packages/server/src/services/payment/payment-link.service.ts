@@ -10,6 +10,7 @@ import { HTTPException } from 'hono/http-exception';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { allocateBusinessNumber, attachBusinessNumber } from '../platform/numbering-runtime';
 import { db } from '../../db';
+import type { DbTransaction } from '../../db/types';
 import { listRows } from '../../lib/list-query';
 import { paymentCashierSessions, paymentLinkRedemptions, paymentLinks, paymentOrders, type PaymentLinkRow } from '../../db/schema';
 import { requireRow } from '../../lib/db-assert';
@@ -403,70 +404,78 @@ export async function recordPaymentLinkRedemption(event: {
   appId?: number | null;
   tenantId?: number | null;
 }): Promise<boolean> {
+  return db.transaction((tx) => recordPaymentLinkRedemptionWithin(tx, event));
+}
+
+export async function recordPaymentLinkRedemptionWithin(tx: DbTransaction, event: {
+  orderNo: string;
+  bizType: string;
+  bizId: string;
+  appId?: number | null;
+  tenantId?: number | null;
+}): Promise<boolean> {
   if (event.appId == null) return false;
   const appId = event.appId;
   const tenantId = event.tenantId ?? null;
   const exactTenant = exactTenantCondition(paymentLinks.tenantId, tenantId);
-  return db.transaction(async (tx) => {
-    const [linkedSession] = await tx.select({ id: paymentCashierSessions.id, linkId: paymentCashierSessions.linkId })
-      .from(paymentCashierSessions).where(and(
-        eq(paymentCashierSessions.orderNo, event.orderNo), eq(paymentCashierSessions.appId, appId),
-        exactTenantCondition(paymentCashierSessions.tenantId, tenantId),
-      )).limit(1);
-    if (!linkedSession || event.bizId !== `link:${linkedSession.linkId}:session:${linkedSession.id}`) return false;
-    const [link] = await tx
-      .select({ id: paymentLinks.id, maxUses: paymentLinks.maxUses, usedCount: paymentLinks.usedCount })
-      .from(paymentLinks)
-      .where(and(eq(paymentLinks.id, linkedSession.linkId), eq(paymentLinks.bizType, event.bizType), eq(paymentLinks.appId, appId), exactTenant))
-      .for('update')
-      .limit(1);
-    if (!link) return false;
-    const [session] = await tx
-      .select()
-      .from(paymentCashierSessions)
-      .where(and(
-        eq(paymentCashierSessions.id, linkedSession.id),
-        eq(paymentCashierSessions.linkId, link.id),
-        eq(paymentCashierSessions.appId, appId),
-        eq(paymentCashierSessions.orderNo, event.orderNo),
-        exactTenantCondition(paymentCashierSessions.tenantId, tenantId),
-      ))
-      .for('update')
-      .limit(1);
-    // A session may have been expired and its slot released before a delayed
-    // provider success callback arrives. The order is still the source of
-    // truth, so allow an idempotent redemption for `released` as well. Only a
-    // previously consumed slot is terminal and must be rejected.
-    if (!session || session.useSlotStatus === 'consumed') return false;
-    const [inserted] = await tx
-      .insert(paymentLinkRedemptions)
-      .values({ linkId: link.id, orderNo: event.orderNo, tenantId })
-      .onConflictDoNothing({ target: paymentLinkRedemptions.orderNo })
-      .returning({ id: paymentLinkRedemptions.id });
-    if (!inserted) return false;
-    // A released uncertain session should be rare after the expiry guard. If
-    // it still races with another success, preserve the authoritative
-    // successful redemption and close admission for future sessions rather
-    // than dropping the event silently.
-    if (link.maxUses != null && link.usedCount >= link.maxUses) {
-      logger.warn('[payment-link] delayed success exceeded usage limit after slot release', {
-        linkId: link.id,
-        orderNo: event.orderNo,
-        usedCount: link.usedCount,
-        maxUses: link.maxUses,
-      });
-    }
-    await tx.update(paymentLinks).set({
-      usedCount: sql`${paymentLinks.usedCount} + 1`,
-      ...(session.useSlotStatus === 'reserved'
-        ? { reservedCount: sql`greatest(${paymentLinks.reservedCount} - 1, 0)` }
-        : {}),
-    }).where(eq(paymentLinks.id, link.id));
-    await tx.update(paymentCashierSessions).set({
-      status: 'succeeded',
-      useSlotStatus: 'consumed',
-      version: sql`${paymentCashierSessions.version} + 1`,
-    }).where(eq(paymentCashierSessions.id, session.id));
-    return true;
-  });
+  const [linkedSession] = await tx.select({ id: paymentCashierSessions.id, linkId: paymentCashierSessions.linkId })
+    .from(paymentCashierSessions).where(and(
+      eq(paymentCashierSessions.orderNo, event.orderNo), eq(paymentCashierSessions.appId, appId),
+      exactTenantCondition(paymentCashierSessions.tenantId, tenantId),
+    )).limit(1);
+  if (!linkedSession || event.bizId !== `link:${linkedSession.linkId}:session:${linkedSession.id}`) return false;
+  const [link] = await tx
+    .select({ id: paymentLinks.id, maxUses: paymentLinks.maxUses, usedCount: paymentLinks.usedCount })
+    .from(paymentLinks)
+    .where(and(eq(paymentLinks.id, linkedSession.linkId), eq(paymentLinks.bizType, event.bizType), eq(paymentLinks.appId, appId), exactTenant))
+    .for('update')
+    .limit(1);
+  if (!link) return false;
+  const [session] = await tx
+    .select()
+    .from(paymentCashierSessions)
+    .where(and(
+      eq(paymentCashierSessions.id, linkedSession.id),
+      eq(paymentCashierSessions.linkId, link.id),
+      eq(paymentCashierSessions.appId, appId),
+      eq(paymentCashierSessions.orderNo, event.orderNo),
+      exactTenantCondition(paymentCashierSessions.tenantId, tenantId),
+    ))
+    .for('update')
+    .limit(1);
+  // A session may have been expired and its slot released before a delayed
+  // provider success callback arrives. The order is still the source of
+  // truth, so allow an idempotent redemption for `released` as well. Only a
+  // previously consumed slot is terminal and must be rejected.
+  if (!session || session.useSlotStatus === 'consumed') return false;
+  const [inserted] = await tx
+    .insert(paymentLinkRedemptions)
+    .values({ linkId: link.id, orderNo: event.orderNo, tenantId })
+    .onConflictDoNothing({ target: paymentLinkRedemptions.orderNo })
+    .returning({ id: paymentLinkRedemptions.id });
+  if (!inserted) return false;
+  // A released uncertain session should be rare after the expiry guard. If
+  // it still races with another success, preserve the authoritative
+  // successful redemption and close admission for future sessions rather
+  // than dropping the event silently.
+  if (link.maxUses != null && link.usedCount >= link.maxUses) {
+    logger.warn('[payment-link] delayed success exceeded usage limit after slot release', {
+      linkId: link.id,
+      orderNo: event.orderNo,
+      usedCount: link.usedCount,
+      maxUses: link.maxUses,
+    });
+  }
+  await tx.update(paymentLinks).set({
+    usedCount: sql`${paymentLinks.usedCount} + 1`,
+    ...(session.useSlotStatus === 'reserved'
+      ? { reservedCount: sql`greatest(${paymentLinks.reservedCount} - 1, 0)` }
+      : {}),
+  }).where(eq(paymentLinks.id, link.id));
+  await tx.update(paymentCashierSessions).set({
+    status: 'succeeded',
+    useSlotStatus: 'consumed',
+    version: sql`${paymentCashierSessions.version} + 1`,
+  }).where(eq(paymentCashierSessions.id, session.id));
+  return true;
 }

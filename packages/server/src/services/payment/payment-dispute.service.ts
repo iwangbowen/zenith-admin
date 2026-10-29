@@ -282,35 +282,39 @@ export async function refundDispute(id: number, input: RefundPaymentDisputeInput
 
 /** 退款成功事件的唯一终结入口；CAS 保证重复事件不会重复写时间线。 */
 export async function completeDisputeRefund(refundNo: string, tenantId: number | null): Promise<void> {
-  await db.transaction(async (tx) => {
-    const updated = await tx
-      .update(paymentDisputes)
-      .set({ status: 'refunded', resolvedAt: new Date() })
-      .where(and(eq(paymentDisputes.refundNo, refundNo), exactTenantCondition(paymentDisputes.tenantId, tenantId), inArray(paymentDisputes.status, OPEN_STATUSES)))
-      .returning();
-    for (const row of updated) {
-      await appendReply(row.id, 'system', `退款 ${refundNo} 已成功，投诉工单自动完结`, null, tx);
-      await recordDisputeEvent(tx, 'payment.dispute.refunded', row, `dispute:${row.id}:refunded:${refundNo}`);
-    }
-  });
+  return db.transaction((tx) => completeDisputeRefundWithin(tx, refundNo, tenantId));
+}
+
+export async function completeDisputeRefundWithin(tx: DbTransaction, refundNo: string, tenantId: number | null): Promise<void> {
+  const updated = await tx
+    .update(paymentDisputes)
+    .set({ status: 'refunded', resolvedAt: new Date() })
+    .where(and(eq(paymentDisputes.refundNo, refundNo), exactTenantCondition(paymentDisputes.tenantId, tenantId), inArray(paymentDisputes.status, OPEN_STATUSES)))
+    .returning();
+  for (const row of updated) {
+    await appendReply(row.id, 'system', `退款 ${refundNo} 已成功，投诉工单自动完结`, null, tx);
+    await recordDisputeEvent(tx, 'payment.dispute.refunded', row, `dispute:${row.id}:refunded:${refundNo}`);
+  }
 }
 
 /** 退款失败仅追加说明并保持工单开放，允许人工核实后再次发起。 */
 export async function recordDisputeRefundFailure(refundNo: string, tenantId: number | null): Promise<void> {
-  await db.transaction(async (tx) => {
-    const rows = await tx
-      .select(disputeEventColumns)
-      .from(paymentDisputes)
-      .where(and(eq(paymentDisputes.refundNo, refundNo), exactTenantCondition(paymentDisputes.tenantId, tenantId), inArray(paymentDisputes.status, OPEN_STATUSES)))
-      .for('update');
-    for (const row of rows) {
-      const content = `退款 ${refundNo} 未成功，工单保持处理中`;
-      const recorded = await tx.$count(paymentDisputeReplies, and(eq(paymentDisputeReplies.disputeId, row.id), eq(paymentDisputeReplies.author, 'system'), eq(paymentDisputeReplies.content, content)));
-      if (recorded > 0) continue;
-      await appendReply(row.id, 'system', content, null, tx);
-      await recordDisputeEvent(tx, 'payment.dispute.refund-failed', row, `dispute:${row.id}:refund-failed:${refundNo}`);
-    }
-  });
+  return db.transaction((tx) => recordDisputeRefundFailureWithin(tx, refundNo, tenantId));
+}
+
+export async function recordDisputeRefundFailureWithin(tx: DbTransaction, refundNo: string, tenantId: number | null): Promise<void> {
+  const rows = await tx
+    .select(disputeEventColumns)
+    .from(paymentDisputes)
+    .where(and(eq(paymentDisputes.refundNo, refundNo), exactTenantCondition(paymentDisputes.tenantId, tenantId), inArray(paymentDisputes.status, OPEN_STATUSES)))
+    .for('update');
+  for (const row of rows) {
+    const content = `退款 ${refundNo} 未成功，工单保持处理中`;
+    const recorded = await tx.$count(paymentDisputeReplies, and(eq(paymentDisputeReplies.disputeId, row.id), eq(paymentDisputeReplies.author, 'system'), eq(paymentDisputeReplies.content, content)));
+    if (recorded > 0) continue;
+    await appendReply(row.id, 'system', content, null, tx);
+    await recordDisputeEvent(tx, 'payment.dispute.refund-failed', row, `dispute:${row.id}:refund-failed:${refundNo}`);
+  }
 }
 
 // ─── 渠道拉单（cron / 手动模拟）──────────────────────────────────────────────
