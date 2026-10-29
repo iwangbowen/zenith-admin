@@ -10,6 +10,7 @@ import { useDebouncedValue } from '@tanstack/react-pacer';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import { compactParams } from '@/lib/query';
 import { useAuth } from '@/hooks/useAuth';
+import { useEventCallback } from '@/hooks/useEventCallback';
 import UserAiConfigModal from '../components/UserAiConfigModal';
 import AiSettingsModal from '../components/AiSettingsModal';
 import ShareModal from '../components/ShareModal';
@@ -38,7 +39,7 @@ import { useConversationActions } from './hooks/useConversationActions';
 import { useSpeech } from './hooks/useSpeech';
 import { useDialogueRenderConfig } from './hooks/useDialogueRenderConfig';
 import { MessageEditWidget } from './components/MessageEditWidget';
-import { ConversationSidebar } from './components/ConversationSidebar';
+import { ConversationSidebar, type ConversationActionHandlers } from './components/ConversationSidebar';
 import { ChatHeaderActions, type DialogueAlign, type DialogueMode } from './components/ChatHeaderActions';
 import { ChatWelcome } from './components/ChatWelcome';
 import { ChatComposer } from './components/ChatComposer';
@@ -70,9 +71,9 @@ export default function AIChatPage() {
   const chatModels = useMemo(() => chatModelsQuery.data ?? [], [chatModelsQuery.data]);
   const userConfigsQuery = useAiUserConfigs();
   const promptTemplatesQuery = useAvailableAiPrompts();
-  const promptTemplates = promptTemplatesQuery.data ?? [];
+  const promptTemplates = useMemo(() => promptTemplatesQuery.data ?? [], [promptTemplatesQuery.data]);
   const kbQuery = useAvailableKnowledgeBases();
-  const knowledgeBases = kbQuery.data ?? [];
+  const knowledgeBases = useMemo(() => kbQuery.data ?? [], [kbQuery.data]);
   // 边输边筛（防抖）+ 归档开关：勾选才筛选
   const conversationsQuery = useInfiniteAiConversationList(compactParams({
     keyword: debouncedSearchKeyword.trim(),
@@ -131,28 +132,30 @@ export default function AIChatPage() {
     },
   }), []);
 
-  const roleConfig = {
+  const roleConfig = useMemo(() => ({
     user: {
       name: user?.nickname || user?.username || '我',
       avatar: user?.avatar || undefined,
     },
     assistant: { name: 'AI 助手', avatar: AI_AVATAR },
     system: { name: '系统', avatar: AI_AVATAR },
-  };
+  }), [user?.nickname, user?.username, user?.avatar]);
 
+  const editingMessage = messages.find((message) => (message as Record<string, unknown>).editing && message.role === 'user');
+  const submitMessageEdit = useEventCallback(handleEditAndResend);
   const renderMessageEdit = useCallback(<T extends { inputContents?: Array<{ type: string; text?: string }> }>(props: T) => {
     const defaultText = props.inputContents?.find((c) => c.type === 'text')?.text ?? '';
-    const editingMsg = messages.find((m) => (m as Record<string, unknown>).editing && m.role === 'user');
+    const editingMsg = editingMessage;
     if (!editingMsg) return null;
     return (
       <MessageEditWidget
         msgId={editingMsg.id}
         defaultText={defaultText}
-        onSubmit={handleEditAndResend}
+        onSubmit={submitMessageEdit}
         onCancel={handleEditCancel}
       />
     );
-  }, [messages, handleEditAndResend, handleEditCancel]);
+  }, [editingMessage, submitMessageEdit, handleEditCancel]);
 
   const activeConv = conversations.find((c) => c.id === activeConvId);
 
@@ -163,6 +166,29 @@ export default function AIChatPage() {
   const dialogueRenderConfig = useDialogueRenderConfig({
     branchInfo, generating, onSwitchBranch: handleSwitchBranch, speakingMsgId, onToggleSpeak: handleToggleSpeak,
   });
+
+  const renameConversation = useEventCallback(actions.rename.open);
+  const togglePin = useEventCallback(actions.handleTogglePin);
+  const toggleArchive = useEventCallback(actions.handleToggleArchive);
+  const editTags = useEventCallback(actions.tags.open);
+  const shareConversation = useEventCallback(actions.share.open);
+  const exportConversation = useEventCallback(actions.handleExportConversation);
+  const deleteConversation = useEventCallback(actions.handleDeleteConversation);
+  const sidebarActions = useMemo<ConversationActionHandlers>(() => ({
+    onRename: renameConversation, onTogglePin: togglePin, onToggleArchive: toggleArchive, onEditTags: editTags,
+    onShare: shareConversation, onExport: exportConversation, onDelete: deleteConversation,
+  }), [renameConversation, togglePin, toggleArchive, editTags, shareConversation, exportConversation, deleteConversation]);
+  const toggleArchived = useCallback(() => setShowArchived((value) => !value), []);
+  const newConversation = useEventCallback(() => { void actions.handleNewConversation(); });
+  const loadMore = useEventCallback(() => { void conversationsQuery.fetchNextPage(); });
+  const selectTemplate = useEventCallback(actions.handleSelectTemplate);
+  const applyTemplate = useEventCallback(actions.handleApplyTemplate);
+  const setKb = useEventCallback(actions.handleSetKb);
+  const openArena = useCallback(() => setArenaVisible(true), []);
+  const openPreference = useCallback(() => { setPreferenceTab('instructions'); setPreferenceVisible(true); }, []);
+  const openSettings = useCallback(() => setSettingsVisible(true), []);
+  const sendText = useEventCallback((text: string) => { void handleMessageSend({ text }); });
+  const sendMessage = useEventCallback((content: Parameters<typeof handleMessageSend>[0]) => { void handleMessageSend(content); });
 
   return (
     <>
@@ -179,23 +205,15 @@ export default function AIChatPage() {
           activeConvId={activeConvId}
           onSelect={setActiveConvId}
           showArchived={showArchived}
-          onToggleArchived={() => setShowArchived((v) => !v)}
-          onNewConversation={() => void actions.handleNewConversation()}
+          onToggleArchived={toggleArchived}
+          onNewConversation={newConversation}
           searchKeyword={searchKeyword}
           onSearchChange={setSearchKeyword}
           loading={conversationsQuery.isLoading}
           hasNextPage={conversationsQuery.hasNextPage}
           isFetchingNextPage={conversationsQuery.isFetchingNextPage}
-          onLoadMore={() => void conversationsQuery.fetchNextPage()}
-          actions={{
-            onRename: actions.rename.open,
-            onTogglePin: actions.handleTogglePin,
-            onToggleArchive: actions.handleToggleArchive,
-            onEditTags: actions.tags.open,
-            onShare: actions.share.open,
-            onExport: actions.handleExportConversation,
-            onDelete: actions.handleDeleteConversation,
-          }}
+          onLoadMore={loadMore}
+          actions={sidebarActions}
         />
       )}
       detail={(
@@ -205,17 +223,17 @@ export default function AIChatPage() {
               <ChatHeaderActions
                 activeConv={activeConv}
                 promptTemplates={promptTemplates}
-                onSelectTemplate={actions.handleSelectTemplate}
-                onApplyTemplate={actions.handleApplyTemplate}
+                onSelectTemplate={selectTemplate}
+                onApplyTemplate={applyTemplate}
                 knowledgeBases={knowledgeBases}
-                onSetKb={actions.handleSetKb}
-                onOpenArena={() => setArenaVisible(true)}
-                onOpenPreference={() => { setPreferenceTab('instructions'); setPreferenceVisible(true); }}
+                onSetKb={setKb}
+                onOpenArena={openArena}
+                onOpenPreference={openPreference}
                 mode={mode}
                 onModeChange={setMode}
                 align={align}
                 onAlignChange={setAlign}
-                onOpenSettings={() => setSettingsVisible(true)}
+                onOpenSettings={openSettings}
               />
             }
           >
@@ -292,8 +310,8 @@ export default function AIChatPage() {
                   sttDraft={sttDraft}
                   onSttDraftChange={setSttDraft}
                   onToggleRecording={handleToggleRecording}
-                  onSendText={(text) => void handleMessageSend({ text })}
-                  onMessageSend={(c) => void handleMessageSend(c)}
+                  onSendText={sendText}
+                  onMessageSend={sendMessage}
                   onStopGenerate={handleStopGenerate}
                   onConfigureChange={setConfigureValues}
                 />

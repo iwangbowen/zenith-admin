@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { memo, useRef } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { AIChatInput, Button, Input, Tag, Tooltip } from '@douyinfe/semi-ui';
 import { ImagePlus, Mic, MicOff, X } from 'lucide-react';
@@ -26,7 +26,7 @@ interface ChatComposerProps {
 }
 
 /** 输入区：语音识别草稿条、vision 待发图片条、麦克风 / 选图按钮与带模型配置区的 AIChatInput */
-export function ChatComposer({
+export const ChatComposer = memo(function ChatComposer({
   generating, modelOptions, visionEnabled, pendingImages, setPendingImages,
   recording, sttDraft, onSttDraftChange, onToggleRecording, onSendText,
   onMessageSend, onStopGenerate, onConfigureChange,
@@ -196,4 +196,4 @@ export function ChatComposer({
       </div>
     </div>
   );
-}
+});

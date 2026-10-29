@@ -5,19 +5,15 @@ import type { QueryClient } from '@tanstack/react-query';
 import type { AiConversation, AiMessage, AiReasoningLevel, SendAiChatMessageInput } from '@zenith/shared/ai';
 import { aiConversationContract, aiGenerationContract } from '@zenith/shared/ai';
 import { request } from '@/utils/request';
-import { readSseStream } from '@/utils/streaming';
 import { urlOf } from '@/lib/contract-query';
 import { getActiveGeneration, cancelGeneration } from '@/hooks/queries/ai-extras';
 import { aiConversationKeys, type useCreateAiConversation } from '@/hooks/queries/ai-conversations';
-import { healStreamingMarkdown } from '@/utils/streaming-markdown';
 import {
-  buildAssistantContent,
   buildUserContent,
   type ChatMessage as Message,
-  type ToolCallDisplay,
-  type KbRefDisplay,
 } from '../message-adapters';
 import { dbIdOf, nextMsgId, type AIChatDialogueInstance } from '../chat-utils';
+import { consumeChatStream } from '../chat-stream';
 
 interface UseChatGenerationOptions {
   queryClient: QueryClient;
@@ -36,7 +32,7 @@ interface UseChatGenerationOptions {
   /** AIChatInput Configure 区当前取值（model / reasoning） */
   configureValuesRef: RefObject<Record<string, unknown>>;
   dialogueRef: RefObject<AIChatDialogueInstance | null>;
-  createConversationMutation: ReturnType<typeof useCreateAiConversation>;
+  createConversationMutation: Pick<ReturnType<typeof useCreateAiConversation>, 'mutateAsync'>;
   /** 新会话入列并激活（清空消息树） */
   activateNewConversation: (conv: AiConversation) => void;
 }
@@ -53,102 +49,42 @@ export function useChatGeneration({
   const abortRef = useRef<AbortController | null>(null);
   /** 当前生成任务 ID（停止 / 断线续传用） */
   const currentGenIdRef = useRef<string | null>(null);
+  const streamConversationRef = useRef<number | null>(activeConvId);
+  const streamEpochRef = useRef(0);
+  useEffect(() => {
+    if (streamConversationRef.current !== activeConvId) {
+      streamConversationRef.current = activeConvId;
+      streamEpochRef.current++;
+      const previous = abortRef.current;
+      abortRef.current = null;
+      currentGenIdRef.current = null;
+      previous?.abort();
+      if (previous) setGenerating(false);
+    }
+  }, [activeConvId, setGenerating]);
+  useEffect(() => () => {
+    streamEpochRef.current++;
+    const previous = abortRef.current;
+    abortRef.current = null;
+    previous?.abort();
+  }, []);
 
-  /** SSE 事件消费（发送与断线续传共用）。skipUserEvent：发起端已本地渲染 user 气泡时跳过缓冲中的 user 事件 */
-  const consumeSSEStream = useCallback(async (
-    response: Response,
-    ctx: { convId: number; assistantMsgId: string; localUserMsgId: string | null; skipUserEvent: boolean },
-  ) => {
-    const { convId, assistantMsgId, localUserMsgId, skipUserEvent } = ctx;
-    if (!response.body) throw new Error('No response body');
-    let accContent = '';
-    let accReasoning = '';
-    const accToolCalls: ToolCallDisplay[] = [];
-    let accReferences: KbRefDisplay[] = [];
 
-    const refreshAssistant = () => {
-      // 流式自愈:补全未闭合 markdown(粗体/行内代码/链接),消除原始符号闪现
-      const nextContent = buildAssistantContent(healStreamingMarkdown(accContent), healStreamingMarkdown(accReasoning), accContent.length > 0, accToolCalls, accReferences);
-      setMessages((prev) =>
-        prev.map((m) => (m.id === assistantMsgId ? { ...m, content: nextContent } : m))
-      );
-    };
-
-    await readSseStream(response, (events) => {
-      for (const { event: eventType, data: dataStr } of events) {
-        if (!dataStr) continue;
-        try {
-          const parsed = JSON.parse(dataStr) as Record<string, unknown>;
-          if (eventType === 'gen') {
-            // 生成任务 ID：停止 / 断线续传凭据
-            currentGenIdRef.current = (parsed.genId as string) ?? null;
-          } else if (eventType === 'user') {
-            // 续传场景：缓冲中回放的用户消息（发起端已本地渲染，跳过）
-            if (!skipUserEvent && parsed.content) {
-              const userMsg: Message = { id: nextMsgId(), role: 'user', content: parsed.content as string, createdAt: Date.now() - 1, status: 'completed' };
-              setMessages((prev) => {
-                const idx = prev.findIndex((m) => m.id === assistantMsgId);
-                if (idx === -1) return [...prev, userMsg];
-                return [...prev.slice(0, idx), userMsg, ...prev.slice(idx)];
-              });
-            }
-          } else if (eventType === 'delta' && parsed.content) {
-            accContent += (parsed.content as string | undefined) ?? '';
-            refreshAssistant();
-          } else if (eventType === 'reasoning' && parsed.content) {
-            accReasoning += (parsed.content as string | undefined) ?? '';
-            refreshAssistant();
-          } else if (eventType === 'tool_call') {
-            // function calling 执行过程
-            accToolCalls.push({
-              name: (parsed.name as string) ?? '',
-              arguments: (parsed.arguments as string) ?? '',
-              result: (parsed.result as string) ?? '',
-            });
-            refreshAssistant();
-          } else if (eventType === 'references') {
-            // 知识库检索引用
-            accReferences = (parsed.references as KbRefDisplay[]) ?? [];
-            refreshAssistant();
-          } else if (eventType === 'failover') {
-            Toast.info(`当前模型响应异常，已自动切换到备用模型（${(parsed.to as string) ?? ''}）`);
-          } else if (eventType === 'saved') {
-            // 服务端保存完成：本地气泡映射数据库 ID，并同步分支叶子与消息树
-            const dbId = (parsed.assistantMsgId as number | undefined);
-            const userDbId = (parsed.userMsgId as number | null | undefined);
-            const usedModel = (parsed.model as string | null | undefined);
-            setMessages((prev) =>
-              prev.map((m) => {
-                if (dbId && m.id === assistantMsgId) return { ...m, id: `api-${dbId}`, ...(usedModel && { model: usedModel }) };
-                if (userDbId && localUserMsgId && m.id === localUserMsgId) return { ...m, id: `api-${userDbId}` };
-                return m;
-              })
-            );
-            if (dbId) setActiveLeafId(dbId);
-            void queryClient.invalidateQueries({ queryKey: aiConversationKeys.messages(convId) });
-          } else if (eventType === 'title') {
-            // 服务端 LLM 自动命名完成，同步会话标题
-            const title = parsed.title as string | undefined;
-            if (title) {
-              setConversations((prev) => prev.map((c) => (c.id === convId ? { ...c, title } : c)));
-            }
-          } else if (eventType === 'done') {
-            setMessages((prev) =>
-              prev.map((m) => (m.id === assistantMsgId ? { ...m, status: 'completed' } : m))
-            );
-            void queryClient.invalidateQueries({ queryKey: aiConversationKeys.lists });
-          } else if (eventType === 'error') {
-            Toast.error((parsed.message as string | undefined) ?? 'AI 服务出错');
-            setMessages((prev) =>
-              prev.map((m) => (m.id === assistantMsgId ? { ...m, status: 'failed' } : m))
-            );
-          }
-        } catch {
-          // ignore JSON parse errors
-        }
-      }
-    });
-  }, [queryClient, setMessages, setActiveLeafId, setConversations]);
+  /** Text work is throttled per stream; structural events are applied in order. */
+  const consumeSSEStream = useCallback((response: Response, ctx: {
+    convId: number; assistantMsgId: string; localUserMsgId: string | null; skipUserEvent: boolean; epoch: number;
+  }) => consumeChatStream(response, { ...ctx, isCurrent: () => streamEpochRef.current === ctx.epoch }, {
+    setMessages,
+    onGeneration: (id) => { currentGenIdRef.current = id; },
+    onSaved: (id) => {
+      setActiveLeafId(id);
+      void queryClient.invalidateQueries({ queryKey: aiConversationKeys.messages(ctx.convId) });
+    },
+    onTitle: (title) => setConversations((previous) => previous.map((conv) => conv.id === ctx.convId ? { ...conv, title } : conv)),
+    onDone: () => { void queryClient.invalidateQueries({ queryKey: aiConversationKeys.lists }); },
+    onError: (message) => Toast.error(message),
+    onFailover: (model) => Toast.info(`当前模型响应异常，已自动切换到备用模型（${model}）`),
+  }), [queryClient, setMessages, setActiveLeafId, setConversations]);
 
   const handleMessageSend = useCallback(
     async (
@@ -202,6 +138,8 @@ export function useChatGeneration({
 
       const abortController = new AbortController();
       abortRef.current = abortController;
+      streamConversationRef.current = convId;
+      const streamEpoch = ++streamEpochRef.current;
       currentGenIdRef.current = null;
 
       try {
@@ -240,18 +178,22 @@ export function useChatGeneration({
         // 发送成功后清空待发图片
         if (!regenerate && pendingImages.length > 0) setPendingImages([]);
 
-        await consumeSSEStream(response, { convId, assistantMsgId, localUserMsgId, skipUserEvent: true });
+        await consumeSSEStream(response, { convId, assistantMsgId, localUserMsgId, skipUserEvent: true, epoch: streamEpoch });
       } catch (err) {
-        if ((err as Error)?.name !== 'AbortError') {
+        if (abortRef.current === abortController && (err as Error)?.name !== 'AbortError') {
           Toast.error((err as Error)?.message || '消息发送失败');
           setMessages((prev) =>
             prev.map((m) => (m.id === assistantMsgId ? { ...m, status: 'failed' } : m))
           );
         }
       } finally {
-        setGenerating(false);
-        abortRef.current = null;
-        setTimeout(() => dialogueRef.current?.scrollToBottom(true), 100);
+        if (abortRef.current === abortController) {
+          setGenerating(false);
+          abortRef.current = null;
+        }
+        setTimeout(() => {
+          if (streamEpochRef.current === streamEpoch) dialogueRef.current?.scrollToBottom(true);
+        }, 100);
       }
     },
     [activeConvId, createConversationMutation, pendingImages, consumeSSEStream, activateNewConversation, setMessages, setGenerating, setPendingImages, configureValuesRef, dialogueRef]
@@ -259,7 +201,7 @@ export function useChatGeneration({
 
   /** 断线续传：进入会话时发现有进行中的生成任务 → 挂载恢复流 */
   const attachToGeneration = useCallback(async (convId: number, genId: string) => {
-    if (generating) return;
+    if (abortRef.current) return;
     currentGenIdRef.current = genId;
     const assistantMsgId = nextMsgId();
     setMessages((prev) => [...prev, {
@@ -272,6 +214,8 @@ export function useChatGeneration({
     setGenerating(true);
     const abortController = new AbortController();
     abortRef.current = abortController;
+    streamConversationRef.current = convId;
+    const streamEpoch = ++streamEpochRef.current;
     try {
       const response = await request.fetchRaw(
         urlOf(aiGenerationContract.stream, { params: { genId }, query: { offset: 0 } }),
@@ -279,18 +223,20 @@ export function useChatGeneration({
       );
       if (!response?.ok) throw new Error('恢复生成流失败');
       Toast.info('检测到进行中的回复，已恢复实时输出');
-      await consumeSSEStream(response, { convId, assistantMsgId, localUserMsgId: null, skipUserEvent: false });
+      await consumeSSEStream(response, { convId, assistantMsgId, localUserMsgId: null, skipUserEvent: false, epoch: streamEpoch });
     } catch (err) {
-      if ((err as Error)?.name !== 'AbortError') {
+      if (abortRef.current === abortController && (err as Error)?.name !== 'AbortError') {
         // 恢复失败：移除占位气泡，改为静默刷新消息
         setMessages((prev) => prev.filter((m) => m.id !== assistantMsgId));
         void queryClient.invalidateQueries({ queryKey: aiConversationKeys.messages(convId) });
       }
     } finally {
-      setGenerating(false);
-      abortRef.current = null;
+      if (abortRef.current === abortController) {
+        setGenerating(false);
+        abortRef.current = null;
+      }
     }
-  }, [generating, consumeSSEStream, queryClient, setMessages, setGenerating]);
+  }, [consumeSSEStream, queryClient, setMessages, setGenerating]);
 
   // 会话切换时探测未完成的生成任务（刷新 / 断网恢复场景）
   useEffect(() => {

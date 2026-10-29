@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Button, Tooltip } from '@douyinfe/semi-ui';
 import { Archive, ArchiveRestore, Download, Inbox, MessageSquarePlus, Pencil, Pin, PinOff, Share2, Tags, Trash2 } from 'lucide-react';
 import type { AiConversation } from '@zenith/shared/ai';
@@ -52,7 +53,7 @@ interface ConversationSidebarProps {
 }
 
 /** 左侧会话列表：归档切换 / 新建、搜索、按时间分组的会话条目与「加载更多」 */
-export function ConversationSidebar({
+export const ConversationSidebar = memo(function ConversationSidebar({
   rows, activeConvId, onSelect, showArchived, onToggleArchived, onNewConversation,
   searchKeyword, onSearchChange, loading, hasNextPage, isFetchingNextPage, onLoadMore, actions,
 }: Readonly<ConversationSidebarProps>) {
@@ -124,4 +125,4 @@ export function ConversationSidebar({
       )}
     />
   );
-}
+});

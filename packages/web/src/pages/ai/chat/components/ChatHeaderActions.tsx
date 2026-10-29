@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Button, Dropdown, Radio, RadioGroup, Select, Tooltip } from '@douyinfe/semi-ui';
 import { AlignJustify, AlignLeft, Library, Settings, Sparkles, Swords, UserRoundPen } from 'lucide-react';
 import type { AiConversation, AiPromptTemplate } from '@zenith/shared/ai';
@@ -25,7 +26,7 @@ interface ChatHeaderActionsProps {
 }
 
 /** 会话头部右侧工具条：角色模板 / 知识库挂载 / Arena / 个性化 / 气泡模式 / 对齐 / 我的 AI 配置 */
-export function ChatHeaderActions({
+export const ChatHeaderActions = memo(function ChatHeaderActions({
   activeConv, promptTemplates, onSelectTemplate, onApplyTemplate, knowledgeBases, onSetKb,
   onOpenArena, onOpenPreference, mode, onModeChange, align, onAlignChange, onOpenSettings,
 }: Readonly<ChatHeaderActionsProps>) {
@@ -158,4 +159,4 @@ export function ChatHeaderActions({
       </Tooltip>
     </div>
   );
-}
+});
