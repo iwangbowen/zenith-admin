@@ -179,8 +179,8 @@ export function GovernanceTransferTab() {
   };
   const columns: ColumnProps<ReportResourceTransfer>[] = [
     { title: '资源', dataIndex: 'resourceName', width: 200, render: (v, r) => renderEllipsis(v || `${reportResourceTypeLabel(r.resourceType)} #${r.resourceId}`) },
-    { title: '原负责人', dataIndex: 'fromOwnerName', width: 130, render: (v) => v || '未分配' },
-    { title: '新负责人', dataIndex: 'toOwnerName', width: 130, render: (v, r) => v || `用户 #${r.toOwnerId}` },
+    { title: '原负责人', dataIndex: 'fromOwnerName', width: 180, render: (v) => renderEllipsis(v || '未分配') },
+    { title: '新负责人', dataIndex: 'toOwnerName', width: 180, render: (v, r) => renderEllipsis(v || `用户 #${r.toOwnerId}`) },
     { title: '原因', dataIndex: 'reason', minWidth: 220, render: renderEllipsis },
     dateTimeColumn('申请时间', 'createdAt'),
     { title: '状态', dataIndex: 'status', width: 100, fixed: 'right', render: (v: ReportTransferStatus) => <Tag color={statusColor[v]}>{REPORT_TRANSFER_STATUS_LABELS[v] ?? v}</Tag> },

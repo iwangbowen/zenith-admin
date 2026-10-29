@@ -195,7 +195,7 @@ export default function AssetsPage() {
   const catalogColumns: ColumnProps<ReportAssetCatalogItem>[] = [
     { title: '资产名称', dataIndex: 'name', minWidth: 210, render: renderEllipsis },
     { title: '类型', dataIndex: 'resourceType', width: 130, render: (v) => resourceTypeOptions.find((item) => item.value === v)?.label ?? v },
-    { title: '负责人', dataIndex: 'ownerName', width: 130, render: (v) => v || EMPTY_PLACEHOLDER },
+    { title: '负责人', dataIndex: 'ownerName', width: 180, render: renderEllipsis },
     { title: '目录', dataIndex: 'folderName', width: 150, render: (v) => v || EMPTY_PLACEHOLDER },
     { title: '生命周期', dataIndex: 'lifecycleStatus', width: 110, render: (v: string | null) => v ? <Tag>{REPORT_DASHBOARD_LIFECYCLE_LABELS[v as keyof typeof REPORT_DASHBOARD_LIFECYCLE_LABELS] ?? v}</Tag> : EMPTY_PLACEHOLDER },
     dateTimeColumn('更新时间', 'updatedAt'),
@@ -242,7 +242,7 @@ export default function AssetsPage() {
     { title: '模板名称', dataIndex: 'name', minWidth: 190, render: renderEllipsis },
     { title: '编码', dataIndex: 'code', width: 150, render: renderEllipsis },
     { title: '类型', dataIndex: 'type', width: 130, render: (v) => templateTypeOptions.find((item) => item.value === v)?.label ?? v },
-    { title: '负责人', dataIndex: 'ownerName', width: 120, render: (v) => v || EMPTY_PLACEHOLDER },
+    { title: '负责人', dataIndex: 'ownerName', width: 180, render: renderEllipsis },
     { title: '版本/使用', width: 120, render: (_v, r) => `v${r.version} / ${r.usageCount}` },
     dateTimeColumn('更新时间', 'updatedAt'),
     { title: '状态', dataIndex: 'status', width: 100, fixed: 'right', render: renderEnabledStatusTag },
