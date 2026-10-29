@@ -29,7 +29,7 @@ import { validateQuotaForm } from '../report-platform-utils';
 import { CreateButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, NumberFilter } from '@/components/search-filters';
 import { confirmDanger } from '@/utils/confirm';
-import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
+import { dateColumn, dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { DEFAULT_TIMEZONE } from '@/utils/timezones';
 import { useFilterQuery } from '@/hooks/useFilterQuery';
 import { EditFormModal } from '@/components/EditFormModal';
@@ -41,6 +41,28 @@ interface CostSearchParams {
 }
 
 const defaultCostSearch: CostSearchParams = { datasetId: undefined, datasourceId: undefined, timeRange: null };
+
+const costNumberFormatter = new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 4 });
+const countNumberFormatter = new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 0 });
+
+function formatCostUnits(value: number): string {
+  return Number.isFinite(value) ? costNumberFormatter.format(value) : EMPTY_PLACEHOLDER;
+}
+
+function formatCount(value: number): string {
+  return Number.isFinite(value) ? countNumberFormatter.format(value) : EMPTY_PLACEHOLDER;
+}
+
+/** 配额上限为 0 表示不限（服务端以 > 0 判定是否生效）。 */
+function formatLimit(value: number): string {
+  return value > 0 ? countNumberFormatter.format(value) : '不限';
+}
+
+/** 展示「已用 / 上限」，上限为 0 时只显示已用，避免出现「23 / 0」这类误导。 */
+function formatUsage(used: number, limit: number, unit = ''): string {
+  if (limit > 0) return `${formatCount(used)} / ${formatCount(limit)}${unit}`;
+  return `${formatCount(used)}${unit}（不限）`;
+}
 
 export default function GovernanceCapacityTab() {
   const { hasPermission } = usePermission();
@@ -94,11 +116,11 @@ export default function GovernanceCapacityTab() {
   };
   const quotaColumns: ColumnProps<ReportQueryQuota>[] = [
     { title: '范围', dataIndex: 'scope', width: 100, render: (v, r) => v === 'tenant' ? '当前租户' : `用户 #${r.userId}` },
-    { title: '并发上限', dataIndex: 'maxConcurrent', width: 110 },
-    { title: '日查询', dataIndex: 'dailyQueryLimit', width: 110, align: 'right' },
-    { title: '日行数', dataIndex: 'dailyRowLimit', width: 130, align: 'right' },
-    { title: '日字节', dataIndex: 'dailyByteLimit', width: 140, align: 'right' },
-    { title: '日成本', dataIndex: 'dailyCostLimit', width: 110, align: 'right' },
+    { title: '并发上限', dataIndex: 'maxConcurrent', width: 110, align: 'right', render: (v: number) => formatLimit(v) },
+    { title: '日查询', dataIndex: 'dailyQueryLimit', width: 110, align: 'right', render: (v: number) => formatLimit(v) },
+    { title: '日行数', dataIndex: 'dailyRowLimit', width: 130, align: 'right', render: (v: number) => formatLimit(v) },
+    { title: '日字节', dataIndex: 'dailyByteLimit', width: 140, align: 'right', render: (v: number) => formatLimit(v) },
+    { title: '日成本', dataIndex: 'dailyCostLimit', width: 130, align: 'right', render: (v: number) => v > 0 ? formatCostUnits(v) : '不限' },
     { title: '重置时区', dataIndex: 'resetTimezone', minWidth: 150, render: renderEllipsis },
     { title: '状态', dataIndex: 'enabled', width: 90, fixed: 'right', render: (v) => <Tag color={v ? 'green' : 'grey'}>{v ? '启用' : '停用'}</Tag> },
     createOperationColumn<ReportQueryQuota>({
@@ -130,21 +152,21 @@ export default function GovernanceCapacityTab() {
     { title: '场景', dataIndex: 'scene', minWidth: 130 },
     { title: '用户 ID', dataIndex: 'userId', width: 100, render: (v) => v || EMPTY_PLACEHOLDER },
     { title: '数据集/源', width: 130, render: (_v, r) => r.datasetId ? `数据集 #${r.datasetId}` : r.datasourceId ? `数据源 #${r.datasourceId}` : EMPTY_PLACEHOLDER },
-    { title: '排队/执行', width: 140, render: (_v, r) => `${r.queuedMs} / ${r.durationMs} ms` },
-    { title: '行数', dataIndex: 'rowCount', width: 100, align: 'right' },
-    { title: '字节', dataIndex: 'byteSize', width: 110, align: 'right' },
-    { title: '成本', dataIndex: 'costUnits', width: 100 },
+    { title: '排队/执行', width: 140, align: 'right', render: (_v, r) => `${formatCount(r.queuedMs)} / ${formatCount(r.durationMs)} ms` },
+    { title: '行数', dataIndex: 'rowCount', width: 110, align: 'right', render: (v: number) => formatCount(v) },
+    { title: '字节', dataIndex: 'byteSize', width: 130, align: 'right', render: (v: number) => formatCount(v) },
+    { title: '成本', dataIndex: 'costUnits', width: 140, align: 'right', render: (v: number) => formatCostUnits(v) },
     dateTimeColumn('时间', 'occurredAt'),
     { title: '状态', dataIndex: 'success', width: 90, fixed: 'right', render: (v) => <Tag color={v ? 'green' : 'red'}>{v ? '成功' : '失败'}</Tag> },
   ];
   const trendColumns: ColumnProps<ReportQueryCostTrendPoint>[] = [
-    dateTimeColumn('日期', 'bucket'),
-    { title: '查询数', dataIndex: 'queries', width: 100 },
-    { title: '行数', dataIndex: 'rows', width: 110, align: 'right' },
-    { title: '字节', dataIndex: 'bytes', width: 120, align: 'right' },
-    { title: '成本', dataIndex: 'costUnits', width: 100 },
-    { title: '平均耗时', dataIndex: 'avgDurationMs', width: 120, align: 'right', render: (v) => `${v}ms` },
-    { title: '排队耗时', dataIndex: 'queueMs', width: 120, align: 'right', render: (v) => `${v}ms` },
+    dateColumn('日期', 'bucket'),
+    { title: '查询数', dataIndex: 'queries', width: 110, align: 'right', render: (v: number) => formatCount(v) },
+    { title: '行数', dataIndex: 'rows', width: 120, align: 'right', render: (v: number) => formatCount(v) },
+    { title: '字节', dataIndex: 'bytes', width: 130, align: 'right', render: (v: number) => formatCount(v) },
+    { title: '成本', dataIndex: 'costUnits', width: 140, align: 'right', render: (v: number) => formatCostUnits(v) },
+    { title: '平均耗时', dataIndex: 'avgDurationMs', width: 120, align: 'right', render: (v: number) => `${formatCount(v)}ms` },
+    { title: '排队耗时', dataIndex: 'queueMs', width: 120, align: 'right', render: (v: number) => `${formatCount(v)}ms` },
   ];
 
   return (
@@ -171,12 +193,12 @@ export default function GovernanceCapacityTab() {
       />
       {(statsQuery.isError || trendQuery.isError || costsQuery.isError) && <Banner type="danger" description="查询成本数据加载失败" />}
       {statsQuery.data && (
-        <Space spacing={24} style={{ marginBottom: 14 }}>
-          <Typography.Text>查询 {statsQuery.data.queries}</Typography.Text>
-          <Typography.Text>成本 {statsQuery.data.costUnits}</Typography.Text>
-          <Typography.Text>平均耗时 {statsQuery.data.avgDurationMs}ms</Typography.Text>
-          <Typography.Text type={statsQuery.data.failures ? 'danger' : 'success'}>失败 {statsQuery.data.failures}</Typography.Text>
-          <Typography.Text>运行 {statsQuery.data.capacity.running} / {statsQuery.data.capacity.globalLimit}，排队 {statsQuery.data.capacity.queueDepth}</Typography.Text>
+        <Space spacing={24} style={{ marginBottom: 14 }} wrap>
+          <Typography.Text style={{ whiteSpace: 'nowrap' }}>查询 {formatCount(statsQuery.data.queries)}</Typography.Text>
+          <Typography.Text style={{ whiteSpace: 'nowrap' }}>成本 {formatCostUnits(statsQuery.data.costUnits)}</Typography.Text>
+          <Typography.Text style={{ whiteSpace: 'nowrap' }}>平均耗时 {formatCount(statsQuery.data.avgDurationMs)}ms</Typography.Text>
+          <Typography.Text style={{ whiteSpace: 'nowrap' }} type={statsQuery.data.failures ? 'danger' : 'success'}>失败 {formatCount(statsQuery.data.failures)}</Typography.Text>
+          <Typography.Text style={{ whiteSpace: 'nowrap' }}>运行 {formatCount(statsQuery.data.capacity.running)} / {formatCount(statsQuery.data.capacity.globalLimit)}，排队 {formatCount(statsQuery.data.capacity.queueDepth)}</Typography.Text>
         </Space>
       )}
       <ConfigurableTable columns={trendColumns} {...listTableProps(trendQuery, { rowKey: 'bucket', empty: <Empty title="暂无成本趋势" /> })} />
@@ -188,11 +210,11 @@ export default function GovernanceCapacityTab() {
         <Row gutter={16}>
           <Col xs={24} md={12}><Form.Select field="scope" label="配额范围" style={{ width: '100%' }} optionList={[{ value: 'tenant', label: '租户' }, { value: 'user', label: '用户' }]} rules={[{ required: true }]} /></Col>
           {quotaScope === 'user' && <Col xs={24} md={12}><Form.Select field="userId" label="用户" filter style={{ width: '100%' }} optionList={toUserOptions(usersQuery.data ?? [])} rules={[{ required: true }]} /></Col>}
-          <Col xs={24} md={12}><Form.InputNumber field="maxConcurrent" label="最大并发" min={0} style={{ width: '100%' }} rules={[{ required: true }]} /></Col>
-          <Col xs={24} md={12}><Form.InputNumber field="dailyQueryLimit" label="日查询上限" min={0} style={{ width: '100%' }} rules={[{ required: true }]} /></Col>
-          <Col xs={24} md={12}><Form.InputNumber field="dailyRowLimit" label="日行数上限" min={0} style={{ width: '100%' }} rules={[{ required: true }]} /></Col>
-          <Col xs={24} md={12}><Form.InputNumber field="dailyByteLimit" label="日字节上限" min={0} style={{ width: '100%' }} rules={[{ required: true }]} /></Col>
-          <Col xs={24} md={12}><Form.InputNumber field="dailyCostLimit" label="日成本上限" min={0} style={{ width: '100%' }} rules={[{ required: true }]} /></Col>
+          <Col xs={24} md={12}><Form.InputNumber field="maxConcurrent" label="最大并发" min={0} style={{ width: '100%' }} helpText="0 表示不限" rules={[{ required: true }]} /></Col>
+          <Col xs={24} md={12}><Form.InputNumber field="dailyQueryLimit" label="日查询上限" min={0} style={{ width: '100%' }} helpText="0 表示不限" rules={[{ required: true }]} /></Col>
+          <Col xs={24} md={12}><Form.InputNumber field="dailyRowLimit" label="日行数上限" min={0} style={{ width: '100%' }} helpText="0 表示不限" rules={[{ required: true }]} /></Col>
+          <Col xs={24} md={12}><Form.InputNumber field="dailyByteLimit" label="日字节上限" min={0} style={{ width: '100%' }} helpText="0 表示不限" rules={[{ required: true }]} /></Col>
+          <Col xs={24} md={12}><Form.InputNumber field="dailyCostLimit" label="日成本上限" min={0} style={{ width: '100%' }} helpText="0 表示不限" rules={[{ required: true }]} /></Col>
           <Col xs={24} md={12}><FormTimezoneSelect field="resetTimezone" label="重置时区" /></Col>
           <Col xs={24} md={12}><Form.Switch field="enabled" label="启用配额" /></Col>
         </Row>
@@ -203,11 +225,13 @@ export default function GovernanceCapacityTab() {
         {usageQuery.data && (
           <Space vertical align="start">
             <Typography.Title heading={5}>{usageQuery.data.day} · {usageQuery.data.timezone}</Typography.Title>
-            <Typography.Text>并发：{usageQuery.data.concurrent} / {usageQuery.data.maxConcurrent}</Typography.Text>
-            <Typography.Text>查询：{usageQuery.data.queries} / {usageQuery.data.dailyQueryLimit}</Typography.Text>
-            <Typography.Text>行数：{usageQuery.data.rows} / {usageQuery.data.dailyRowLimit}</Typography.Text>
-            <Typography.Text>字节：{usageQuery.data.bytes} / {usageQuery.data.dailyByteLimit}</Typography.Text>
-            <Typography.Text>成本：{usageQuery.data.costUnits} / {usageQuery.data.dailyCostLimit}</Typography.Text>
+            <Typography.Text>并发：{formatUsage(usageQuery.data.concurrent, usageQuery.data.maxConcurrent)}</Typography.Text>
+            <Typography.Text>查询：{formatUsage(usageQuery.data.queries, usageQuery.data.dailyQueryLimit)}</Typography.Text>
+            <Typography.Text>行数：{formatUsage(usageQuery.data.rows, usageQuery.data.dailyRowLimit)}</Typography.Text>
+            <Typography.Text>字节：{formatUsage(usageQuery.data.bytes, usageQuery.data.dailyByteLimit)}</Typography.Text>
+            <Typography.Text>成本：{usageQuery.data.dailyCostLimit > 0
+              ? `${formatCostUnits(usageQuery.data.costUnits)} / ${formatCostUnits(usageQuery.data.dailyCostLimit)}`
+              : `${formatCostUnits(usageQuery.data.costUnits)}（不限）`}</Typography.Text>
           </Space>
         )}
       </SideSheet>
