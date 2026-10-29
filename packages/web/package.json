@@ -10,7 +10,7 @@
     "build:demo": "tsc -b && node scripts/build.mjs --mode demo",
     "preview": "vite preview",
     "analyze:bundle": "node scripts/bundle-analyze.mjs",
-    "check:bundle": "node scripts/bundle-analyze.mjs --check --quiet",
+    "check:bundle": "node scripts/bundle-analyze.mjs --check --quiet && node scripts/check-preview-chunks.mjs",
     "precompress": "node scripts/precompress.mjs dist",
     "bench:runtime": "node scripts/bench-runtime.mjs",
     "smoke": "node scripts/smoke.mjs",

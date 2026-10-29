@@ -1,9 +1,7 @@
 import { useMemo } from 'react';
 import FileViewer from '@file-viewer/react';
-import { archiveRenderer } from '@file-viewer/renderer-archive';
-import { presentationRenderer } from '@file-viewer/renderer-presentation';
 import pptxWorkerUrl from '@file-viewer/pptx/worker/pptx.worker.js?url';
-import { configuredFileViewerRenderers } from 'virtual:file-viewer-renderers';
+import { fileViewerRenderers } from './file-viewer/renderers';
 import { useThemeController } from '@/providers/theme-controller';
 import { isSpreadsheetFile, resolveFileMimeType } from '@/utils/file-utils';
 import type { CSSProperties } from 'react';
@@ -13,14 +11,6 @@ interface FileViewerPreviewPanelProps {
   readonly file: File;
   readonly style?: CSSProperties;
 }
-
-const fileViewerRenderers = [
-  ...(Array.isArray(configuredFileViewerRenderers)
-    ? configuredFileViewerRenderers
-    : [configuredFileViewerRenderers]),
-  archiveRenderer,
-  presentationRenderer,
-] as ViewerOptions['renderers'];
 
 // libarchive 的 worker/wasm 放在 public/ 原样下发，避免 Vite 改写 `?url` 源码后破坏渲染器的 patch 正则。
 // 只传 workerUrl 以直链 module Worker 启动，wasm 由 import.meta.url 定位到同目录；

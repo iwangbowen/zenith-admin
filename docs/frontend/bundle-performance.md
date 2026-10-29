@@ -52,7 +52,7 @@ lucide 图标全表（615 KB / 153 KB gz）在任何口径下都是运行时按�
 | --- | --- | --- | --- |
 | 运行时 | `vite-runtime` | Vite preload helper 等虚拟模块 | 入口 |
 | 运行时 | `vendor-react-core` | react / react-dom / scheduler | 入口 |
-| 页面层 | `vendor-<lib>`（`HEAVY_LIBRARIES`） | univerjs、monaco、xterm、visactor、maplibre、mermaid、d3、embedpdf、wangeditor、rrweb、emoji、heic2any、exceljs、file-viewer、xyflow、lottie、lunar、sql-formatter、pinyin、unicode-regex、semi-illustrations、semi-json-viewer | 使用它的页面 |
+| 页面层 | `vendor-<lib>`（`HEAVY_LIBRARIES`） | univerjs、monaco、xterm、visactor、maplibre、mermaid、d3、embedpdf、wangeditor、rrweb、emoji、heic2any、exceljs、file-viewer 各包、xyflow、lottie、lunar、sql-formatter、pinyin、unicode-regex、semi-illustrations、semi-json-viewer | 使用它的页面 |
 | 关键路径层 | `initial-vendor` / `initial-app` | 入口静态闭包内的全部第三方 / 应用模块（tags `$initial`） | 入口 |
 | 壳层 | `vendor-semi-markdown` | Semi aiChatDialogue / aiChatInput / chat / markdownRender / codeHighlight / jsonViewer + prismjs | 使用它的页面 |
 | 壳层 | `vendor-semi-media` | Semi lottie / videoPlayer / audioPlayer | 使用它的页面 |
@@ -67,6 +67,8 @@ lucide 图标全表（615 KB / 153 KB gz）在任何口径下都是运行时按�
 | 页面层 | 页面 chunk | 页面注册表的每个动态入口及其独占模块 | 路由命中 |
 
 ### 分层为什么安全
+
+- **文件预览按实际格式加载**：`components/file-viewer/renderers.ts` 仅静态注册 Core 的轻量格式定义，处理函数首次执行时才动态导入对应渲染器；同时保留全部格式的延迟处理函数，压缩包内部的文档、表格等继续按需预览。`@file-viewer` 各包独立分组，禁止再合并成一个 vendor chunk。`check-preview-chunks.mjs` 在 bundle 门禁中确认预览壳层没有静态触达格式引擎。
 
 - **关系失效不导入关系运行时**：业务 mutation 只引用 `lib/entity-relation-cache.ts`，通过查询 meta 标记失效；不能为了失效缓存静态导入包含全部关系契约和 UI 的 hooks。搜索面板由轻量 `MenuSearchInput` 首次打开时加载，Ctrl/Cmd+K 监听保留在触发器中；总量与认证首屏由现行 bundle 预算守住。
 

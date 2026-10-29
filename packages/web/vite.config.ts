@@ -87,7 +87,11 @@ const HEAVY_LIBRARIES: Array<[name: string, test: RegExp]> = [
   ['emoji', /node_modules[\\/](?:emoji-mart|@emoji-mart)[\\/]/],
   ['heic2any', /node_modules[\\/]heic2any[\\/]/],
   ['exceljs', /node_modules[\\/](?:exceljs|@styled[\\/]exceljs)[\\/]/],
-  ['file-viewer', /node_modules[\\/]@file-viewer[\\/]/],
+  // Keep format engines independent; grouping all @file-viewer modules defeats their dynamic imports.
+  ...['core', 'react', 'renderer-word', 'renderer-spreadsheet', 'renderer-ofd', 'renderer-email', 'renderer-mindmap',
+    'renderer-drawing', 'renderer-data', 'renderer-geo', 'renderer-text', 'renderer-archive', 'renderer-presentation',
+    'renderer-ppt', 'renderer-pptx', 'doc', 'docx', 'ppt', 'pptx', 'capability-mermaid'].map((name): [string, RegExp] =>
+    [`file-viewer-${name}`, new RegExp(String.raw`node_modules[\\/]@file-viewer[\\/]${name}[\\/]`)]),
   ['xyflow', /node_modules[\\/](?:@xyflow|dagre)[\\/]/],
   ['lottie', /node_modules[\\/]lottie-web[\\/]/],
   ['lunar', /node_modules[\\/]lunar-typescript[\\/]/],
