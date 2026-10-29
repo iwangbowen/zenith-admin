@@ -160,114 +160,116 @@ async function applyNodeFailurePolicy(input: {
   const { policy, flowData } = input;
   const errorComment = `[节点异常] ${input.nodeName}：${input.errorMessage}`;
 
-  const updated = await workflowTransaction(async (tx) => {
-    const [lockedInst] = await tx.select().from(workflowInstances)
-      .where(eq(workflowInstances.id, input.instance.id)).for('update').limit(1);
-    if (!lockedInst || lockedInst.status !== 'running') return null;
+  await workflowTransaction(async (tx) => {
+    const updated = await (async () => {
+      const [lockedInst] = await tx.select().from(workflowInstances)
+        .where(eq(workflowInstances.id, input.instance.id)).for('update').limit(1);
+      if (!lockedInst || lockedInst.status !== 'running') return null;
 
-    const affectedTasks = input.task
-      ? await tx.update(workflowTasks).set({
-        status: policy.action === 'terminate' ? 'rejected' : 'skipped',
-        comment: errorComment,
-        actionAt: new Date(),
-      }).where(and(eq(workflowTasks.id, input.task.id), inArray(workflowTasks.status, ['pending', 'waiting']))).returning()
-      : [];
+      const affectedTasks = input.task
+        ? await tx.update(workflowTasks).set({
+          status: policy.action === 'terminate' ? 'rejected' : 'skipped',
+          comment: errorComment,
+          actionAt: new Date(),
+        }).where(and(eq(workflowTasks.id, input.task.id), inArray(workflowTasks.status, ['pending', 'waiting']))).returning()
+        : [];
 
-    const starter = await buildStarterContext(lockedInst.initiatorId, tx);
-    const formData = (lockedInst.formData ?? {}) as Record<string, unknown>;
+      const starter = await buildStarterContext(lockedInst.initiatorId, tx);
+      const formData = (lockedInst.formData ?? {}) as Record<string, unknown>;
 
-    // Saga 反序回滚：本节点失败且开启 sagaRollback 时，先对此前已成功副作用倒序补偿
-    if (policy.sagaRollback) {
-      await enqueueSagaRollback(tx, { instanceId: lockedInst.id, failedNodeKey: input.nodeKey, flowData, tenantId: lockedInst.tenantId });
-    }
-    const advanceCtx = {
-      instanceId: lockedInst.id,
-      initiatorId: lockedInst.initiatorId,
-      executor: tx,
-      flowData,
-      formData,
-      settings: flowData.settings,
-      starter,
-      tenantId: lockedInst.tenantId,
-    };
+      // Saga 反序回滚：本节点失败且开启 sagaRollback 时，先对此前已成功副作用倒序补偿
+      if (policy.sagaRollback) {
+        await enqueueSagaRollback(tx, { instanceId: lockedInst.id, failedNodeKey: input.nodeKey, flowData, tenantId: lockedInst.tenantId });
+      }
+      const advanceCtx = {
+        instanceId: lockedInst.id,
+        initiatorId: lockedInst.initiatorId,
+        executor: tx,
+        flowData,
+        formData,
+        settings: flowData.settings,
+        starter,
+        tenantId: lockedInst.tenantId,
+      };
 
-    // 将 materialize 结果落库为实例状态
-    const settleFromMaterialized = async (materialized: Awaited<ReturnType<typeof advanceAndMaterialize>>) => ({
-      ...await settleMaterialized(tx, lockedInst.id, materialized, { comment: errorComment, actorId: input.actor.userId }),
-      newTasks: materialized.createdTasks,
-    });
+      // 将 materialize 结果落库为实例状态
+      const settleFromMaterialized = async (materialized: Awaited<ReturnType<typeof advanceAndMaterialize>>) => ({
+        ...await settleMaterialized(tx, lockedInst.id, materialized, { comment: errorComment, actorId: input.actor.userId }),
+        newTasks: materialized.createdTasks,
+      });
 
-    if (policy.action === 'terminate') {
-      await recordCompensation(tx, { instanceId: lockedInst.id, nodeKey: input.nodeKey, nodeName: input.nodeName, errorMessage: input.errorMessage, action: 'terminate', status: 'terminated', tenantId: lockedInst.tenantId });
-      const row = await markInstanceRejected(tx, { instanceId: lockedInst.id, comment: errorComment, killTokens: true, actorId: input.actor.userId });
-      return { row, affectedTasks, newTasks: [] as typeof workflowTasks.$inferSelect[], repairTask: null, finished: false, rejected: true };
-    }
+      if (policy.action === 'terminate') {
+        await recordCompensation(tx, { instanceId: lockedInst.id, nodeKey: input.nodeKey, nodeName: input.nodeName, errorMessage: input.errorMessage, action: 'terminate', status: 'terminated', tenantId: lockedInst.tenantId });
+        const row = await markInstanceRejected(tx, { instanceId: lockedInst.id, comment: errorComment, killTokens: true, actorId: input.actor.userId });
+        return { row, affectedTasks, newTasks: [] as typeof workflowTasks.$inferSelect[], repairTask: null, finished: false, rejected: true };
+      }
 
-    // 继续：越过失败节点推进
-    if (policy.action === 'continue') {
-      await recordCompensation(tx, { instanceId: lockedInst.id, nodeKey: input.nodeKey, nodeName: input.nodeName, errorMessage: input.errorMessage, action: 'continue', status: 'resolved', tenantId: lockedInst.tenantId });
-      const materialized = await advanceAndMaterialize({ kind: 'advanceNode', nodeKey: input.nodeKey }, advanceCtx);
-      const settled = await settleFromMaterialized(materialized);
-      return { ...settled, affectedTasks, repairTask: null };
-    }
-
-    if (policy.action === 'fallback' && policy.fallbackNodeKey) {
-      const target = flowData.nodes.find((n) => n.data.key === policy.fallbackNodeKey);
-      if (target) {
-        await recordCompensation(tx, { instanceId: lockedInst.id, nodeKey: input.nodeKey, nodeName: input.nodeName, errorMessage: input.errorMessage, action: 'fallback', status: 'resolved', tenantId: lockedInst.tenantId });
-        const materialized = await advanceAndMaterialize({ kind: 'enterNode', nodeKey: policy.fallbackNodeKey, consumeNodeKey: input.nodeKey }, advanceCtx);
+      // 继续：越过失败节点推进
+      if (policy.action === 'continue') {
+        await recordCompensation(tx, { instanceId: lockedInst.id, nodeKey: input.nodeKey, nodeName: input.nodeName, errorMessage: input.errorMessage, action: 'continue', status: 'resolved', tenantId: lockedInst.tenantId });
+        const materialized = await advanceAndMaterialize({ kind: 'advanceNode', nodeKey: input.nodeKey }, advanceCtx);
         const settled = await settleFromMaterialized(materialized);
         return { ...settled, affectedTasks, repairTask: null };
       }
-      // 备用节点不存在 → 退化为挂起人工修复
-    }
 
-    // 兜底动作（fallback + fallbackAction）：执行备选动作（如通知失败改发短信）后继续流转
-    if (policy.action === 'fallback' && policy.fallbackAction) {
-      const compId = await recordCompensation(tx, { instanceId: lockedInst.id, nodeKey: input.nodeKey, nodeName: input.nodeName, errorMessage: input.errorMessage, action: 'fallback', status: 'resolved', compensationActionStatus: 'pending', failedNodeKey: input.nodeKey, actionPayload: policy.fallbackAction, tenantId: lockedInst.tenantId });
-      await enqueueJob({ jobType: 'compensation_action', payload: { compensationId: compId, instanceId: lockedInst.id, nodeKey: input.nodeKey, error: input.errorMessage, action: policy.fallbackAction }, instanceId: lockedInst.id, nodeKey: input.nodeKey, idempotencyKey: `compaction:${compId}`, maxAttempts: (policy.fallbackAction.maxRetries ?? 3) + 1, tenantId: lockedInst.tenantId }, tx);
-      const materialized = await advanceAndMaterialize({ kind: 'advanceNode', nodeKey: input.nodeKey }, advanceCtx);
-      const settled = await settleFromMaterialized(materialized);
-      return { ...settled, affectedTasks, repairTask: null };
-    }
+      if (policy.action === 'fallback' && policy.fallbackNodeKey) {
+        const target = flowData.nodes.find((n) => n.data.key === policy.fallbackNodeKey);
+        if (target) {
+          await recordCompensation(tx, { instanceId: lockedInst.id, nodeKey: input.nodeKey, nodeName: input.nodeName, errorMessage: input.errorMessage, action: 'fallback', status: 'resolved', tenantId: lockedInst.tenantId });
+          const materialized = await advanceAndMaterialize({ kind: 'enterNode', nodeKey: policy.fallbackNodeKey, consumeNodeKey: input.nodeKey }, advanceCtx);
+          const settled = await settleFromMaterialized(materialized);
+          return { ...settled, affectedTasks, repairTask: null };
+        }
+        // 备用节点不存在 → 退化为挂起人工修复
+      }
 
-    // notify / compensate / retry(耗尽) / 默认 → 挂起为待人工修复工单；compensate 额外入队反向动作 job
-    const ticketAction = policy.action === 'compensate' ? 'compensate' : policy.action === 'fallback' ? 'fallback' : 'notify';
-    const compensationCfg = policy.action === 'compensate' ? policy.compensation : undefined;
-    const adminId = await resolveAdminUserId(tx);
-    if (!adminId) {
-      await recordCompensation(tx, { instanceId: lockedInst.id, nodeKey: input.nodeKey, nodeName: input.nodeName, errorMessage: `${input.errorMessage}；未找到管理员`, action: ticketAction, status: 'terminated', tenantId: lockedInst.tenantId });
-      const row = await markInstanceRejected(tx, { instanceId: lockedInst.id, comment: errorComment, killTokens: true, actorId: input.actor.userId });
-      return { row, affectedTasks, newTasks: [] as typeof workflowTasks.$inferSelect[], repairTask: null, finished: false, rejected: true };
+      // 兜底动作（fallback + fallbackAction）：执行备选动作（如通知失败改发短信）后继续流转
+      if (policy.action === 'fallback' && policy.fallbackAction) {
+        const compId = await recordCompensation(tx, { instanceId: lockedInst.id, nodeKey: input.nodeKey, nodeName: input.nodeName, errorMessage: input.errorMessage, action: 'fallback', status: 'resolved', compensationActionStatus: 'pending', failedNodeKey: input.nodeKey, actionPayload: policy.fallbackAction, tenantId: lockedInst.tenantId });
+        await enqueueJob({ jobType: 'compensation_action', payload: { compensationId: compId, instanceId: lockedInst.id, nodeKey: input.nodeKey, error: input.errorMessage, action: policy.fallbackAction }, instanceId: lockedInst.id, nodeKey: input.nodeKey, idempotencyKey: `compaction:${compId}`, maxAttempts: (policy.fallbackAction.maxRetries ?? 3) + 1, tenantId: lockedInst.tenantId }, tx);
+        const materialized = await advanceAndMaterialize({ kind: 'advanceNode', nodeKey: input.nodeKey }, advanceCtx);
+        const settled = await settleFromMaterialized(materialized);
+        return { ...settled, affectedTasks, repairTask: null };
+      }
+
+      // notify / compensate / retry(耗尽) / 默认 → 挂起为待人工修复工单；compensate 额外入队反向动作 job
+      const ticketAction = policy.action === 'compensate' ? 'compensate' : policy.action === 'fallback' ? 'fallback' : 'notify';
+      const compensationCfg = policy.action === 'compensate' ? policy.compensation : undefined;
+      const adminId = await resolveAdminUserId(tx);
+      if (!adminId) {
+        await recordCompensation(tx, { instanceId: lockedInst.id, nodeKey: input.nodeKey, nodeName: input.nodeName, errorMessage: `${input.errorMessage}；未找到管理员`, action: ticketAction, status: 'terminated', tenantId: lockedInst.tenantId });
+        const row = await markInstanceRejected(tx, { instanceId: lockedInst.id, comment: errorComment, killTokens: true, actorId: input.actor.userId });
+        return { row, affectedTasks, newTasks: [] as typeof workflowTasks.$inferSelect[], repairTask: null, finished: false, rejected: true };
+      }
+      const compId = await recordCompensation(tx, {
+        instanceId: lockedInst.id, nodeKey: input.nodeKey, nodeName: input.nodeName, errorMessage: input.errorMessage,
+        action: ticketAction, status: 'pending',
+        compensationActionStatus: compensationCfg ? 'pending' : 'none',
+        failedNodeKey: input.nodeKey,
+        actionPayload: compensationCfg ?? null,
+        tenantId: lockedInst.tenantId,
+      });
+      if (compensationCfg) {
+        await enqueueJob({ jobType: 'compensation_action', payload: { compensationId: compId, instanceId: lockedInst.id, nodeKey: input.nodeKey, error: input.errorMessage, action: compensationCfg }, instanceId: lockedInst.id, nodeKey: input.nodeKey, idempotencyKey: `compaction:${compId}`, maxAttempts: (compensationCfg.maxRetries ?? 3) + 1, tenantId: lockedInst.tenantId }, tx);
+      }
+      const repairTask = await insertCatchTask(tx, { instanceId: lockedInst.id, nodeKey: input.nodeKey, nodeName: `${input.nodeName}（待修复）`, assigneeId: adminId, status: 'pending', comment: errorComment });
+      // Token 一致性：消费失败节点 token，在同一节点新建 frontier token（其余分支保留）
+      await swapFailedTokenTo(tx, { instanceId: lockedInst.id, failedNodeKey: input.nodeKey, targetNodeKey: input.nodeKey, tenantId: lockedInst.tenantId });
+      const [row] = await tx.update(workflowInstances).set({ currentNodeKey: input.nodeKey })
+        .where(eq(workflowInstances.id, lockedInst.id)).returning();
+      return { row, affectedTasks, newTasks: [repairTask], repairTask, finished: false, rejected: false };
+    })();
+
+    if (!updated) return;
+    const meta = { definitionId: updated.row.definitionId, tenantId: updated.row.tenantId, actor: input.actor };
+    for (const task of updated.affectedTasks) {
+      await emitTaskEvent(task.status === 'rejected' ? 'task.rejected' : 'task.skipped', mapTask(task), { ...meta, comment: errorComment }, tx);
     }
-    const compId = await recordCompensation(tx, {
-      instanceId: lockedInst.id, nodeKey: input.nodeKey, nodeName: input.nodeName, errorMessage: input.errorMessage,
-      action: ticketAction, status: 'pending',
-      compensationActionStatus: compensationCfg ? 'pending' : 'none',
-      failedNodeKey: input.nodeKey,
-      actionPayload: compensationCfg ?? null,
-      tenantId: lockedInst.tenantId,
-    });
-    if (compensationCfg) {
-      await enqueueJob({ jobType: 'compensation_action', payload: { compensationId: compId, instanceId: lockedInst.id, nodeKey: input.nodeKey, error: input.errorMessage, action: compensationCfg }, instanceId: lockedInst.id, nodeKey: input.nodeKey, idempotencyKey: `compaction:${compId}`, maxAttempts: (compensationCfg.maxRetries ?? 3) + 1, tenantId: lockedInst.tenantId }, tx);
-    }
-    const repairTask = await insertCatchTask(tx, { instanceId: lockedInst.id, nodeKey: input.nodeKey, nodeName: `${input.nodeName}（待修复）`, assigneeId: adminId, status: 'pending', comment: errorComment });
-    // Token 一致性：消费失败节点 token，在同一节点新建 frontier token（其余分支保留）
-    await swapFailedTokenTo(tx, { instanceId: lockedInst.id, failedNodeKey: input.nodeKey, targetNodeKey: input.nodeKey, tenantId: lockedInst.tenantId });
-    const [row] = await tx.update(workflowInstances).set({ currentNodeKey: input.nodeKey })
-      .where(eq(workflowInstances.id, lockedInst.id)).returning();
-    return { row, affectedTasks, newTasks: [repairTask], repairTask, finished: false, rejected: false };
+    await emitNodeEvent('node.left', { instanceId: updated.row.id, ...meta, nodeKey: input.nodeKey, nodeName: input.nodeName, nodeType: input.task?.nodeType ?? null }, tx);
+    await emitTasksEnteredEvents(updated.row.id, updated.newTasks, meta, tx);
+    if (updated.finished) await emitInstanceEvent('instance.approved', mapInstance(updated.row), input.actor, tx);
+    if (updated.rejected) await emitInstanceEvent('instance.rejected', mapInstance(updated.row), input.actor, tx);
   });
-
-  if (!updated) return true;
-  const meta = { definitionId: updated.row.definitionId, tenantId: updated.row.tenantId, actor: input.actor };
-  for (const task of updated.affectedTasks) {
-    emitTaskEvent(task.status === 'rejected' ? 'task.rejected' : 'task.skipped', mapTask(task), { ...meta, comment: errorComment });
-  }
-  emitNodeEvent('node.left', { instanceId: updated.row.id, ...meta, nodeKey: input.nodeKey, nodeName: input.nodeName, nodeType: input.task?.nodeType ?? null });
-  emitTasksEnteredEvents(updated.row.id, updated.newTasks, meta);
-  if (updated.finished) emitInstanceEvent('instance.approved', mapInstance(updated.row), input.actor);
-  if (updated.rejected) emitInstanceEvent('instance.rejected', mapInstance(updated.row), input.actor);
   return true;
 }
 
@@ -284,7 +286,7 @@ export async function resumeInstanceForCompensation(id: number): Promise<{ resum
   const cu = currentUser();
   const actor: WorkflowEventActor = { userId: cu?.userId ?? 0, name: cu?.username ?? 'system:resume' };
 
-  const updated = await workflowTransaction(async (tx) => {
+  await workflowTransaction(async (tx) => {
     const [inst] = await tx.select().from(workflowInstances).where(eq(workflowInstances.id, ticket.instanceId)).for('update').limit(1);
     if (!inst || inst.status !== 'running') throw new HTTPException(400, { message: '实例不在运行中，无法恢复' });
     const flowData = inst.definitionSnapshot?.flowData;
@@ -319,17 +321,12 @@ export async function resumeInstanceForCompensation(id: number): Promise<{ resum
       .set({ status: 'resolved', resolution: '恢复并继续推进', resolvedBy: cu?.userId ?? null, resolvedAt: new Date() })
       .where(eq(workflowCompensations.id, id));
     await addCompensationLog(tx, { compensationId: id, action: 'resume', note: '恢复并继续推进', operatorId: cu?.userId ?? null, tenantId: ticket.tenantId });
-    return { row, newTasks: materialized.createdTasks, finished: materialized.finished, rejected: materialized.rejected };
+    const updated = { row, newTasks: materialized.createdTasks, finished: materialized.finished, rejected: materialized.rejected };
+    const meta = { definitionId: updated.row.definitionId, tenantId: updated.row.tenantId, actor };
+    await emitTasksEnteredEvents(updated.row.id, updated.newTasks, meta, tx);
+    if (updated.finished) await emitInstanceEvent('instance.approved', mapInstance(updated.row), actor, tx);
+    if (updated.rejected) await emitInstanceEvent('instance.rejected', mapInstance(updated.row), actor, tx);
   });
-
-  const meta = { definitionId: updated.row.definitionId, tenantId: updated.row.tenantId, actor };
-  for (const task of updated.newTasks) {
-    emitNodeEvent('node.entered', { instanceId: updated.row.id, ...meta, nodeKey: task.nodeKey, nodeName: task.nodeName, nodeType: task.nodeType });
-    emitTaskEvent('task.created', mapTask(task), meta);
-    if (task.assigneeId && task.status === 'pending') emitTaskEvent('task.assigned', mapTask(task), meta);
-  }
-  if (updated.finished) emitInstanceEvent('instance.approved', mapInstance(updated.row), actor);
-  if (updated.rejected) emitInstanceEvent('instance.rejected', mapInstance(updated.row), actor);
   return { resumed: true };
 }
 
@@ -367,82 +364,84 @@ export async function handleNodeExecutionError(input: {
 
   const action = catchCfg.catchAction ?? 'notify';
   const errorComment = `[节点异常] ${input.nodeName ?? input.nodeKey}：${input.errorMessage}`;
-  const updated = await workflowTransaction(async (tx) => {
-    const [lockedInst] = await tx.select().from(workflowInstances)
-      .where(eq(workflowInstances.id, input.instance.id))
-      .for('update')
-      .limit(1);
-    if (!lockedInst || lockedInst.status !== 'running') return null;
-    await recordCompensation(tx, { instanceId: lockedInst.id, nodeKey: catchCfg.key, nodeName: catchCfg.label, errorMessage: input.errorMessage, action, status: action === 'toAdmin' ? 'pending' : action === 'terminate' ? 'terminated' : 'resolved', tenantId: lockedInst.tenantId });
+  await workflowTransaction(async (tx) => {
+    const updated = await (async () => {
+      const [lockedInst] = await tx.select().from(workflowInstances)
+        .where(eq(workflowInstances.id, input.instance.id))
+        .for('update')
+        .limit(1);
+      if (!lockedInst || lockedInst.status !== 'running') return null;
+      await recordCompensation(tx, { instanceId: lockedInst.id, nodeKey: catchCfg.key, nodeName: catchCfg.label, errorMessage: input.errorMessage, action, status: action === 'toAdmin' ? 'pending' : action === 'terminate' ? 'terminated' : 'resolved', tenantId: lockedInst.tenantId });
 
-    const affectedTasks = input.task
-      ? await tx.update(workflowTasks).set({
-        status: action === 'terminate' ? 'rejected' : 'skipped',
-        comment: errorComment,
-        actionAt: new Date(),
-      }).where(and(eq(workflowTasks.id, input.task.id), inArray(workflowTasks.status, ['pending', 'waiting']))).returning()
-      : [];
+      const affectedTasks = input.task
+        ? await tx.update(workflowTasks).set({
+          status: action === 'terminate' ? 'rejected' : 'skipped',
+          comment: errorComment,
+          actionAt: new Date(),
+        }).where(and(eq(workflowTasks.id, input.task.id), inArray(workflowTasks.status, ['pending', 'waiting']))).returning()
+        : [];
 
-    if (action === 'terminate') {
-      const catchTask = await insertCatchTask(tx, { instanceId: lockedInst.id, nodeKey: catchCfg.key, nodeName: catchCfg.label, assigneeId: null, status: 'rejected', comment: errorComment, actionAt: new Date() });
-      const row = await markInstanceRejected(tx, { instanceId: lockedInst.id, comment: errorComment, killTokens: true, actorId: input.actor.userId });
-      return { row, affectedTasks, catchTask, newTasks: [] as typeof workflowTasks.$inferSelect[], finished: false, rejected: true };
-    }
-
-    if (action === 'toAdmin') {
-      const adminId = await resolveAdminUserId(tx);
-      if (!adminId) {
-        const catchTask = await insertCatchTask(tx, { instanceId: lockedInst.id, nodeKey: catchCfg.key, nodeName: catchCfg.label, assigneeId: null, status: 'rejected', comment: `${errorComment}；未找到管理员`, actionAt: new Date() });
+      if (action === 'terminate') {
+        const catchTask = await insertCatchTask(tx, { instanceId: lockedInst.id, nodeKey: catchCfg.key, nodeName: catchCfg.label, assigneeId: null, status: 'rejected', comment: errorComment, actionAt: new Date() });
         const row = await markInstanceRejected(tx, { instanceId: lockedInst.id, comment: errorComment, killTokens: true, actorId: input.actor.userId });
         return { row, affectedTasks, catchTask, newTasks: [] as typeof workflowTasks.$inferSelect[], finished: false, rejected: true };
       }
-      const catchTask = await insertCatchTask(tx, { instanceId: lockedInst.id, nodeKey: catchCfg.key, nodeName: catchCfg.label, assigneeId: adminId, status: 'pending', comment: errorComment });
-      // Token 一致性：消费失败节点 token，在 catch 节点新建 frontier token（其余分支 token 保留）
-      await swapFailedTokenTo(tx, { instanceId: lockedInst.id, failedNodeKey: input.nodeKey, targetNodeKey: catchCfg.key, tenantId: lockedInst.tenantId });
-      const [row] = await tx.update(workflowInstances)
-        .set({ currentNodeKey: catchCfg.key })
-        .where(eq(workflowInstances.id, lockedInst.id))
-        .returning();
-      return { row, affectedTasks, catchTask, newTasks: [catchTask], finished: false, rejected: false };
+
+      if (action === 'toAdmin') {
+        const adminId = await resolveAdminUserId(tx);
+        if (!adminId) {
+          const catchTask = await insertCatchTask(tx, { instanceId: lockedInst.id, nodeKey: catchCfg.key, nodeName: catchCfg.label, assigneeId: null, status: 'rejected', comment: `${errorComment}；未找到管理员`, actionAt: new Date() });
+          const row = await markInstanceRejected(tx, { instanceId: lockedInst.id, comment: errorComment, killTokens: true, actorId: input.actor.userId });
+          return { row, affectedTasks, catchTask, newTasks: [] as typeof workflowTasks.$inferSelect[], finished: false, rejected: true };
+        }
+        const catchTask = await insertCatchTask(tx, { instanceId: lockedInst.id, nodeKey: catchCfg.key, nodeName: catchCfg.label, assigneeId: adminId, status: 'pending', comment: errorComment });
+        // Token 一致性：消费失败节点 token，在 catch 节点新建 frontier token（其余分支 token 保留）
+        await swapFailedTokenTo(tx, { instanceId: lockedInst.id, failedNodeKey: input.nodeKey, targetNodeKey: catchCfg.key, tenantId: lockedInst.tenantId });
+        const [row] = await tx.update(workflowInstances)
+          .set({ currentNodeKey: catchCfg.key })
+          .where(eq(workflowInstances.id, lockedInst.id))
+          .returning();
+        return { row, affectedTasks, catchTask, newTasks: [catchTask], finished: false, rejected: false };
+      }
+
+      const catchTask = await insertCatchTask(tx, { instanceId: lockedInst.id, nodeKey: catchCfg.key, nodeName: catchCfg.label, assigneeId: null, status: 'approved', comment: errorComment, actionAt: new Date() });
+      const formData = (lockedInst.formData ?? {}) as Record<string, unknown>;
+      const starter = await buildStarterContext(lockedInst.initiatorId, tx);
+      const materialized = await advanceAndMaterialize(
+        { kind: 'enterNode', nodeKey: catchCfg.key, consumeNodeKey: input.nodeKey },
+        {
+          instanceId: lockedInst.id,
+          initiatorId: lockedInst.initiatorId,
+          executor: tx,
+          flowData,
+          formData,
+          settings: flowData.settings,
+          starter,
+          tenantId: lockedInst.tenantId,
+        },
+      );
+
+      const settled = await settleMaterialized(tx, lockedInst.id, materialized, { comment: errorComment, actorId: input.actor.userId });
+      return { ...settled, affectedTasks, catchTask, newTasks: materialized.createdTasks };
+    })();
+
+    if (!updated) return;
+    const meta = { definitionId: updated.row.definitionId, tenantId: updated.row.tenantId, actor: input.actor };
+    for (const task of updated.affectedTasks) {
+      await emitTaskEvent(task.status === 'rejected' ? 'task.rejected' : 'task.skipped', mapTask(task), { ...meta, comment: errorComment }, tx);
     }
-
-    const catchTask = await insertCatchTask(tx, { instanceId: lockedInst.id, nodeKey: catchCfg.key, nodeName: catchCfg.label, assigneeId: null, status: 'approved', comment: errorComment, actionAt: new Date() });
-    const formData = (lockedInst.formData ?? {}) as Record<string, unknown>;
-    const starter = await buildStarterContext(lockedInst.initiatorId, tx);
-    const materialized = await advanceAndMaterialize(
-      { kind: 'enterNode', nodeKey: catchCfg.key, consumeNodeKey: input.nodeKey },
-      {
-        instanceId: lockedInst.id,
-        initiatorId: lockedInst.initiatorId,
-        executor: tx,
-        flowData,
-        formData,
-        settings: flowData.settings,
-        starter,
-        tenantId: lockedInst.tenantId,
-      },
-    );
-
-    const settled = await settleMaterialized(tx, lockedInst.id, materialized, { comment: errorComment, actorId: input.actor.userId });
-    return { ...settled, affectedTasks, catchTask, newTasks: materialized.createdTasks };
+    await emitNodeEvent('node.left', {
+      instanceId: updated.row.id,
+      ...meta,
+      nodeKey: input.nodeKey,
+      nodeName: input.nodeName ?? input.nodeKey,
+      nodeType: input.task?.nodeType ?? null,
+    }, tx);
+    // 先发 catch 任务，再发其余新任务，保持事件顺序
+    await emitTasksEnteredEvents(updated.row.id, [updated.catchTask], meta, tx);
+    await emitTasksEnteredEvents(updated.row.id, updated.newTasks.filter((task) => task.id !== updated.catchTask.id), meta, tx);
+    if (updated.finished) await emitInstanceEvent('instance.approved', mapInstance(updated.row), input.actor, tx);
+    if (updated.rejected) await emitInstanceEvent('instance.rejected', mapInstance(updated.row), input.actor, tx);
   });
-
-  if (!updated) return true;
-  const meta = { definitionId: updated.row.definitionId, tenantId: updated.row.tenantId, actor: input.actor };
-  for (const task of updated.affectedTasks) {
-    emitTaskEvent(task.status === 'rejected' ? 'task.rejected' : 'task.skipped', mapTask(task), { ...meta, comment: errorComment });
-  }
-  emitNodeEvent('node.left', {
-    instanceId: updated.row.id,
-    ...meta,
-    nodeKey: input.nodeKey,
-    nodeName: input.nodeName ?? input.nodeKey,
-    nodeType: input.task?.nodeType ?? null,
-  });
-  // 先发 catch 任务，再发其余新任务，保持事件顺序
-  emitTasksEnteredEvents(updated.row.id, [updated.catchTask], meta);
-  emitTasksEnteredEvents(updated.row.id, updated.newTasks.filter((task) => task.id !== updated.catchTask.id), meta);
-  if (updated.finished) emitInstanceEvent('instance.approved', mapInstance(updated.row), input.actor);
-  if (updated.rejected) emitInstanceEvent('instance.rejected', mapInstance(updated.row), input.actor);
   return true;
 }

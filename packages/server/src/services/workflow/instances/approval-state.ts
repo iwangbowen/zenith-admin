@@ -3,7 +3,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { evaluateWorkflowApprovalActivation, workflowNodeActivationSchema, workflowApprovalSlotSchema, workflowSignGroupSchema, type WorkflowNodeActivation, type WorkflowEventActor, type WorkflowFlowData } from '@zenith/shared/workflow';
 import { workflowNodeActivations, workflowApprovalSlots, workflowSignGroups, workflowTasks, workflowInstances } from '../../../db/schema';
-import type { DbExecutor } from '../../../db/types';
+import type { DbExecutor, DbTransaction } from '../../../db/types';
 import { requireRow } from '../../../lib/db-assert';
 import { pickEntity } from '../../../lib/entity-map';
 import { resolveUserNames } from '../../../lib/user-nicknames';
@@ -61,7 +61,7 @@ export async function recordSlotOutcome(executor: DbExecutor, task: typeof workf
 
 /** 在实例锁内应用唯一评估器的结果，激活/清场与事件、超时作业原子提交。 */
 export async function reconcileApprovalActivation(
-  executor: DbExecutor, inst: typeof workflowInstances.$inferSelect, activationId: string, actor: WorkflowEventActor,
+  executor: DbTransaction, inst: typeof workflowInstances.$inferSelect, activationId: string, actor: WorkflowEventActor,
   flowData?: WorkflowFlowData,
 ): Promise<{ completed: boolean; failed: boolean; method: WorkflowNodeActivation['approveMethod'] }> {
   const previous = await loadApprovalActivation(executor, inst.id, activationId);

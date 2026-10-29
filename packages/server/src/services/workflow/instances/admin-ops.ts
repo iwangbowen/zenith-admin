@@ -21,7 +21,7 @@ import { recordTaskTransfer, assertAssigneesNotActiveOnNode } from './transfers'
 import { advanceAndMaterialize, killInstanceTokens } from './materialize';
 import { laterActivationsWhere } from './activation-order';
 import { getInstanceDetail } from './queries';
-import { emitInstanceEvent, emitNodeEvent, emitTaskEvent, lockInstanceExpecting, requireVisibleInstance } from './shared';
+import { emitNodeEvent, emitTaskEvent, lockInstanceExpecting, requireVisibleInstance } from './shared';
 import { requireRow } from '../../../lib/db-assert';
 import { requireTenantUser } from '../../../lib/user-nicknames';
 import { buildWhere } from '../../../lib/where-helpers';
@@ -198,7 +198,7 @@ export async function skipStuckToken(tokenId: number, reason?: string) {
   const nodeName = nodeCfg?.label ?? tok.nodeKey;
   const note = `[运营·跳过卡死 Token #${tokenId}]${reason ? ' ' + reason : ''}`;
 
-  const result = await workflowTransaction(async (tx) => {
+  await workflowTransaction(async (tx) => {
     await lockInstanceExpecting(tx, inst.id, 'running', '实例状态已变化，请刷新后重试');
     await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date(), comment: note })
       .where(and(eq(workflowTasks.instanceId, inst.id), eq(workflowTasks.nodeKey, tok.nodeKey), inArray(workflowTasks.status, ['pending', 'waiting'])));
@@ -219,19 +219,12 @@ export async function skipStuckToken(tokenId: number, reason?: string) {
       status, currentNodeKey: status === 'running' ? (materialized.currentNodeKeys[0] ?? null) : null,
     }).where(eq(workflowInstances.id, inst.id)).returning();
     await enqueueSubprocessJoin(row, tx);
-    return { row, newTasks: materialized.createdTasks, status };
+    const actor = { userId: user.userId, name: user.username };
+    const meta = { definitionId: row.definitionId, tenantId: row.tenantId, actor };
+    await emitNodeEvent('node.left', { instanceId: row.id, ...meta, nodeKey: tok.nodeKey, nodeName, nodeType: nodeCfg?.type ?? null }, tx);
+    await emitMaterializedAdvanceEvents(mapInstance(row), row, materialized.createdTasks, actor, tx);
   });
 
-  const actor = { userId: user.userId, name: user.username };
-  const meta = { definitionId: result.row.definitionId, tenantId: result.row.tenantId, actor };
-  emitNodeEvent('node.left', { instanceId: result.row.id, ...meta, nodeKey: tok.nodeKey, nodeName, nodeType: nodeCfg?.type ?? null });
-  for (const t of result.newTasks) {
-    emitNodeEvent('node.entered', { instanceId: result.row.id, ...meta, nodeKey: t.nodeKey, nodeName: t.nodeName, nodeType: t.nodeType });
-    emitTaskEvent('task.created', mapTask(t), meta);
-    if (t.assigneeId && t.status === 'pending') emitTaskEvent('task.assigned', mapTask(t), meta);
-  }
-  if (result.status === 'approved') emitInstanceEvent('instance.approved', mapInstance(result.row), actor);
-  if (result.status === 'rejected') emitInstanceEvent('instance.rejected', mapInstance(result.row), actor);
   return getInstanceDetail(inst.id);
 }
 

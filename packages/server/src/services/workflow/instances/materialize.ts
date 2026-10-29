@@ -8,7 +8,7 @@ import { isGatedTrigger } from '@zenith/shared/workflow';
 import { HTTPException } from 'hono/http-exception';
 import { createDeptTree, resolveAssigneeIds } from '../workflow-assignee-resolver.service';
 import { decide } from '../../platform/rules-runtime.service';
-import type { DbExecutor } from '../../../db/types';
+import type { DbExecutor, DbTransaction } from '../../../db/types';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { resolveActiveDelegate } from '../workflow-delegations.service';
 import { resolveAdminUserId } from '../workflow-assignee-resolver.service';
@@ -566,7 +566,7 @@ export async function advanceAndMaterialize(
 }
 
 /** 调用方传入已授权并锁定的实例；完成判定只使用对应 token 的显式进入身份。 */
-export async function checkNodeCompletion(tx: DbExecutor, inst: typeof workflowInstances.$inferSelect, nodeKey: string, flowData?: WorkflowFlowData, activationId?: string): Promise<{ completed: boolean; failed: boolean; method: WorkflowResolvedApproveMethod | null }> {
+export async function checkNodeCompletion(tx: DbTransaction, inst: typeof workflowInstances.$inferSelect, nodeKey: string, flowData?: WorkflowFlowData, activationId?: string): Promise<{ completed: boolean; failed: boolean; method: WorkflowResolvedApproveMethod | null }> {
  const id = activationId ?? (await tx.select({ id: workflowNodeActivations.id }).from(workflowNodeActivations).innerJoin(workflowTokens, eq(workflowNodeActivations.tokenId, workflowTokens.id)).where(and(eq(workflowNodeActivations.instanceId, inst.id), eq(workflowNodeActivations.nodeKey, nodeKey), eq(workflowTokens.status, 'active'))).limit(1))[0]?.id;
  if (!id) throw new HTTPException(409, { message: '节点缺少显式激活轮次' });
  return reconcileApprovalActivation(tx, inst, id, { userId: 0, name: 'system:approval' }, flowData);

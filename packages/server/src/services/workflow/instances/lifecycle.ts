@@ -21,7 +21,7 @@ import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../../lib/context';
 import { buildStarterContext } from '../workflow-assignee-resolver.service';
 import { resolveFormSnapshot } from '../workflow-forms.service';
-import type { DbExecutor } from '../../../db/types';
+import type { DbTransaction } from '../../../db/types';
 import { allocateWorkflowInstanceNumber, requirePinnedWorkflowNumbering } from '../workflow-numbering.service';
 import { isPgUniqueViolation } from '../../../lib/db-errors';
 import logger from '../../../lib/logger';
@@ -237,14 +237,13 @@ export async function createInstance(data: { definitionId: number; title: string
   return instanceDto;
 }
 
-/** 实例进入流转后统一触发事件 + 调度延迟/子流程（createInstance 与草稿提交共用） */
-/** 入队"发起"相关事件（传 executor 在事务内原子入队 outbox；不传则提交后 best-effort 入队） */
+/** 实例进入流转后，在业务事务中统一持久化发起及推进事件。 */
 export async function emitInstanceStartEvents(
   instanceDto: ReturnType<typeof mapInstance>,
   instance: typeof workflowInstances.$inferSelect,
   createdTasks: typeof workflowTasks.$inferSelect[],
   actor: { userId: number; name: string },
-  executor?: DbExecutor,
+  executor: DbTransaction,
 ): Promise<void> {
   await emitInstanceEvent('instance.created', instanceDto, actor, executor);
   await emitMaterializedAdvanceEvents(instanceDto, instance, createdTasks, actor, executor);
@@ -260,7 +259,7 @@ export async function emitMaterializedAdvanceEvents(
   instance: typeof workflowInstances.$inferSelect,
   createdTasks: typeof workflowTasks.$inferSelect[],
   actor: { userId: number; name: string },
-  executor?: DbExecutor,
+  executor: DbTransaction,
 ): Promise<void> {
   await emitTasksEnteredEvents(instance.id, createdTasks, { definitionId: instance.definitionId, tenantId: instance.tenantId, actor }, executor);
   if (instance.status === 'approved') await emitInstanceEvent('instance.approved', instanceDto, actor, executor);
@@ -325,7 +324,7 @@ export async function withdrawInstance(id: number) {
 }
 
 /** Business invalidation uses the same token, task, job and outcome cleanup as administrator cancellation. */
-export async function cancelWorkflowInstanceInTransaction(tx: DbExecutor, id: number, tenantId: number | null, actor: WorkflowEventActor | undefined, reason: string) {
+export async function cancelWorkflowInstanceInTransaction(tx: DbTransaction, id: number, tenantId: number | null, actor: WorkflowEventActor | undefined, reason: string) {
   const where = and(eq(workflowInstances.id, id), exactTenantCondition(workflowInstances.tenantId, tenantId));
   const [locked] = await tx.select({ status: workflowInstances.status }).from(workflowInstances).where(where).for('update').limit(1);
   if (!locked || !['running', 'suspended'].includes(locked.status)) return null;

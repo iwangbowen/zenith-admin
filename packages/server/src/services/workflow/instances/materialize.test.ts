@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { DbExecutor } from '../../../db/types';
+import type { DbTransaction } from '../../../db/types';
 import { workflowInstances, workflowNodeActivations } from '../../../db/schema';
 
 const mocks = vi.hoisted(() => ({ reconcile: vi.fn(), cancel: vi.fn() }));
@@ -7,12 +7,12 @@ vi.mock('./approval-state', () => ({ reconcileApprovalActivation: mocks.reconcil
 import { checkNodeCompletion, killInstanceTokens } from './materialize';
 
 const instance = { id: 1, status: 'running', definitionId: 7 } as typeof workflowInstances.$inferSelect;
-function executor(activeId?: string): DbExecutor {
+function executor(activeId?: string): DbTransaction {
   return { select: () => ({ from: (table: unknown) => {
     const rows = table === workflowNodeActivations && activeId ? [{ id: activeId }] : [];
     const query = { innerJoin: () => query, where: () => query, limit: async () => rows };
     return query;
-  } }), update: () => ({ set: () => ({ where: async () => [] }) }) } as unknown as DbExecutor;
+  } }), update: () => ({ set: () => ({ where: async () => [] }) }) } as unknown as DbTransaction;
 }
 
 beforeEach(() => { vi.clearAllMocks(); mocks.reconcile.mockResolvedValue({ completed: false, failed: false, method: 'and' }); });
@@ -33,7 +33,7 @@ describe('checkNodeCompletion explicit activation identity', () => {
     expect(mocks.reconcile).not.toHaveBeenCalled();
   });
   it('does not reload an already authorized instance through an unscoped query', async () => {
-    const tx = { select: vi.fn(() => { throw new Error('unexpected instance reload'); }) } as unknown as DbExecutor;
+    const tx = { select: vi.fn(() => { throw new Error('unexpected instance reload'); }) } as unknown as DbTransaction;
     await checkNodeCompletion(tx, instance, 'finance', undefined, 'round-1');
     expect(tx.select).not.toHaveBeenCalled();
   });

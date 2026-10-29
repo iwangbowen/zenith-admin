@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import type { SQL } from 'drizzle-orm';
 import { workflowInstances, workflowTasks, workflowNodeActivations, workflowApprovalSlots, workflowSignGroups } from '../../../db/schema';
-import type { DbExecutor } from '../../../db/types';
+import type { DbTransaction } from '../../../db/types';
 const mocks = vi.hoisted(() => ({ cancel: vi.fn(), arm: vi.fn(), emit: vi.fn() }));
 vi.mock('../../../lib/user-nicknames', () => ({ resolveUserNames: async () => new Map() }));
 vi.mock('../../../lib/workflow-jobs/engine', () => ({ cancelJobs: mocks.cancel }));
@@ -37,7 +37,7 @@ function fixture(position: 'before' | 'after' | 'parallel' = 'after') {
       const changed = rowsFor(table).filter((row) => matches(row, condition)).map((row) => { Object.assign(row, patch); return structuredClone(row); });
       return { returning: async () => changed, then: (resolve: (rows: Row[]) => unknown) => Promise.resolve(changed).then(resolve) };
     } }) }),
-  } as unknown as DbExecutor;
+  } as unknown as DbTransaction;
   return { inst, activations, slots, groups, tasks, tx };
 }
 const actor = { userId: 1, name: '审批人' };

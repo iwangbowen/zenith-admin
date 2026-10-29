@@ -5,7 +5,7 @@ import { getWorkflowBusinessAdapter } from '../../../lib/workflow-business';
 import type { WorkflowTask as WorkflowTaskDto, WorkflowCustomFormConfig, WorkflowDefinitionSnapshot, WorkflowFlowData, WorkflowFormType } from '@zenith/shared/workflow';
 import { currentUser } from '../../../lib/context';
 import { db } from '../../../db';
-import type { DbExecutor } from '../../../db/types';
+import type { DbExecutor, DbTransaction } from '../../../db/types';
 import { workflowInstances, workflowTasks, type WorkflowDefinitionRow } from '../../../db/schema';
 import { requireRow } from '../../../lib/db-assert';
 import { tenantCondition } from '../../../lib/tenant';
@@ -83,14 +83,14 @@ export function toDefinitionSnapshot(
   };
 }
 
-/** 发射实例生命周期事件的辅助函数（传 executor 时在事务内入队 outbox，需 await） */
+/** 在业务事务内持久化实例事件，并同步执行必须随审批提交的业务回写。 */
 export async function emitInstanceEvent(
   type: 'instance.created' | 'instance.approved' | 'instance.rejected' | 'instance.withdrawn' | 'instance.returned',
   instance: ReturnType<typeof mapInstance>,
   actor: { userId: number; name?: string | null },
-  executor?: DbExecutor,
+  executor: DbTransaction,
 ): Promise<unknown> {
-  if (executor && type !== 'instance.created') {
+  if (type !== 'instance.created') {
     await getWorkflowBusinessAdapter(instance.bizType)?.onOutcomeInTransaction?.(executor, instance, actor.userId);
   }
   const ev = {
@@ -101,17 +101,16 @@ export async function emitInstanceEvent(
     actor,
     instance,
   } as Parameters<typeof workflowEventBus.emit>[0];
-  if (executor) return workflowEventBus.emitInTx(ev, executor);
-  workflowEventBus.emit(ev);
+  return workflowEventBus.emitInTx(ev, executor);
 }
 
-/** 发射任务生命周期事件的辅助函数（传 executor 时在事务内入队 outbox，需 await） */
+/** 在任务状态变更的同一事务内持久化任务事件。 */
 export function emitTaskEvent(
   type: 'task.created' | 'task.approved' | 'task.rejected' | 'task.skipped' | 'task.transferred' | 'task.assigned' | 'task.addSigned' | 'task.reduceSigned' | 'task.urged',
   task: WorkflowTaskDto,
   meta: { definitionId: number; tenantId: number | null; actor?: { userId: number; name?: string | null }; comment?: string | null },
-  executor?: DbExecutor,
-): void | Promise<unknown> {
+  executor: DbTransaction,
+): Promise<unknown> {
   const ev = {
     type,
     instanceId: task.instanceId,
@@ -121,16 +120,15 @@ export function emitTaskEvent(
     task,
     comment: meta.comment,
   } as Parameters<typeof workflowEventBus.emit>[0];
-  if (executor) return workflowEventBus.emitInTx(ev, executor);
-  workflowEventBus.emit(ev);
+  return workflowEventBus.emitInTx(ev, executor);
 }
 
-/** 发射节点进入/离开事件（传 executor 时在事务内入队 outbox，需 await） */
+/** 在节点推进的同一事务内持久化节点进入/离开事件。 */
 export function emitNodeEvent(
   type: 'node.entered' | 'node.left',
   meta: { instanceId: number; definitionId: number; tenantId: number | null; nodeKey: string; nodeName: string; nodeType: WorkflowTaskDto['nodeType']; actor?: { userId: number; name?: string | null } },
-  executor?: DbExecutor,
-): void | Promise<unknown> {
+  executor: DbTransaction,
+): Promise<unknown> {
   const ev = {
     type,
     instanceId: meta.instanceId,
@@ -141,34 +139,24 @@ export function emitNodeEvent(
     nodeName: meta.nodeName,
     nodeType: meta.nodeType,
   } as Parameters<typeof workflowEventBus.emit>[0];
-  if (executor) return workflowEventBus.emitInTx(ev, executor);
-  workflowEventBus.emit(ev);
+  return workflowEventBus.emitInTx(ev, executor);
 }
 
 type TaskRow = typeof workflowTasks.$inferSelect;
 
-/**
- * 推进产生的新任务统一补发 node.entered → task.created → 按状态 task.assigned / approved / rejected。
- * 传 executor 时在事务内入队 outbox（需 await）；不传则提交后同步发射。
- */
-export function emitTasksEnteredEvents(
+/** 推进产生的新任务在同一事务中按 node.entered → task.created → 状态事件的顺序持久化。 */
+export async function emitTasksEnteredEvents(
   instanceId: number,
   tasks: readonly TaskRow[],
   meta: { definitionId: number; tenantId: number | null; actor?: { userId: number; name?: string | null } },
-  executor?: DbExecutor,
-): void | Promise<void> {
-  const emitsFor = (t: TaskRow) => [
-    () => emitNodeEvent('node.entered', { instanceId, ...meta, nodeKey: t.nodeKey, nodeName: t.nodeName, nodeType: t.nodeType }, executor),
-    () => emitTaskEvent('task.created', mapTask(t), meta, executor),
-    () => (t.assigneeId && t.status === 'pending' ? emitTaskEvent('task.assigned', mapTask(t), meta, executor) : undefined),
-    () => (t.status === 'approved' ? emitTaskEvent('task.approved', mapTask(t), meta, executor) : undefined),
-    () => (t.status === 'rejected' ? emitTaskEvent('task.rejected', mapTask(t), meta, executor) : undefined),
-  ];
-  if (!executor) {
-    for (const t of tasks) for (const emit of emitsFor(t)) emit();
-    return;
+  executor: DbTransaction,
+): Promise<void> {
+  for (const task of tasks) {
+    await emitNodeEvent('node.entered', { instanceId, ...meta, nodeKey: task.nodeKey, nodeName: task.nodeName, nodeType: task.nodeType }, executor);
+    const dto = mapTask(task);
+    await emitTaskEvent('task.created', dto, meta, executor);
+    if (task.assigneeId && task.status === 'pending') await emitTaskEvent('task.assigned', dto, meta, executor);
+    if (task.status === 'approved') await emitTaskEvent('task.approved', dto, meta, executor);
+    if (task.status === 'rejected') await emitTaskEvent('task.rejected', dto, meta, executor);
   }
-  return (async () => {
-    for (const t of tasks) for (const emit of emitsFor(t)) await emit();
-  })();
 }

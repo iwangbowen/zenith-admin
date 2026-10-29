@@ -5,7 +5,7 @@ import { enqueueSubprocessJoin } from './async-jobs';
 // ─── 任务流转：转办/委派/加签/减签/退回（拆分自 workflow-instances.service.ts）───
 import { eq, and, inArray } from 'drizzle-orm';
 import { db } from '../../../db';
-import type { DbExecutor } from '../../../db/types';
+import type { DbTransaction } from '../../../db/types';
 import { workflowInstances, workflowTasks, users, workflowApprovalSlots, workflowSignGroups, workflowNodeActivations } from '../../../db/schema';
 import { getAncestorNodeKeys } from '../../../lib/workflow-engine';
 import { HTTPException } from 'hono/http-exception';
@@ -95,7 +95,7 @@ export async function systemTransferTaskToManager(
 }
 
 export async function systemTransferTaskToManagerInTransaction(
-  tx: DbExecutor,
+  tx: DbTransaction,
   task: typeof workflowTasks.$inferSelect,
   inst: typeof workflowInstances.$inferSelect,
   managerId: number,
