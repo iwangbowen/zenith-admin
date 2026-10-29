@@ -39,6 +39,12 @@ const severityOptions = [
   { value: 'critical', label: '严重' },
 ];
 
+const slaNumberFormatter = new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 2 });
+
+function formatSlaValue(value: number): string {
+  return Number.isFinite(value) ? slaNumberFormatter.format(value) : EMPTY_PLACEHOLDER;
+}
+
 export default function GovernanceSlaTab() {
   const { hasPermission } = usePermission();
   const { page, pageSize, setPage, buildPagination } = usePagination();
@@ -99,7 +105,7 @@ export default function GovernanceSlaTab() {
     { title: '规则名称', dataIndex: 'name', minWidth: 190, render: renderEllipsis },
     { title: '数据集', dataIndex: 'datasetId', width: 150, render: (v: number) => renderEllipsis(datasetNameMap.get(v) ?? `#${v}`) },
     { title: '类型', dataIndex: 'type', width: 150, render: (v) => slaTypeOptions.find((item) => item.value === v)?.label ?? v },
-    { title: '目标/预警', width: 130, render: (_v, r) => `${r.targetValue} / ${r.warningValue ?? EMPTY_PLACEHOLDER}` },
+    { title: '目标/预警', width: 160, render: (_v, r) => renderEllipsis(`${formatSlaValue(r.targetValue)} / ${r.warningValue == null ? EMPTY_PLACEHOLDER : formatSlaValue(r.warningValue)}`) },
     { title: '窗口', dataIndex: 'windowMinutes', width: 100, align: 'right', render: (v) => `${v} 分钟` },
     { title: '调度', width: 200, render: (_v, r) => renderEllipsis(r.cron ? `${r.cron} · ${r.timezone}` : '仅手动') },
     dateTimeColumn('最近评估', 'lastEvaluatedAt'),
@@ -127,7 +133,7 @@ export default function GovernanceSlaTab() {
   const violationColumns: ColumnProps<ReportSlaViolation>[] = [
     { title: '规则 ID', dataIndex: 'ruleId', width: 100 },
     { title: '数据集', dataIndex: 'datasetId', width: 150, render: (v: number) => renderEllipsis(datasetNameMap.get(v) ?? `#${v}`) },
-    { title: '观测/目标', width: 130, render: (_v, r) => `${r.observedValue} / ${r.targetValue}` },
+    { title: '观测/目标', width: 180, render: (_v, r) => renderEllipsis(`${formatSlaValue(r.observedValue)} / ${formatSlaValue(r.targetValue)}`) },
     dateTimeColumn('窗口开始', 'windowStartedAt'),
     dateTimeColumn('窗口结束', 'windowEndedAt'),
     { title: '详情', dataIndex: 'detail', minWidth: 230, render: renderEllipsis },
