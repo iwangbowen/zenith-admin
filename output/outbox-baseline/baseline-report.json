@@ -1,0 +1,129 @@
+{
+  "sourceCommit": "318d71ed6a51d73bd6552d9598704c1fc418280c",
+  "generatedAt": "2026-10-29T13:22:17.411Z",
+  "environment": {
+    "node": "v24.21.0",
+    "platform": "win32",
+    "cpus": 16,
+    "maxWorkers": 8,
+    "lockHash": "34d17ea364e2cf3da1c31456da78a01928071f5f7a3c730e6793affa94760ae9",
+    "pdfFontSha256": "faa6c9df652116dde789d351359f3d7e5d2285a2b2a1f04a2d7244df706d5ea9",
+    "fsModuleCache": false,
+    "dotenv": "disabled for benchmark"
+  },
+  "profiles": {
+    "full": {
+      "runs": 3,
+      "files": 550,
+      "passed": 4086,
+      "failed": 0,
+      "skipped": 83,
+      "medianSeconds": 475.0656847000001,
+      "rangeSeconds": [
+        460.6741368,
+        476.68169179999995
+      ],
+      "samplesSeconds": [
+        460.6741368,
+        476.68169179999995,
+        475.0656847000001
+      ]
+    },
+    "identity": {
+      "runs": 3,
+      "files": 22,
+      "passed": 225,
+      "failed": 0,
+      "skipped": 0,
+      "medianSeconds": 58.68911320000002,
+      "rangeSeconds": [
+        51.79576089999988,
+        61.964708700000074
+      ],
+      "samplesSeconds": [
+        61.964708700000074,
+        58.68911320000002,
+        51.79576089999988
+      ]
+    },
+    "workflow": {
+      "runs": 3,
+      "files": 44,
+      "passed": 330,
+      "failed": 0,
+      "skipped": 0,
+      "medianSeconds": 67.0293581999999,
+      "rangeSeconds": [
+        66.94495720000006,
+        76.50463479999988
+      ],
+      "samplesSeconds": [
+        66.94495720000006,
+        67.0293581999999,
+        76.50463479999988
+      ]
+    },
+    "payment": {
+      "runs": 3,
+      "files": 24,
+      "passed": 205,
+      "failed": 0,
+      "skipped": 1,
+      "medianSeconds": 58.205260199999906,
+      "rangeSeconds": [
+        50.45563459999999,
+        60.95530410000006
+      ],
+      "samplesSeconds": [
+        60.95530410000006,
+        58.205260199999906,
+        50.45563459999999
+      ]
+    }
+  },
+  "boundary": {
+    "scope": "Synthetic source/effect rows using the production event primitive; queue scheduling and business services excluded. HTTP and Redis measured separately.",
+    "legacyCrash": {
+      "exitCode": 86,
+      "beforeRecovery": {
+        "facts": 1,
+        "receipts": 0
+      },
+      "afterRecovery": {
+        "facts": 1,
+        "receipts": 0
+      }
+    },
+    "durableCrash": {
+      "exitCode": 86,
+      "beforeRecovery": {
+        "facts": 1,
+        "receipts": 0
+      },
+      "afterRecovery": {
+        "facts": 1,
+        "receipts": 1
+      }
+    },
+    "interpretation": "One smoke run each under concurrent suite load; latency numbers are not a controlled before/after performance conclusion."
+  },
+  "excludedSamples": [
+    {
+      "file": "tests/outbox-baseline-summary.json",
+      "reason": "Frozen copy initially resolved root archiver instead of original workspace-local archiver. 3 ZipArchive construction failures. Dependency links corrected before adopted isolated samples."
+    }
+  ],
+  "knownResourceOverlap": [
+    {
+      "sample": "full-3",
+      "from": "2026-10-29T21:02:46+08:00",
+      "to": "2026-10-29T21:03:21+08:00",
+      "activity": "single-fork payment focused tests (4 files/51 cases) plus short eslint; mark overlap rather than claim idle-host timing"
+    },
+    {
+      "sample": "workflow-3",
+      "activity": "read-only AST source inventory around 21:12:52; lightweight fixture imports and localhost probes ran around 21:13–21:15"
+    }
+  ],
+  "comparisonRequirement": "At final comparison repeat baseline/candidate in paired sequence using frozen source, same dependencies, same profiles and an otherwise idle host. Do not compare unmatched scopes or label smoke probes as end-to-end business verification."
+}
