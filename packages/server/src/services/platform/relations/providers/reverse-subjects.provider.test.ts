@@ -48,7 +48,14 @@ function captureAccess(batches: unknown[][] = [], principal = user) {
 }
 
 function provider(type: CanonicalEntityType, resolve: ReverseSubjectAnchorResolver) {
-  return reverseSubjectProviders(targetTypes, resolve).find((item) => item.sourceType === type)!;
+  return reverseSubjectProviders(targetTypes, resolve, async (refs, access) => {
+    const targets = new Map<string, VisibleEntityAnchor>();
+    for (const ref of refs) {
+      try { targets.set(`${ref.type}:${ref.key}`, await resolve(ref.type, ref.key, access)); }
+      catch (error) { if (!(error instanceof HTTPException) || error.status !== 404) throw error; }
+    }
+    return targets;
+  }).find((item) => item.sourceType === type)!;
 }
 function visibleResolver(source: VisibleEntityAnchor, hidden = new Set<string>()): ReverseSubjectAnchorResolver {
   return vi.fn(async (type, key) => {

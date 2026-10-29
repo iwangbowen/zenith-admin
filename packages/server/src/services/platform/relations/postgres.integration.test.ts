@@ -1,3 +1,4 @@
+import { accessScopeKey } from '@zenith/shared/identity';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { CanonicalEntityRef } from '@zenith/shared/platform';
@@ -68,8 +69,10 @@ integration('entity relations on isolated PostgreSQL', () => {
       { title: 'QA task access', name: `${runId}_tasks`, type: 'button', permission: 'system:async-task:list' },
     ]).returning({ id: tables.menus.id });
     menuIds.push(userMenu.id, taskMenu.id);
-    await storage.db.insert(tables.userMenus).values([
-      { userId: reader.userId, menuId: userMenu.id }, { userId: taskReader.userId, menuId: userMenu.id }, { userId: taskReader.userId, menuId: taskMenu.id },
+    await storage.db.insert(tables.identityUserPermissions).values([
+      { userId: reader.userId, permissionCode: 'system:user:list', dataScope: 'all', scopeKey: accessScopeKey('all', []) },
+      { userId: taskReader.userId, permissionCode: 'system:user:list', dataScope: 'all', scopeKey: accessScopeKey('all', []) },
+      { userId: taskReader.userId, permissionCode: 'system:async-task:list', dataScope: 'all', scopeKey: accessScopeKey('all', []) },
     ]);
   }, 120_000);
 
@@ -330,9 +333,9 @@ integration('entity relations on isolated PostgreSQL', () => {
     expect(await storage.db.$count(tables.entityWatchEvents, eq(tables.entityWatchEvents.eventId, eventId))).toBe(0);
     const delayed = { ...notifications[0], scheduledAt: new Date(), vars: { ...notifications[0].vars, entityWatchDigestReady: true } };
     expect(await authorizeEntityWatchDelivery(delayed, { type: 'user', id: taskReader.userId })).not.toBeNull();
-    await storage.db.delete(tables.userMenus).where(and(eq(tables.userMenus.userId, taskReader.userId), eq(tables.userMenus.menuId, menuIds[1])));
+    await storage.db.delete(tables.identityUserPermissions).where(and(eq(tables.identityUserPermissions.userId, taskReader.userId), eq(tables.identityUserPermissions.permissionCode, 'system:async-task:list')));
     try { expect(await authorizeEntityWatchDelivery(delayed, { type: 'user', id: taskReader.userId })).toBeNull(); }
-    finally { await storage.db.insert(tables.userMenus).values({ userId: taskReader.userId, menuId: menuIds[1] }); }
+    finally { await storage.db.insert(tables.identityUserPermissions).values({ userId: taskReader.userId, permissionCode: 'system:async-task:list', dataScope: 'all', scopeKey: accessScopeKey('all', []) }); }
     await context.runWithCurrentUser(taskReader, () => changeEntityWatch(taskRef(sourceId), false));
     expect(await authorizeEntityWatchDelivery(delayed, { type: 'user', id: taskReader.userId })).not.toBeNull();
     await context.runWithCurrentUser(taskReader, () => changeEntityWatch(taskRef(relatedId), false));

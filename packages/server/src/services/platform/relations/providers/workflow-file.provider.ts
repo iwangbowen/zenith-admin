@@ -1,6 +1,6 @@
+import { anchorIdsWhere, numericAnchorResolver } from '../anchor-batch';
 import type { DbExecutor } from '../../../../db/types';
 import { and, desc, eq, exists, isNull, lt, or, sql } from 'drizzle-orm';
-import type { EntityRef } from '@zenith/shared/core';
 import { entityRelationRecordFilters, type EntityRelationPage } from '@zenith/shared/platform';
 import { asyncTasks, driveNodes, driveSpaces, wikiDocs, wikiSpaces, workflowInstances, workflowTasks } from '../../../../db/schema';
 import { hasPermission, runWithCurrentUser } from '../../../../lib/context';
@@ -73,66 +73,55 @@ async function workflowInstanceSummary(anchor: VisibleEntityAnchor, access: Rela
     access.db.select({ id: workflowInstances.id }).from(workflowInstances).where(buildWhere(visible, workflowInstanceAttention(access))));
 }
 
-async function resolveWorkflowInstance(ref: EntityRef, access: RelationAccessContext): Promise<VisibleEntityAnchor | null> {
+async function resolveWorkflowInstances(ids: number[], access: RelationAccessContext): Promise<VisibleEntityAnchor[]> {
   return runWithCurrentUser(access.user, async () => {
-    if (ref.type !== 'workflow.instance' || !(await hasPermission(...WORKFLOW_PERMISSIONS))) return null;
-    const id = parseId(ref.key);
-    if (id == null) return null;
-    const [row] = await access.db.select({ id: workflowInstances.id, title: workflowInstances.title, tenantId: workflowInstances.tenantId, bizType: workflowInstances.bizType, bizId: workflowInstances.bizId })
-      .from(workflowInstances).where(buildWhere(eq(workflowInstances.id, id), tenantCondition(workflowInstances, access.user), await workflowVisibility(access))).limit(1);
-    return row ? { ref: { type: 'workflow.instance', key: String(row.id) }, title: row.title, tenantId: row.tenantId, metadata: { bizType: row.bizType, bizId: row.bizId } } : null;
+    if (!(await hasPermission(...WORKFLOW_PERMISSIONS))) return [];
+    const rows = await access.db.select({ id: workflowInstances.id, title: workflowInstances.title, tenantId: workflowInstances.tenantId, bizType: workflowInstances.bizType, bizId: workflowInstances.bizId })
+      .from(workflowInstances).where(buildWhere(anchorIdsWhere(workflowInstances.id, ids), tenantCondition(workflowInstances, access.user), await workflowVisibility(access))).limit(ids.length);
+    return rows.map((row): VisibleEntityAnchor => ({ ref: { type: 'workflow.instance', key: String(row.id) }, title: row.title, tenantId: row.tenantId, metadata: { bizType: row.bizType, bizId: row.bizId } }));
   });
 }
 
-async function resolveWorkflowTask(ref: EntityRef, access: RelationAccessContext): Promise<VisibleEntityAnchor | null> {
+async function resolveWorkflowTasks(ids: number[], access: RelationAccessContext): Promise<VisibleEntityAnchor[]> {
   return runWithCurrentUser(access.user, async () => {
-    if (ref.type !== 'workflow.task' || !(await hasPermission(...WORKFLOW_PERMISSIONS))) return null;
-    const id = parseId(ref.key);
-    if (id == null) return null;
-    const [row] = await access.db.select({ id: workflowTasks.id, name: workflowTasks.nodeName, instanceId: workflowInstances.id, tenantId: workflowInstances.tenantId })
+    if (!(await hasPermission(...WORKFLOW_PERMISSIONS))) return [];
+    const rows = await access.db.select({ id: workflowTasks.id, name: workflowTasks.nodeName, instanceId: workflowInstances.id, tenantId: workflowInstances.tenantId })
       .from(workflowTasks).innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
-      .where(buildWhere(eq(workflowTasks.id, id), tenantCondition(workflowInstances, access.user), await workflowVisibility(access))).limit(1);
-    return row ? { ref: { type: 'workflow.task', key: String(row.id) }, title: row.name, tenantId: row.tenantId, metadata: { instanceId: row.instanceId } } : null;
+      .where(buildWhere(anchorIdsWhere(workflowTasks.id, ids), tenantCondition(workflowInstances, access.user), await workflowVisibility(access))).limit(ids.length);
+    return rows.map((row): VisibleEntityAnchor => ({ ref: { type: 'workflow.task', key: String(row.id) }, title: row.name, tenantId: row.tenantId, metadata: { instanceId: row.instanceId } }));
   });
 }
 
-async function resolveDriveFile(ref: EntityRef, access: RelationAccessContext): Promise<VisibleEntityAnchor | null> {
+async function resolveDriveFiles(ids: number[], access: RelationAccessContext): Promise<VisibleEntityAnchor[]> {
   return runWithCurrentUser(access.user, async () => {
-    if (ref.type !== 'drive.file' || !(await hasPermission('drive:node:list'))) return null;
-    const id = parseId(ref.key);
-    if (id == null) return null;
+    if (!(await hasPermission('drive:node:list'))) return [];
     const subjects = await loadDriveSubjects();
-    const [row] = await access.db.select({ id: driveNodes.id, name: driveNodes.name, spaceId: driveNodes.spaceId, parentId: driveNodes.parentId, tenantId: driveNodes.tenantId })
+    const rows = await access.db.select({ id: driveNodes.id, name: driveNodes.name, spaceId: driveNodes.spaceId, parentId: driveNodes.parentId, tenantId: driveNodes.tenantId })
       .from(driveNodes).innerJoin(driveSpaces, eq(driveNodes.spaceId, driveSpaces.id))
-      .where(buildWhere(eq(driveNodes.id, id), isNull(driveNodes.deletedAt), tenantCondition(driveNodes, access.user),
-        sql`${driveSpaces.tenantId} is not distinct from ${driveNodes.tenantId}`, visibleNodeCondition(subjects))).limit(1);
-    return row ? { ref: { type: 'drive.file', key: String(row.id) }, title: row.name.slice(0, 160), tenantId: row.tenantId, metadata: { spaceId: row.spaceId, parentId: row.parentId } } : null;
+      .where(buildWhere(anchorIdsWhere(driveNodes.id, ids), isNull(driveNodes.deletedAt), tenantCondition(driveNodes, access.user),
+        sql`${driveSpaces.tenantId} is not distinct from ${driveNodes.tenantId}`, visibleNodeCondition(subjects))).limit(ids.length);
+    return rows.map((row): VisibleEntityAnchor => ({ ref: { type: 'drive.file', key: String(row.id) }, title: row.name.slice(0, 160), tenantId: row.tenantId, metadata: { spaceId: row.spaceId, parentId: row.parentId } }));
   });
 }
 
-async function resolveWikiDocument(ref: EntityRef, access: RelationAccessContext): Promise<VisibleEntityAnchor | null> {
+async function resolveWikiDocuments(ids: number[], access: RelationAccessContext): Promise<VisibleEntityAnchor[]> {
   return runWithCurrentUser(access.user, async () => {
-    if (ref.type !== 'wiki.document' || !(await hasPermission('wiki:doc:list'))) return null;
-    const id = parseId(ref.key);
-    if (id == null) return null;
-    const [row] = await access.db.select({ id: wikiDocs.id, title: wikiDocs.title, spaceId: wikiDocs.spaceId, parentId: wikiDocs.parentId, tenantId: wikiDocs.tenantId })
+    if (!(await hasPermission('wiki:doc:list'))) return [];
+    const rows = await access.db.select({ id: wikiDocs.id, title: wikiDocs.title, spaceId: wikiDocs.spaceId, parentId: wikiDocs.parentId, tenantId: wikiDocs.tenantId })
       .from(wikiDocs).innerJoin(wikiSpaces, eq(wikiDocs.spaceId, wikiSpaces.id))
-      .where(buildWhere(eq(wikiDocs.id, id), isNull(wikiDocs.deletedAt), tenantCondition(wikiDocs, access.user),
-        sql`${wikiSpaces.tenantId} is not distinct from ${wikiDocs.tenantId}`, wikiSpaceAccessCondition(), wikiDocStatusVisibilityCondition())).limit(1);
-    return row ? { ref: { type: 'wiki.document', key: String(row.id) }, title: row.title.slice(0, 160), tenantId: row.tenantId, metadata: { spaceId: row.spaceId, parentId: row.parentId } } : null;
+      .where(buildWhere(anchorIdsWhere(wikiDocs.id, ids), isNull(wikiDocs.deletedAt), tenantCondition(wikiDocs, access.user),
+        sql`${wikiSpaces.tenantId} is not distinct from ${wikiDocs.tenantId}`, wikiSpaceAccessCondition(), wikiDocStatusVisibilityCondition())).limit(ids.length);
+    return rows.map((row): VisibleEntityAnchor => ({ ref: { type: 'wiki.document', key: String(row.id) }, title: row.title.slice(0, 160), tenantId: row.tenantId, metadata: { spaceId: row.spaceId, parentId: row.parentId } }));
   });
 }
 
-async function resolveAsyncTask(ref: EntityRef, access: RelationAccessContext): Promise<VisibleEntityAnchor | null> {
+async function resolveAsyncTasks(ids: number[], access: RelationAccessContext): Promise<VisibleEntityAnchor[]> {
   return runWithCurrentUser(access.user, async () => {
-    if (ref.type !== 'tasks.async') return null;
-    const id = parseId(ref.key);
-    if (id == null) return null;
     const scope = await resolveAsyncTaskAccessScope();
-    const [row] = await access.db.select({ id: asyncTasks.id, title: asyncTasks.title, tenantId: asyncTasks.tenantId })
-      .from(asyncTasks).where(buildWhere(eq(asyncTasks.id, id), tenantCondition(asyncTasks, access.user),
-        scope.global ? undefined : eq(asyncTasks.createdBy, scope.userId))).limit(1);
-    return row ? { ref: { type: 'tasks.async', key: String(row.id) }, title: row.title, tenantId: row.tenantId } : null;
+    const rows = await access.db.select({ id: asyncTasks.id, title: asyncTasks.title, tenantId: asyncTasks.tenantId })
+      .from(asyncTasks).where(buildWhere(anchorIdsWhere(asyncTasks.id, ids), tenantCondition(asyncTasks, access.user),
+        scope.global ? undefined : eq(asyncTasks.createdBy, scope.userId))).limit(ids.length);
+    return rows.map((row): VisibleEntityAnchor => ({ ref: { type: 'tasks.async', key: String(row.id) }, title: row.title, tenantId: row.tenantId }));
   });
 }
 
@@ -237,8 +226,8 @@ function wikiProvider(direction: 'children' | 'parent'): RelationProvider {
 }
 
 export const workflowFileAnchorResolvers: readonly EntityAnchorResolver[] = [
-  { type: 'workflow.instance', resolve: resolveWorkflowInstance }, { type: 'workflow.task', resolve: resolveWorkflowTask },
-  { type: 'drive.file', resolve: resolveDriveFile }, { type: 'wiki.document', resolve: resolveWikiDocument }, { type: 'tasks.async', resolve: resolveAsyncTask },
+  numericAnchorResolver('workflow.instance', resolveWorkflowInstances), numericAnchorResolver('workflow.task', resolveWorkflowTasks),
+  numericAnchorResolver('drive.file', resolveDriveFiles), numericAnchorResolver('wiki.document', resolveWikiDocuments), numericAnchorResolver('tasks.async', resolveAsyncTasks),
 ];
 export const workflowFileRelationProviders: readonly RelationProvider[] = [
   workflowInstanceTasksProvider, workflowInstanceChildrenProvider, workflowTaskInstanceProvider,

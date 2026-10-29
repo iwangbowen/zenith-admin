@@ -15,6 +15,7 @@ import { releaseManagedFiles, retainManagedFiles } from '../files/file-gc.servic
 import { workflowVisibility } from '../platform/relations/providers/workflow-file.provider';
 import { hiddenWorkflowFieldKeys } from './workflow-form-access';
 import { pickEntity } from '../../lib/entity-map';
+import { anchorIdsWhere } from '../platform/relations/anchor-batch';
 
 export type WorkflowAttachmentInput = { fileId: string };
 type Instance = Pick<typeof workflowInstances.$inferSelect, 'id' | 'tenantId' | 'formSnapshot'>;
@@ -152,6 +153,35 @@ const summaryColumns = { id: workflowAttachmentLinks.id, instanceId: workflowAtt
   commentId: workflowAttachmentLinks.commentId, source: workflowAttachmentLinks.source, fileId: managedFiles.id,
   name: managedFiles.originalName, size: managedFiles.size, mimeType: managedFiles.mimeType,
   createdAt: workflowAttachmentLinks.createdAt, tenantId: workflowAttachmentLinks.tenantId };
+
+/** Batch source and parent authorization; field visibility is evaluated once per parent instance. */
+export async function getWorkflowAttachmentSummariesByIds(ids: number[], executor: DbExecutor = db) {
+  if (!ids.length) return [];
+  const user = currentUser();
+  const rows = await executor.select({ ...summaryColumns, fieldKeys: workflowAttachmentLinks.fieldKeys }).from(workflowAttachmentLinks)
+    .innerJoin(managedFiles, eq(managedFiles.id, workflowAttachmentLinks.fileId))
+    .where(buildWhere(anchorIdsWhere(workflowAttachmentLinks.id, ids), tenantCondition(workflowAttachmentLinks, user),
+      eq(managedFiles.visibility, 'restricted'), sql`${managedFiles.tenantId} is not distinct from ${workflowAttachmentLinks.tenantId}`, ne(managedFiles.gcState, 'deleting')));
+  if (!rows.length) return [];
+  const instances = await executor.select({ id: workflowInstances.id, tenantId: workflowInstances.tenantId,
+    initiatorId: workflowInstances.initiatorId, definitionSnapshot: workflowInstances.definitionSnapshot }).from(workflowInstances)
+    .where(buildWhere(anchorIdsWhere(workflowInstances.id, [...new Set(rows.map((row) => row.instanceId))]), tenantCondition(workflowInstances, user),
+      await workflowVisibility({ user, db: executor })));
+  const monitor = await hasPermission('workflow:instance:monitor');
+  const tasks = !monitor && instances.length ? await executor.select({ instanceId: workflowTasks.instanceId, assigneeId: workflowTasks.assigneeId, nodeKey: workflowTasks.nodeKey })
+    .from(workflowTasks).where(and(anchorIdsWhere(workflowTasks.instanceId, instances.map((row) => row.id)), eq(workflowTasks.assigneeId, user.userId))) : [];
+  const tasksByInstance = new Map<number, typeof tasks>();
+  for (const task of tasks) {
+    const bucket = tasksByInstance.get(task.instanceId) ?? [];
+    bucket.push(task); tasksByInstance.set(task.instanceId, bucket);
+  }
+  const scopes = new Map(instances.map((instance) => [instance.id, { tenantId: instance.tenantId,
+    hidden: monitor ? new Set<string>() : hiddenWorkflowFieldKeys({ ...instance, tasks: tasksByInstance.get(instance.id) ?? [] }, user.userId) }]));
+  return rows.filter((row) => {
+    const scope = scopes.get(row.instanceId);
+    return scope && scope.tenantId === row.tenantId && !row.fieldKeys.some((key) => scope.hidden.has(key));
+  }).map(({ fieldKeys: _fieldKeys, ...row }) => row);
+}
 
 export async function listWorkflowAttachmentSummaries(instanceId: number, options: { limit: number; beforeId?: number; taskId?: number; filters?: EntityRelationFilters }, executor: DbExecutor = db) {
   const scope = await workflowAttachmentReadScope(instanceId, executor);

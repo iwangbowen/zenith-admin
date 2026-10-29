@@ -13,7 +13,7 @@ vi.mock('../files/file-gc.service', () => ({ retainManagedFiles: state.retain, r
 vi.mock('../files/files.service', () => ({ getRestrictedFileForRead: state.restricted, uploadManagedFileFromBody: state.upload }));
 vi.mock('../platform/relations/providers/workflow-file.provider', () => ({ workflowVisibility: async () => undefined }));
 
-import { bindWorkflowAttachments, bindWorkflowFormAttachments, getWorkflowAttachmentSummary, listWorkflowAttachmentSummaries, uploadWorkflowAttachment } from './workflow-attachments.service';
+import { bindWorkflowAttachments, bindWorkflowFormAttachments, getWorkflowAttachmentSummary, getWorkflowAttachmentSummariesByIds, listWorkflowAttachmentSummaries, uploadWorkflowAttachment } from './workflow-attachments.service';
 
 const fileId = '018f6f8a-0900-7000-8000-000000000001';
 const metadata = { id: fileId, name: 'server.pdf', size: 42, mimeType: 'application/pdf', uploaderId: 7 };
@@ -100,6 +100,24 @@ describe('structured workflow attachment boundaries', () => {
   it('does not widen a hidden source merely because its link id is known', async () => {
     const fake = executor([[{ instanceId: 10 }], [{ id: 10, tenantId: 1, initiatorId: 9, title: 'x', definitionSnapshot: null }], [], []]);
     await expect(getWorkflowAttachmentSummary(33, fake.db)).rejects.toMatchObject({ status: 404 });
+    expect(state.restricted).not.toHaveBeenCalled();
+  });
+
+  it('batch-loads parents and tasks once, then filters hidden fields and mismatched ownership without fetching file content', async () => {
+    const links = Array.from({ length: 32 }, (_, i) => ({ id: i + 1, instanceId: i < 16 ? 10 : 11, tenantId: 1,
+      taskId: null, fieldKeys: i === 0 ? ['secret'] : [], name: `file-${i}` }));
+    links.push({ ...links[1], id: 33, tenantId: 2 });
+    const parents = [10, 11].map((id) => ({ id, tenantId: 1, initiatorId: 9, definitionSnapshot: { flowData: { nodes: [
+      { data: { key: 'review', type: 'approve', fieldPermissions: { secret: 'hidden' } } },
+    ] } } }));
+    const fake = executor([links, parents, [10, 11].map((instanceId) => ({ instanceId, assigneeId: 7, nodeKey: 'review' }))]);
+    const rows = await getWorkflowAttachmentSummariesByIds(links.map((row) => row.id), fake.db);
+    expect(rows).toHaveLength(31);
+    expect(rows.some((row) => row.id === 1 || row.id === 33)).toBe(false);
+    expect(fake.wheres).toHaveLength(3);
+    expect(queryOf(fake.wheres[0]).sql).toContain('"workflow_attachment_links"."id" in');
+    expect(queryOf(fake.wheres[1]).sql).toContain('"workflow_instances"."id" in');
+    expect(rows.every((row) => !('fieldKeys' in row))).toBe(true);
     expect(state.restricted).not.toHaveBeenCalled();
   });
 });

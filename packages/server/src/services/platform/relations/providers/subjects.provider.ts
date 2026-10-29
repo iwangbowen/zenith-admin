@@ -11,6 +11,7 @@ import { getNotificationEvent, isNotificationEventKey, NOTIFICATION_EVENT_KEYS }
 import { relationSummaryQuery } from '../summary-query';
 import { relationFilterWhere } from '../filters';
 import { formatDateTime } from '../../../../lib/datetime';
+import { anchorIdsWhere, numericAnchorResolver } from '../anchor-batch';
 
 function notificationTitle(key: string): string {
   return isNotificationEventKey(key) ? getNotificationEvent(key).label : '业务通知';
@@ -36,18 +37,18 @@ function taskWhere(anchor: VisibleEntityAnchor, access: RelationAccessContext) {
       eq(asyncTaskSubjects.entityKey, anchor.ref.key), exactTenantCondition(asyncTaskSubjects.tenantId, anchor.tenantId)))));
 }
 export const subjectAnchorResolvers: readonly EntityAnchorResolver[] = [
-  { type: 'platform.operation-log', async resolve(ref, access) {
-    if (!(await hasPermission('system:log:operation')) || !/^[1-9]\d*$/.test(ref.key)) return null;
-    const [row] = await access.db.select({ title: operationLogs.description, tenantId: operationLogs.tenantId }).from(operationLogs)
-      .where(buildWhere(eq(operationLogs.id, Number(ref.key)), tenantCondition(operationLogs, access.user))).limit(1);
-    return row ? { ref: { type: 'platform.operation-log', key: ref.key }, title: row.title, tenantId: row.tenantId } : null;
-  } },
-  { type: 'notification.outbox', async resolve(ref, access) {
-    if (!(await hasPermission('system:notify-policy:list')) || !/^[1-9]\d*$/.test(ref.key)) return null;
-    const [row] = await access.db.select({ title: notificationOutbox.eventKey, tenantId: notificationOutbox.tenantId }).from(notificationOutbox)
-      .where(buildWhere(eq(notificationOutbox.id, Number(ref.key)), tenantCondition(notificationOutbox, access.user))).limit(1);
-    return row ? { ref: { type: 'notification.outbox', key: ref.key }, title: notificationTitle(row.title), tenantId: row.tenantId } : null;
-  } },
+  numericAnchorResolver('platform.operation-log', async (ids, access) => {
+    if (!(await hasPermission('system:log:operation'))) return [];
+    const rows = await access.db.select({ id: operationLogs.id, title: operationLogs.description, tenantId: operationLogs.tenantId }).from(operationLogs)
+      .where(buildWhere(anchorIdsWhere(operationLogs.id, ids), tenantCondition(operationLogs, access.user))).limit(ids.length);
+    return rows.map((row) => ({ ref: { type: 'platform.operation-log', key: String(row.id) }, title: row.title, tenantId: row.tenantId }));
+  }),
+  numericAnchorResolver('notification.outbox', async (ids, access) => {
+    if (!(await hasPermission('system:notify-policy:list'))) return [];
+    const rows = await access.db.select({ id: notificationOutbox.id, title: notificationOutbox.eventKey, tenantId: notificationOutbox.tenantId }).from(notificationOutbox)
+      .where(buildWhere(anchorIdsWhere(notificationOutbox.id, ids), tenantCondition(notificationOutbox, access.user))).limit(ids.length);
+    return rows.map((row) => ({ ref: { type: 'notification.outbox', key: String(row.id) }, title: notificationTitle(row.title), tenantId: row.tenantId }));
+  }),
 ];
 export function subjectProviders(sourceType: CanonicalEntityType): readonly RelationProvider[] {
   const spec = (suffix: string, target: EntityRelationItem['ref']['type'], permission: Exclude<RelationProvider['permissions'], 'authenticated'>,

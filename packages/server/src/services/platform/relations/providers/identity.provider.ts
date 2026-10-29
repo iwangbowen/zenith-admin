@@ -1,5 +1,5 @@
+import { anchorIdsWhere, numericAnchorResolver } from '../anchor-batch';
 import { and, desc, eq, exists, isNull, lt, notInArray, or } from 'drizzle-orm';
-import type { EntityRef } from '@zenith/shared/core';
 import { entityRelationRecordFilters, type EntityRelationPage } from '@zenith/shared/platform';
 import { relationFilterWhere } from '../filters';
 import { formatDateTime } from '../../../../lib/datetime';
@@ -27,27 +27,23 @@ function parseId(key: string): number | null {
   return Number.isSafeInteger(id) && id <= 2_147_483_647 ? id : null;
 }
 
-async function resolveUser(ref: EntityRef, access: RelationAccessContext): Promise<VisibleEntityAnchor | null> {
+async function resolveUsers(ids: number[], access: RelationAccessContext): Promise<VisibleEntityAnchor[]> {
   return runWithCurrentUser(access.user, async () => {
-    if (ref.type !== 'identity.user' || !(await hasPermission('system:user:list'))) return null;
-    const id = parseId(ref.key);
-    if (id == null) return null;
+    if (!(await hasPermission('system:user:list'))) return [];
     const scope = await getDataScopeCondition({ currentUserId: access.user.userId, executor: access.db, deptColumn: users.departmentId, ownerColumn: users.id });
-    const [row] = await access.db.select({ id: users.id, nickname: users.nickname, username: users.username, tenantId: users.tenantId })
-      .from(users).where(buildWhere(eq(users.id, id), tenantCondition(users, access.user), scope)).limit(1);
-    return row ? { ref: { type: 'identity.user', key: String(row.id) }, title: row.nickname || row.username, tenantId: row.tenantId } : null;
+    const rows = await access.db.select({ id: users.id, nickname: users.nickname, username: users.username, tenantId: users.tenantId })
+      .from(users).where(buildWhere(anchorIdsWhere(users.id, ids), tenantCondition(users, access.user), scope)).limit(ids.length);
+    return rows.map((row): VisibleEntityAnchor => ({ ref: { type: 'identity.user', key: String(row.id) }, title: row.nickname || row.username, tenantId: row.tenantId }));
   });
 }
 
-async function resolveMember(ref: EntityRef, access: RelationAccessContext): Promise<VisibleEntityAnchor | null> {
+async function resolveMembers(ids: number[], access: RelationAccessContext): Promise<VisibleEntityAnchor[]> {
   return runWithCurrentUser(access.user, async () => {
-    if (ref.type !== 'member.member' || !(await hasPermission('member:member:list'))) return null;
-    const id = parseId(ref.key);
-    if (id == null) return null;
+    if (!(await hasPermission('member:member:list'))) return [];
     const scope = await getDataScopeCondition({ currentUserId: access.user.userId, executor: access.db, ownerColumn: members.createdBy });
-    const [row] = await access.db.select({ id: members.id, nickname: members.nickname, tenantId: members.tenantId })
-      .from(members).where(buildWhere(eq(members.id, id), isNull(members.deletedAt), tenantCondition(members, access.user), scope)).limit(1);
-    return row ? { ref: { type: 'member.member', key: String(row.id) }, title: row.nickname || `会员 #${row.id}`, tenantId: row.tenantId } : null;
+    const rows = await access.db.select({ id: members.id, nickname: members.nickname, tenantId: members.tenantId })
+      .from(members).where(buildWhere(anchorIdsWhere(members.id, ids), isNull(members.deletedAt), tenantCondition(members, access.user), scope)).limit(ids.length);
+    return rows.map((row): VisibleEntityAnchor => ({ ref: { type: 'member.member', key: String(row.id) }, title: row.nickname || `会员 #${row.id}`, tenantId: row.tenantId }));
   });
 }
 
@@ -112,8 +108,8 @@ async function listAudit(anchor: VisibleEntityAnchor, { cursor, limit, access, f
 }
 
 export const identityAnchorResolvers: readonly EntityAnchorResolver[] = [
-  { type: 'identity.user', resolve: resolveUser },
-  { type: 'member.member', resolve: resolveMember },
+  numericAnchorResolver('identity.user', resolveUsers),
+  numericAnchorResolver('member.member', resolveMembers),
 ];
 
 function paymentsProvider(sourceType: 'identity.user' | 'member.member'): RelationProvider {

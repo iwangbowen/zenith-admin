@@ -5,7 +5,7 @@ const state = vi.hoisted(() => ({ monitor: false, mask: vi.fn() }));
 vi.mock('../../lib/context', () => ({ currentUser: () => ({ userId: 9 }), hasPermission: async () => state.monitor }));
 vi.mock('../../lib/data-mask/policies', () => ({ resolveMaskDecisions: state.mask }));
 vi.mock('../../lib/data-mask/registry', () => ({ registerSensitiveSource: vi.fn() }));
-import { workflowArchiveNeedsRedaction } from './workflow-print-access';
+import { createWorkflowArchiveRedactionCheck, workflowArchiveNeedsRedaction } from './workflow-print-access';
 import { hiddenWorkflowFieldKeys, sanitizeDetailFormDataForViewer } from './workflow-form-access';
 
 function row() {
@@ -43,5 +43,15 @@ describe('archive originals enforce the same field visibility as workflow detail
     state.monitor = true;
     state.mask.mockResolvedValue([{ ref: { field: 'email' } }]);
     expect(await workflowArchiveNeedsRedaction({ ...row(), formSnapshot: { fields: [{ key: 'phone', type: 'phone', label: 'Phone' }] } })).toBe(false);
+  });
+
+  it('reuses policy reads across a batch while keeping each document field decision independent', async () => {
+    state.monitor = true;
+    state.mask.mockResolvedValue([{ ref: { field: 'phone' } }]);
+    const check = createWorkflowArchiveRedactionCheck();
+    const phone = { ...row(), formSnapshot: { fields: [{ key: 'phone', type: 'phone', label: 'Phone' }] } };
+    for (let index = 0; index < 32; index++) expect(await check(phone)).toBe(true);
+    expect(await check({ ...row(), formSnapshot: { fields: [{ key: 'email', type: 'email', label: 'Email' }] } })).toBe(false);
+    expect(state.mask).toHaveBeenCalledTimes(1);
   });
 });

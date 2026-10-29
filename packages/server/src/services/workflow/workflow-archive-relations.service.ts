@@ -10,7 +10,8 @@ import { assertRelationBudget } from '../platform/relations/runtime';
 import type { EntityAnchorResolver, RelationAccessContext, RelationProvider, VisibleEntityAnchor } from '../platform/relations/types';
 import { relationFilterWhere, matchesRelationKeyword } from '../platform/relations/filters';
 import { formatDateTime } from '../../lib/datetime';
-import { workflowArchiveNeedsRedaction } from './workflow-print-access';
+import { createWorkflowArchiveRedactionCheck, workflowArchiveNeedsRedaction } from './workflow-print-access';
+import { anchorIdsWhere, numericAnchorResolver } from '../platform/relations/anchor-batch';
 
 const permissions = ['workflow:instance:list', 'workflow:task:handle', 'workflow:instance:monitor'] as const;
 const capabilities = { view: true, open: true };
@@ -35,17 +36,29 @@ async function archiveReadable(row: typeof workflowInstances.$inferSelect | {
 }
 
 /** The instance owns one immutable archive; its key never exposes a generic storage URL. */
-export const workflowArchiveAnchorResolvers: readonly EntityAnchorResolver[] = [{ type: 'workflow.archive',
-  resolve: (ref, access) => runWithCurrentUser(access.user, async () => {
-    const id = idOf(ref.key);
-    if (ref.type !== 'workflow.archive' || id === undefined || !(await hasPermission(...permissions))) return null;
-    const [row] = await access.db.select(columns).from(workflowInstances).innerJoin(managedFiles, fileJoin)
-      .where(buildWhere(eq(workflowInstances.id, id), tenantCondition(workflowInstances, access.user),
-        isNotNull(workflowInstances.archivedAt), await workflowVisibility(access))).limit(1);
-    if (!row || !(await archiveReadable(row, access))) return null;
-    return { ref: { type: 'workflow.archive', key: String(row.id) }, title: `${row.title} · 审批归档件`, tenantId: row.tenantId };
+export const workflowArchiveAnchorResolvers: readonly EntityAnchorResolver[] = [numericAnchorResolver('workflow.archive',
+  (ids, access) => runWithCurrentUser(access.user, async () => {
+    if (!(await hasPermission(...permissions))) return [];
+    const rows = await access.db.select(columns).from(workflowInstances).innerJoin(managedFiles, fileJoin)
+      .where(buildWhere(anchorIdsWhere(workflowInstances.id, ids), tenantCondition(workflowInstances, access.user),
+        isNotNull(workflowInstances.archivedAt), await workflowVisibility(access))).limit(ids.length);
+    if (!rows.length) return [];
+    const tasks = await access.db.select({ instanceId: workflowTasks.instanceId, nodeKey: workflowTasks.nodeKey, assigneeId: workflowTasks.assigneeId })
+      .from(workflowTasks).where(and(anchorIdsWhere(workflowTasks.instanceId, rows.map((row) => row.id)), eq(workflowTasks.assigneeId, access.user.userId)));
+    const tasksByInstance = new Map<number, typeof tasks>();
+    for (const task of tasks) {
+      const bucket = tasksByInstance.get(task.instanceId) ?? [];
+      bucket.push(task); tasksByInstance.set(task.instanceId, bucket);
+    }
+    const needsRedaction = createWorkflowArchiveRedactionCheck(access.db);
+    const anchors: VisibleEntityAnchor[] = [];
+    for (const row of rows) {
+      if (await needsRedaction({ ...row, tasks: tasksByInstance.get(row.id) ?? [] })) continue;
+      anchors.push({ ref: { type: 'workflow.archive', key: String(row.id) }, title: `${row.title} · 审批归档件`, tenantId: row.tenantId });
+    }
+    return anchors;
   }),
-}];
+)];
 
 function archiveProvider(sourceType: CanonicalEntityType): RelationProvider {
   const key = `${sourceType}.archives`;

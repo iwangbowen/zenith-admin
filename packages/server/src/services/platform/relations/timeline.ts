@@ -9,7 +9,8 @@ import { exactTenantCondition, tenantCondition } from '../../../lib/tenant';
 import { buildWhere, dateRangeConditions } from '../../../lib/where-helpers';
 import { parseDateRangeEnd, parseDateRangeStart } from '../../../lib/datetime';
 import { readRelationCursor, signRelationCursor } from './cursor';
-import { relationCursorScope, resolveVisibleEntityAnchor } from './registry';
+import { relationCursorScope, resolveVisibleEntityAnchor, resolveVisibleEntityAnchors } from './registry';
+import { anchorRefKey } from './anchor-resolution';
 import { assertRelationBudget, isStatementTimeout, withRelationRead } from './runtime';
 import type { RelationAccessContext } from './types';
 
@@ -44,7 +45,6 @@ export async function listEntityTimeline(input: ParamsOf<typeof entityTimelineCo
     const allowedTypes: string[] = [];
     for (const [type, definition] of Object.entries(DOMAIN_EVENT_CATALOG)) if ((!input.eventType || input.eventType === type) && await hasPermission(...permissionList(definition.permission))) allowedTypes.push(type);
     const visible: Array<{ event: TimelineEvent; position: Position }> = [];
-    const sourceAccess = new Map<string, boolean>();
     for (let scanned = 0; scanned < 512 && visible.length <= input.limit; scanned += input.limit + 1) {
       assertRelationBudget(access);
       const audit = auditAllowed ? await access.db.select({ id: operationLogs.id, description: operationLogs.description, createdAt: operationLogs.createdAt, responseCode: operationLogs.responseCode, cursorAt: sql<string>`to_char(${operationLogs.createdAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')` })
@@ -65,6 +65,13 @@ export async function listEntityTimeline(input: ParamsOf<typeof entityTimelineCo
         ...events.map((row) => ({ position: { at: row.cursorAt, id: row.id, kind: 'event' as const }, audit: null, domain: row })),
       ].sort((a, b) => compare(a.position, b.position)).slice(0, input.limit + 1);
       if (candidates.length === 0) break;
+      const sources = candidates.flatMap(({ domain: row }) => {
+        if (!row) return [];
+        const type = canonicalEntityTypeSchema.safeParse(row.sourceType);
+        const summary = getDomainEventDefinition(row.eventType)?.summarySchema.safeParse(row.payload);
+        return type.success && row.sourceKey && summary?.success ? [{ type: type.data, key: row.sourceKey }] : [];
+      });
+      const sourceAnchors = await resolveVisibleEntityAnchors(sources, access);
       for (const candidate of candidates) {
         position = candidate.position;
         if (candidate.audit) {
@@ -77,18 +84,8 @@ export async function listEntityTimeline(input: ParamsOf<typeof entityTimelineCo
           const summary = definition?.summarySchema.safeParse(row.payload);
           const sourceType = canonicalEntityTypeSchema.safeParse(row.sourceType);
           if (!summary?.success || !sourceType.success || !row.sourceKey) continue;
-          const sourceId = `${sourceType.data}:${row.sourceKey}`;
-          let canRead = sourceAccess.get(sourceId);
-          if (canRead === undefined) {
-            try {
-              const source = await resolveVisibleEntityAnchor(sourceType.data, row.sourceKey, access);
-              canRead = source.tenantId === anchor.tenantId;
-            } catch (error) {
-              if (!(error instanceof HTTPException) || error.status !== 404) throw error;
-              canRead = false;
-            }
-            sourceAccess.set(sourceId, canRead);
-          }
+          const source = sourceAnchors.get(anchorRefKey({ type: sourceType.data, key: row.sourceKey }));
+          const canRead = source?.tenantId === anchor.tenantId;
           if (!canRead) continue;
           visible.push({ position, event: { id: `event:${row.id}`, eventType: row.eventType, occurredAt: position.at,
             sourceRef: { type: sourceType.data, key: row.sourceKey }, subjectRefs: [{ ...anchor.ref, role: 'related' }], visibility: 'restricted', payload: summary.data } });

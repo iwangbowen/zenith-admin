@@ -7,6 +7,7 @@ import { buildWhere } from '../../../../lib/where-helpers';
 import { assertRelationBudget } from '../runtime';
 import type { RelationAccessContext, RelationProvider, VisibleEntityAnchor } from '../types';
 import { matchesRelationKeyword } from '../filters';
+import { anchorRefKey } from '../anchor-resolution';
 
 type SubjectCursor = readonly [type: string, key: string];
 export type ReverseSubjectAnchorResolver = (
@@ -14,6 +15,7 @@ export type ReverseSubjectAnchorResolver = (
   key: string,
   access: RelationAccessContext,
 ) => Promise<VisibleEntityAnchor>;
+export type ReverseSubjectBatchResolver = (refs: readonly VisibleEntityAnchor['ref'][], access: RelationAccessContext) => Promise<Map<string, VisibleEntityAnchor>>;
 
 const SUBJECT_SCAN_LIMIT = 512;
 const SUBJECT_BATCH_SIZE = 32;
@@ -41,6 +43,7 @@ function readSubjectCursor(value: string | undefined): SubjectCursor | undefined
 export function reverseSubjectProviders(
   targetTypes: readonly CanonicalEntityType[],
   resolveAnchor: ReverseSubjectAnchorResolver,
+  resolveAnchors: ReverseSubjectBatchResolver,
 ): readonly RelationProvider[] {
   const supported = new Set(targetTypes);
   return sources.map((source): RelationProvider => {
@@ -77,20 +80,22 @@ export function reverseSubjectProviders(
             eq(source.parentId, parentId), exactTenantCondition(source.table.tenantId, authorized.tenantId), tenantCondition(source.table, access.user),
             after ? or(gt(typeColumn, after[0]), and(eq(typeColumn, after[0]), gt(keyColumn, after[1]))) : undefined,
           )).orderBy(asc(typeColumn), asc(keyColumn)).limit(batchSize);
+          const candidates = rows.flatMap((row) => {
+            const parsed = canonicalEntityRefSchema.safeParse(row);
+            return parsed.success && supported.has(parsed.data.type) ? [parsed.data] : [];
+          });
+          const targets = await resolveAnchors(candidates, access);
           for (const row of rows) {
             assertRelationBudget(access);
             scanned++;
             after = [row.type, row.key];
             const parsed = canonicalEntityRefSchema.safeParse(row);
             if (!parsed.success || !supported.has(parsed.data.type)) continue;
-            try {
-              const target = await resolveAnchor(parsed.data.type, parsed.data.key, access);
-              if (target.tenantId !== authorized.tenantId) continue;
-              if (!matchesRelationKeyword(filters?.keyword, target.title, target.ref.key)) continue;
-              visible.push({ cursor: after, item: { ref: target.ref, title: target.title.slice(0, 160), relationKey, capabilities } });
-            } catch (error) {
-              if (!(error instanceof HTTPException) || error.status !== 404) throw error;
-            }
+            const target = targets.get(anchorRefKey(parsed.data));
+            if (!target) continue;
+            if (target.tenantId !== authorized.tenantId) continue;
+            if (!matchesRelationKeyword(filters?.keyword, target.title, target.ref.key)) continue;
+            visible.push({ cursor: after, item: { ref: target.ref, title: target.title.slice(0, 160), relationKey, capabilities } });
             if (visible.length > limit) break;
           }
           if (rows.length < batchSize && visible.length <= limit) { exhausted = true; break; }

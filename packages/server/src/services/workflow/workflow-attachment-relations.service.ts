@@ -12,7 +12,8 @@ import { matchesRelationKeyword } from '../platform/relations/filters';
 import { formatDateTime } from '../../lib/datetime';
 import { assertRelationBudget } from '../platform/relations/runtime';
 import type { EntityAnchorResolver, RelationProvider } from '../platform/relations/types';
-import { getWorkflowAttachmentSummary, listWorkflowAttachmentSummaries } from './workflow-attachments.service';
+import { getWorkflowAttachmentSummary, getWorkflowAttachmentSummariesByIds, listWorkflowAttachmentSummaries } from './workflow-attachments.service';
+import { numericAnchorResolver } from '../platform/relations/anchor-batch';
 
 const permissions = ['workflow:instance:list', 'workflow:task:handle', 'workflow:instance:monitor'] as const;
 const capabilities = { view: true, open: true };
@@ -24,17 +25,14 @@ function item(row: AttachmentSummary, key: string): EntityRelationItem {
     subtitle: ({ form: '申请表单附件', task: '审批节点附件', comment: '流程沟通附件' })[row.source],
     occurredAt: formatDateTime(row.createdAt), capabilities };
 }
-export const workflowAttachmentAnchorResolvers: readonly EntityAnchorResolver[] = [{ type: 'workflow.attachment',
-  resolve: (ref, access) => runWithCurrentUser(access.user, async () => {
-    const id = idOf(ref.key);
-    if (ref.type !== 'workflow.attachment' || id === undefined || !(await hasPermission(...permissions))) return null;
-    try {
-      const row = await getWorkflowAttachmentSummary(id, access.db);
-      return { ref: { type: 'workflow.attachment', key: String(row.id) }, title: row.name, tenantId: row.tenantId,
-        metadata: { instanceId: row.instanceId, taskId: row.taskId } };
-    } catch (error) { if (error instanceof HTTPException && error.status === 404) return null; throw error; }
+export const workflowAttachmentAnchorResolvers: readonly EntityAnchorResolver[] = [numericAnchorResolver('workflow.attachment',
+  (ids, access) => runWithCurrentUser(access.user, async () => {
+    if (!(await hasPermission(...permissions))) return [];
+    const rows = await getWorkflowAttachmentSummariesByIds(ids, access.db);
+    return rows.map((row) => ({ ref: { type: 'workflow.attachment', key: String(row.id) }, title: row.name, tenantId: row.tenantId,
+      metadata: { instanceId: row.instanceId, taskId: row.taskId } }));
   }),
-}];
+)];
 
 function instanceAttachments(sourceType: 'workflow.instance' | 'workflow.task'): RelationProvider {
   const key = `${sourceType}.attachments`;

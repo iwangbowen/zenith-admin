@@ -1,3 +1,4 @@
+import { anchorIdsWhere, numericAnchorResolver } from '../anchor-batch';
 import { and, desc, eq, exists, lt, sql } from 'drizzle-orm';
 import { IOT_OTA_DEVICE_STATUS_OPTIONS, IOT_OTA_TASK_STATUS_OPTIONS } from '@zenith/shared/iot';
 import { iotDevices, iotFirmwares, iotOtaTaskDevices, iotOtaTasks } from '../../../../db/schema';
@@ -11,31 +12,27 @@ import { relationSummaryQuery } from '../summary-query';
 import type { EntityAnchorResolver, RelationAccessContext, RelationProvider, VisibleEntityAnchor } from '../types';
 
 const otaTypes = ['iot.ota-task', 'iot.ota-device', 'iot.firmware'] as const;
-function idOf(key: string) { const id = Number(key); return /^[1-9]\d*$/.test(key) && Number.isSafeInteger(id) && id <= 2_147_483_647 ? id : null; }
 
-export const iotOtaAnchors: readonly EntityAnchorResolver[] = otaTypes.map((type) => ({ type,
-  async resolve(ref, access): Promise<VisibleEntityAnchor | null> {
-    const id = idOf(ref.key);
-    if (id === null || !await hasPermission('iot:ota:list')) return null;
-    if (type === 'iot.firmware') {
-      const [row] = await access.db.select({ id: iotFirmwares.id, version: iotFirmwares.version, name: iotFirmwares.fileName, tenantId: iotFirmwares.tenantId })
-        .from(iotFirmwares).where(buildWhere(eq(iotFirmwares.id, id), tenantCondition(iotFirmwares, access.user))).limit(1);
-      return row ? { ref: { type, key: String(id) }, title: `${row.version} · ${row.name}`.slice(0, 160), tenantId: row.tenantId } : null;
-    }
-    if (type === 'iot.ota-task') {
-      const [row] = await access.db.select({ title: iotOtaTasks.title, firmwareId: iotOtaTasks.firmwareId, tenantId: iotOtaTasks.tenantId })
-        .from(iotOtaTasks).where(buildWhere(eq(iotOtaTasks.id, id), tenantCondition(iotOtaTasks, access.user))).limit(1);
-      return row ? { ref: { type, key: String(id) }, title: row.title, tenantId: row.tenantId, metadata: { firmwareId: row.firmwareId } } : null;
-    }
-    const [row] = await access.db.select({ taskId: iotOtaTasks.id, deviceId: iotDevices.id, title: iotOtaTasks.title, name: iotDevices.name,
-      firmwareId: iotOtaTasks.firmwareId, tenantId: iotOtaTasks.tenantId })
-      .from(iotOtaTaskDevices).innerJoin(iotOtaTasks, eq(iotOtaTaskDevices.taskId, iotOtaTasks.id))
-      .innerJoin(iotDevices, eq(iotOtaTaskDevices.deviceId, iotDevices.id))
-      .where(buildWhere(eq(iotOtaTaskDevices.id, id), tenantCondition(iotOtaTasks, access.user), tenantCondition(iotDevices, access.user),
-        sql`${iotDevices.tenantId} is not distinct from ${iotOtaTasks.tenantId}`)).limit(1);
-    return row ? { ref: { type, key: String(id) }, title: `${row.name} · ${row.title}`.slice(0, 160), tenantId: row.tenantId,
-      metadata: { taskId: row.taskId, deviceId: row.deviceId, firmwareId: row.firmwareId } } : null;
-  },
+export const iotOtaAnchors: readonly EntityAnchorResolver[] = otaTypes.map((type) => numericAnchorResolver(type, async (ids, access) => {
+  if (!await hasPermission('iot:ota:list')) return [];
+  if (type === 'iot.firmware') {
+    const rows = await access.db.select({ id: iotFirmwares.id, version: iotFirmwares.version, name: iotFirmwares.fileName, tenantId: iotFirmwares.tenantId })
+      .from(iotFirmwares).where(buildWhere(anchorIdsWhere(iotFirmwares.id, ids), tenantCondition(iotFirmwares, access.user))).limit(ids.length);
+    return rows.map((row): VisibleEntityAnchor => ({ ref: { type, key: String(row.id) }, title: `${row.version} · ${row.name}`.slice(0, 160), tenantId: row.tenantId }));
+  }
+  if (type === 'iot.ota-task') {
+    const rows = await access.db.select({ id: iotOtaTasks.id, title: iotOtaTasks.title, firmwareId: iotOtaTasks.firmwareId, tenantId: iotOtaTasks.tenantId })
+      .from(iotOtaTasks).where(buildWhere(anchorIdsWhere(iotOtaTasks.id, ids), tenantCondition(iotOtaTasks, access.user))).limit(ids.length);
+    return rows.map((row): VisibleEntityAnchor => ({ ref: { type, key: String(row.id) }, title: row.title, tenantId: row.tenantId, metadata: { firmwareId: row.firmwareId } }));
+  }
+  const rows = await access.db.select({ id: iotOtaTaskDevices.id, taskId: iotOtaTasks.id, deviceId: iotDevices.id, title: iotOtaTasks.title, name: iotDevices.name,
+    firmwareId: iotOtaTasks.firmwareId, tenantId: iotOtaTasks.tenantId })
+    .from(iotOtaTaskDevices).innerJoin(iotOtaTasks, eq(iotOtaTaskDevices.taskId, iotOtaTasks.id))
+    .innerJoin(iotDevices, eq(iotOtaTaskDevices.deviceId, iotDevices.id))
+    .where(buildWhere(anchorIdsWhere(iotOtaTaskDevices.id, ids), tenantCondition(iotOtaTasks, access.user), tenantCondition(iotDevices, access.user),
+      sql`${iotDevices.tenantId} is not distinct from ${iotOtaTasks.tenantId}`)).limit(ids.length);
+  return rows.map((row): VisibleEntityAnchor => ({ ref: { type, key: String(row.id) }, title: `${row.name} · ${row.title}`.slice(0, 160), tenantId: row.tenantId,
+    metadata: { taskId: row.taskId, deviceId: row.deviceId, firmwareId: row.firmwareId } }));
 }));
 
 function taskWhere(anchor: VisibleEntityAnchor, access: RelationAccessContext) {

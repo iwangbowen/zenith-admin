@@ -1,6 +1,6 @@
+import { anchorIdsWhere, numericAnchorResolver } from '../platform/relations/anchor-batch';
 import { desc, eq, lt, ne, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import type { EntityRef } from '@zenith/shared/core';
 import { entityRelationRecordFilters, WORKFLOW_BUSINESS_ENTITY_TYPES, type CanonicalEntityType, type EntityRelationPage, type WorkflowBusinessEntityType } from '@zenith/shared/platform';
 import { bizLeaves, workflowInstances } from '../../db/schema';
 import { hasPermission, runWithCurrentUser } from '../../lib/context';
@@ -35,17 +35,14 @@ function parseId(key: string): number | null {
 }
 
 /** Business detail is owner-only; workflow monitor permission does not widen it. */
-async function resolveBizLeave(ref: EntityRef, access: RelationAccessContext): Promise<VisibleEntityAnchor | null> {
-  if (ref.type !== 'biz.leave') return null;
-  const id = parseId(ref.key);
-  if (id == null) return null;
-  const [row] = await access.db.select({ id: bizLeaves.id, tenantId: bizLeaves.tenantId })
-    .from(bizLeaves).where(buildWhere(eq(bizLeaves.id, id), eq(bizLeaves.createdBy, access.user.userId),
-      tenantCondition(bizLeaves, access.user))).limit(1);
-  return row ? { ref: { type: 'biz.leave', key: String(row.id) }, title: `请假申请 #${row.id}`, tenantId: row.tenantId } : null;
+async function resolveBizLeaves(ids: number[], access: RelationAccessContext): Promise<VisibleEntityAnchor[]> {
+  const rows = await access.db.select({ id: bizLeaves.id, tenantId: bizLeaves.tenantId })
+    .from(bizLeaves).where(buildWhere(anchorIdsWhere(bizLeaves.id, ids), eq(bizLeaves.createdBy, access.user.userId),
+      tenantCondition(bizLeaves, access.user))).limit(ids.length);
+  return rows.map((row): VisibleEntityAnchor => ({ ref: { type: 'biz.leave', key: String(row.id) }, title: `请假申请 #${row.id}`, tenantId: row.tenantId }));
 }
 
-export const workflowBusinessAnchorResolvers: readonly EntityAnchorResolver[] = [{ type: 'biz.leave', resolve: resolveBizLeave }];
+export const workflowBusinessAnchorResolvers: readonly EntityAnchorResolver[] = [numericAnchorResolver('biz.leave', resolveBizLeaves)];
 
 async function requireMatchingAnchor(anchor: VisibleEntityAnchor, resolveAnchor: WorkflowBusinessAnchorResolver, access: RelationAccessContext) {
   const authorized = await resolveAnchor(anchor.ref.type, anchor.ref.key, access);

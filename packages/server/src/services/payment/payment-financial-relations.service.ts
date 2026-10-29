@@ -1,6 +1,7 @@
+import { anchorIdsWhere, numericAnchorResolver } from '../platform/relations/anchor-batch';
 import { and, desc, eq, exists, inArray, isNotNull, isNull, lt, or, sql, type AnyColumn } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import type { EntityRef, Permission } from '@zenith/shared/core';
+import type { Permission } from '@zenith/shared/core';
 import { PAYMENT_RECON_CASE_TYPE_LABELS, type PaymentReconCaseType } from '@zenith/shared/payment';
 import { entityRelationRecordFilters, type CanonicalEntityType, type EntityRelationItem, type EntityRelationPage } from '@zenith/shared/platform';
 import {
@@ -132,71 +133,69 @@ function journalForBusiness(access: RelationAccessContext, refundOnly: boolean) 
       eq(journals.sourceId, original.journalNo), sameMoney(journals, original), journalBusinessMatch(original, access, refundOnly))).limit(1))));
 }
 
-async function resolveFinancialAnchor(ref: EntityRef, access: RelationAccessContext): Promise<VisibleEntityAnchor | null> {
-  const id = idOf(ref.key);
-  if (id == null) return null;
-  switch (ref.type) {
+async function resolveFinancialAnchors(type: EntityAnchorResolver['type'], ids: number[], access: RelationAccessContext): Promise<VisibleEntityAnchor[]> {
+  switch (type) {
     case 'payment.journal': {
-      if (!(await hasPermission('payment:ledger:list'))) return null;
-      const [row] = await access.db.select({ id: journals.id, title: journals.journalNo, tenantId: journals.tenantId,
+      if (!(await hasPermission('payment:ledger:list'))) return [];
+      const rows = await access.db.select({ id: journals.id, title: journals.journalNo, tenantId: journals.tenantId,
         appId: journals.appId, channelAccountId: journals.channelAccountId, currency: journals.currency, sourceType: journals.sourceType,
         sourceId: journals.sourceId, reversalOfJournalId: journals.reversalOfJournalId }).from(journals)
-        .where(buildWhere(eq(journals.id, id), tenantCondition(journals, access.user))).limit(1);
-      return row ? { ref: { type: 'payment.journal', key: String(id) }, title: row.title, tenantId: row.tenantId, metadata: row } : null;
+        .where(buildWhere(anchorIdsWhere(journals.id, ids), tenantCondition(journals, access.user))).limit(ids.length);
+      return rows.map((row): VisibleEntityAnchor => ({ ref: { type: 'payment.journal', key: String(row.id) }, title: row.title, tenantId: row.tenantId, metadata: row }));
     }
     case 'payment.recon-case': {
-      if (!(await hasPermission('payment:recon:list'))) return null;
-      const [row] = await access.db.select({ id: cases.id, tenantId: cases.tenantId, appId: cases.applicationId, channelAccountId: cases.accountId,
+      if (!(await hasPermission('payment:recon:list'))) return [];
+      const rows = await access.db.select({ id: cases.id, tenantId: cases.tenantId, appId: cases.applicationId, channelAccountId: cases.accountId,
         currency: cases.currency, orderId: cases.orderId, refundId: cases.refundId }).from(cases)
-        .where(buildWhere(eq(cases.id, id), tenantCondition(cases, access.user))).limit(1);
-      return row ? { ref: { type: 'payment.recon-case', key: String(id) }, title: `对账案件 #${id}`, tenantId: row.tenantId, metadata: row } : null;
+        .where(buildWhere(anchorIdsWhere(cases.id, ids), tenantCondition(cases, access.user))).limit(ids.length);
+      return rows.map((row): VisibleEntityAnchor => ({ ref: { type: 'payment.recon-case', key: String(row.id) }, title: `对账案件 #${row.id}`, tenantId: row.tenantId, metadata: row }));
     }
     case 'payment.recon-adjustment': {
-      if (!(await hasPermission('payment:recon:list'))) return null;
-      const [row] = await access.db.select({ id: adjustments.id, tenantId: adjustments.tenantId, appId: adjustments.applicationId,
+      if (!(await hasPermission('payment:recon:list'))) return [];
+      const rows = await access.db.select({ id: adjustments.id, tenantId: adjustments.tenantId, appId: adjustments.applicationId,
         channelAccountId: cases.accountId, currency: cases.currency, orderId: cases.orderId, refundId: cases.refundId,
         caseId: cases.id, journalId: adjustments.journalId }).from(adjustments).innerJoin(cases, adjustmentCaseJoin).innerJoin(configs, adjustmentConfigJoin)
-        .where(buildWhere(eq(adjustments.id, id), tenantCondition(adjustments, access.user))).limit(1);
-      return row ? { ref: { type: 'payment.recon-adjustment', key: String(id) }, title: `对账调整 #${id}`, tenantId: row.tenantId, metadata: row } : null;
+        .where(buildWhere(anchorIdsWhere(adjustments.id, ids), tenantCondition(adjustments, access.user))).limit(ids.length);
+      return rows.map((row): VisibleEntityAnchor => ({ ref: { type: 'payment.recon-adjustment', key: String(row.id) }, title: `对账调整 #${row.id}`, tenantId: row.tenantId, metadata: row }));
     }
     case 'payment.sharing-order': {
-      if (!(await hasPermission('payment:sharing:list'))) return null;
-      const [row] = await access.db.select({ id: sharing.id, title: sharing.sharingNo, receiverId: sharing.receiverId, ...orderScope })
-        .from(sharing).innerJoin(orders, sharingOrderJoin).where(buildWhere(eq(sharing.id, id), tenantCondition(sharing, access.user))).limit(1);
-      return row ? { ref: { type: 'payment.sharing-order', key: String(id) }, title: row.title, tenantId: row.tenantId, metadata: row } : null;
+      if (!(await hasPermission('payment:sharing:list'))) return [];
+      const rows = await access.db.select({ id: sharing.id, title: sharing.sharingNo, receiverId: sharing.receiverId, ...orderScope })
+        .from(sharing).innerJoin(orders, sharingOrderJoin).where(buildWhere(anchorIdsWhere(sharing.id, ids), tenantCondition(sharing, access.user))).limit(ids.length);
+      return rows.map((row): VisibleEntityAnchor => ({ ref: { type: 'payment.sharing-order', key: String(row.id) }, title: row.title, tenantId: row.tenantId, metadata: row }));
     }
     case 'payment.sharing-receiver': {
-      if (!(await hasPermission('payment:sharing:list'))) return null;
-      const [row] = await access.db.select({ title: receivers.name, tenantId: receivers.tenantId }).from(receivers)
-        .where(buildWhere(eq(receivers.id, id), tenantCondition(receivers, access.user))).limit(1);
-      return row ? { ref: { type: 'payment.sharing-receiver', key: String(id) }, title: row.title, tenantId: row.tenantId } : null;
+      if (!(await hasPermission('payment:sharing:list'))) return [];
+      const rows = await access.db.select({ id: receivers.id, title: receivers.name, tenantId: receivers.tenantId }).from(receivers)
+        .where(buildWhere(anchorIdsWhere(receivers.id, ids), tenantCondition(receivers, access.user))).limit(ids.length);
+      return rows.map((row): VisibleEntityAnchor => ({ ref: { type: 'payment.sharing-receiver', key: String(row.id) }, title: row.title, tenantId: row.tenantId }));
     }
     case 'payment.sharing-reversal': {
-      if (!(await hasPermission('payment:sharing:list'))) return null;
-      const [row] = await access.db.select({ id: reversals.id, title: reversals.reversalNo, sharingOrderId: sharing.id, receiverId: sharing.receiverId, ...orderScope })
+      if (!(await hasPermission('payment:sharing:list'))) return [];
+      const rows = await access.db.select({ id: reversals.id, title: reversals.reversalNo, sharingOrderId: sharing.id, receiverId: sharing.receiverId, ...orderScope })
         .from(reversals).innerJoin(sharing, reversalSharingJoin).innerJoin(orders, sharingOrderJoin)
-        .where(buildWhere(eq(reversals.id, id), tenantCondition(reversals, access.user))).limit(1);
-      return row ? { ref: { type: 'payment.sharing-reversal', key: String(id) }, title: row.title, tenantId: row.tenantId, metadata: row } : null;
+        .where(buildWhere(anchorIdsWhere(reversals.id, ids), tenantCondition(reversals, access.user))).limit(ids.length);
+      return rows.map((row): VisibleEntityAnchor => ({ ref: { type: 'payment.sharing-reversal', key: String(row.id) }, title: row.title, tenantId: row.tenantId, metadata: row }));
     }
     case 'payment.settlement-batch': {
-      if (!(await hasPermission('payment:settlement:list'))) return null;
-      const [row] = await access.db.select({ id: batches.id, title: batches.batchNo, tenantId: batches.tenantId, appId: batches.appId,
+      if (!(await hasPermission('payment:settlement:list'))) return [];
+      const rows = await access.db.select({ id: batches.id, title: batches.batchNo, tenantId: batches.tenantId, appId: batches.appId,
         channelAccountId: batches.channelAccountId, currency: batches.currency }).from(batches)
-        .where(buildWhere(eq(batches.id, id), tenantCondition(batches, access.user))).limit(1);
-      return row ? { ref: { type: 'payment.settlement-batch', key: String(id) }, title: row.title, tenantId: row.tenantId, metadata: row } : null;
+        .where(buildWhere(anchorIdsWhere(batches.id, ids), tenantCondition(batches, access.user))).limit(ids.length);
+      return rows.map((row): VisibleEntityAnchor => ({ ref: { type: 'payment.settlement-batch', key: String(row.id) }, title: row.title, tenantId: row.tenantId, metadata: row }));
     }
     case 'payment.notify-log': {
-      if (!(await hasPermission('payment:log:list'))) return null;
-      const [row] = await access.db.select({ id: notifyLogs.id, tenantId: notifyLogs.tenantId, appId: orders.appId,
+      if (!(await hasPermission('payment:log:list'))) return [];
+      const rows = await access.db.select({ id: notifyLogs.id, tenantId: notifyLogs.tenantId, appId: orders.appId,
         channelAccountId: configs.channelAccountId, currency: orders.currency, orderNo: notifyLogs.orderNo, channelConfigId: notifyLogs.channelConfigId,
         result: notifyLogs.result }).from(notifyLogs).innerJoin(configs, and(eq(configs.id, notifyLogs.channelConfigId), sql`${configs.tenantId} is not distinct from ${notifyLogs.tenantId}`))
         .leftJoin(orders, and(eq(notifyLogs.orderNo, orders.orderNo), eq(notifyLogs.appId, orders.appId), eq(notifyLogs.channelConfigId, orders.channelConfigId),
           eq(configs.channelAccountId, orders.channelAccountId), sql`${notifyLogs.tenantId} is not distinct from ${orders.tenantId}`,
           eq(notifyLogs.signatureValid, true), sql`${notifyLogs.result} like 'processed:%'`, or(isNull(notifyLogs.currency), eq(notifyLogs.currency, orders.currency))))
-        .where(buildWhere(eq(notifyLogs.id, id), tenantCondition(notifyLogs, access.user))).limit(1);
-      return row ? { ref: { type: 'payment.notify-log', key: String(id) }, title: `渠道回调 #${id}`, tenantId: row.tenantId, metadata: row } : null;
+        .where(buildWhere(anchorIdsWhere(notifyLogs.id, ids), tenantCondition(notifyLogs, access.user))).limit(ids.length);
+      return rows.map((row): VisibleEntityAnchor => ({ ref: { type: 'payment.notify-log', key: String(row.id) }, title: `渠道回调 #${row.id}`, tenantId: row.tenantId, metadata: row }));
     }
-    default: return null;
+    default: return [];
   }
 }
 
@@ -388,8 +387,7 @@ function relation(sourceType: CanonicalEntityType, suffix: string, targetType: C
 
 const financialTypes = ['payment.journal', 'payment.recon-case', 'payment.recon-adjustment', 'payment.sharing-order',
   'payment.sharing-receiver', 'payment.sharing-reversal', 'payment.settlement-batch', 'payment.notify-log'] as const;
-export const paymentFinancialAnchorResolvers: readonly EntityAnchorResolver[] = financialTypes.map((type) => ({ type,
-  resolve: (ref, access) => runWithCurrentUser(access.user, () => resolveFinancialAnchor(ref, access)) }));
+export const paymentFinancialAnchorResolvers: readonly EntityAnchorResolver[] = financialTypes.map((type) => numericAnchorResolver(type, (ids, access) => runWithCurrentUser(access.user, () => resolveFinancialAnchors(type, ids, access))));
 export const paymentFinancialRelationProviders: readonly RelationProvider[] = [
   ...(['payment.order', 'payment.refund'] as const).flatMap((source) => [
     relation(source, 'journals', 'payment.journal', 'payment:ledger:list', listJournals),

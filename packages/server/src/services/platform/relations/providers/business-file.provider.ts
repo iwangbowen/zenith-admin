@@ -10,20 +10,20 @@ import { decodeRelationCursor } from '../cursor';
 import { relationFilterWhere } from '../filters';
 import { relationSummaryQuery } from '../summary-query';
 import type { EntityAnchorResolver, RelationProvider } from '../types';
+import { anchorIdsWhere, defineAnchorResolver, numericAnchorResolver } from '../anchor-batch';
 
 export const businessFileAnchors: readonly EntityAnchorResolver[] = [
-  { type: 'platform.managed-file', async resolve(ref, access) {
-    if (!z.uuid().safeParse(ref.key).success) return null;
-    const [row] = await access.db.select({ id: managedFiles.id, name: managedFiles.originalName, tenantId: managedFiles.tenantId })
-      .from(managedFiles).where(buildWhere(eq(managedFiles.id, ref.key), await visibleManagedBusinessFileCondition(access.db))).limit(1);
-    return row ? { ref: { type: 'platform.managed-file', key: row.id }, title: row.name.slice(0, 160), tenantId: row.tenantId } : null;
-  } },
-  { type: 'messaging.announcement', async resolve(ref, access) {
-    if (!/^[1-9]\d*$/.test(ref.key) || !Number.isSafeInteger(Number(ref.key)) || Number(ref.key) > 2_147_483_647 || !await hasPermission('system:announcement:list')) return null;
-    const [row] = await access.db.select({ id: announcements.id, title: announcements.title, tenantId: announcements.tenantId })
-      .from(announcements).where(buildWhere(eq(announcements.id, Number(ref.key)), tenantCondition(announcements, access.user))).limit(1);
-    return row ? { ref: { type: 'messaging.announcement', key: String(row.id) }, title: row.title.slice(0, 160), tenantId: row.tenantId } : null;
-  } },
+  defineAnchorResolver('platform.managed-file', (key) => z.uuid().safeParse(key).success ? key : undefined, async (ids, access) => {
+    const rows = await access.db.select({ id: managedFiles.id, name: managedFiles.originalName, tenantId: managedFiles.tenantId })
+      .from(managedFiles).where(buildWhere(anchorIdsWhere(managedFiles.id, ids), await visibleManagedBusinessFileCondition(access.db))).limit(ids.length);
+    return rows.map((row) => ({ ref: { type: 'platform.managed-file', key: row.id }, title: row.name.slice(0, 160), tenantId: row.tenantId }));
+  }),
+  numericAnchorResolver('messaging.announcement', async (ids, access) => {
+    if (!await hasPermission('system:announcement:list')) return [];
+    const rows = await access.db.select({ id: announcements.id, title: announcements.title, tenantId: announcements.tenantId })
+      .from(announcements).where(buildWhere(anchorIdsWhere(announcements.id, ids), tenantCondition(announcements, access.user))).limit(ids.length);
+    return rows.map((row) => ({ ref: { type: 'messaging.announcement', key: String(row.id) }, title: row.title.slice(0, 160), tenantId: row.tenantId }));
+  }),
 ];
 
 function attachments(sourceType: 'wiki.document' | 'messaging.announcement'): RelationProvider {

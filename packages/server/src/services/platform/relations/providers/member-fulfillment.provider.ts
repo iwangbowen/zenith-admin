@@ -1,3 +1,4 @@
+import { anchorIdsWhere, numericAnchorResolver } from '../anchor-batch';
 import { desc, eq, lt, sql } from 'drizzle-orm';
 import { WALLET_TX_TYPES, WALLET_TX_TYPE_LABELS, MEMBER_RENEWAL_BIZ_TYPE } from '@zenith/shared/member';
 import type { EntityRelationPage } from '@zenith/shared/platform';
@@ -17,20 +18,17 @@ import type { EntityAnchorResolver, RelationAccessContext, RelationProvider, Vis
 const empty = (): EntityRelationPage => ({ items: [], hasMore: false, nextCursor: null });
 const types = ['member.wallet-transaction', 'member.vip-renewal'] as const;
 type FulfillmentType = typeof types[number];
-const validId = (value: string) => /^[1-9]\d*$/.test(value) && Number.isSafeInteger(Number(value)) && Number(value) <= 2_147_483_647;
 
-export const memberFulfillmentAnchors: readonly EntityAnchorResolver[] = types.map((type) => ({ type,
-  async resolve(ref, access) {
-    const wallet = type === 'member.wallet-transaction';
-    if (!validId(ref.key) || !await hasPermission(wallet ? 'member:wallet:list' : 'member:member:list')) return null;
-    const table = wallet ? memberWalletTransactions : memberVipRenewals;
-    const [row] = await access.db.select({ id: table.id, memberId: table.memberId, tenantId: members.tenantId,
-      orderNo: wallet ? memberWalletTransactions.paymentIntentNo : memberVipRenewals.orderNo,
-    }).from(table).innerJoin(members, eq(table.memberId, members.id))
-      .where(buildWhere(eq(table.id, Number(ref.key)), await memberFulfillmentVisibility(access.db))).limit(1);
-    return row ? { ref: { type, key: String(row.id) }, title: `${wallet ? '钱包流水' : 'VIP 续费履约'} #${row.id}`,
-      tenantId: row.tenantId, metadata: { memberId: row.memberId, orderNo: row.orderNo } } : null;
-  },
+export const memberFulfillmentAnchors: readonly EntityAnchorResolver[] = types.map((type) => numericAnchorResolver(type, async (ids, access) => {
+  const wallet = type === 'member.wallet-transaction';
+  if (!await hasPermission(wallet ? 'member:wallet:list' : 'member:member:list')) return [];
+  const table = wallet ? memberWalletTransactions : memberVipRenewals;
+  const rows = await access.db.select({ id: table.id, memberId: table.memberId, tenantId: members.tenantId,
+    orderNo: wallet ? memberWalletTransactions.paymentIntentNo : memberVipRenewals.orderNo,
+  }).from(table).innerJoin(members, eq(table.memberId, members.id))
+    .where(buildWhere(anchorIdsWhere(table.id, ids), await memberFulfillmentVisibility(access.db))).limit(ids.length);
+  return rows.map((row): VisibleEntityAnchor => ({ ref: { type, key: String(row.id) }, title: `${wallet ? '钱包流水' : 'VIP 续费履约'} #${row.id}`,
+    tenantId: row.tenantId, metadata: { memberId: row.memberId, orderNo: row.orderNo } }));
 }));
 
 async function fulfillmentWhere(type: FulfillmentType, anchor: VisibleEntityAnchor, access: RelationAccessContext) {

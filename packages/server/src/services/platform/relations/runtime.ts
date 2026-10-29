@@ -22,7 +22,7 @@ export async function withRelationRead<T>(operation: string, caller: Pick<Relati
   try {
     const result = await runWithCurrentUser(caller.user, () => db.transaction(async (tx) => {
       await tx.execute(sql`select set_config('statement_timeout', '1500', true), set_config('lock_timeout', '750', true)`);
-      return fn({ user: caller.user, db: tx, deadlineAt: performance.now() + 2500 });
+      return fn({ user: caller.user, db: tx, deadlineAt: performance.now() + 2500, anchorCache: new Map() });
     }, { accessMode: 'read only' }));
     recordRelationMetric(operation, 'success', started);
     return result;

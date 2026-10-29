@@ -62,7 +62,7 @@ vi.mock('../../../drive/drive-access.service', async (importOriginal) => {
 import { identityAnchorResolvers, identityRelationProviders, identityUserPaymentsProvider, memberPaymentsProvider, identityUserAuditProvider } from './identity.provider';
 import { iotContentAnchorResolvers, iotContentRelationProviders, cmsContentRelatedProvider, iotDeviceAlarmsProvider } from './iot-content.provider';
 import { workflowFileAnchorResolvers, workflowFileRelationProviders, workflowInstanceChildrenProvider, workflowInstanceTasksProvider } from './workflow-file.provider';
-import { paymentOrderRefundsProvider, paymentOrderDisputesProvider, paymentOrderRiskReviewsProvider } from '../../../payment/payment-relations.service';
+import { paymentAnchorResolvers, paymentOrderRefundsProvider, paymentOrderDisputesProvider, paymentOrderRiskReviewsProvider } from '../../../payment/payment-relations.service';
 import { subjectProviders } from './subjects.provider';
 import { memberFulfillmentProviders } from './member-fulfillment.provider';
 import { iotOtaProviders } from './iot-ota.provider';
@@ -115,6 +115,22 @@ beforeEach(() => {
   state.allData = false;
   state.siteIds = [5];
   state.channelIds = [12];
+});
+
+describe('domain anchor batch query cardinality', () => {
+  const resolvers = [...identityAnchorResolvers, ...iotContentAnchorResolvers, ...workflowFileAnchorResolvers, ...paymentAnchorResolvers];
+  it.each(resolvers)('$type resolves 32 targets in one scoped SQL statement', async (resolver) => {
+    state.permissions = new Set(['system:user:list', 'member:member:list', 'iot:device:list', 'iot:alarm:list', 'cms:content:list',
+      'workflow:instance:monitor', 'wiki:doc:list', 'drive:node:list', 'system:async-task:list',
+      'payment:order:list', 'payment:refund:list', 'payment:dispute:list', 'payment:risk:list', 'payment:risk:review']);
+    const { access, statements } = captureAccess();
+    await resolver.resolveMany(Array.from({ length: 32 }, (_, i) => String(i + 1)), access);
+    expect(statements).toHaveLength(1);
+    expect(statements[0].sql).toMatch(/"id" in \(/);
+    expect(statements[0].params).toEqual(expect.arrayContaining(Array.from({ length: 32 }, (_, i) => i + 1)));
+    expect(statements[0].params.at(-1)).toBe(32);
+    if (resolver.type !== 'cms.content') expect(statements[0].sql).toContain('"tenant_id"');
+  });
 });
 
 describe('whole-set relation attention SQL', () => {

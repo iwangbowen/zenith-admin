@@ -17,15 +17,24 @@ export const WORKFLOW_FORM_SENSITIVE_REFS: readonly SensitiveFieldRef[] = Object
 registerSensitiveSource('PRINT workflow_instance', WORKFLOW_FORM_SENSITIVE_REFS);
 
 /** An immutable original contains all fields, so both node visibility and PII masking apply. */
-export async function workflowArchiveNeedsRedaction(row: WorkflowFormViewerContext & { formSnapshot: unknown }, executor?: DbExecutor): Promise<boolean> {
-  if (hiddenWorkflowFieldKeys(row, currentUser().userId).size > 0 && !(await hasPermission('workflow:instance:monitor'))) return true;
-  const kinds = new Set<string>();
-  const add = (type: string) => { const entry = FORM_FIELD_MASK_KINDS[type]; if (entry) kinds.add(entry.field); };
-  for (const field of flattenWorkflowPrintLeafFields(normalizeWorkflowFormSnapshot(row.formSnapshot)?.fields ?? [])) {
-    if (field.type === 'detail') for (const child of field.children ?? []) add(child.type);
-    else add(field.type);
-  }
-  if (!kinds.size) return false;
-  const decisions = await resolveMaskDecisions(WORKFLOW_FORM_SENSITIVE_REFS, executor);
-  return decisions.some((decision) => kinds.has(decision.ref.field));
+export function createWorkflowArchiveRedactionCheck(executor?: DbExecutor) {
+  let monitor: Promise<boolean> | undefined;
+  let mask: ReturnType<typeof resolveMaskDecisions> | undefined;
+  const userId = currentUser().userId;
+  return async (row: WorkflowFormViewerContext & { formSnapshot: unknown }): Promise<boolean> => {
+    if (hiddenWorkflowFieldKeys(row, userId).size > 0 && !(await (monitor ??= hasPermission('workflow:instance:monitor')))) return true;
+    const kinds = new Set<string>();
+    const add = (type: string) => { const entry = FORM_FIELD_MASK_KINDS[type]; if (entry) kinds.add(entry.field); };
+    for (const field of flattenWorkflowPrintLeafFields(normalizeWorkflowFormSnapshot(row.formSnapshot)?.fields ?? [])) {
+      if (field.type === 'detail') for (const child of field.children ?? []) add(child.type);
+      else add(field.type);
+    }
+    if (!kinds.size) return false;
+    const decisions = await (mask ??= resolveMaskDecisions(WORKFLOW_FORM_SENSITIVE_REFS, executor));
+    return decisions.some((decision) => kinds.has(decision.ref.field));
+  };
+}
+
+export function workflowArchiveNeedsRedaction(row: WorkflowFormViewerContext & { formSnapshot: unknown }, executor?: DbExecutor): Promise<boolean> {
+  return createWorkflowArchiveRedactionCheck(executor)(row);
 }

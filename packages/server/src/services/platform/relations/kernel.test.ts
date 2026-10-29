@@ -33,14 +33,14 @@ vi.mock('./metrics', () => ({ recordRelationMetric: state.metrics, recordRelatio
 vi.mock('./providers/payment-order.provider', () => {
   const descriptor = (key: string) => ({ key, labelKey: `relation.${key}`, targetTypes: ['payment.refund'], kind: 'direct', cardinality: 'many', capabilities: { view: true, open: true } });
   return {
-    paymentAnchorResolvers: ['payment.order', 'payment.refund'].map((type) => ({ type, resolve: (...args: unknown[]) => state.resolve(...args) })),
+    paymentAnchorResolvers: ['payment.order', 'payment.refund'].map((type) => ({ type, resolve: (...args: unknown[]) => state.resolve(...args), resolveMany: async (keys: string[], access: unknown) => (await Promise.all(keys.map(key => state.resolve({ type, key }, access)))).filter(Boolean) })),
     paymentRelationProviders: ['payment.order.refunds', 'payment.order.more-refunds'].map((key) => ({
       sourceType: 'payment.order', key, permissions: ['payment:refund:list'], descriptor: descriptor(key), list: (...args: unknown[]) => state.list(...args),
     })),
   };
 });
 vi.mock('./providers/identity.provider', () => ({
-  identityAnchorResolvers: [{ type: 'identity.user', resolve: (...args: unknown[]) => state.resolve(...args) }],
+  identityAnchorResolvers: [{ type: 'identity.user', resolve: (...args: unknown[]) => state.resolve(...args), resolveMany: async (keys: string[], access: unknown) => (await Promise.all(keys.map(key => state.resolve({ type: 'identity.user', key }, access)))).filter(Boolean) }],
   identityRelationProviders: [],
 }));
 vi.mock('./providers/member-fulfillment.provider', () => ({ memberFulfillmentAnchors: [], memberFulfillmentProviders: [] }));
@@ -211,7 +211,7 @@ describe('real registry assembly and authorization control flow', () => {
   });
 
   it('allows an anchor with no domain relationship providers', () => {
-    const resolver: EntityAnchorResolver = { type: 'identity.user', resolve: async () => null };
+    const resolver: EntityAnchorResolver = { type: 'identity.user', resolve: async () => null, resolveMany: async () => [] };
     const registry = createEntityRelationRegistry([{ anchors: [resolver], relations: [] }]);
     expect(registry.anchors.get('identity.user')).toBe(resolver);
     expect(registry.relations.size).toBe(0);

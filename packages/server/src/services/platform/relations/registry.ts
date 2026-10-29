@@ -2,7 +2,7 @@ import { HTTPException } from 'hono/http-exception';
 import { entityRelationPageSchema, entityRelationsResponseSchema, entityRelationsContract, explainEntityRelation, type CanonicalEntityType, type EntityRelationsResponse, type EntityRelationPage } from '@zenith/shared/platform';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { isLicenseFeatureKey } from '@zenith/shared/licensing';
-import { hasPermission, runWithCurrentUser } from '../../../lib/context';
+import { hasPermission } from '../../../lib/context';
 import { isFeatureEnabled } from '../../../lib/licensing';
 import type { EntityAnchorResolver, RelationAccessContext, RelationProvider, VisibleEntityAnchor } from './types';
 import { paymentAnchorResolvers, paymentRelationProviders } from './providers/payment-order.provider';
@@ -11,7 +11,7 @@ import { iotContentAnchorResolvers, iotContentRelationProviders } from './provid
 import { workflowFileAnchorResolvers, workflowFileRelationProviders } from './providers/workflow-file.provider';
 import { subjectAnchorResolvers, subjectProviders } from './providers/subjects.provider';
 import { readRelationCursor, signRelationCursor } from './cursor';
-import { assertRelationBudget, isStatementTimeout, withRelationRead } from './runtime';
+import { isStatementTimeout, withRelationRead } from './runtime';
 import { summarizeRelationProviders } from './summary';
 import { manualLinksProvider } from './edges.service';
 import { paymentFinancialAnchorResolvers, paymentFinancialRelationProviders } from '../../payment/payment-financial-relations.service';
@@ -21,6 +21,7 @@ import { workflowArchiveAnchorResolvers, workflowArchiveRelationProviders } from
 import { workflowAttachmentAnchorResolvers, workflowAttachmentRelationProviders } from '../../workflow/workflow-attachment-relations.service';
 import { assertSupportedRelationFilters, normalizeRelationFilters } from './filters';
 import { addRelationActions } from './actions';
+import { anchorRefKey, resolveAnchorBatch } from './anchor-resolution';
 
 import { memberFulfillmentAnchors, memberFulfillmentProviders } from './providers/member-fulfillment.provider';
 import { iotOtaAnchors, iotOtaProviders } from './providers/iot-ota.provider';
@@ -69,7 +70,7 @@ const manifests: EntityRelationManifest[] = [
 ];
 const supportedTypes = manifests.flatMap((manifest) => manifest.anchors.map((anchor) => anchor.type));
 manifests.push({ anchors: [], relations: supportedTypes.flatMap(subjectProviders) });
-manifests.push({ anchors: [], relations: reverseSubjectProviders(supportedTypes, resolveVisibleEntityAnchor) });
+manifests.push({ anchors: [], relations: reverseSubjectProviders(supportedTypes, resolveVisibleEntityAnchor, resolveVisibleEntityAnchors) });
 manifests.push({ anchors: [], relations: supportedTypes.map((type) => manualLinksProvider(type, supportedTypes)) });
 export const entityRelationRegistry = createEntityRelationRegistry(manifests);
 export const relationProviders = [...entityRelationRegistry.relations.values()];
@@ -79,12 +80,13 @@ export async function canUseEntityType(type: CanonicalEntityType): Promise<boole
   return !isLicenseFeatureKey(domain) || isFeatureEnabled(domain);
 }
 export async function resolveVisibleEntityAnchor(type: CanonicalEntityType, key: string, access: RelationAccessContext): Promise<VisibleEntityAnchor> {
-  assertRelationBudget(access);
-  const resolver = entityRelationRegistry.anchors.get(type);
-  if (!resolver || !(await canUseEntityType(type))) throw new HTTPException(404, { message: '对象不存在或无权查看' });
-  const anchor = await runWithCurrentUser(access.user, () => resolver.resolve({ type, key }, access));
+  const anchors = await resolveVisibleEntityAnchors([{ type, key }], access);
+  const anchor = anchors.get(anchorRefKey({ type, key }));
   if (!anchor) throw new HTTPException(404, { message: '对象不存在或无权查看' });
-  return { ...anchor, title: anchor.title.slice(0, 160) };
+  return anchor;
+}
+export function resolveVisibleEntityAnchors(refs: readonly VisibleEntityAnchor['ref'][], access: RelationAccessContext) {
+  return resolveAnchorBatch(entityRelationRegistry.anchors, refs, access, canUseEntityType);
 }
 export async function canDiscover(provider: RelationProvider): Promise<boolean> {
   if (provider.permissions !== 'authenticated' && !(await hasPermission(...provider.permissions))) return false;

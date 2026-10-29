@@ -1,5 +1,5 @@
+import { anchorIdsWhere, numericAnchorResolver } from '../anchor-batch';
 import { and, desc, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
-import type { EntityRef } from '@zenith/shared/core';
 import { entityRelationRecordFilters, type EntityRelationPage } from '@zenith/shared/platform';
 import { relationFilterWhere } from '../filters';
 import { formatDateTime } from '../../../../lib/datetime';
@@ -21,27 +21,23 @@ function parseId(key: string): number | null {
   return /^[1-9]\d*$/.test(key) && Number.isSafeInteger(id) && id <= 2_147_483_647 ? id : null;
 }
 
-async function resolveIotDevice(ref: EntityRef, access: RelationAccessContext): Promise<VisibleEntityAnchor | null> {
+async function resolveIotDevices(ids: number[], access: RelationAccessContext): Promise<VisibleEntityAnchor[]> {
   return runWithCurrentUser(access.user, async () => {
-    if (ref.type !== 'iot.device' || !(await hasPermission('iot:device:list'))) return null;
-    const id = parseId(ref.key);
-    if (id == null) return null;
-    const [row] = await access.db.select({ id: iotDevices.id, name: iotDevices.name, sn: iotDevices.sn, tenantId: iotDevices.tenantId })
-      .from(iotDevices).where(buildWhere(eq(iotDevices.id, id), tenantCondition(iotDevices, access.user))).limit(1);
-    return row ? { ref: { type: 'iot.device', key: String(row.id) }, title: row.name || row.sn, tenantId: row.tenantId } : null;
+    if (!(await hasPermission('iot:device:list'))) return [];
+    const rows = await access.db.select({ id: iotDevices.id, name: iotDevices.name, sn: iotDevices.sn, tenantId: iotDevices.tenantId })
+      .from(iotDevices).where(buildWhere(anchorIdsWhere(iotDevices.id, ids), tenantCondition(iotDevices, access.user))).limit(ids.length);
+    return rows.map((row): VisibleEntityAnchor => ({ ref: { type: 'iot.device', key: String(row.id) }, title: row.name || row.sn, tenantId: row.tenantId }));
   });
 }
 
-async function resolveIotAlarm(ref: EntityRef, access: RelationAccessContext): Promise<VisibleEntityAnchor | null> {
+async function resolveIotAlarms(ids: number[], access: RelationAccessContext): Promise<VisibleEntityAnchor[]> {
   return runWithCurrentUser(access.user, async () => {
-    if (ref.type !== 'iot.alarm' || !(await hasPermission('iot:alarm:list'))) return null;
-    const id = parseId(ref.key);
-    if (id == null) return null;
+    if (!(await hasPermission('iot:alarm:list'))) return [];
     // Alarms have no tenant column; the owning device is their tenant boundary.
-    const [row] = await access.db.select({ id: iotAlarms.id, title: iotAlarms.ruleName, deviceId: iotDevices.id, tenantId: iotDevices.tenantId })
+    const rows = await access.db.select({ id: iotAlarms.id, title: iotAlarms.ruleName, deviceId: iotDevices.id, tenantId: iotDevices.tenantId })
       .from(iotAlarms).innerJoin(iotDevices, eq(iotAlarms.deviceId, iotDevices.id))
-      .where(buildWhere(eq(iotAlarms.id, id), tenantCondition(iotDevices, access.user))).limit(1);
-    return row ? { ref: { type: 'iot.alarm', key: String(row.id) }, title: row.title, tenantId: row.tenantId, metadata: { deviceId: row.deviceId } } : null;
+      .where(buildWhere(anchorIdsWhere(iotAlarms.id, ids), tenantCondition(iotDevices, access.user))).limit(ids.length);
+    return rows.map((row): VisibleEntityAnchor => ({ ref: { type: 'iot.alarm', key: String(row.id) }, title: row.title, tenantId: row.tenantId, metadata: { deviceId: row.deviceId } }));
   });
 }
 
@@ -58,17 +54,15 @@ async function cmsVisibility(access: RelationAccessContext) {
   );
 }
 
-async function resolveCmsContent(ref: EntityRef, access: RelationAccessContext): Promise<VisibleEntityAnchor | null> {
+async function resolveCmsContents(ids: number[], access: RelationAccessContext): Promise<VisibleEntityAnchor[]> {
   return runWithCurrentUser(access.user, async () => {
-    if (ref.type !== 'cms.content' || !(await hasPermission('cms:content:list'))) return null;
-    const id = parseId(ref.key);
-    if (id == null) return null;
+    if (!(await hasPermission('cms:content:list'))) return [];
     // CMS is platform-owned; explicit site/channel grants replace a tenant column.
-    const [row] = await access.db.select({ id: cmsContents.id, siteId: cmsContents.siteId, channelId: cmsContents.channelId, title: cmsContents.title })
+    const rows = await access.db.select({ id: cmsContents.id, siteId: cmsContents.siteId, channelId: cmsContents.channelId, title: cmsContents.title })
       .from(cmsContents).innerJoin(cmsSites, eq(cmsSites.id, cmsContents.siteId))
       .innerJoin(cmsChannels, and(eq(cmsChannels.id, cmsContents.channelId), eq(cmsChannels.siteId, cmsContents.siteId)))
-      .where(buildWhere(eq(cmsContents.id, id), await cmsVisibility(access))).limit(1);
-    return row ? { ref: { type: 'cms.content', key: String(row.id) }, title: row.title.slice(0, 160), tenantId: null, metadata: { siteId: row.siteId, channelId: row.channelId } } : null;
+      .where(buildWhere(anchorIdsWhere(cmsContents.id, ids), await cmsVisibility(access))).limit(ids.length);
+    return rows.map((row): VisibleEntityAnchor => ({ ref: { type: 'cms.content', key: String(row.id) }, title: row.title.slice(0, 160), tenantId: null, metadata: { siteId: row.siteId, channelId: row.channelId } }));
   });
 }
 
@@ -138,8 +132,8 @@ export const cmsContentRelatedProvider: RelationProvider = {
 };
 
 export const iotContentAnchorResolvers: readonly EntityAnchorResolver[] = [
-  { type: 'iot.device', resolve: resolveIotDevice },
-  { type: 'iot.alarm', resolve: resolveIotAlarm },
-  { type: 'cms.content', resolve: resolveCmsContent },
+  numericAnchorResolver('iot.device', resolveIotDevices),
+  numericAnchorResolver('iot.alarm', resolveIotAlarms),
+  numericAnchorResolver('cms.content', resolveCmsContents),
 ];
 export const iotContentRelationProviders: readonly RelationProvider[] = [iotDeviceAlarmsProvider, iotAlarmDeviceProvider, cmsContentRelatedProvider];

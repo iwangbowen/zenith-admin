@@ -10,11 +10,13 @@ export interface RelationAccessContext {
   readonly user: JwtPayload;
   readonly db: DbTransaction;
   readonly deadlineAt?: number;
+  readonly anchorCache?: Map<string, VisibleEntityAnchor | null>;
 }
 
 export interface EntityAnchorResolver {
   readonly type: CanonicalEntityType;
   readonly resolve: (ref: EntityRef, access: RelationAccessContext) => Promise<VisibleEntityAnchor | null>;
+  readonly resolveMany: (keys: readonly string[], access: RelationAccessContext) => Promise<VisibleEntityAnchor[]>;
 }
 
 export interface VisibleEntityAnchor {

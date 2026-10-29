@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { drizzle } from 'drizzle-orm/postgres-js';
-import { HTTPException } from 'hono/http-exception';
 import type { RelationAccessContext } from '../platform/relations/types';
 const state = vi.hoisted(() => ({ allowed: true, list: vi.fn(), get: vi.fn() }));
 vi.mock('../../lib/context', () => ({ hasPermission: async () => state.allowed, runWithCurrentUser: async (_user: unknown, fn: () => unknown) => fn() }));
@@ -8,7 +7,7 @@ vi.mock('../../lib/tenant', async (original) => ({ ...await original<typeof impo
 vi.mock('../../config', () => ({ config: { multiTenantMode: true } }));
 vi.mock('../platform/relations/runtime', () => ({ assertRelationBudget: () => undefined }));
 vi.mock('../platform/relations/providers/workflow-file.provider', () => ({ workflowVisibility: async () => undefined }));
-vi.mock('./workflow-attachments.service', () => ({ getWorkflowAttachmentSummary: state.get, listWorkflowAttachmentSummaries: state.list }));
+vi.mock('./workflow-attachments.service', () => ({ getWorkflowAttachmentSummary: state.get, getWorkflowAttachmentSummariesByIds: state.get, listWorkflowAttachmentSummaries: state.list }));
 import { workflowAttachmentAnchorResolvers, workflowAttachmentRelationProviders } from './workflow-attachment-relations.service';
 const fixture = (id: number, instanceId: number) => ({ id, instanceId, tenantId: 7, name: `File ${id}`, source: 'task', createdAt: new Date(), taskId: 20 });
 function access(rounds: { id: number }[][] = []) {
@@ -49,7 +48,7 @@ describe('attachment source navigation and round pagination', () => {
   });
   it('does not resolve a hidden file and never conceals an infrastructure failure', async () => {
     const resolver = workflowAttachmentAnchorResolvers[0], context=access().context;
-    state.get.mockRejectedValueOnce(new HTTPException(404));
+    state.get.mockResolvedValueOnce([]);
     expect(await resolver.resolve({type:'workflow.attachment',key:'3'},context)).toBeNull();
     state.get.mockRejectedValueOnce(new Error('database unavailable'));
     await expect(resolver.resolve({type:'workflow.attachment',key:'3'},context)).rejects.toThrow('database unavailable');

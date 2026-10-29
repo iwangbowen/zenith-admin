@@ -1,5 +1,5 @@
+import { anchorIdsWhere, numericAnchorResolver } from '../platform/relations/anchor-batch';
 import { and, desc, eq, exists, inArray, lt, or, sql } from 'drizzle-orm';
-import type { EntityRef } from '@zenith/shared/core';
 import { entityRelationRecordFilters, type EntityRelationItem } from '@zenith/shared/platform';
 import { relationFilterWhere } from '../platform/relations/filters';
 import { formatDateTime } from '../../lib/datetime';
@@ -16,50 +16,44 @@ import { paymentReconAdjustments, paymentReconCases, workflowInstances } from '.
 import { workflowInstanceAttention, workflowVisibility } from '../platform/relations/providers/workflow-file.provider';
 import { PAYMENT_RECON_ADJUSTMENT_BIZ_TYPE } from '@zenith/shared/payment';
 
-function idOf(key: string): number | null {
-  const id = Number(key);
-  return /^[1-9]\d*$/.test(key) && Number.isSafeInteger(id) && id <= 2147483647 ? id : null;
-}
-export async function resolvePaymentOrderAnchor(ref: EntityRef, access: RelationAccessContext): Promise<VisibleEntityAnchor | null> {
-  if (ref.type !== 'payment.order' || !(await hasPermission('payment:order:list'))) return null;
-  const id = idOf(ref.key);
-  if (id == null) return null;
-  const [row] = await access.db.select({ id: paymentOrders.id, title: paymentOrders.subject, orderNo: paymentOrders.orderNo,
+async function loadPaymentOrders(ids: number[], access: RelationAccessContext): Promise<VisibleEntityAnchor[]> {
+  if (!(await hasPermission('payment:order:list'))) return [];
+  const rows = await access.db.select({ id: paymentOrders.id, title: paymentOrders.subject, orderNo: paymentOrders.orderNo,
     tenantId: paymentOrders.tenantId, appId: paymentOrders.appId, bizType: paymentOrders.bizType, bizId: paymentOrders.bizId })
-    .from(paymentOrders).where(buildWhere(eq(paymentOrders.id, id), await buildOrdersWhere({}, access.db))).limit(1);
-  return row ? { ref: { type: 'payment.order', key: String(row.id) }, title: row.title || row.orderNo,
-    tenantId: row.tenantId, metadata: { orderNo: row.orderNo, appId: row.appId, bizType: row.bizType, bizId: row.bizId } } : null;
+    .from(paymentOrders).where(buildWhere(anchorIdsWhere(paymentOrders.id, ids), await buildOrdersWhere({}, access.db))).limit(ids.length);
+  return rows.map((row): VisibleEntityAnchor => ({ ref: { type: 'payment.order', key: String(row.id) }, title: row.title || row.orderNo,
+    tenantId: row.tenantId, metadata: { orderNo: row.orderNo, appId: row.appId, bizType: row.bizType, bizId: row.bizId } }));
 }
+const paymentOrderAnchorResolver = numericAnchorResolver('payment.order', loadPaymentOrders);
+export const resolvePaymentOrderAnchor = paymentOrderAnchorResolver.resolve;
 
-async function resolvePaymentRecord(ref: EntityRef, access: RelationAccessContext): Promise<VisibleEntityAnchor | null> {
-  const id = idOf(ref.key);
-  if (id == null) return null;
-  switch (ref.type) {
+async function resolvePaymentRecords(type: EntityAnchorResolver['type'], ids: number[], access: RelationAccessContext): Promise<VisibleEntityAnchor[]> {
+  switch (type) {
     case 'payment.refund': {
-      if (!(await hasPermission('payment:refund:list'))) return null;
-      const [row] = await access.db.select({ id: paymentRefunds.id, title: paymentRefunds.refundNo, tenantId: paymentRefunds.tenantId, orderId: paymentRefunds.orderId })
-        .from(paymentRefunds).where(buildWhere(eq(paymentRefunds.id, id), tenantCondition(paymentRefunds, access.user))).limit(1);
-      return row ? { ref: { type: 'payment.refund', key: String(id) }, title: row.title, tenantId: row.tenantId, metadata: { orderId: row.orderId } } : null;
+      if (!(await hasPermission('payment:refund:list'))) return [];
+      const rows = await access.db.select({ id: paymentRefunds.id, title: paymentRefunds.refundNo, tenantId: paymentRefunds.tenantId, orderId: paymentRefunds.orderId })
+        .from(paymentRefunds).where(buildWhere(anchorIdsWhere(paymentRefunds.id, ids), tenantCondition(paymentRefunds, access.user))).limit(ids.length);
+      return rows.map((row): VisibleEntityAnchor => ({ ref: { type: 'payment.refund', key: String(row.id) }, title: row.title, tenantId: row.tenantId, metadata: { orderId: row.orderId } }));
     }
     case 'payment.dispute': {
-      if (!(await hasPermission('payment:dispute:list'))) return null;
-      const [row] = await access.db.select({ title: paymentDisputes.disputeNo, tenantId: paymentDisputes.tenantId, orderNo: paymentDisputes.orderNo })
-        .from(paymentDisputes).where(buildWhere(eq(paymentDisputes.id, id), tenantCondition(paymentDisputes, access.user))).limit(1);
-      return row ? { ref: { type: 'payment.dispute', key: String(id) }, title: row.title, tenantId: row.tenantId, metadata: { orderNo: row.orderNo } } : null;
+      if (!(await hasPermission('payment:dispute:list'))) return [];
+      const rows = await access.db.select({ id: paymentDisputes.id, title: paymentDisputes.disputeNo, tenantId: paymentDisputes.tenantId, orderNo: paymentDisputes.orderNo })
+        .from(paymentDisputes).where(buildWhere(anchorIdsWhere(paymentDisputes.id, ids), tenantCondition(paymentDisputes, access.user))).limit(ids.length);
+      return rows.map((row): VisibleEntityAnchor => ({ ref: { type: 'payment.dispute', key: String(row.id) }, title: row.title, tenantId: row.tenantId, metadata: { orderNo: row.orderNo } }));
     }
     case 'payment.risk-hit': {
-      if (!(await hasPermission('payment:risk:list'))) return null;
-      const [row] = await access.db.select({ title: paymentRiskHits.ruleName, tenantId: paymentRiskHits.tenantId, orderNo: paymentRiskHits.orderNo })
-        .from(paymentRiskHits).where(buildWhere(eq(paymentRiskHits.id, id), tenantCondition(paymentRiskHits, access.user))).limit(1);
-      return row ? { ref: { type: 'payment.risk-hit', key: String(id) }, title: row.title, tenantId: row.tenantId, metadata: { orderNo: row.orderNo } } : null;
+      if (!(await hasPermission('payment:risk:list'))) return [];
+      const rows = await access.db.select({ id: paymentRiskHits.id, title: paymentRiskHits.ruleName, tenantId: paymentRiskHits.tenantId, orderNo: paymentRiskHits.orderNo })
+        .from(paymentRiskHits).where(buildWhere(anchorIdsWhere(paymentRiskHits.id, ids), tenantCondition(paymentRiskHits, access.user))).limit(ids.length);
+      return rows.map((row): VisibleEntityAnchor => ({ ref: { type: 'payment.risk-hit', key: String(row.id) }, title: row.title, tenantId: row.tenantId, metadata: { orderNo: row.orderNo } }));
     }
     case 'payment.risk-review': {
-      if (!(await hasPermission('payment:risk:review'))) return null;
-      const [row] = await access.db.select({ title: paymentRiskReviews.reviewNo, tenantId: paymentRiskReviews.tenantId, orderNo: paymentRiskReviews.orderNo })
-        .from(paymentRiskReviews).where(buildWhere(eq(paymentRiskReviews.id, id), tenantCondition(paymentRiskReviews, access.user))).limit(1);
-      return row ? { ref: { type: 'payment.risk-review', key: String(id) }, title: row.title, tenantId: row.tenantId, metadata: { orderNo: row.orderNo } } : null;
+      if (!(await hasPermission('payment:risk:review'))) return [];
+      const rows = await access.db.select({ id: paymentRiskReviews.id, title: paymentRiskReviews.reviewNo, tenantId: paymentRiskReviews.tenantId, orderNo: paymentRiskReviews.orderNo })
+        .from(paymentRiskReviews).where(buildWhere(anchorIdsWhere(paymentRiskReviews.id, ids), tenantCondition(paymentRiskReviews, access.user))).limit(ids.length);
+      return rows.map((row): VisibleEntityAnchor => ({ ref: { type: 'payment.risk-review', key: String(row.id) }, title: row.title, tenantId: row.tenantId, metadata: { orderNo: row.orderNo } }));
     }
-    default: return null;
+    default: return [];
   }
 }
 
@@ -161,7 +155,7 @@ const paymentOrderWorkflowProvider: RelationProvider = {
   },
 };
 export const paymentAnchorResolvers: readonly EntityAnchorResolver[] = [
-  { type: 'payment.order', resolve: resolvePaymentOrderAnchor }, ...recordTypes.map((type) => ({ type, resolve: resolvePaymentRecord })),
+  paymentOrderAnchorResolver, ...recordTypes.map((type) => numericAnchorResolver(type, (ids, access) => resolvePaymentRecords(type, ids, access))),
 ];
 export const paymentRelationProviders: readonly RelationProvider[] = [paymentOrderRefundsProvider, paymentOrderDisputesProvider, paymentOrderRiskHitsProvider, paymentOrderRiskReviewsProvider, paymentOrderWorkflowProvider,
   ...recordTypes.map((sourceType): RelationProvider => ({ sourceType, key: `${sourceType}.order`, permissions: ['payment:order:list'],
