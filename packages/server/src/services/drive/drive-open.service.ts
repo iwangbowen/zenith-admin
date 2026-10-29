@@ -11,6 +11,7 @@ import {
   type OpenDriveSpace,
 } from '@zenith/shared/drive';
 import { db } from '../../db';
+import type { DbExecutor } from '../../db/types';
 import { driveNodes, driveOpenAppGrants, driveSpaces, oauth2Clients, type DriveNodeRow, type DriveOpenAppGrantRow, type DriveSpaceRow } from '../../db/schema';
 import { currentUser, runWithCurrentUser } from '../../lib/context';
 import { formatDateTime, formatTimestamps } from '../../lib/datetime';
@@ -97,9 +98,9 @@ export async function getOpenAppGrantBeforeAudit(id: number) {
 }
 
 /** Webhook 订阅匹配：某应用是否被授权访问该空间（启用中） */
-export async function clientIdsGrantedForSpace(spaceId: number, clientIds: string[]): Promise<Set<string>> {
+export async function clientIdsGrantedForSpace(spaceId: number, clientIds: string[], executor: DbExecutor = db): Promise<Set<string>> {
   if (clientIds.length === 0) return new Set();
-  const rows = await db.select({ clientId: driveOpenAppGrants.clientId }).from(driveOpenAppGrants).where(and(
+  const rows = await executor.select({ clientId: driveOpenAppGrants.clientId }).from(driveOpenAppGrants).where(and(
     eq(driveOpenAppGrants.spaceId, spaceId), eq(driveOpenAppGrants.status, 'enabled'), inArray(driveOpenAppGrants.clientId, clientIds),
   ));
   return new Set(rows.map((r) => r.clientId));

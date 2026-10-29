@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { bigint, boolean, check, date, index, integer, jsonb, pgEnum, pgTable, text, unique, varchar, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { bigint, boolean, check, date, index, integer, jsonb, pgEnum, pgTable, text, unique, uuid, varchar, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { timestampColumns, idColumn, statusColumn, timestamptz } from './common';
 import { auditColumns, users, tenantIdColumn } from './core';
 import { cmsSites } from './cms';
@@ -313,6 +313,8 @@ export const appWebhookDeliveries = pgTable('app_webhook_deliveries', {
   eventId: varchar({ length: 64 }).notNull(),
   payload: jsonb(),
   attempt: integer().notNull().default(0),
+  leaseToken: uuid(),
+  leaseUntil: timestamptz(),
   status: appWebhookDeliveryStatusEnum().notNull().default('pending'),
   requestUrl: varchar({ length: 512 }),
   responseStatus: integer(),
@@ -338,6 +340,19 @@ export const appWebhookDeliveries = pgTable('app_webhook_deliveries', {
 export type AppWebhookDeliveryRow = typeof appWebhookDeliveries.$inferSelect;
 
 export type NewAppWebhookDelivery = typeof appWebhookDeliveries.$inferInsert;
+
+export const appWebhookAttempts = pgTable('app_webhook_attempts', {
+  id: idColumn(),
+  deliveryId: integer().notNull().references(() => appWebhookDeliveries.id, { onDelete: 'cascade' }),
+  attempt: integer().notNull(),
+  leaseToken: uuid().notNull(),
+  status: varchar({ length: 16 }).notNull().default('running'),
+  startedAt: timestamptz().notNull().defaultNow(),
+  finishedAt: timestamptz(),
+  requestUrl: varchar({ length: 512 }),
+  responseStatus: integer(),
+  errorMessage: text(),
+}, (t) => [unique('app_webhook_attempts_delivery_attempt_unique').on(t.deliveryId, t.attempt)]);
 
 /** 配额告警持久化 outbox，确保进程崩溃后可恢复投递 */
 export const openQuotaAlerts = pgTable('open_quota_alerts', {

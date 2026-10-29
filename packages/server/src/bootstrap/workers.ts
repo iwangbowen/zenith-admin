@@ -27,6 +27,10 @@ export async function declareBackgroundJobs(): Promise<boolean> {
   try {
     registerJobSources();
     await initCronScheduler();
+    const { registerDomainEventWorker } = await import('../lib/domain-events');
+    const { registerAppWebhookWorker } = await import('../services/open-platform/app-webhooks.service');
+    await registerDomainEventWorker();
+    await registerAppWebhookWorker();
     const { registerExportJobWorker } = await import('../services/tasks/export-jobs.service');
     const { registerSystemTasks } = await import('../lib/system-tasks.registry');
     registerTaskDemoHandlers(); // 演示任务类型需在任务中心 Worker 启动前注册

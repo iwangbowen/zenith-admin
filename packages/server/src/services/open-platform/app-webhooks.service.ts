@@ -3,7 +3,7 @@ import { listRows } from '../../lib/list-query';
 import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { eq, and, or, desc, gt, gte, inArray, isNotNull, isNull, lt, lte, sql, arrayContained, type SQL } from 'drizzle-orm';
 import { db } from '../../db';
-import { appWebhookSubscriptions, appWebhookDeliveries, cmsOpenAppGrants, oauth2Clients, users } from '../../db/schema';
+import { appWebhookSubscriptions, appWebhookDeliveries, appWebhookAttempts, cmsOpenAppGrants, oauth2Clients, users } from '../../db/schema';
 import type { AppWebhookSubscriptionRow, AppWebhookDeliveryRow } from '../../db/schema';
 import { HTTPException } from 'hono/http-exception';
 import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
@@ -12,7 +12,7 @@ import { encryptField, decryptField } from '../../lib/encryption';
 import { httpPost, type HttpResponse } from '../../lib/http-client';
 import logger from '../../lib/logger';
 import { openEventBus, type OpenPlatformEvent } from '../../lib/open-event-bus';
-import { mapWithConcurrency } from '../../lib/concurrency';
+import { mapWithConcurrency, createConcurrencyLimiter } from '../../lib/concurrency';
 import { OPEN_WEBHOOK_SIGNATURE_HEADER, OPEN_WEBHOOK_RETRY_STAGES_MINUTES, OPEN_WEBHOOK_EVENTS, OPEN_WEBHOOK_EVENT_LABELS, PAYMENT_WEBHOOK_EVENTS } from '@zenith/shared/open-platform';
 import type { CreateAppWebhookInput, UpdateAppWebhookInput } from '@zenith/shared/open-platform';
 import { DRIVE_OPEN_EVENTS } from '@zenith/shared/drive';
@@ -22,11 +22,15 @@ import { notify } from '../messaging/notification-outbox.service';
 import { currentUser } from '../../lib/context';
 import { getCreateTenantId, exactTenantCondition, optionalExactTenantCondition } from '../../lib/tenant';
 import type { JobSourceRawSummary } from '../../lib/job-monitor/registry';
+import type { DbTransaction, DbExecutor } from '../../db/types';
+import type { OpenPlatformEvent as DurableOpenPlatformEvent } from './open-events.service';
+import { registerSystemLedgerWorker } from '../../lib/pg-boss-scheduler';
 
 const TIMEOUT_MS = 10_000;
 const MAX_RESPONSE_BODY_BYTES = 4096;
 const PENDING_RECOVERY_AFTER_MS = 2 * 60_000;
 const RETRY_CONCURRENCY = 10;
+const deliveryLimiter = createConcurrencyLimiter(RETRY_CONCURRENCY);
 const WEBHOOK_OVERDUE_GRACE_MS = 10 * 60_000;
 
 /** 同时覆盖已到期重试和派发进程崩溃后应由补投器回收的 pending。 */
@@ -457,8 +461,8 @@ interface InsertDeliveryInput {
   payload: unknown;
 }
 
-async function insertDelivery(input: InsertDeliveryInput): Promise<AppWebhookDeliveryRow | null> {
-  const [row] = await db.insert(appWebhookDeliveries).values({
+async function insertDelivery(input: InsertDeliveryInput, executor: DbExecutor = db): Promise<AppWebhookDeliveryRow | null> {
+  const [row] = await executor.insert(appWebhookDeliveries).values({
     subscriptionId: input.subscriptionId,
     clientId: input.clientId,
     tenantId: input.tenantId,
@@ -477,14 +481,26 @@ async function updateDeliveryAfterAttempt(
   patch: Partial<AppWebhookDeliveryRow>,
   expectedAttempt?: number,
   tenantId?: number | null,
+  expectedLeaseToken?: string | null,
 ): Promise<boolean> {
   const where = buildWhere(
     eq(appWebhookDeliveries.id, id),
     expectedAttempt === undefined ? undefined : eq(appWebhookDeliveries.attempt, expectedAttempt),
     optionalExactTenantCondition(appWebhookDeliveries.tenantId, tenantId),
+    expectedLeaseToken ? eq(appWebhookDeliveries.leaseToken, expectedLeaseToken) : undefined,
+    expectedLeaseToken ? gt(appWebhookDeliveries.leaseUntil, sql`clock_timestamp()`) : undefined,
   );
-  const rows = await db.update(appWebhookDeliveries).set(patch).where(where).returning({ id: appWebhookDeliveries.id });
-  return rows.length > 0;
+  return db.transaction(async (tx) => {
+    const terminal = patch.status !== undefined;
+    const rows = await tx.update(appWebhookDeliveries).set({ ...patch, ...(terminal ? { leaseToken: null, leaseUntil: null } : {}) }).where(where).returning({ id: appWebhookDeliveries.id });
+    if (rows.length && expectedLeaseToken) await tx.update(appWebhookAttempts).set({
+      ...(patch.requestUrl !== undefined ? { requestUrl: patch.requestUrl } : {}),
+      ...(patch.responseStatus !== undefined ? { responseStatus: patch.responseStatus } : {}),
+      ...(patch.errorMessage !== undefined ? { errorMessage: patch.errorMessage } : {}),
+      ...(terminal ? { status: patch.status === 'success' ? 'succeeded' : 'failed', finishedAt: sql`clock_timestamp()` } : {}),
+    }).where(and(eq(appWebhookAttempts.deliveryId, id), eq(appWebhookAttempts.leaseToken, expectedLeaseToken), eq(appWebhookAttempts.status, 'running')));
+    return rows.length > 0;
+  });
 }
 
 async function readResponseTextWithTimeout(response: HttpResponse): Promise<string> {
@@ -624,39 +640,49 @@ function isPermanentResponseStatus(status: number): boolean {
   return status >= 400 && status < 500 && status !== 408 && status !== 429;
 }
 
+function deliveryClaimValues() {
+  return { attempt: sql`${appWebhookDeliveries.attempt} + 1`, status: 'pending' as const,
+    startedAt: sql`clock_timestamp()`, leaseToken: randomUUID(),
+    leaseUntil: sql`clock_timestamp() + interval '2 minutes'`, nextRetryAt: null, finishedAt: null };
+}
+async function recordClaimedAttempts(tx: DbTransaction, rows: AppWebhookDeliveryRow[]): Promise<void> {
+  if (!rows.length) return;
+  await tx.update(appWebhookAttempts).set({ status: 'failed', finishedAt: sql`clock_timestamp()`, errorMessage: '投递租约过期，已由下一次尝试接管' })
+    .where(and(inArray(appWebhookAttempts.deliveryId, rows.map((row) => row.id)), eq(appWebhookAttempts.status, 'running')));
+  await tx.insert(appWebhookAttempts).values(rows.map((row) => ({ deliveryId: row.id, attempt: row.attempt, leaseToken: row.leaseToken! })));
+}
 async function claimDelivery(deliveryId: number, expectedTenantId: number | null): Promise<AppWebhookDeliveryRow | null> {
-  const now = new Date();
-  const staleCutoff = new Date(now.getTime() - PENDING_RECOVERY_AFTER_MS);
-  const [delivery] = await db.update(appWebhookDeliveries).set({
-    attempt: sql`${appWebhookDeliveries.attempt} + 1`,
-    status: 'pending',
-    startedAt: now,
-    nextRetryAt: null,
-    finishedAt: null,
-  }).where(and(
-    eq(appWebhookDeliveries.id, deliveryId),
-    exactTenantCondition(appWebhookDeliveries.tenantId, expectedTenantId),
-    or(
-      eq(appWebhookDeliveries.status, 'failed'),
-      and(
-        eq(appWebhookDeliveries.status, 'retrying'),
-        lte(appWebhookDeliveries.nextRetryAt, now),
-      ),
-      and(
-        eq(appWebhookDeliveries.status, 'pending'),
-        or(
-          isNull(appWebhookDeliveries.startedAt),
-          lte(appWebhookDeliveries.startedAt, staleCutoff),
-        ),
-      ),
-    ),
-  )).returning();
-  return delivery ?? null;
+  return db.transaction(async (tx) => {
+    const rows = await tx.update(appWebhookDeliveries).set(deliveryClaimValues()).where(and(
+      eq(appWebhookDeliveries.id, deliveryId), exactTenantCondition(appWebhookDeliveries.tenantId, expectedTenantId),
+      or(isNull(appWebhookDeliveries.leaseUntil), lte(appWebhookDeliveries.leaseUntil, sql`clock_timestamp()`)),
+      or(eq(appWebhookDeliveries.status, 'failed'), eq(appWebhookDeliveries.status, 'pending'),
+        and(eq(appWebhookDeliveries.status, 'retrying'), lte(appWebhookDeliveries.nextRetryAt, sql`clock_timestamp()`))),
+    )).returning();
+    await recordClaimedAttempts(tx, rows); return rows[0] ?? null;
+  });
+}
+export async function claimWebhookDeliveryBatch(limit: number): Promise<AppWebhookDeliveryRow[]> {
+  if (limit <= 0) return [];
+  return db.transaction(async (tx) => {
+    const rows = await tx.update(appWebhookDeliveries).set(deliveryClaimValues()).where(sql`id in (
+      select id from app_webhook_deliveries where
+      (lease_until is null or lease_until <= clock_timestamp()) and
+      (status = 'pending' or (status = 'retrying' and next_retry_at <= clock_timestamp()))
+      order by coalesce(next_retry_at,created_at),id limit ${Math.min(limit, RETRY_CONCURRENCY)} for update skip locked
+    )`).returning();
+    await recordClaimedAttempts(tx, rows); return rows;
+  });
 }
 
 export async function dispatchDelivery(deliveryId: number, expectedTenantId: number | null): Promise<boolean> {
-  const delivery = await claimDelivery(deliveryId, expectedTenantId);
-  if (!delivery) return false;
+  return deliveryLimiter.run(async () => {
+    const delivery = await claimDelivery(deliveryId, expectedTenantId);
+    return delivery ? dispatchClaimedDelivery(delivery) : false;
+  });
+}
+async function dispatchClaimedDelivery(delivery: AppWebhookDeliveryRow): Promise<boolean> {
+  const deliveryId = delivery.id;
   const tenantId = delivery.tenantId ?? null;
   const [sub] = await db
     .select()
@@ -672,7 +698,7 @@ export async function dispatchDelivery(deliveryId: number, expectedTenantId: num
       { status: 'failed', errorMessage: '订阅已被删除或禁用', finishedAt: new Date() },
       delivery.attempt,
       tenantId,
-    );
+    delivery.leaseToken);
     return true;
   }
 
@@ -680,7 +706,7 @@ export async function dispatchDelivery(deliveryId: number, expectedTenantId: num
     if (!sub.clientId || sub.clientId !== delivery.clientId) {
       await updateDeliveryAfterAttempt(deliveryId, {
         status: 'failed', errorMessage: '订阅与投递的应用身份不一致', finishedAt: new Date(),
-      }, delivery.attempt, tenantId);
+      }, delivery.attempt, tenantId, delivery.leaseToken);
       return true;
     }
     const [client] = await db
@@ -691,7 +717,7 @@ export async function dispatchDelivery(deliveryId: number, expectedTenantId: num
     if (!client) {
       await updateDeliveryAfterAttempt(deliveryId, {
         status: 'failed', errorMessage: '订阅所属应用不存在或租户不一致', finishedAt: new Date(),
-      }, delivery.attempt, tenantId);
+      }, delivery.attempt, tenantId, delivery.leaseToken);
       return true;
     }
   }
@@ -712,11 +738,19 @@ export async function dispatchDelivery(deliveryId: number, expectedTenantId: num
       status: 'failed',
       errorMessage: (err instanceof Error ? err.message : 'Webhook 安全策略校验失败').slice(0, 1024),
       finishedAt: new Date(),
-    }, delivery.attempt, tenantId);
+    }, delivery.attempt, tenantId, delivery.leaseToken);
     return true;
   }
 
   const attempt = delivery.attempt;
+  if (delivery.eventType !== 'app.test') {
+    const event = { ...(delivery.payload as OpenPlatformEvent), tenantId: delivery.tenantId ?? null };
+    const authorized = (await findMatchingSubscriptions(event)).some((candidate) => candidate.id === sub.id);
+    if (!authorized) {
+      await updateDeliveryAfterAttempt(deliveryId, { status: 'failed', errorMessage: '事件订阅或对象授权已撤销', finishedAt: new Date() }, attempt, tenantId, delivery.leaseToken);
+      return true;
+    }
+  }
   const bodyStr = JSON.stringify(delivery.payload);
   const timestamp = Math.floor(Date.now() / 1000).toString();
   const headers: Record<string, string> = {
@@ -732,7 +766,7 @@ export async function dispatchDelivery(deliveryId: number, expectedTenantId: num
     if (secret) headers[OPEN_WEBHOOK_SIGNATURE_HEADER] = `t=${timestamp},v1=${sign(secret, timestamp, bodyStr)}`;
   }
 
-  if (!await updateDeliveryAfterAttempt(deliveryId, { requestUrl: sub.url }, attempt, tenantId)) return false;
+  if (!await updateDeliveryAfterAttempt(deliveryId, { requestUrl: sub.url }, attempt, tenantId, delivery.leaseToken)) return false;
 
   const t0 = Date.now();
   try {
@@ -754,7 +788,7 @@ export async function dispatchDelivery(deliveryId: number, expectedTenantId: num
         finishedAt: new Date(),
         errorMessage: null,
         nextRetryAt: null,
-      }, attempt, tenantId);
+      }, attempt, tenantId, delivery.leaseToken);
       if (!updated) return false;
       await db.update(appWebhookSubscriptions)
         .set({ consecutiveFailures: 0, lastDeliveryAt: new Date() })
@@ -771,7 +805,7 @@ export async function dispatchDelivery(deliveryId: number, expectedTenantId: num
       errorMessage: permanent ? `HTTP ${resp.status}（对端拒绝，不再重试）` : `HTTP ${resp.status}`,
       nextRetryAt,
       finishedAt: nextRetryAt ? null : new Date(),
-    }, attempt, tenantId);
+    }, attempt, tenantId, delivery.leaseToken);
     if (!updated) return false;
     await db.update(appWebhookSubscriptions).set({ lastDeliveryAt: new Date() }).where(and(
       eq(appWebhookSubscriptions.id, sub.id),
@@ -790,7 +824,7 @@ export async function dispatchDelivery(deliveryId: number, expectedTenantId: num
       durationMs,
       nextRetryAt,
       finishedAt: nextRetryAt ? null : new Date(),
-    }, attempt, tenantId);
+    }, attempt, tenantId, delivery.leaseToken);
     if (!updated) return false;
     if (!nextRetryAt) await handleTerminalFailure(sub, delivery, errorMessage.slice(0, 1024));
   }
@@ -806,17 +840,17 @@ export async function dispatchDelivery(deliveryId: number, expectedTenantId: num
  * 平台域事件（iot.* 等，无 clientId 无站点范围）仅投递给**显式**订阅了该事件
  * 类型、且未绑定 CMS 站点的订阅 —— 不含空列表通配，避免站点通配订阅被平台事件打扰。
  */
-async function findMatchingSubscriptions(event: OpenPlatformEvent): Promise<AppWebhookSubscriptionRow[]> {
+async function findMatchingSubscriptions(event: OpenPlatformEvent, executor: DbExecutor = db): Promise<AppWebhookSubscriptionRow[]> {
   const siteId = event.scope?.siteId;
   if (event.clientId) {
-    const [client] = await db
+    const [client] = await executor
       .select({ tenantId: oauth2Clients.tenantId })
       .from(oauth2Clients)
       .where(eq(oauth2Clients.clientId, event.clientId))
       .limit(1);
     if (!client) return [];
     if (event.tenantId !== undefined && (client.tenantId ?? null) !== event.tenantId) return [];
-    const rows = await db.select().from(appWebhookSubscriptions)
+    const rows = await executor.select().from(appWebhookSubscriptions)
       .where(and(
         eq(appWebhookSubscriptions.clientId, event.clientId),
         exactTenantCondition(appWebhookSubscriptions.tenantId, client.tenantId ?? null),
@@ -826,9 +860,9 @@ async function findMatchingSubscriptions(event: OpenPlatformEvent): Promise<AppW
     return rows.filter((s) => matchesEventType(s, event.type) && matchesSite(s, siteId));
   }
   if (siteId == null) {
-    const rows = await db.select().from(appWebhookSubscriptions)
+    const rows = await executor.select().from(appWebhookSubscriptions)
       .where(eq(appWebhookSubscriptions.status, 'enabled'));
-    const validRows = await filterClientTenantScopes(rows);
+    const validRows = await filterClientTenantScopes(rows, executor);
     // 无 clientId 的平台事件必须携带租户；缺失租户时只允许平台级订阅，
     // 绝不把设备/告警/支付数据广播给任意租户。
     const platformMatches = validRows.filter((s) => (s.tenantId ?? null) === (event.tenantId ?? null)
@@ -839,13 +873,13 @@ async function findMatchingSubscriptions(event: OpenPlatformEvent): Promise<AppW
     const spaceId = event.scope?.spaceId;
     if (spaceId == null || platformMatches.length === 0) return platformMatches;
     const { clientIdsGrantedForSpace } = await import('../drive/drive-open.service');
-    const granted = await clientIdsGrantedForSpace(spaceId, platformMatches.map((s) => s.clientId).filter((id): id is string => id != null));
+    const granted = await clientIdsGrantedForSpace(spaceId, platformMatches.map((s) => s.clientId).filter((id): id is string => id != null), executor);
     return platformMatches.filter((s) => s.clientId != null && granted.has(s.clientId));
   }
 
-  const rows = await db.select().from(appWebhookSubscriptions)
+  const rows = await executor.select().from(appWebhookSubscriptions)
     .where(eq(appWebhookSubscriptions.status, 'enabled'));
-  const validRows = await filterClientTenantScopes(rows);
+  const validRows = await filterClientTenantScopes(rows, executor);
   const candidates = validRows.filter((s) => matchesEventType(s, event.type) && matchesSite(s, siteId));
   if (candidates.length === 0) return [];
 
@@ -854,7 +888,7 @@ async function findMatchingSubscriptions(event: OpenPlatformEvent): Promise<AppW
     .filter((s): s is AppWebhookSubscriptionRow & { clientId: string } => !s.internal && s.clientId != null)
     .map((s) => s.clientId))];
   const granted = externalClientIds.length > 0
-    ? new Set((await db.select({ clientId: cmsOpenAppGrants.clientId }).from(cmsOpenAppGrants).where(and(
+    ? new Set((await executor.select({ clientId: cmsOpenAppGrants.clientId }).from(cmsOpenAppGrants).where(and(
         eq(cmsOpenAppGrants.siteId, siteId),
         eq(cmsOpenAppGrants.status, 'enabled'),
         inArray(cmsOpenAppGrants.clientId, externalClientIds),
@@ -871,12 +905,12 @@ function matchesEventType(sub: AppWebhookSubscriptionRow, type: string): boolean
   return events.length === 0 || events.includes(type);
 }
 
-async function filterClientTenantScopes(rows: AppWebhookSubscriptionRow[]): Promise<AppWebhookSubscriptionRow[]> {
+async function filterClientTenantScopes(rows: AppWebhookSubscriptionRow[], executor: DbExecutor = db): Promise<AppWebhookSubscriptionRow[]> {
   const clientIds = [...new Set(rows
     .filter((row): row is AppWebhookSubscriptionRow & { clientId: string } => !row.internal && row.clientId != null)
     .map((row) => row.clientId))];
   const clients = clientIds.length > 0
-    ? await db
+    ? await executor
       .select({ clientId: oauth2Clients.clientId, tenantId: oauth2Clients.tenantId })
       .from(oauth2Clients)
       .where(inArray(oauth2Clients.clientId, clientIds))
@@ -893,6 +927,22 @@ async function filterClientTenantScopes(rows: AppWebhookSubscriptionRow[]): Prom
 function matchesSite(sub: AppWebhookSubscriptionRow, siteId: number | undefined): boolean {
   if (sub.cmsSiteId == null) return true;
   return sub.cmsSiteId === siteId;
+}
+
+/** Persist downstream intents in the same transaction as the consumer receipt. */
+export async function prepareAppWebhookDeliveriesWithin(tx: DbTransaction, event: DurableOpenPlatformEvent): Promise<number[]> {
+  const subscriptions = await findMatchingSubscriptions(event, tx);
+  const { tenantId: _tenantId, ...publicEvent } = event;
+  if (!subscriptions.length) return [];
+  const ids: number[] = [];
+  for (let offset = 0; offset < subscriptions.length; offset += 250) {
+    const rows = await tx.insert(appWebhookDeliveries).values(subscriptions.slice(offset, offset + 250).map((sub) => ({
+      subscriptionId: sub.id, clientId: sub.clientId, tenantId: sub.tenantId ?? null,
+      eventType: event.type, eventId: event.eventId, payload: publicEvent, status: 'pending' as const,
+    }))).onConflictDoNothing({ target: [appWebhookDeliveries.subscriptionId, appWebhookDeliveries.eventId] }).returning({ id: appWebhookDeliveries.id });
+    ids.push(...rows.map((row) => row.id));
+  }
+  return ids;
 }
 
 /** 注册开放平台事件总线订阅者：事件 → 匹配订阅 → 投递 */
@@ -926,24 +976,29 @@ export function registerOpenWebhookSubscriber(): void {
 
 /** 由定时任务调用：扫描到期重试的投递并触发派发 */
 export async function retryAppWebhookDeliveries(): Promise<{ retried: number }> {
-  const now = new Date();
-  const pendingCutoff = new Date(now.getTime() - PENDING_RECOVERY_AFTER_MS);
-  const rows = await db.select().from(appWebhookDeliveries)
-    .where(or(
-      and(
-        eq(appWebhookDeliveries.status, 'retrying'),
-        lte(appWebhookDeliveries.nextRetryAt, now),
-      ),
-      and(
-        eq(appWebhookDeliveries.status, 'pending'),
-        lte(appWebhookDeliveries.createdAt, pendingCutoff),
-        or(
-          isNull(appWebhookDeliveries.startedAt),
-          lte(appWebhookDeliveries.startedAt, pendingCutoff),
-        ),
-      ),
-    ))
-    .limit(100);
-  const results = await mapWithConcurrency(rows, RETRY_CONCURRENCY, async (row) => dispatchDelivery(row.id, row.tenantId ?? null));
-  return { retried: results.filter(Boolean).length };
+  const deadline = Date.now() + 40_000;
+  let retried = 0;
+  while (Date.now() < deadline) {
+    const available = RETRY_CONCURRENCY - deliveryLimiter.active - deliveryLimiter.pending;
+    if (available <= 0) break;
+    const rows = await claimWebhookDeliveryBatch(available);
+    if (!rows.length) break;
+    const results = await mapWithConcurrency(rows, available, (row) => deliveryLimiter.run(async () => {
+      try { return await dispatchClaimedDelivery(row); }
+      catch (err) { logger.error('[app-webhook] batch dispatch failed; lease recovery will retry', { deliveryId: row.id, err }); return false; }
+    }));
+    retried += results.filter(Boolean).length;
+  }
+  return { retried };
+}
+
+export async function registerAppWebhookWorker(): Promise<void> {
+  await registerSystemLedgerWorker<AppWebhookDeliveryRow>({
+    name: 'app-webhook-deliveries', title: '应用 Webhook 投递', module: '开放平台',
+    description: '领取持久化投递意图，执行授权复检、限流外呼和独立重试', concurrency: RETRY_CONCURRENCY,
+    pollingIntervalMs: 2000,
+    claim: (available) => claimWebhookDeliveryBatch(Math.min(available, Math.max(0, RETRY_CONCURRENCY - deliveryLimiter.active - deliveryLimiter.pending))),
+    execute: (row) => deliveryLimiter.run(() => dispatchClaimedDelivery(row)),
+    onError: (error) => logger.error('[app-webhook] worker failed', { error }),
+  });
 }

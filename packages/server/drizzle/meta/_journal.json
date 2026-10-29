@@ -50,6 +50,13 @@
       "when": 1793277695438,
       "tag": "0006_true_senator_kelly",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793280881879,
+      "tag": "0007_nervous_polaris",
+      "breakpoints": true
     }
   ]
 }
