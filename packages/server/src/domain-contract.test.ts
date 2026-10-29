@@ -1,13 +1,13 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { mockServerInfra, requestWithoutCredentials } from './test-utils/contract';
 import { buildDomainContractApp, type DomainContractApp } from './test-utils/domain-contract';
-import { type ServerDomainName } from './routes/domain-loaders';
+import { SERVER_DOMAIN_NAMES, type ServerDomainName } from './routes/domain-loaders';
 
 mockServerInfra();
 
-const ALL_PILOT_DOMAINS: readonly ServerDomainName[] = ['identity', 'workflow', 'payment'];
-const PILOT_DOMAINS: readonly ServerDomainName[] = (process.env.ZENITH_TEST_DOMAINS?.split(',') ?? ALL_PILOT_DOMAINS)
-  .filter((domain): domain is ServerDomainName => ALL_PILOT_DOMAINS.includes(domain as ServerDomainName));
+const DEFAULT_DOMAINS: readonly ServerDomainName[] = ['identity', 'workflow', 'payment'];
+const PILOT_DOMAINS: readonly ServerDomainName[] = (process.env.ZENITH_TEST_DOMAINS?.split(',') ?? DEFAULT_DOMAINS)
+  .filter((domain): domain is ServerDomainName => SERVER_DOMAIN_NAMES.includes(domain as ServerDomainName));
 
 if (PILOT_DOMAINS.length === 0) throw new Error('ZENITH_TEST_DOMAINS must include at least one pilot domain');
 
