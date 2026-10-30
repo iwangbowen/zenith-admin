@@ -7,6 +7,7 @@ import type { QueryOutputOf } from '@zenith/shared/core';
  * 并触发事件类告警规则判定。
  */
 import { and, desc, eq } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
 import type { IotEventIngestInput } from '@zenith/shared/iot';
 import { IOT_LIFECYCLE_EVENTS, type IotLifecycleEventId } from '@zenith/shared/iot';
 import { db } from '../../db';
@@ -15,7 +16,7 @@ import { formatDateTime, parseDateTimeInput } from '../../lib/datetime';
 import { listRows } from '../../lib/list-query';
 import { buildWhere } from '../../lib/where-helpers';
 import logger from '../../lib/logger';
-import { openEventBus } from '../../lib/open-event-bus';
+import { publishOpenEventInTx } from '../open-platform/open-events.service';
 import { loadThingModel } from './iot-model.service';
 import { evaluateIotEventRules } from './iot-alarms.service';
 import { evaluateIotAutomationsOnEvent, evaluateIotAutomationsOnLifecycle } from './iot-automations.service';
@@ -33,14 +34,17 @@ export async function recordIotLifecycleEvent(
   identifier: IotLifecycleEventId,
   payload?: Record<string, unknown>,
 ): Promise<void> {
+  let deviceRow: { id: number; sn: string; name: string; productId: number; tenantId: number | null } | undefined;
   try {
-    await db.insert(iotDeviceEvents).values({
-      deviceId,
-      kind: 'lifecycle',
-      identifier,
-      name: IOT_LIFECYCLE_EVENTS[identifier],
-      level: identifier === 'offline' ? 'warn' : 'info',
-      payload: payload ?? null,
+    deviceRow = await db.transaction(async (tx) => {
+      await tx.insert(iotDeviceEvents).values({ deviceId, kind: 'lifecycle', identifier, name: IOT_LIFECYCLE_EVENTS[identifier], level: identifier === 'offline' ? 'warn' : 'info', payload: payload ?? null });
+      const [row] = await tx.select({ id: iotDevices.id, sn: iotDevices.sn, name: iotDevices.name, productId: iotDevices.productId, tenantId: iotDevices.tenantId }).from(iotDevices).where(eq(iotDevices.id, deviceId)).limit(1);
+      if (row && (identifier === 'online' || identifier === 'offline')) await publishOpenEventInTx(tx, {
+        type: `iot.device.${identifier}`, tenantId: row.tenantId ?? null, businessKey: `iot-device:${deviceId}:${identifier}:${randomUUID()}`,
+        orderingKey: `iot-device:${deviceId}`, subjects: [{ type: 'iot.device', key: String(deviceId), role: 'primary' }],
+        data: { deviceId, sn: row.sn, name: row.name, event: identifier, label: IOT_LIFECYCLE_EVENTS[identifier] },
+      });
+      return row;
     });
     pushIotRealtime({
       type: 'iot:device-event',
@@ -53,8 +57,6 @@ export async function recordIotLifecycleEvent(
     logger.warn(`[iot] 生命周期事件写入失败 deviceId=${deviceId} event=${identifier}: ${(err as Error).message}`);
   }
   // 数据流转：生命周期源（fire-and-forget，取设备行做过滤匹配）
-  const [deviceRow] = await db.select({ id: iotDevices.id, sn: iotDevices.sn, name: iotDevices.name, productId: iotDevices.productId, tenantId: iotDevices.tenantId })
-    .from(iotDevices).where(eq(iotDevices.id, deviceId)).limit(1);
   if (deviceRow) {
     dispatchIotForward('lifecycle', deviceRow, {
       deviceId, sn: deviceRow.sn, name: deviceRow.name, event: identifier,
@@ -63,13 +65,6 @@ export async function recordIotLifecycleEvent(
   }
   // 上线/离线：场景联动 + 开放平台 Webhook（失败不阻断打点方）
   if (identifier === 'online' || identifier === 'offline') {
-    if (deviceRow) {
-      openEventBus.emit({
-        type: `iot.device.${identifier}`,
-        tenantId: deviceRow.tenantId ?? null,
-        data: { deviceId, sn: deviceRow.sn, name: deviceRow.name },
-      });
-    }
     await evaluateIotAutomationsOnLifecycle(deviceId, identifier).catch((err) => {
       logger.warn(`[iot] 生命周期联动判定失败 deviceId=${deviceId}: ${(err as Error).message}`);
     });

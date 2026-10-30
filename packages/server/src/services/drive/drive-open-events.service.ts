@@ -1,12 +1,14 @@
 import { and, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { DRIVE_ACTIVITY_OPEN_EVENT, type DriveActivityAction } from '@zenith/shared/drive';
 import { db } from '../../db';
+import type { DbTransaction } from '../../db/types';
 import { appWebhookSubscriptions, driveActivities, driveNodes, driveShareLinks, driveSpaces } from '../../db/schema';
 import { formatDateTime } from '../../lib/datetime';
 import logger from '../../lib/logger';
 import { openEventBus } from '../../lib/open-event-bus';
 import { registerSystemQueueWorker, sendSystemJobAfter } from '../../lib/pg-boss-scheduler';
 import { TtlCache } from '../../lib/ttl-cache';
+import { publishOpenEventInTx } from '../open-platform/open-events.service';
 
 /**
  * 网盘文件变更 → 开放平台事件。
@@ -35,6 +37,24 @@ async function hasDriveSubscribers(): Promise<boolean> {
 
 export function openEventForAction(action: DriveActivityAction) {
   return DRIVE_ACTIVITY_OPEN_EVENT[action];
+}
+
+/** Freeze the activity snapshot before commit; delivery workers never re-read mutable Drive rows. */
+export async function publishDriveOpenEventInTx(tx: DbTransaction, input: {
+  activityId: number; spaceId: number; nodeId: number | null; nodeName: string; nodeType: string;
+  action: DriveActivityAction; detail?: Record<string, unknown> | null; shareId?: number | null;
+  actorId?: number | null; tenantId: number | null; occurredAt: Date;
+}): Promise<void> {
+  const type = openEventForAction(input.action);
+  if (!type) return;
+  await publishOpenEventInTx(tx, {
+    type, tenantId: input.tenantId, scope: { spaceId: input.spaceId },
+    businessKey: `drive-activity:${input.activityId}`, orderingKey: `drive-space:${input.spaceId}`,
+    subjects: [{ type: input.nodeId ? 'drive.node' : 'drive.space', key: String(input.nodeId ?? input.spaceId), role: 'primary' }],
+    data: { action: input.action, occurredAt: formatDateTime(input.occurredAt),
+      space: { id: input.spaceId }, node: { id: input.nodeId, name: input.nodeName, type: input.nodeType },
+      share: input.shareId == null ? null : { id: input.shareId }, actorId: input.actorId ?? null, detail: input.detail ?? null },
+  });
 }
 
 /** 动态写入后调用（可在事务内）：仅在存在订阅者时排队，失败只记日志不阻断业务 */

@@ -13,7 +13,7 @@ import { exactTenantCondition, getCreateTenantId, tenantCondition } from '../../
 import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { getDataScopeCondition } from '../../lib/data-scope';
 import { resolveUserNames } from './drive-common';
-import { openEventForAction, scheduleDriveOpenEvent } from './drive-open-events.service';
+import { openEventForAction, publishDriveOpenEventInTx } from './drive-open-events.service';
 import { ensureDriveLogPartitions } from './drive-partitions.service';
 import { pickEntity } from '../../lib/entity-map';
 
@@ -33,7 +33,7 @@ export interface LogDriveActivityInput {
 
 /** 追加一条文件动态（副作用与主事务同提交时传 executor） */
 export async function logDriveActivity(input: LogDriveActivityInput, executor: DbExecutor = db): Promise<void> {
-  if (input.action === 'preview' && executor === db) {
+  if (executor === db && (input.action === 'preview' || openEventForAction(input.action))) {
     return db.transaction((tx) => logDriveActivity(input, tx));
   }
   const user = currentUserOrNull();
@@ -67,8 +67,11 @@ export async function logDriveActivity(input: LogDriveActivityInput, executor: D
     tenantId: input.tenantId !== undefined ? input.tenantId : (user ? getCreateTenantId(user) : null),
     createdAt,
   }).returning({ id: driveActivities.id });
-  // 开放平台事件：延迟投递，worker 回读动态行确认事务已提交
-  if (inserted && openEventForAction(input.action)) await scheduleDriveOpenEvent(inserted.id, input.action, createdAt);
+  if (inserted && openEventForAction(input.action)) await publishDriveOpenEventInTx(executor as Parameters<typeof publishDriveOpenEventInTx>[0], {
+    activityId: inserted.id, spaceId: input.spaceId, nodeId: input.nodeId, nodeName: input.nodeName,
+    nodeType: input.nodeType, action: input.action, detail: input.detail, shareId: input.shareId,
+    actorId, tenantId: input.tenantId !== undefined ? input.tenantId : (user ? getCreateTenantId(user) : null), occurredAt: createdAt,
+  });
 }
 
 /** 记录「最近访问」（同一节点覆盖） */

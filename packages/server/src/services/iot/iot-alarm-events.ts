@@ -4,6 +4,7 @@ import { iotAlarms, iotDevices, type IotAlarmRow } from '../../db/schema';
 import type { DbTransaction } from '../../db/types';
 import { requireRow } from '../../lib/db-assert';
 import { recordDomainEvent } from '../platform/relations/events.service';
+import { publishOpenEventInTx } from '../open-platform/open-events.service';
 
 export async function recordIotAlarmEvent(tx: DbTransaction, alarm: IotAlarmRow) {
   const [device] = await tx.select({ tenantId: iotDevices.tenantId }).from(iotDevices).where(eq(iotDevices.id, alarm.deviceId)).limit(1);
@@ -15,6 +16,11 @@ export async function recordIotAlarmEvent(tx: DbTransaction, alarm: IotAlarmRow)
     subjects: [{ type: 'iot.alarm', key: String(alarm.id), role: 'primary' }, { type: 'iot.device', key: String(alarm.deviceId), role: 'related' }],
     payload: { status: alarm.status, level: alarm.level, ruleName: alarm.ruleName.slice(0, 128) },
     dedupeKey: `iot-alarm:${alarm.id}:${type}`,
+  });
+  await publishOpenEventInTx(tx, {
+    type, tenantId: owner.tenantId, scope: { }, businessKey: `iot-alarm:${alarm.id}:${type}`, orderingKey: `iot-device:${alarm.deviceId}`,
+    subjects: [{ type: 'iot.alarm', key: String(alarm.id), role: 'primary' }, { type: 'iot.device', key: String(alarm.deviceId), role: 'related' }],
+    data: { alarmId: alarm.id, ruleName: alarm.ruleName, deviceId: alarm.deviceId, level: alarm.level, status: alarm.status, message: alarm.message },
   });
 }
 

@@ -25,7 +25,7 @@ import { buildWhere, keywordCondition, withPagination } from '../../lib/where-he
 import { currentUser } from '../../lib/context';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import logger from '../../lib/logger';
-import { openEventBus } from '../../lib/open-event-bus';
+import { publishOpenEventInTx } from '../open-platform/open-events.service';
 import { pushOtaToDevice } from './iot-gateway.service';
 import { ensureIotFirmwareExists } from './iot-firmware.service';
 import { resolveIotBatchTargets } from './iot-groups.service';
@@ -330,21 +330,19 @@ async function convergeOtaTask(taskId: number): Promise<void> {
     }
   }
 
-  const [updated] = await db.update(iotOtaTasks).set({
-    succeededCount,
-    failedCount,
-    ...(active === 0 ? { status: 'completed' as const } : {}),
-  }).where(and(eq(iotOtaTasks.id, taskId), inArray(iotOtaTasks.status, ['running', 'paused'])))
-    .returning({ id: iotOtaTasks.id, status: iotOtaTasks.status, title: iotOtaTasks.title, firmwareVersion: iotOtaTasks.firmwareVersion, succeededCount: iotOtaTasks.succeededCount, failedCount: iotOtaTasks.failedCount, totalCount: iotOtaTasks.totalCount, tenantId: iotOtaTasks.tenantId });
-  if (updated && updated.status === 'completed') {
-    openEventBus.emit({
-      type: 'iot.ota.task_completed',
-      tenantId: updated.tenantId ?? null,
-      data: {
-        taskId: updated.id, title: updated.title, firmwareVersion: updated.firmwareVersion,
-        totalCount: updated.totalCount, succeededCount: updated.succeededCount, failedCount: updated.failedCount,
-      },
+  const updated = await db.transaction(async (tx) => {
+    const [row] = await tx.update(iotOtaTasks).set({ succeededCount, failedCount, ...(active === 0 ? { status: 'completed' as const } : {}) })
+      .where(and(eq(iotOtaTasks.id, taskId), inArray(iotOtaTasks.status, ['running', 'paused'])))
+      .returning({ id: iotOtaTasks.id, status: iotOtaTasks.status, title: iotOtaTasks.title, firmwareVersion: iotOtaTasks.firmwareVersion, succeededCount: iotOtaTasks.succeededCount, failedCount: iotOtaTasks.failedCount, totalCount: iotOtaTasks.totalCount, tenantId: iotOtaTasks.tenantId });
+    if (row?.status === 'completed') await publishOpenEventInTx(tx, {
+      type: 'iot.ota.task_completed', tenantId: row.tenantId ?? null, businessKey: `iot-ota:${row.id}:completed`, orderingKey: `iot-ota:${row.id}`,
+      subjects: [{ type: 'iot.ota-task', key: String(row.id), role: 'primary' }],
+      data: { taskId: row.id, title: row.title, firmwareVersion: row.firmwareVersion, totalCount: row.totalCount, succeededCount: row.succeededCount, failedCount: row.failedCount },
     });
+    return row;
+  });
+  if (updated && updated.status === 'completed') {
+    logger.info(`[iot-ota] task #${updated.id} completed and durable event recorded`);
   }
 }
 

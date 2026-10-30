@@ -32,7 +32,6 @@ import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import redis from '../../lib/redis';
 import { config } from '../../config';
 import logger from '../../lib/logger';
-import { openEventBus } from '../../lib/open-event-bus';
 import { TtlCache } from '../../lib/ttl-cache';
 import { notify } from '../messaging/notification-outbox.service';
 import { dispatchIotForward } from './iot-forward.service';
@@ -263,11 +262,6 @@ export async function resolveIotAlarm(id: number, note?: string | null) {
   const resolved = requireRow(row, '告警不存在或已恢复');
   const [device] = await db.select({ sn: iotDevices.sn, name: iotDevices.name, productId: iotDevices.productId, tenantId: iotDevices.tenantId })
     .from(iotDevices).where(buildWhere(eq(iotDevices.id, resolved.deviceId), tenantCondition(iotDevices, currentUser()))).limit(1);
-  openEventBus.emit({
-    type: 'iot.alarm.resolved',
-    tenantId: device?.tenantId ?? null,
-    data: { alarmId: resolved.id, ruleName: resolved.ruleName, deviceId: resolved.deviceId, sn: device?.sn ?? null, deviceName: device?.name ?? null, message: '管理员手动处理', resolvedBy: 'manual' },
-  });
   if (device) {
     dispatchIotForward('alarm', { id: resolved.deviceId, sn: device.sn, productId: device.productId }, {
       alarmId: resolved.id, action: 'resolved', ruleName: resolved.ruleName, deviceId: resolved.deviceId,
@@ -318,11 +312,6 @@ async function fireIotAlarm(
     return row;
   });
   if (!inserted) return;
-  openEventBus.emit({
-    type: 'iot.alarm.triggered',
-    tenantId: device.tenantId ?? null,
-    data: { alarmId: inserted.id, ruleName: rule.name, ruleType: rule.ruleType, level: rule.level, deviceId: device.id, sn: device.sn, deviceName: device.name, message },
-  });
   dispatchIotForward('alarm', device, {
     alarmId: inserted.id, action: 'triggered', ruleName: rule.name, ruleType: rule.ruleType,
     level: rule.level, deviceId: device.id, sn: device.sn, deviceName: device.name, message,
@@ -342,11 +331,6 @@ async function autoResolveIotAlarm(
       inArray(iotAlarms.status, ['firing', 'acknowledged']),
     ));
   if (!resolved) return;
-  openEventBus.emit({
-    type: 'iot.alarm.resolved',
-    tenantId: device.tenantId ?? null,
-    data: { alarmId: resolved.id, ruleName: rule.name, deviceId: device.id, sn: device.sn, deviceName: device.name, message, resolvedBy: 'auto' },
-  });
   dispatchIotForward('alarm', device, {
     alarmId: resolved.id, action: 'resolved', ruleName: rule.name, deviceId: device.id,
     sn: device.sn, deviceName: device.name, message, resolvedBy: 'auto',
