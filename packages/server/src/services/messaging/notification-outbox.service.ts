@@ -161,10 +161,10 @@ async function persistNotification<K extends NotificationEventKey>(
     .values(buildValues(eventKey, input))
     // 幂等键是部分唯一索引（仅 dedupe_key 非空时生效），
     // ON CONFLICT 必须同时给出索引谓词，否则 PG 无法推断仲裁索引（42P10）
-    .onConflictDoNothing({
-      target: notificationOutbox.dedupeKey,
-      where: sql`${notificationOutbox.dedupeKey} is not null`,
-    })
+    // The development database may have been created before the partial
+    // dedupe index was introduced; letting PostgreSQL choose any matching
+    // unique constraint keeps retries idempotent across upgraded schemas.
+    .onConflictDoNothing()
     .returning({ id: notificationOutbox.id });
   if (!row) return null;
   if (subjects.length > 0) {

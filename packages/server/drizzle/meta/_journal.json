@@ -57,6 +57,13 @@
       "when": 1793280881879,
       "tag": "0007_nervous_polaris",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793334622256,
+      "tag": "0008_supreme_warlock",
+      "breakpoints": true
     }
   ]
 }
