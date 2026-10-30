@@ -25,7 +25,14 @@ export function SensitiveText({ entity, id, field, value }: SensitiveTextProps) 
   const text = state.revealed ?? value;
   return (
     <span className="sensitive-text">
-      <Typography.Text>{text}</Typography.Text>
+      <Typography.Text
+        className="sensitive-text__value"
+        ellipsis={{ showTooltip: true }}
+        title={text}
+        style={{ flex: '1 1 auto', minWidth: 0, maxWidth: '100%' }}
+      >
+        {text}
+      </Typography.Text>
       {showToggle && (
         state.revealed === null ? (
           <Tooltip content="查看明文（记录审计）">

@@ -442,6 +442,13 @@ body[theme-mode='dark'] .semi-json-viewer-view-line {
   max-width: 100%;
 }
 
+.sensitive-text__value {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .sensitive-form-locked {
   display: inline-flex;
   flex-wrap: wrap;
