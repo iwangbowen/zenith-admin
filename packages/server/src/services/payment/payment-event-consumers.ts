@@ -3,6 +3,7 @@ import { registerEventConsumer } from '../../lib/domain-events';
 import { formatDateTime } from '../../lib/datetime';
 import { settlePaymentEventWithin } from './payment-local-settlement.service';
 import { preparePaymentOpenWebhookWithin } from './payment-open-webhook-bridge.service';
+import { prepareAutomaticSharingWithin } from './payment-sharing.service';
 
 let registered = false;
 function readPaymentEvent(fact: { eventId: string; occurredAt: Date; payload: Record<string, unknown> }): PaymentEvent {
@@ -22,6 +23,12 @@ export function registerPaymentEventConsumers(): void {
     handle: async (tx, fact) => {
       const ids = await preparePaymentOpenWebhookWithin(tx, readPaymentEvent(fact));
       return ids.length ? { outcome: 'handed_off', refs: { deliveryIds: ids } } : { outcome: 'skipped', reason: 'payment application is not bound to an open client' };
+    },
+  });
+  registerEventConsumer({ key: 'payment.sharing.prepare', after: ['payment.local-settlement'], matches: (event) => event.domain === 'payment' && event.eventType === 'payment.succeeded',
+    handle: async (tx, fact) => {
+      const ids = await prepareAutomaticSharingWithin(tx, readPaymentEvent(fact));
+      return ids.length ? { outcome: 'handed_off', refs: { sharingOrderIds: ids } } : { outcome: 'skipped', reason: 'no automatic sharing receiver' };
     },
   });
 }

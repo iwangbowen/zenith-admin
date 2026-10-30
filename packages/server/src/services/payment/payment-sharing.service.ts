@@ -13,6 +13,7 @@ import { HTTPException } from 'hono/http-exception';
 import { randomUUID } from 'node:crypto';
 import { allocateBusinessNumber, attachBusinessNumber } from '../platform/numbering-runtime';
 import { db } from '../../db';
+import type { DbTransaction } from '../../db/types';
 import { buildListResult, listRows } from '../../lib/list-query';
 import { paymentOrders, paymentRefunds, paymentSharingOrders, paymentSharingReceivers, type PaymentOrderRow, type PaymentSharingOrderRow, type PaymentSharingReceiverRow } from '../../db/schema';
 import { requireRow } from '../../lib/db-assert';
@@ -175,18 +176,17 @@ export interface DispatchSharingInput {
   remark?: string;
 }
 
-async function createReservedSharing(input: {
+async function createReservedSharingWithin(tx: DbTransaction, input: {
   orderNo: string;
   receiver: PaymentSharingReceiverRow;
   amount?: number;
   allocationKey: string;
   remark?: string | null;
-}): Promise<{ order: PaymentOrderRow; sharing: PaymentSharingOrderRow; created: boolean }> {
-  return db.transaction(async (tx) => {
+}, status: PaymentSharingOrderStatus = 'processing'): Promise<{ order: PaymentOrderRow; sharing: PaymentSharingOrderRow; created: boolean }> {
     await tx.execute(sql`SELECT id FROM payment_orders WHERE order_no = ${input.orderNo} FOR UPDATE`);
     const [order] = await tx.select().from(paymentOrders).where(eq(paymentOrders.orderNo, input.orderNo)).limit(1);
     requireRow(order, '支付订单不存在');
-    if (!['success', 'refunding'].includes(order.status)) {
+    if (!['success', 'refunding', 'refunded'].includes(order.status)) {
       throw new HTTPException(400, { message: '只有已支付且未全额退款的订单可发起分账' });
     }
     if ((order.tenantId ?? null) !== (input.receiver.tenantId ?? null)) {
@@ -225,14 +225,32 @@ async function createReservedSharing(input: {
         orderNo: order.orderNo,
         receiverId: input.receiver.id,
         amount,
-        status: 'processing',
+        status,
         remark: input.remark ?? null,
         tenantId: order.tenantId,
       })
       .returning();
     await attachBusinessNumber(tx, { scene: 'payment.sharing', tenantId: order.tenantId, number: sharingNo, businessKey: String(sharing.id) });
     return { order, sharing, created: true };
-  });
+}
+
+async function createReservedSharing(input: Parameters<typeof createReservedSharingWithin>[1]): Promise<{ order: PaymentOrderRow; sharing: PaymentSharingOrderRow; created: boolean }> {
+  return db.transaction((tx) => createReservedSharingWithin(tx, input));
+}
+
+/** Save automatic sharing intents after local payment settlement; channel I/O is a separate worker step. */
+export async function prepareAutomaticSharingWithin(tx: DbTransaction, event: { orderNo: string; tenantId?: number | null }): Promise<number[]> {
+  const [order] = await tx.select().from(paymentOrders).where(and(eq(paymentOrders.orderNo, event.orderNo), exactTenantCondition(paymentOrders.tenantId, event.tenantId ?? null))).for('update').limit(1);
+  if (!order || !['success', 'refunding', 'refunded'].includes(order.status)) return [];
+  const receivers = await tx.select().from(paymentSharingReceivers).where(and(eq(paymentSharingReceivers.status, 'enabled'), eq(paymentSharingReceivers.autoShare, true), exactTenantCondition(paymentSharingReceivers.tenantId, order.tenantId)));
+  const ids: number[] = [];
+  for (const receiver of receivers) {
+    if (receiver.ratioBps == null || receiver.ratioBps <= 0) continue;
+    const result = await createReservedSharingWithin(tx, { orderNo: order.orderNo, receiver,
+      allocationKey: `order:${order.id}:receiver:${receiver.id}`, remark: '自动分账' }, 'pending');
+    if (result.created) ids.push(result.sharing.id);
+  }
+  return ids;
 }
 
 /** 发起单笔分账：校验订单已支付 + 接收方启用 → 创建分账单(processing) → 调渠道 → 落状态。 */
@@ -270,7 +288,7 @@ async function casAdvanceSharing(
     .where(and(
       eq(paymentSharingOrders.id, sharing.id),
       eq(paymentSharingOrders.version, sharing.version),
-      inArray(paymentSharingOrders.status, ['processing', 'failed']),
+      inArray(paymentSharingOrders.status, ['pending', 'processing', 'failed']),
     ))
     .returning();
   if (updated) return updated;
@@ -389,7 +407,7 @@ export async function retryFailedSharingOrders(): Promise<{ scanned: number; suc
   const rows = await db
     .select()
     .from(paymentSharingOrders)
-    .where(and(eq(paymentSharingOrders.status, 'failed'), isNull(paymentSharingOrders.channelSharingNo), lt(paymentSharingOrders.attempts, MAX_SHARING_ATTEMPTS)))
+    .where(and(inArray(paymentSharingOrders.status, ['pending', 'failed']), isNull(paymentSharingOrders.channelSharingNo), lt(paymentSharingOrders.attempts, MAX_SHARING_ATTEMPTS)))
     .limit(50);
   if (rows.length === 0) return { scanned: 0, succeeded: 0 };
   // 整批一次取回订单与接收方（同一订单/接收方常被多条分账单引用），替代逐单两次点查
@@ -400,10 +418,18 @@ export async function retryFailedSharingOrders(): Promise<{ scanned: number; suc
     const receiver = receiverById.get(sharing.receiverId);
     if (!order || !receiver) continue;
     if (receiver.status !== 'enabled') continue;
-    const updated = await executeSharingAtChannel(sharing, order, receiver);
+    const claimed = sharing.status === 'pending' ? await claimPendingSharing(sharing) : sharing;
+    if (!claimed) continue;
+    const updated = await executeSharingAtChannel(claimed, order, receiver);
     if (updated.row.status === 'success') succeeded++;
   }
   return { scanned: rows.length, succeeded };
+}
+
+async function claimPendingSharing(sharing: PaymentSharingOrderRow): Promise<PaymentSharingOrderRow | null> {
+  const [row] = await db.update(paymentSharingOrders).set({ status: 'processing', version: sql`${paymentSharingOrders.version} + 1` })
+    .where(and(eq(paymentSharingOrders.id, sharing.id), eq(paymentSharingOrders.version, sharing.version), eq(paymentSharingOrders.status, 'pending'))).returning();
+  return row ?? null;
 }
 
 /** 批量回查分账单引用的订单与接收方，去重后各一次查询 */
