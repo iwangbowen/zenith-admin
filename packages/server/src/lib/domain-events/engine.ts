@@ -62,8 +62,9 @@ export async function executeEventConsumer(delivery: ConsumerDeliveryRow): Promi
       const [event] = await tx.select().from(eventOutbox).where(eq(eventOutbox.id, current.eventId));
       if (!event) throw new PermanentEventError('Event fact is missing');
       const consumer = getEventConsumer(current.consumerKey);
+      const parentRef = `event:${event.eventId.replaceAll('-', '').slice(0, 25)}`;
       const result = await runWithTraceId(event.traceId ?? event.eventId, () =>
-        runWithParentRef(`event:${event.eventId}`, () => runInEventConsumer(current.consumerKey, () => consumer.handle(tx, event, current))));
+        runWithParentRef(parentRef, () => runInEventConsumer(current.consumerKey, () => consumer.handle(tx, event, current))));
       const status = result.outcome === 'skipped' ? 'skipped' : 'succeeded';
       const confirmed = await tx.update(deliveries).set({ status, result: { ...result }, finishedAt: now, lastError: null, ...clearLease })
         .where(owned(delivery)).returning({ id: deliveries.id });
@@ -84,7 +85,10 @@ export async function executeEventConsumer(delivery: ConsumerDeliveryRow): Promi
       if (changed.length) await tx.update(eventConsumerAttempts).set({ status: 'failed', error: message, finishedAt: now })
         .where(and(eq(eventConsumerAttempts.deliveryId, delivery.id), eq(eventConsumerAttempts.generation, delivery.generation)));
     });
-    logger.warn('[domain-events] consumer did not confirm', { consumer: delivery.consumerKey, deliveryId: delivery.id, error: message });
+    logger.warn('[domain-events] consumer did not confirm', { consumer: delivery.consumerKey, deliveryId: delivery.id, error: message,
+      causeCode: (error as { cause?: { code?: string } })?.cause?.code,
+      causeMessage: (error as { cause?: { message?: string } })?.cause?.message,
+    });
   }
 }
 
