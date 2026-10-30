@@ -58,6 +58,7 @@ export default withMermaid(defineConfig({
         items: [
           { text: '后端 API 规范', link: '/backend/api-conventions' },
           { text: '后端测试', link: '/backend/testing' },
+          { text: '领域事件与持久化 Outbox', link: '/backend/domain-events' },
           { text: '任务中心', link: '/backend/task-center' },
           { text: '导出中心', link: '/backend/export-center' },
           { text: '前端 UI 规范', link: '/frontend/ui-conventions' },

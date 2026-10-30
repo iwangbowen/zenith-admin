@@ -25,6 +25,7 @@ Zenith Admin 是基于 **Hono + React + Drizzle ORM** 的全栈后台管理系�
 | CRUD 开发 | 实现 XXX CRUD、新增 XXX 模块、开发 XXX 功能、新增管理页面 | 本文件 Step 0 → Step 11 |
 | 修改已有模块 | 给 XXX 加字段、修改 XXX 接口、XXX 添加关联、改枚举、删字段 | [module-modification.md](./references/module-modification.md)：各场景的步骤序列 |
 | 后端测试 | 新增 test、领域契约、跨域回归、affected 测试、测试基准 | [testing.md](./references/testing.md)：测试归属、验证范围、领域快照和基准采集 |
+| 领域事件 / 持久化 Outbox | 事件发布、消费者、Webhook 交接、失败重试、租约恢复 | [domain-events.md](./references/domain-events.md) 与 [文档站领域事件规范](../../../docs/backend/domain-events.md) |
 | 多选下拉展示 | Select / TreeSelect 多选、标签折叠、选择时换行 | [前端约束 → 表单与展示组件](./references/constraints-frontend.md#表单与展示组件) 与 [多选下拉展示](./references/crud-frontend.md#多选下拉展示) |
 | 跨对象关联视图 | 关联信息、对象详情关联、反查来源、关联分组、对象时间线、关系下钻 | [entity-relations.md](./references/entity-relations.md)：锚点、Provider、权限、摘要状态、详情下钻和验收 |
 | 业务模块接入审批 | 业务系统主导流程、业务表单内查看流程、审批预览 / 轮次 | [业务模块接入工作流](../../../docs/workflow/business-integration.md)：业务契约、公共流程容器、seed 与 Demo 的接入规范 |
