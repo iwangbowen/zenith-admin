@@ -1,5 +1,4 @@
 import { and, eq } from 'drizzle-orm';
-import { db } from '../../db';
 import type { DbTransaction } from '../../db/types';
 import { exactTenantCondition } from '../../lib/tenant';
 import { oauth2Clients, paymentApps } from '../../db/schema';

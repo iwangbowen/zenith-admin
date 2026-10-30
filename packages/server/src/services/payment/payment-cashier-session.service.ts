@@ -11,6 +11,7 @@ import { config } from '../../config';
 import { db } from '../../db';
 import type { DbTransaction } from '../../db/types';
 import { exactTenantCondition } from '../../lib/tenant';
+import { buildWhere } from '../../lib/where-helpers';
 import { requireRow } from '../../lib/db-assert';
 import {
   paymentCashierSessions,
@@ -153,7 +154,7 @@ async function setTerminalSessionStateWithin(tx: DbTransaction, input: {
   const [candidate] = await tx
     .select({ linkId: paymentCashierSessions.linkId })
     .from(paymentCashierSessions)
-    .where(and(eq(paymentCashierSessions.id, input.id), input.tenantId === undefined ? undefined : exactTenantCondition(paymentCashierSessions.tenantId, input.tenantId)))
+    .where(buildWhere(eq(paymentCashierSessions.id, input.id), input.tenantId === undefined ? undefined : exactTenantCondition(paymentCashierSessions.tenantId, input.tenantId)))
     .limit(1);
   requireRow(candidate, '收银台会话不存在');
 
@@ -169,7 +170,7 @@ async function setTerminalSessionStateWithin(tx: DbTransaction, input: {
   const [session] = await tx
     .select()
     .from(paymentCashierSessions)
-    .where(and(eq(paymentCashierSessions.id, input.id), input.tenantId === undefined ? undefined : exactTenantCondition(paymentCashierSessions.tenantId, input.tenantId)))
+    .where(buildWhere(eq(paymentCashierSessions.id, input.id), input.tenantId === undefined ? undefined : exactTenantCondition(paymentCashierSessions.tenantId, input.tenantId)))
     .for('update')
     .limit(1);
   requireRow(session, '收银台会话不存在');
