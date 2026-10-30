@@ -30,6 +30,7 @@ vi.mock('../../lib/data-scope', () => ({ getDataScopeCondition: async () => unde
 vi.mock('../../lib/session-manager', () => ({ forceLogoutAllByUsers: async () => [], unlockUser: vi.fn(), batchLoginChallengeRequired: vi.fn(async () => new Set()), getOnlineSessions: vi.fn() }));
 vi.mock('../../lib/data-mask/reveal', () => ({ registerRevealSource: vi.fn() }));
 vi.mock('../../lib/identity-lifecycle', () => ({ emitIdentityRemoval: vi.fn() }));
+vi.mock('../../lib/domain-events', () => ({ publishEventInTx: vi.fn(async () => ({ id: 1, eventId: 'identity-test' })) }));
 vi.mock('./user-signature-lifecycle', () => ({ releaseIdentitySignatures: state.release }));
 
 import { deleteUser, batchDeleteUsers } from './users.service';

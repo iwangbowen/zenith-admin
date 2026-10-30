@@ -2,7 +2,6 @@ import type { DbExecutor } from '../../db/types';
 import { sendSystemJob } from '../pg-boss-scheduler';
 import logger from '../logger';
 import { WORKFLOW_JOB_QUEUE, WORKFLOW_OUTBOUND_JOB_QUEUE } from './types';
-import { rememberTransactionEffect } from '../transaction-effects';
 
 const pendingPickups = new WeakSet<DbExecutor>();
 const options = { retryLimit: 0, expireInSeconds: 60, retentionSeconds: 60 };
@@ -10,7 +9,6 @@ let pendingPublication: Promise<boolean> | null = null;
 
 export function rememberWorkflowJobPickup(executor: DbExecutor, _id: number, _runAt: Date): void {
   pendingPickups.add(executor);
-  rememberTransactionEffect(executor, 'workflow-jobs', publishWorkflowJobPickup);
 }
 
 export function publishWorkflowJobPickup(): Promise<boolean> {

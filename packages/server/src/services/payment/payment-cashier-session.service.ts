@@ -148,11 +148,12 @@ async function setTerminalSessionStateWithin(tx: DbTransaction, input: {
   errorMessage: string;
   expectedVersion?: number;
   allowedStatuses?: PaymentCashierSessionStatus[];
+  tenantId?: number | null;
 }): Promise<PaymentCashierSessionRow> {
   const [candidate] = await tx
     .select({ linkId: paymentCashierSessions.linkId })
     .from(paymentCashierSessions)
-    .where(eq(paymentCashierSessions.id, input.id))
+    .where(and(eq(paymentCashierSessions.id, input.id), input.tenantId === undefined ? undefined : exactTenantCondition(paymentCashierSessions.tenantId, input.tenantId)))
     .limit(1);
   requireRow(candidate, '收银台会话不存在');
 
@@ -168,7 +169,7 @@ async function setTerminalSessionStateWithin(tx: DbTransaction, input: {
   const [session] = await tx
     .select()
     .from(paymentCashierSessions)
-    .where(eq(paymentCashierSessions.id, input.id))
+    .where(and(eq(paymentCashierSessions.id, input.id), input.tenantId === undefined ? undefined : exactTenantCondition(paymentCashierSessions.tenantId, input.tenantId)))
     .for('update')
     .limit(1);
   requireRow(session, '收银台会话不存在');
@@ -426,7 +427,7 @@ export async function updateCashierSessionFromPaymentEventWithin(
   if (!session) return;
   if (status === 'failed') {
     if (!['ready', 'creating', 'awaiting', 'processing', 'unknown'].includes(session.status)) return;
-    await setTerminalSessionStateWithin(tx, { id: session.id, status: 'failed', errorMessage: '支付未完成' });
+    await setTerminalSessionStateWithin(tx, { id: session.id, status: 'failed', errorMessage: '支付未完成', tenantId: event.tenantId });
     return;
   }
   if (session.status === 'succeeded') {

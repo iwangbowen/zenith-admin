@@ -3,6 +3,7 @@ import type { DbTransaction } from '../../db/types';
 import type { IotAlarmRow } from '../../db/schema';
 const recorded = vi.hoisted(() => vi.fn());
 vi.mock('../platform/relations/events.service', () => ({ recordDomainEvent: recorded }));
+vi.mock('../open-platform/open-events.service', () => ({ publishOpenEventInTx: vi.fn() }));
 import { recordIotAlarmEvent } from './iot-alarm-events';
 
 describe('IoT alarm business events', () => {

@@ -984,6 +984,9 @@ export const RETENTION_POLICIES: readonly RetentionPolicyDefinition[] = [
     },
     description: '回收站中删除时间早于保留期的项目彻底删除：删除节点、版本、授权与外链，释放空间配额并回收无引用的存储对象。天数与「网盘设置 → 回收站保留天数」独立维护，以本策略为准。',
   },
+  { key: 'event_outbox', title: '领域事件事实', module: '系统管理', tableName: 'event_outbox', timeColumn: 'occurred_at', defaultDays: 365, description: '跨域事件不可变事实；保留一年供追踪和业务幂等，业务账本不依赖此表长期保留。' },
+  { key: 'event_consumer_deliveries', title: '领域事件消费者回执', module: '系统管理', tableName: 'event_consumer_deliveries', timeColumn: 'run_at', defaultDays: 180, description: '消费者当前进度与失败状态；已终结回执按事件事实保留窗口清理。' },
+  { key: 'event_consumer_attempts', title: '领域事件消费者尝试历史', module: '系统管理', tableName: 'event_consumer_attempts', timeColumn: 'started_at', defaultDays: 90, description: '消费者尝试和错误诊断历史；不替代业务资金与审计事实。' },
 ];
 
 export function findPolicy(key: string): RetentionPolicyDefinition | undefined {

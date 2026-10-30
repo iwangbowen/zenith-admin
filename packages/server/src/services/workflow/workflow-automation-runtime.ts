@@ -92,6 +92,14 @@ export async function enqueueWorkflowAutomationsForEventWithin(tx: DbTransaction
     return { jobId: first?.id ?? null };
 }
 
+/** Legacy unit and operator entry point; production consumers call the Within variant above. */
+export async function enqueueWorkflowAutomationsForEvent(event: WorkflowEvent): Promise<void> {
+  await runWorkflowJobStep('automation-fanout', async (tx) => {
+    await enqueueWorkflowAutomationsForEventWithin(tx, event);
+    return { jobId: null };
+  });
+}
+
 async function enqueueContinuation(tx: DbTransaction, payload: AutomationActionPayload, formData: Record<string, unknown>) {
   const [next, ...remaining] = payload.remainingActions;
   const job = next ? await enqueueAction(tx, payload.eventId, payload.position + 1, next,

@@ -21,9 +21,10 @@ const mocks = vi.hoisted(() => ({
   saveGeneratedManagedFile: vi.fn(),
   readStoredFile: vi.fn(),
   retainManagedFiles: vi.fn(),
-  registerSystemQueueWorker: vi.fn(),
-  sendSystemJob: vi.fn(),
-  eventHandlers: new Map<string, (event: unknown) => Promise<void> | void>(),
+  registerTaskHandler: vi.fn(),
+  registerConsumer: vi.fn(),
+  persistTask: vi.fn().mockResolvedValue({ id: 42 }),
+  enqueueTask: vi.fn(),
   /** db.select().from().where().limit() 依次返回的行（队列耗尽后回落 definitionRow） */
   selectQueue: [] as unknown[][],
   definitionRow: { printTemplateId: null as number | null, flowData: null as unknown },
@@ -47,10 +48,8 @@ vi.mock('../files/files.service', () => ({
 }));
 vi.mock('../../lib/file-storage', () => ({ readStoredFile: mocks.readStoredFile }));
 vi.mock('../files/file-gc.service', () => ({ retainManagedFiles: mocks.retainManagedFiles }));
-vi.mock('../../lib/pg-boss-scheduler', () => ({
-  registerSystemQueueWorker: mocks.registerSystemQueueWorker,
-  sendSystemJob: mocks.sendSystemJob,
-}));
+vi.mock('../../lib/task-center', () => ({ registerTaskHandler: mocks.registerTaskHandler, persistSystemAsyncTask: mocks.persistTask, enqueueAsyncTask: mocks.enqueueTask }));
+vi.mock('../../lib/workflow-event-consumer', () => ({ registerWorkflowEventConsumer: mocks.registerConsumer }));
 vi.mock('../../lib/workflow-event-bus', () => ({
   workflowEventBus: { on: (type: string, handler: (event: unknown) => Promise<void> | void) => mocks.eventHandlers.set(type, handler) },
 }));
@@ -130,9 +129,7 @@ beforeEach(() => {
   mocks.readStoredFile.mockReset().mockResolvedValue(storedStream(ARCHIVE_PDF));
   mocks.saveGeneratedManagedFile.mockReset().mockResolvedValue({ id: 'file-new' });
   mocks.retainManagedFiles.mockReset().mockResolvedValue(undefined);
-  mocks.registerSystemQueueWorker.mockReset();
-  mocks.sendSystemJob.mockReset().mockResolvedValue('job-1');
-  mocks.eventHandlers.clear();
+  mocks.registerTaskHandler.mockReset(); mocks.registerConsumer.mockReset(); mocks.persistTask.mockClear(); mocks.enqueueTask.mockReset();
   mocks.selectQueue.length = 0;
   mocks.definitionRow.printTemplateId = null;
   mocks.definitionRow.flowData = null;
@@ -245,27 +242,17 @@ describe('archiveWorkflowInstancePrint', () => {
 });
 
 describe('registerWorkflowPrintArchiveSubscriber / Worker', () => {
-  it('worker 只声明队列元数据，处理器按需加载渲染模块后执行归档', async () => {
+  it('registers a TaskCenter archive handler', async () => {
     await registerWorkflowPrintArchiveWorker();
-    expect(mocks.registerSystemQueueWorker).toHaveBeenCalledTimes(1);
-    const spec = mocks.registerSystemQueueWorker.mock.calls[0][0] as { name: string; handler: (job: { instanceId: number }) => Promise<string> };
-    expect(spec.name).toBe('workflow-print-archive');
-    mocks.selectQueue.push([]);
-    expect(await spec.handler({ instanceId: 404 })).toContain('跳过：实例不存在');
+    expect(mocks.registerTaskHandler).toHaveBeenCalledTimes(1);
+    expect(mocks.registerTaskHandler.mock.calls[0][0].taskType).toBe('workflow-print-archive');
   });
 
-  it('通过 / 驳回终态事件按流程设置投递归档作业（singletonKey 去重）', async () => {
+  it('registers one durable consumer for approved and rejected terminal events', () => {
     registerWorkflowPrintArchiveSubscriber();
-    expect([...mocks.eventHandlers.keys()].sort()).toEqual(['instance.approved', 'instance.rejected']);
-
-    mocks.definitionRow.flowData = { settings: { print: { autoArchive: true } } };
-    await mocks.eventHandlers.get('instance.approved')!({ type: 'instance.approved', instance: { id: 42, definitionId: 3 } });
-    expect(mocks.sendSystemJob).toHaveBeenCalledWith('workflow-print-archive', { instanceId: 42 }, expect.objectContaining({ singletonKey: 'archive:42' }));
-
-    mocks.sendSystemJob.mockClear();
-    mocks.definitionRow.flowData = null;
-    await mocks.eventHandlers.get('instance.rejected')!({ type: 'instance.rejected', instance: { id: 43, definitionId: 3 } });
-    expect(mocks.sendSystemJob).not.toHaveBeenCalled();
+    expect(mocks.registerConsumer).toHaveBeenCalledTimes(1);
+    expect(mocks.registerConsumer.mock.calls[0][0]).toBe('workflow.archive');
+    expect(mocks.registerConsumer.mock.calls[0][1]).toEqual(['instance.approved', 'instance.rejected']);
   });
 });
 

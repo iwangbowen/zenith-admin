@@ -83,7 +83,8 @@ export function registerAnalyticsServerEventSubscribers(): void {
     }
   });
 
-  registerWorkflowEventConsumer('workflow.analytics', WORKFLOW_EVENT_TYPES, async (_tx, event) => {
+  registerWorkflowEventConsumer('workflow.analytics', WORKFLOW_EVENT_TYPES, async (...args) => {
+    const event = (args.find((value) => value && typeof value === 'object' && 'type' in value) ?? {}) as WorkflowEvent;
     try {
       trackServerEvent({
         eventName: `workflow.${event.type}`,

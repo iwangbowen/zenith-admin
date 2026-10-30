@@ -18,14 +18,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PaymentEvent } from '../../lib/payment-event-bus';
 import type { WorkflowEvent } from '@zenith/shared/workflow';
 
-const { paymentOnAny, workflowOnAny, trackServerEvent } = vi.hoisted(() => ({
-  paymentOnAny: vi.fn(),
-  workflowOnAny: vi.fn(),
-  trackServerEvent: vi.fn(),
+const { paymentOnAny, registerWorkflow, trackServerEvent } = vi.hoisted(() => ({
+  paymentOnAny: vi.fn(), registerWorkflow: vi.fn(), trackServerEvent: vi.fn(),
 }));
 
 vi.mock('../../lib/payment-event-bus', () => ({ paymentEventBus: { onAny: paymentOnAny } }));
-vi.mock('../../lib/workflow-event-bus', () => ({ workflowEventBus: { onAny: workflowOnAny } }));
+vi.mock('../../lib/workflow-event-consumer', () => ({ registerWorkflowEventConsumer: registerWorkflow }));
 vi.mock('./analytics-server-events.service', () => ({ trackServerEvent }));
 
 import {
@@ -38,7 +36,7 @@ function paymentHandler(): (e: PaymentEvent) => void {
 }
 
 function workflowHandler(): (e: WorkflowEvent) => void {
-  return workflowOnAny.mock.calls[0][0];
+  return registerWorkflow.mock.calls[0][2];
 }
 
 function makePaymentEvent(overrides: Partial<PaymentEvent> = {}): PaymentEvent {
@@ -69,7 +67,7 @@ describe('registerAnalyticsServerEventSubscribers — 注册幂等', () => {
     registerAnalyticsServerEventSubscribers();
     registerAnalyticsServerEventSubscribers();
     expect(paymentOnAny).toHaveBeenCalledTimes(1);
-    expect(workflowOnAny).toHaveBeenCalledTimes(1);
+    expect(registerWorkflow).toHaveBeenCalledTimes(1);
   });
 });
 
