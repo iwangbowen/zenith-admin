@@ -27,12 +27,14 @@ import { registerPaymentJournalSubscribers } from '../services/payment/payment-j
 import { registerSharingSubscribers } from '../services/payment/payment-sharing.service';
 import { registerPaymentSubscribers } from '../services/payment/payment-subscribers';
 import { registerPaymentOpenWebhookBridge } from '../services/payment/payment-open-webhook-bridge.service';
+import { registerPaymentEventConsumers } from '../services/payment/payment-event-consumers';
 import { registerWorkflowPrintArchiveSubscriber } from '../services/workflow/workflow-print-archive';
 import { registerDriveOwnershipSubscriber } from '../services/drive/drive-handoff.service';
 
 export function registerEventSubscribers(): void {
   registerOpenEventConsumer();
   registerQuotaNotificationConsumer();
+  registerPaymentEventConsumers();
   registerWorkflowEventConsumers();
   initNotificationAdapters();
   registerWsWorkflowSubscriber();
