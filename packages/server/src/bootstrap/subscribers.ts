@@ -27,7 +27,6 @@ import { registerReconAdjustmentSubscribers } from '../services/payment/payment-
 import { registerPaymentJournalSubscribers } from '../services/payment/payment-journal-subscribers.service';
 import { registerSharingSubscribers } from '../services/payment/payment-sharing.service';
 import { registerPaymentSubscribers } from '../services/payment/payment-subscribers';
-import { registerPaymentOpenWebhookBridge } from '../services/payment/payment-open-webhook-bridge.service';
 import { registerPaymentEventConsumers } from '../services/payment/payment-event-consumers';
 import { registerWorkflowPrintArchiveSubscriber } from '../services/workflow/workflow-print-archive';
 
@@ -47,7 +46,6 @@ export function registerEventSubscribers(): void {
   registerPaymentSubscribers();
   registerContractSubscribers();
   registerCouponPaymentSubscribers();
-  registerPaymentOpenWebhookBridge();
   registerBizLeaveSubscribers();
   registerBizPayDemoSubscribers();
   registerCmsWorkflowSubscribers(); // CMS 内容工作流审核（通过→发布+静态化，驳回/撤回→回写状态）
