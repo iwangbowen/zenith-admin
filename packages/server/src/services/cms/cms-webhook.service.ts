@@ -1,77 +1,32 @@
-/**
- * CMS 内容事件外推。
- *
- * 接入开放平台既有的 Webhook 投递管线（`app_webhook_subscriptions` +
- * `app_webhook_deliveries`），白捡到 HMAC 签名、eventId 去重、指数退避重试、连续失败自动禁用、
- * 投递日志与后台手工重投。
- *
- * 可靠性链路：
- *   业务事务内写任务中心 outbox（`cms-webhook-emit`）→ worker 取出后 emit 到事件总线
- *   → 订阅者持久化 delivery → 投递 / 重试。
- * 事务提交即代表事件不会丢；worker 崩溃由任务中心的 pending 恢复扫描补投。
- *
- * 站点设置里的 webhookUrl 不再自己发请求，而是托管为一条 `internal` 订阅（见
- * syncCmsSiteWebhookSubscription），因此站点级 Webhook 同样享有重试与投递日志。
- */
+/** CMS publication events and managed site Webhook subscription configuration. */
 import { and, eq } from 'drizzle-orm';
-import { randomUUID } from 'node:crypto';
 import type { CmsOpenWebhookEvent } from '@zenith/shared/cms';
-import type { AsyncTask } from '@zenith/shared/tasks';
 import { db } from '../../db';
 import { appWebhookSubscriptions, cmsContents, cmsSites } from '../../db/schema';
 import type { CmsContentRow } from '../../db/schema';
 import type { DbTransaction } from '../../db/types';
-import { runWithCurrentUser } from '../../lib/context';
 import { formatDateTime } from '../../lib/datetime';
 import { encryptField } from '../../lib/encryption';
-import logger from '../../lib/logger';
-import { openEventBus } from '../../lib/open-event-bus';
-import { enqueueAsyncTask, mapAsyncTask, persistAsyncTask, registerTaskHandler } from '../../lib/task-center';
+import { publishOpenEventInTx } from '../open-platform/open-events.service';
+import { wakeEventConsumers } from '../../lib/domain-events';
+import type { OutboxEventRow } from '../../db/schema/event-outbox';
 import { resolveEffectiveCmsSiteRow } from './cms-site-inheritance.service';
 
-export const CMS_WEBHOOK_EMIT_TASK = 'cms-webhook-emit';
+export type CmsWebhookEventRef = Pick<OutboxEventRow, 'id' | 'eventId'>;
 
-const SYSTEM_ACTOR = { userId: 1, username: 'admin', roles: ['super_admin'], tenantId: null };
-
-interface CmsWebhookPayload {
-  event: CmsOpenWebhookEvent;
-  siteId: number;
-  data: Record<string, unknown>;
-  systemTriggered: true;
-  eventId: string;
-  occurredAt: string;
-}
-
-/**
- * 在业务事务内登记事件（outbox）。
- *
- * 返回的任务需在事务提交后由调用方 `enqueueCmsWebhookEvents` 入队；
- * 入队失败也不丢，任务中心的 pending 恢复扫描会补投。
- */
+/** Persist an immutable content event with the actual business change. */
 export async function insertCmsWebhookOutbox(
-  executor: DbTransaction,
-  event: CmsOpenWebhookEvent,
-  siteId: number,
-  data: Record<string, unknown>,
-  eventKey: string,
-): Promise<AsyncTask | null> {
-    const row = await runWithCurrentUser(SYSTEM_ACTOR, () => persistAsyncTask(executor, {
-      taskType: CMS_WEBHOOK_EMIT_TASK,
-      title: `CMS 事件外推：${event}`,
-      payload: { event, siteId, data, systemTriggered: true, eventId: randomUUID(), occurredAt: formatDateTime(new Date()) } satisfies CmsWebhookPayload,
-      idempotencyKey: `cms-webhook:${eventKey}`.slice(0, 128),
-    }));
-    return mapAsyncTask(row);
+  executor: DbTransaction, event: CmsOpenWebhookEvent, siteId: number,
+  data: Record<string, unknown>, eventKey: string,
+): Promise<CmsWebhookEventRef> {
+  return publishOpenEventInTx(executor, { type: event, tenantId: null, scope: { siteId }, data,
+    businessKey: eventKey, orderingKey: `cms-site:${siteId}`,
+    subjects: [{ type: 'cms.site', key: String(siteId), role: 'primary' }],
+  });
 }
 
-export async function enqueueCmsWebhookEvents(tasks: readonly (AsyncTask | null)[]): Promise<void> {
-  for (const task of tasks) {
-    if (!task) continue;
-    await enqueueAsyncTask(task.id).catch((error) => {
-      logger.error(`[cms-webhook] 事件任务 #${task.id} 入队失败，等待 pending 恢复扫描补投`, error);
-    });
-  }
-}
+/** Wake only after commit; ledger polling covers a lost hint. */
+export const wakeCmsWebhookEvents = wakeEventConsumers;
 
 /** 内容事件的标准 payload */
 export async function buildCmsContentEventData(contentId: number): Promise<Record<string, unknown> | null> {
@@ -111,7 +66,7 @@ export async function insertCmsContentWebhookOutbox(
   executor: DbTransaction,
   event: CmsOpenWebhookEvent,
   content: Pick<CmsContentRow, 'id' | 'siteId' | 'version'> & Partial<CmsContentRow>,
-): Promise<AsyncTask | null> {
+): Promise<CmsWebhookEventRef> {
   const [site] = await executor.select({ code: cmsSites.code, name: cmsSites.name })
     .from(cmsSites).where(eq(cmsSites.id, content.siteId)).limit(1);
   return insertCmsWebhookOutbox(
@@ -128,31 +83,6 @@ export async function insertCmsContentWebhookOutbox(
     },
     `${event}:${content.id}:v${content.version}`,
   );
-}
-
-// ─── 任务处理：从 outbox 取出后 emit 到事件总线 ─────────────────────────────
-
-export function registerCmsWebhookTaskHandler(): void {
-  registerTaskHandler({
-    taskType: CMS_WEBHOOK_EMIT_TASK,
-    title: 'CMS 事件外推',
-    module: 'CMS内容管理',
-    allowConcurrent: true,
-    maxAttempts: 3,
-    retryDelayMs: 5000,
-    async run(ctx) {
-      const payload = ctx.payload as unknown as CmsWebhookPayload;
-      // emitAndWait：等订阅者把 delivery 持久化后再算任务成功，失败可由任务中心重试
-      await openEventBus.emitAndWait({
-        type: payload.event,
-        scope: { siteId: payload.siteId },
-        data: payload.data,
-        eventId: payload.eventId,
-        occurredAt: payload.occurredAt,
-      });
-      return { event: payload.event, siteId: payload.siteId };
-    },
-  });
 }
 
 // ─── 站点级 Webhook 配置 → 内部订阅 ────────────────────────────────────────

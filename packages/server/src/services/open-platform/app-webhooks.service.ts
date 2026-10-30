@@ -932,7 +932,8 @@ function matchesSite(sub: AppWebhookSubscriptionRow, siteId: number | undefined)
 /** Persist downstream intents in the same transaction as the consumer receipt. */
 export async function prepareAppWebhookDeliveriesWithin(tx: DbTransaction, event: DurableOpenPlatformEvent): Promise<number[]> {
   const subscriptions = await findMatchingSubscriptions(event, tx);
-  const { tenantId: _tenantId, ...publicEvent } = event;
+  const { type, eventId, clientId, occurredAt, scope, data } = event;
+  const publicEvent = { type, eventId, clientId, occurredAt, scope, data };
   if (!subscriptions.length) return [];
   const ids: number[] = [];
   for (let offset = 0; offset < subscriptions.length; offset += 250) {

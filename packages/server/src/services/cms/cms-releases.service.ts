@@ -26,7 +26,7 @@ import { cmsGenerationSchemaName, hashCmsDeploymentManifest, verifyCmsGeneration
 import { ensureSiteThemeCssAsset, renderSitePath } from './cms-render.service';
 import { stripCmsPreviewScripts } from './cms-preview';
 import { resolveEffectiveCmsSiteRow } from './cms-site-inheritance.service';
-import { enqueueCmsWebhookEvents, insertCmsContentWebhookOutbox } from './cms-webhook.service';
+import { wakeCmsWebhookEvents, insertCmsContentWebhookOutbox } from './cms-webhook.service';
 import { cmsDeliveryContentPaths, insertCmsDeliveryRun } from './cms-delivery-records';
 import { bumpCmsVisibilityEpoch } from './cms-delivery-state';
 import { insertCmsSubscriptionNotificationOutbox, enqueueCmsSubscriptionNotification } from './cms-stage4-tasks';
@@ -345,13 +345,13 @@ export async function activateCmsRelease(id: number, expectedGenerationId: numbe
       ...await cmsDeliveryContentPaths(tx, locked.siteId, withdrawnIds, 'withdrawn'),
       ...await cmsDeliveryContentPaths(tx, locked.siteId, visibleIds, 'visible'),
     ] });
-    const deliveryIds = [...webhooks, ...notifications, ...effects].flatMap((task) => task ? [task.id] : []).concat(delivery.taskId);
+    const deliveryIds = [...notifications, ...effects].flatMap((task) => task ? [task.id] : []).concat(delivery.taskId);
     await tx.update(cmsDeployments).set({ taskIds: [...new Set([...(deployment.taskIds ?? []), ...deliveryIds])] }).where(eq(cmsDeployments.id, deployment.id));
     return { release: updated, webhooks, notifications, effects, cdnTaskId: delivery.taskId, previousGenerationId: current };
   });
   invalidateSiteCache();
   await invalidateCmsSiteCaches(release.siteId);
-  await enqueueCmsWebhookEvents(result.webhooks);
+  await wakeCmsWebhookEvents();
   await Promise.all(result.notifications.map(enqueueCmsSubscriptionNotification));
   await Promise.all(result.effects.map((task) => enqueueAsyncTask(task.id).catch(() => undefined)));
   if (result.cdnTaskId) await enqueueAsyncTask(result.cdnTaskId).catch(() => undefined);

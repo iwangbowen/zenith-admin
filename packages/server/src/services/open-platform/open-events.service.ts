@@ -26,11 +26,12 @@ export function registerOpenEventConsumer(): void {
 export function publishOpenEventInTx(tx: DbTransaction, input: {
   type: string; tenantId: number | null; clientId?: string | null; scope?: OpenPlatformEvent['scope'];
   data: Record<string, unknown>; businessKey: string; orderingKey: string; subjects: readonly SubjectRef[];
+  context?: Record<string, unknown>;
 }) {
   registerOpenEventConsumer();
   const domain = input.type.startsWith('cms.') ? 'cms' : input.type.startsWith('drive.') ? 'drive' : input.type.startsWith('iot.') ? 'iot' : 'open-platform';
   return publishEventInTx(tx, { domain, eventType: input.type, tenantId: input.tenantId, businessKey: input.businessKey,
     orderingKey: input.orderingKey, subjectRefs: input.subjects, scope: input.scope,
-    payload: { type: input.type, tenantId: input.tenantId, clientId: input.clientId ?? null, scope: input.scope ?? {}, data: input.data },
+    payload: { type: input.type, tenantId: input.tenantId, clientId: input.clientId ?? null, scope: input.scope ?? {}, data: input.data, ...(input.context ? { context: input.context } : {}) },
   });
 }

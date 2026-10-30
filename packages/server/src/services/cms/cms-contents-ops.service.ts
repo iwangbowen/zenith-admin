@@ -19,7 +19,7 @@ import { adoptCmsResourcesIntoSite, deleteCmsResourceRefsForOwner } from './cms-
 import { enqueueCmsPublishOutboxes, insertCmsSiteRefsRebuildOutbox } from './cms-publish-outbox.service';
 import logger from '../../lib/logger';
 import { assertCmsWidgetSourcesMutable } from './cms-widgets.service';
-import { enqueueCmsWebhookEvents, insertCmsContentWebhookOutbox } from './cms-webhook.service';
+import { wakeCmsWebhookEvents, insertCmsContentWebhookOutbox, type CmsWebhookEventRef } from './cms-webhook.service';
 import { insertContentPublishOutbox, recalcTagContentCounts, ensureChannelForContent } from './cms-contents-internal';
 import { offlineCmsContent, rejectCmsContent, submitCmsContent, createCmsContent } from './cms-contents-write.service';
 import { publishCmsContentBatch } from './cms-content-batch-publish.service';
@@ -114,7 +114,7 @@ export async function recycleCmsContents(ids: number[], expectedVersions?: Expec
     const refsTasks = await enqueueTemplateRefsRebuild(tx, sites, rows, '回收内容模板引用移除');
     await logContentOps(tx, rows.map((row) => ({ id: row.id })), 'recycled');
     const tasks: AsyncTask[] = [];
-    const webhookTasks: (AsyncTask | null)[] = [];
+    const webhookTasks: CmsWebhookEventRef[] = [];
     for (const row of rows) {
       tasks.push(await insertContentPublishOutbox(
         tx,
@@ -129,7 +129,7 @@ export async function recycleCmsContents(ids: number[], expectedVersions?: Expec
     return { rows, tasks: [...tasks, ...refsTasks], webhookTasks };
   });
   await enqueueCmsPublishOutboxes(mutation.tasks, '内容批量回收');
-  await enqueueCmsWebhookEvents(mutation.webhookTasks);
+  await wakeCmsWebhookEvents();
   for (const row of mutation.rows) {
     void import('./cms-distributions.service')
       .then(({ submitCmsMappingDistributionSideEffects }) => submitCmsMappingDistributionSideEffects(row.id))
@@ -187,7 +187,7 @@ export async function purgeCmsContents(ids: number[], options?: { skipAccessChec
       captured.set(row.id, await captureCmsContentPublishSnapshot(tx, row, { includeExistingArtifacts: true }));
     }
     const lockedIds = lockedTargets.map((row) => row.id);
-    if (lockedIds.length === 0) return { count: 0, tasks: [] as AsyncTask[], webhookTasks: [] as (AsyncTask | null)[] };
+    if (lockedIds.length === 0) return { count: 0, tasks: [] as AsyncTask[], webhookTasks: [] as CmsWebhookEventRef[] };
     // Mapping targets already contain a local snapshot; source purge only
     // detaches the governance relation and never reads cross-site payloads.
     const mappedRows = await tx.select({ id: cmsContents.id, siteId: cmsContents.siteId, mappingSourceId: cmsContents.mappingSourceId, lockedAt: cmsContents.lockedAt, lockReason: cmsContents.lockReason })
@@ -232,7 +232,7 @@ export async function purgeCmsContents(ids: number[], options?: { skipAccessChec
     await recalcTagContentCounts(tx, tagRows.map((t) => t.tagId));
     const refsTasks = await enqueueTemplateRefsRebuild(tx, sites, lockedTargets, '彻底删除内容模板引用');
     const tasks: AsyncTask[] = [];
-    const webhookTasks: (AsyncTask | null)[] = [];
+    const webhookTasks: CmsWebhookEventRef[] = [];
     for (const row of lockedTargets) {
       const old = captured.get(row.id)!;
       tasks.push(await insertContentPublishOutbox(
@@ -248,7 +248,7 @@ export async function purgeCmsContents(ids: number[], options?: { skipAccessChec
     return { count: lockedIds.length, tasks: [...tasks, ...refsTasks], webhookTasks };
   });
   await enqueueCmsPublishOutboxes(mutation.tasks, '内容彻底删除');
-  await enqueueCmsWebhookEvents(mutation.webhookTasks);
+  await wakeCmsWebhookEvents();
   return mutation.count;
 }
 

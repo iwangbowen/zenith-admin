@@ -14,7 +14,7 @@ import { logContentOp } from './cms-content-op-logs.service';
 import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
 import { currentUserOrNull, hasPermission } from '../../lib/context';
 import { isWorkflowAuditEnabled, startCmsContentWorkflow, assertNoActiveContentWorkflow } from './cms-workflow.service';
-import { enqueueCmsWebhookEvents, insertCmsContentWebhookOutbox } from './cms-webhook.service';
+import { wakeCmsWebhookEvents, insertCmsContentWebhookOutbox } from './cms-webhook.service';
 import { assertContentTemplateBySite } from './cms-template-refs.service';
 import type { CmsContentAttachment, CmsSiteOpsSettings, CreateCmsContentInput, UpdateCmsContentInput, CmsContentStatus } from '@zenith/shared/cms';
 import { buildCmsEntityLink, isCmsEntityLink, createCmsContentSchema, updateCmsContentSchema, cmsPublicationValuesEqual, cmsEditorialStatusAfterEdit } from '@zenith/shared/cms';
@@ -441,7 +441,7 @@ export async function offlineCmsContent(id: number, options?: { skipAccessCheck?
     return { task, webhookTask, delivery };
   });
   await enqueueCmsPublishOutboxes([mutation.task], `内容 #${id} 下线`);
-  await enqueueCmsWebhookEvents([mutation.webhookTask]);
+  await wakeCmsWebhookEvents();
   await invalidateCmsSiteCaches(current.siteId);
   await enqueueAsyncTask(mutation.delivery.taskId).catch(() => undefined);
   return getCmsContent(id, { skipAccessCheck: options?.skipAccessCheck });

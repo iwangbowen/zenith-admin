@@ -10,7 +10,6 @@ import { registerCmsResourceTaskHandler } from './cms-resource-tasks';
 import { registerCmsPublishingTaskHandler } from './cms-publishing.service';
 import { registerCmsStage4TaskHandlers } from './cms-stage4-tasks';
 import { registerCmsDistributionTaskHandler } from './cms-distributions.service';
-import { registerCmsWebhookTaskHandler } from './cms-webhook.service';
 import { registerCmsWidgetTaskHandlers } from './cms-widget-tasks';
 import { registerCmsReleaseTaskHandler } from './cms-releases.service';
 import { registerCmsCdnTaskHandler } from './cms-cdn.service';
@@ -28,7 +27,6 @@ export function registerCmsTaskHandlers(): void {
   registerCmsPublishingTaskHandler();
   registerCmsStage4TaskHandlers();
   registerCmsDistributionTaskHandler();
-  registerCmsWebhookTaskHandler();
   registerCmsWidgetTaskHandlers();
   registerCmsReleaseTaskHandler();
   registerCmsCdnTaskHandler();
