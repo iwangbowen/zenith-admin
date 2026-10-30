@@ -30,7 +30,8 @@
         "mp",
         "platform",
         "tasks",
-        "workflow"
+        "workflow",
+        "drive"
       ]
     },
     "member": {
@@ -260,7 +261,8 @@
         "messaging",
         "payment",
         "platform",
-        "report"
+        "report",
+        "tasks"
       ]
     },
     "chat": {
@@ -362,7 +364,8 @@
         "messaging",
         "platform",
         "tasks",
-        "workflow"
+        "workflow",
+        "open-platform"
       ]
     },
     "cms": {
@@ -383,7 +386,8 @@
         "report",
         "short-link",
         "tasks",
-        "workflow"
+        "workflow",
+        "open-platform"
       ]
     },
     "wiki": {
@@ -415,7 +419,8 @@
         "messaging",
         "platform",
         "short-link",
-        "tasks"
+        "tasks",
+        "open-platform"
       ]
     }
   },
