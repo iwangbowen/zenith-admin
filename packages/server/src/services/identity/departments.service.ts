@@ -14,7 +14,7 @@ import type { QueryOutputOf } from '@zenith/shared/core';
 import type * as z from 'zod';
 import { getScopeMemberSummaries } from './user-scope.service';
 import { buildTree } from '@zenith/shared/core';
-import { emitIdentityRemoval } from '../../lib/identity-lifecycle';
+import { publishEventInTx } from '../../lib/domain-events';
 import { resolveUserNames } from '../../lib/user-nicknames';
 
 export type CreateDepartmentInput = z.infer<typeof createDepartmentSchema>;
@@ -171,8 +171,13 @@ export async function deleteDepartment(id: number): Promise<void> {
   ]);
   if (child) throw new HTTPException(400, { message: '该部门存在子部门，无法删除' });
   if (boundUser) throw new HTTPException(400, { message: '该部门下仍有关联用户，无法删除' });
-  await db.delete(departments).where(and(eq(departments.id, id), tc));
-  emitIdentityRemoval({ kind: 'department', ids: [id] });
+  await db.transaction(async (tx) => {
+    const [deleted] = await tx.delete(departments).where(and(eq(departments.id, id), tc)).returning({ id: departments.id, tenantId: departments.tenantId });
+    if (deleted) await publishEventInTx(tx, { domain: 'identity', eventType: 'identity.department.removed', tenantId: deleted.tenantId ?? null,
+      businessKey: `identity:department:${deleted.id}:removed`, orderingKey: `identity:department:${deleted.id}`,
+      subjectRefs: [{ type: 'identity.user', key: `department:${deleted.id}`, role: 'primary' }], payload: { type: 'identity.department.removed', departmentId: deleted.id },
+    });
+  });
 }
 
 export async function getDepartment(id: number) {

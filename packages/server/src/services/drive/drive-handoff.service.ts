@@ -5,7 +5,6 @@ import { db } from '../../db';
 import { driveNodes, driveSpaces, roles, userRoles, users } from '../../db/schema';
 import { requireRow } from '../../lib/db-assert';
 import { exactTenantCondition } from '../../lib/tenant';
-import { onIdentityRemoval } from '../../lib/identity-lifecycle';
 import { notify } from '../messaging/notification-outbox.service';
 import { getDriveSettings } from './drive-settings.service';
 import { ensureDriveSpaceExists, getDriveSpace, orphanDriveSpaceCondition } from './drive-spaces.service';
@@ -72,9 +71,6 @@ export async function reportOrphanDriveSpaces(): Promise<void> {
   }
 }
 
-let subscribed = false;
 export function registerDriveOwnershipSubscriber(): void {
-  if (subscribed) return;
-  subscribed = true;
-  onIdentityRemoval(reportOrphanDriveSpaces);
+  // Identity removal is now a durable domain event consumer.
 }

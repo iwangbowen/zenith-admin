@@ -8,6 +8,7 @@ import logger from '../lib/logger';
 import { registerQuotaNotificationConsumer } from '../services/open-platform/open-quota-alerts.service';
 import { registerOpenEventConsumer } from '../services/open-platform/open-events.service';
 import { registerWorkflowEventConsumers } from '../services/workflow/workflow-event-consumers';
+import { registerIdentityEventConsumers } from '../services/identity/identity-event-consumers';
 import { initNotificationAdapters } from '../lib/notification/adapters';
 import { initPaymentAdapters } from '../lib/payment';
 import { registerChatWorkflowSubscriber } from '../lib/workflow-subscribers/chat';
@@ -29,13 +30,13 @@ import { registerPaymentSubscribers } from '../services/payment/payment-subscrib
 import { registerPaymentOpenWebhookBridge } from '../services/payment/payment-open-webhook-bridge.service';
 import { registerPaymentEventConsumers } from '../services/payment/payment-event-consumers';
 import { registerWorkflowPrintArchiveSubscriber } from '../services/workflow/workflow-print-archive';
-import { registerDriveOwnershipSubscriber } from '../services/drive/drive-handoff.service';
 
 export function registerEventSubscribers(): void {
   registerOpenEventConsumer();
   registerQuotaNotificationConsumer();
   registerPaymentEventConsumers();
   registerWorkflowEventConsumers();
+  registerIdentityEventConsumers();
   initNotificationAdapters();
   registerWsWorkflowSubscriber();
   registerNodeListenersSubscriber();
@@ -56,6 +57,5 @@ export function registerEventSubscribers(): void {
   registerFeeSubscribers();
   registerSharingSubscribers();
   registerAnalyticsServerEventSubscribers();
-  registerDriveOwnershipSubscriber();
   logger.info('Workflow event subscribers registered');
 }

@@ -30,7 +30,7 @@ import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../
 import { registerRevealSource } from '../../lib/data-mask/reveal';
 import logger from '../../lib/logger';
 import { userHasPlatformSuperRole } from './role-grant';
-import { emitIdentityRemoval } from '../../lib/identity-lifecycle';
+import { publishEventInTx } from '../../lib/domain-events';
 import { releaseIdentitySignatures } from './user-signature-lifecycle';
 import { assertAuthorityActor, assertProfileActor, provisionBasicUser, replaceDirectPermissions, replaceUserRoles } from './authority-write.service';
 
@@ -363,10 +363,14 @@ export async function batchDeleteUsers(ids: number[]) {
     if (!targets.length) return [];
     const targetIds = targets.map((row) => row.id);
     await releaseIdentitySignatures(tx, inArray(userSignatures.userId, targetIds));
-    return tx.delete(users).where(buildWhere(inArray(users.id, targetIds), tc)).returning({ id: users.id });
+    const deleted = await tx.delete(users).where(buildWhere(inArray(users.id, targetIds), tc)).returning({ id: users.id, tenantId: users.tenantId });
+    for (const row of deleted) await publishEventInTx(tx, { domain: 'identity', eventType: 'identity.user.removed', tenantId: row.tenantId ?? null,
+      businessKey: `identity:user:${row.id}:removed`, orderingKey: `identity:user:${row.id}`, subjectRefs: [{ type: 'identity.user', key: String(row.id), role: 'primary' }],
+      payload: { type: 'identity.user.removed', userId: row.id },
+    });
+    return deleted;
   });
   await revokeUserSessions(deleted.map((r) => r.id));
-  emitIdentityRemoval({ kind: 'user', ids: deleted.map((row) => row.id) });
   return deleted.length;
 }
 
