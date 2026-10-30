@@ -196,6 +196,12 @@ async function assertFrozenEvidence(tx: DbExecutor, row: PaymentReconAdjustmentR
 }
 
 /** Approved task actors come from the durable workflow outbox, never from assignee labels or automatic terminal status. */
+interface WorkflowTaskApprovedEventSnapshot {
+  eventId: string;
+  task?: { id?: unknown };
+  actor?: { userId?: unknown };
+}
+
 async function humanApprovalProof(tx: DbExecutor, row: PaymentReconAdjustmentRow, instanceId: number) {
   const tasks = await tx.select().from(workflowTasks).where(and(eq(workflowTasks.instanceId, instanceId), eq(workflowTasks.status, 'approved'), inArray(workflowTasks.nodeType, ['approve', 'handler']))).orderBy(asc(workflowTasks.id));
   if (!tasks.length || tasks.some((task) => !task.assigneeId || !task.actionAt || task.assigneeId === row.applicantId)) throw new HTTPException(409, { message: '审批未提供独立人工决定，禁止资金过账' });
@@ -203,7 +209,8 @@ async function humanApprovalProof(tx: DbExecutor, row: PaymentReconAdjustmentRow
     eq(eventOutbox.domain, 'workflow'), eq(eventOutbox.eventType, 'workflow.task.approved'), eq(eventOutbox.orderingKey, `workflow:${instanceId}`), exactTenantCondition(eventOutbox.tenantId, row.tenantId),
   ));
   return tasks.map((task) => {
-    const event = facts.map((fact) => ({ ...fact.payload, eventId: fact.eventId })).find((event) => isPlainObject(event.task) && event.task.id === task.id);
+    const event = facts.map((fact) => ({ ...fact.payload, eventId: fact.eventId }) as WorkflowTaskApprovedEventSnapshot)
+      .find((candidate) => isPlainObject(candidate.task) && candidate.task.id === task.id);
     const actorId = event && isPlainObject(event.actor) ? event.actor.userId : null;
     if (typeof actorId !== 'number') throw new HTTPException(409, { message: '审批缺少持久化操作人证据，禁止过账' });
     assertIndependentReconApproval(PAYMENT_RECON_ADJUSTMENT_BIZ_TYPE, row.applicantId, actorId);

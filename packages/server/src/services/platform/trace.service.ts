@@ -4,7 +4,7 @@
  * traceId = hono requestId（见 middleware/request-trace.ts 的合并说明）。
  * 五类锚点纯读聚合，无独立存储：
  *   request      ← operation_logs.request_id
- *   job / event  ← workflow_jobs.trace_id（event = job_type 'domain_event'，事件体在 payload 内）
+ *   job           ← workflow_jobs.trace_id
  *   notification ← notification_outbox.trace_id + notification_dispatches（渠道级投递结果）
  *   task         ← async_tasks.trace_id
  */
@@ -56,11 +56,6 @@ const TASK_STATUS_MAP: Record<string, TraceNodeStatus> = {
   cancelled: 'failed',
 };
 
-/** domain_event 作业 payload 中的事件体（见 workflow-event-bus.emit） */
-interface DispatchedEventPayload {
-  event?: { type?: string; eventId?: string; occurredAt?: string; [k: string]: unknown };
-}
-
 function requestNodes(rows: (typeof operationLogs.$inferSelect)[]): TraceTimelineNode[] {
   return rows.map((r) => ({
     kind: 'request' as const,
@@ -83,24 +78,6 @@ function requestNodes(rows: (typeof operationLogs.$inferSelect)[]): TraceTimelin
 
 function jobNodes(rows: (typeof workflowJobs.$inferSelect)[]): TraceTimelineNode[] {
   return rows.map((r) => {
-    if (r.jobType === 'domain_event') {
-      const event = (r.payload as DispatchedEventPayload | null)?.event;
-      return {
-        kind: 'event' as const,
-        ts: formatDateTime(r.createdAt),
-        title: event?.type ?? '领域事件',
-        status: JOB_STATUS_MAP[r.status] ?? 'pending',
-        durationMs: null,
-        refId: r.id,
-        parentRef: r.parentRef ?? null,
-        detail: {
-          eventId: event?.eventId,
-          attempts: r.attempts,
-          lastError: r.lastError,
-          payload: event,
-        },
-      };
-    }
     return {
       kind: 'job' as const,
       ts: formatDateTime(r.createdAt),
