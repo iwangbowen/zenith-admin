@@ -42,7 +42,7 @@ describe('listRecentTraces', () => {
       [{ traceId: 't-1', ts: T('2026-09-27T10:00:00Z'), method: 'POST', path: '/api/orders' }],
       [
         { traceId: 't-1', ts: T('2026-09-27T11:00:00Z'), jobType: 'webhook_delivery' },
-        { traceId: 't-2', ts: T('2026-09-27T09:00:00Z'), jobType: 'event_dispatch' },
+        { traceId: 't-2', ts: T('2026-09-27T09:00:00Z'), jobType: 'webhook_delivery' },
       ],
       [{ traceId: 't-2', ts: T('2026-09-27T09:30:00Z'), title: '数据导入' }],
       [{ traceId: 't-3', ts: T('2026-09-27T08:00:00Z'), eventKey: 'order.created' }],
@@ -68,7 +68,7 @@ describe('listRecentTraces', () => {
       failedCount: 1,
     });
     // t-2 无请求，入口取作业类型（优先级高于任务标题）
-    expect(entries[1]).toMatchObject({ title: 'event_dispatch', status: 'running', nodeCount: 3, failedCount: 0 });
+    expect(entries[1]).toMatchObject({ title: 'webhook_delivery', status: 'running', nodeCount: 3, failedCount: 0 });
     expect(entries[2]).toMatchObject({ title: 'order.created', status: 'pending', nodeCount: 1, failedCount: 0 });
   });
 

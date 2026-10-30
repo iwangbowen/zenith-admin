@@ -595,7 +595,7 @@ function buildMockWorkflowEngineIntrospection(thresholdMinutes: number): Workflo
       ready: byQueue('subProcessJoin').length,
       oldestAgeMinutes: byQueue('subProcessJoin').length ? Math.max(...byQueue('subProcessJoin').map((item) => item.ageMinutes)) : null,
     }),
-    queueSnapshot('eventOutbox', '工作流事件派发', {
+    queueSnapshot('eventOutbox', '领域事件 Outbox', {
       ready: outboxEvents.filter((item) => item.status === 'pending').length,
       delayed: outboxEvents.filter((item) => item.status === 'retrying' || item.status === 'processing').length,
       failed: outboxEvents.filter((item) => item.status === 'failed').length,
@@ -685,7 +685,7 @@ function buildMockWorkflowEngineIntrospection(thresholdMinutes: number): Workflo
     {
       key: 'eventBus',
       name: '事件总线',
-      description: '进程内工作流事件派发器。',
+      description: '工作流事件注册与消费者目录。',
       status: 'healthy',
       metrics: [
         { label: '监听器总数', value: MOCK_EVENT_BUS_LISTENERS, status: 'healthy' },
@@ -703,7 +703,7 @@ function buildMockWorkflowEngineIntrospection(thresholdMinutes: number): Workflo
     },
     {
       key: 'outbox',
-      name: '事件派发',
+      name: '领域事件 Outbox',
       description: '持久化工作流事件并兜底重放。',
       status: worstStatus([queueStatus('eventOutbox'), issueStatus('outbox')]),
       metrics: [
@@ -931,7 +931,7 @@ function buildMockWorkflowEngineIntrospection(thresholdMinutes: number): Workflo
           name: 'workflow-jobs',
           title: '工作流作业 Worker',
           module: '工作流',
-          description: '消费工作流统一作业队列，处理延时唤醒、超时、触发器、子流程和事件派发。',
+          description: '消费工作流统一作业队列，处理延时唤醒、超时、触发器、子流程和外部投递。',
           taskType: 'queue',
           cronExpression: null,
           registeredAt: mockDateTimeOffset(-2 * 60 * 60 * 1000),
@@ -1086,9 +1086,9 @@ let simCaseSeq = 1;
 
 // ─── 流程定义 Handler ──────────────────────────────────────────────────────
 
-// 引擎运维动作 → 固定作业类型 / 标签（与后端 workflow-engine-ops.service 对齐）
+// 引擎运维动作 → 固定作业类型 / 标签（与后端 workflow-engine-ops.service 对齐）；领域事件消费者不属于 workflow_jobs。
 const ENGINE_ACTION_JOB_TYPES: Record<WorkflowEngineActionKey, WorkflowJobType[]> = {
-  'replay-outbox': ['event_dispatch'],
+  'replay-outbox': [],
   'recover-delays': ['delay_wake'],
   'recover-subprocess': ['subprocess_spawn', 'subprocess_join'],
   'process-timeouts': ['task_timeout'],
@@ -1096,7 +1096,7 @@ const ENGINE_ACTION_JOB_TYPES: Record<WorkflowEngineActionKey, WorkflowJobType[]
   'recover-webhooks': ['webhook_delivery'],
 };
 const ENGINE_ACTION_LABELS: Record<WorkflowEngineActionKey, string> = {
-  'replay-outbox': '事件派发重放（作业账本）',
+  'replay-outbox': '领域事件消费者重试',
   'recover-delays': '延时任务兜底（作业账本）',
   'recover-subprocess': '子流程兜底（作业账本）',
   'process-timeouts': '超时任务兜底（作业账本）',
@@ -1248,7 +1248,7 @@ function buildMockDiagnostics(inst: WorkflowInstance): WorkflowRuntimeDiagnostic
         severity: 'warning',
         source: 'outbox',
         taskId: event.taskId,
-        title: '事件派发待处理',
+        title: '领域事件待处理',
         description: `${event.eventType} 当前状态为 ${event.status}，attempts=${event.attempts}。`,
       });
     }
@@ -1258,7 +1258,7 @@ function buildMockDiagnostics(inst: WorkflowInstance): WorkflowRuntimeDiagnostic
       severity: 'info',
       source: 'instance',
       title: '未发现明显运行时异常',
-      description: 'Demo 诊断：任务、触发器和事件派发均未命中异常规则。',
+      description: 'Demo 诊断：任务、触发器和领域事件消费者均未命中异常规则。',
     });
   }
   return {
@@ -1291,8 +1291,8 @@ function buildMockTrace(id: number): WorkflowInstanceTrace {
     },
     {
       key: 'job-101', kind: 'job', at: t0, traceId: 'trace-mock-aa01',
-      title: '事件派发 · node.entered', status: 'succeeded', nodeName: '部门主管', assigneeName: null, comment: null,
-      jobId: 101, jobType: 'event_dispatch', attempts: 1, maxAttempts: 3, runAt: t0, nextRetryAt: null, lastError: null, executions: [],
+      title: '领域事件消费者已确认 · node.entered', status: 'succeeded', nodeName: '部门主管', assigneeName: null, comment: null,
+      jobId: 101, jobType: 'automation_action', attempts: 1, maxAttempts: 3, runAt: t0, nextRetryAt: null, lastError: null, executions: [],
     },
     {
       key: 'task-act-1', kind: 'task', at: t1, traceId: null,

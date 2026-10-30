@@ -148,19 +148,19 @@ describe('workflow execution leases', () => {
     expect(model.send.mock.calls[0][1]).toEqual({});
   });
   it('transactional enqueue has no pre-commit queue or direct-execution side effects', async () => {
-    await enqueueJob({ jobType: 'event_dispatch' }, { ...model.db } as unknown as DbExecutor);
+    await enqueueJob({ jobType: 'webhook_delivery' }, { ...model.db } as unknown as DbExecutor);
     await vi.advanceTimersByTimeAsync(1000);
     expect(model.send).not.toHaveBeenCalled(); expect(model.handler).not.toHaveBeenCalled();
   });
   it('publishes transactional intents after commit and discards rolled-back wakeups', async () => {
     await workflowTransaction(async (tx) => {
-      await enqueueJob({ jobType: 'event_dispatch' }, tx);
+      await enqueueJob({ jobType: 'webhook_delivery' }, tx);
       expect(model.send).not.toHaveBeenCalled();
     });
     expect(model.send).toHaveBeenCalledTimes(2);
     model.send.mockClear();
     await expect(workflowTransaction(async (tx) => {
-      await enqueueJob({ jobType: 'event_dispatch' }, tx);
+      await enqueueJob({ jobType: 'webhook_delivery' }, tx);
       throw new Error('rollback');
     })).rejects.toThrow('rollback');
     expect(model.state.jobs).toHaveLength(1); expect(model.send).not.toHaveBeenCalled();

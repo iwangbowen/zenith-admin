@@ -41,7 +41,7 @@ const REF_TYPE_LABEL: Record<NonNullable<WorkflowEngineRuntimeIssue['refType']>,
   instance: '实例',
   task: '任务',
   triggerExecution: '触发器执行',
-  outbox: '事件派发',
+  outbox: '领域事件 Outbox',
   scheduler: '调度器',
 };
 
@@ -1096,7 +1096,7 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
             empty="暂无内部队列任务"
           />
         </TabPane>
-        <TabPane tab={`事件派发 ${data.runtime.outboxEvents.length}`} itemKey="outbox">
+                <TabPane tab={`领域事件 Outbox ${data.runtime.outboxEvents.length}`} itemKey="outbox">
           <ConfigurableTable<WorkflowEngineOutboxEvent>
             bordered
             columnSettings={false}
@@ -1104,7 +1104,7 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
             dataSource={data.runtime.outboxEvents}
             rowKey="id"
             pagination={false}
-            empty="暂无待处理事件派发"
+                    empty="暂无待处理领域事件"
           />
         </TabPane>
         <TabPane tab={`触发器 ${data.runtime.triggerExecutions.length}`} itemKey="triggers">

@@ -4,12 +4,14 @@
  * - 告警指标源（getLatestEngineHealthMetrics）被 monitor-alert 评估器读取（workflowHealth / workflowBacklog）。
  * - 运维动作复用现有恢复函数，全部为幂等恢复扫描。
  */
-import { desc, gte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, sql } from 'drizzle-orm';
 import { db } from '../../db';
-import { workflowEngineHealthSnapshots } from '../../db/schema';
+import { eventConsumerDeliveries, eventOutbox, workflowEngineHealthSnapshots } from '../../db/schema';
 import { formatDateTime } from '../../lib/datetime';
 import logger from '../../lib/logger';
 import type { WorkflowEngineActionFilter, WorkflowEngineActionKey, WorkflowEngineActionPreview, WorkflowEngineActionResult, WorkflowEngineComponentStatus, WorkflowEngineHealthHistory, WorkflowEngineHealthPoint, WorkflowJobType } from '@zenith/shared/workflow';
+import { wakeEventConsumers } from '../../lib/domain-events';
+import { buildWhere } from '../../lib/where-helpers';
 import { getWorkflowEngineIntrospection, getWorkflowEngineThresholds, severityFromHealth } from './workflow-engine-introspection.service';
 
 function backlogOf(queues: Array<{ ready: number; running: number; delayed: number; failed: number }>): number {
@@ -142,14 +144,14 @@ export async function getLatestEngineHealthMetrics(): Promise<{ workflowHealth: 
   return { workflowHealth: row?.healthScore ?? 100, workflowBacklog: row?.backlog ?? 0 };
 }
 
-/** 各运维动作固定对应的作业类型（drain 时按类型细分，避免"全部只 drain 一遍"）。 */
-const ACTION_META: Record<WorkflowEngineActionKey, { label: string; jobTypes: WorkflowJobType[] }> = {
-  'replay-outbox': { label: '领域事件消费者重试', jobTypes: ['webhook_delivery'] },
-  'recover-delays': { label: '延时任务兜底（作业账本）', jobTypes: ['delay_wake'] },
-  'recover-subprocess': { label: '子流程兜底（作业账本）', jobTypes: ['subprocess_spawn', 'subprocess_join'] },
-  'process-timeouts': { label: '超时任务兜底（作业账本）', jobTypes: ['task_timeout'] },
-  'recover-triggers': { label: '触发器兜底（作业账本）', jobTypes: ['trigger_dispatch'] },
-  'recover-webhooks': { label: 'Webhook 投递兜底（作业账本）', jobTypes: ['webhook_delivery'] },
+/** 各运维动作固定对应的恢复边界；领域事件消费者不属于 workflow_jobs。 */
+const ACTION_META: Record<WorkflowEngineActionKey, { label: string; jobTypes: WorkflowJobType[]; kind: 'event-consumers' | 'workflow-jobs' }> = {
+  'replay-outbox': { label: '领域事件消费者重试', jobTypes: [], kind: 'event-consumers' },
+  'recover-delays': { label: '延时任务兜底（作业账本）', jobTypes: ['delay_wake'], kind: 'workflow-jobs' },
+  'recover-subprocess': { label: '子流程兜底（作业账本）', jobTypes: ['subprocess_spawn', 'subprocess_join'], kind: 'workflow-jobs' },
+  'process-timeouts': { label: '超时任务兜底（作业账本）', jobTypes: ['task_timeout'], kind: 'workflow-jobs' },
+  'recover-triggers': { label: '触发器兜底（作业账本）', jobTypes: ['trigger_dispatch'], kind: 'workflow-jobs' },
+  'recover-webhooks': { label: 'Webhook 投递兜底（作业账本）', jobTypes: ['webhook_delivery'], kind: 'workflow-jobs' },
 };
 
 const ACTION_LIMIT_DEFAULT = 200;
@@ -163,6 +165,47 @@ export function isWorkflowEngineActionKey(value: string): value is WorkflowEngin
   return value in ACTION_META;
 }
 
+function eventConsumerFilter(filter?: WorkflowEngineActionFilter) {
+  return buildWhere(
+    sql`(${eventConsumerDeliveries.status} in ('retrying', 'dead') or (${eventConsumerDeliveries.status} = 'running' and ${eventConsumerDeliveries.leaseUntil} <= clock_timestamp()))`,
+    filter?.instanceId != null ? sql`${eventOutbox.payload}->>'instanceId' = ${String(filter.instanceId)}` : undefined,
+    filter?.olderThanMinutes != null && filter.olderThanMinutes > 0
+      ? sql`${eventConsumerDeliveries.runAt} <= clock_timestamp() - ${filter.olderThanMinutes} * interval '1 minute'`
+      : undefined,
+  );
+}
+
+async function previewEventConsumerRecovery(filter?: WorkflowEngineActionFilter) {
+  const base = eventConsumerFilter(filter);
+  const [row] = await db.select({
+    duePending: sql<number>`count(*) filter (where ${eventConsumerDeliveries.status} in ('dead', 'retrying') and ${eventConsumerDeliveries.runAt} <= clock_timestamp())`,
+    stuckRunning: sql<number>`count(*) filter (where ${eventConsumerDeliveries.status} = 'running' and ${eventConsumerDeliveries.leaseUntil} <= clock_timestamp())`,
+    scheduledLater: sql<number>`count(*) filter (where ${eventConsumerDeliveries.status} = 'retrying' and ${eventConsumerDeliveries.runAt} > clock_timestamp())`,
+  }).from(eventConsumerDeliveries).innerJoin(eventOutbox, eq(eventOutbox.id, eventConsumerDeliveries.eventId)).where(base);
+  return { duePending: Number(row?.duePending ?? 0), stuckRunning: Number(row?.stuckRunning ?? 0), scheduledLater: Number(row?.scheduledLater ?? 0) };
+}
+
+async function recoverEventConsumers(filter?: WorkflowEngineActionFilter) {
+  const base = eventConsumerFilter(filter);
+  const result = await db.transaction(async (tx) => {
+    const candidates = await tx.select({ id: eventConsumerDeliveries.id })
+      .from(eventConsumerDeliveries).innerJoin(eventOutbox, eq(eventOutbox.id, eventConsumerDeliveries.eventId))
+      .where(base).orderBy(asc(eventConsumerDeliveries.runAt), asc(eventConsumerDeliveries.id)).limit(clampActionLimit(filter?.limit));
+    const ids = candidates.map((row) => row.id);
+    if (ids.length === 0) return { recovered: 0, requeued: 0, dead: 0 };
+    const expired = await tx.update(eventConsumerDeliveries).set({
+      status: 'retrying', lastError: 'Consumer lease recovered by operator', runAt: sql`clock_timestamp()`, leaseToken: null, leaseUntil: null,
+    }).where(and(inArray(eventConsumerDeliveries.id, ids), eq(eventConsumerDeliveries.status, 'running'))).returning({ id: eventConsumerDeliveries.id });
+    const requeued = await tx.update(eventConsumerDeliveries).set({
+      status: 'pending', attempts: 0, generation: sql`${eventConsumerDeliveries.generation} + 1`, runAt: sql`clock_timestamp()`,
+      finishedAt: null, lastError: null, leaseToken: null, leaseUntil: null,
+    }).where(and(inArray(eventConsumerDeliveries.id, ids), inArray(eventConsumerDeliveries.status, ['dead', 'retrying']))).returning({ id: eventConsumerDeliveries.id });
+    return { recovered: expired.length, requeued: expired.length + requeued.length, dead: 0 };
+  });
+  await wakeEventConsumers();
+  return result;
+}
+
 /**
  * 运维动作执行前预览：按 jobType（动作固定）+ 实例 / 入库时长筛选，
  * 统计将被处理的作业（到期 pending + 卡死 running）与未到期作业，并返回样本行。
@@ -172,6 +215,11 @@ export async function previewWorkflowEngineAction(
   filter?: WorkflowEngineActionFilter,
 ): Promise<WorkflowEngineActionPreview> {
   const meta = ACTION_META[action];
+  if (meta.kind === 'event-consumers') {
+    const counts = await previewEventConsumerRecovery(filter);
+    return { action, label: meta.label, jobTypes: [], ...counts, matched: counts.duePending + counts.stuckRunning,
+      limit: clampActionLimit(filter?.limit), sample: [] };
+  }
   const { previewDrainableJobs } = await import('../../lib/workflow-jobs');
   const preview = await previewDrainableJobs({
     jobTypes: meta.jobTypes,
@@ -199,6 +247,11 @@ export async function runWorkflowEngineAction(
 ): Promise<WorkflowEngineActionResult> {
   const meta = ACTION_META[action];
   try {
+    if (meta.kind === 'event-consumers') {
+      const r = await recoverEventConsumers(filter);
+      const detail = { recovered: r.recovered, requeued: r.requeued, dead: r.dead };
+      return { action, ok: true, message: `${meta.label}已提交补投 ${r.requeued} 项，回收 ${r.recovered} 项，重试耗尽 ${r.dead} 项`, detail };
+    }
     const { drainWorkflowJobs } = await import('../../lib/workflow-jobs');
     const r = await drainWorkflowJobs({
       jobTypes: meta.jobTypes,

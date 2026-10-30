@@ -2,8 +2,8 @@
  * 支付 / 工作流事件总线 → 服务端权威语义事件订阅桥接。
  *
  * - paymentEventBus.onAny：5 种支付/退款事件 1:1 映射为同名语义事件。
- * - workflowEventBus.onAny：14 种工作流事件映射为 `workflow.<type>`，通过既有 event_dispatch
- *   outbox 可靠投递（订阅本身与其它进程内订阅者一致，无需额外可靠性保障）。
+ * - 工作流领域事件消费者：14 种工作流事件映射为 `workflow.<type>`，由持久化
+ *   `event_outbox` / `event_consumer_deliveries` 可靠投递，分析消费者独立确认与重试。
  * - 两条订阅仅提取白名单标量字段进 properties，不落 formData / attachments / 签名等大字段，
  *   也不落任何凭据；handler 本身不 throw（trackServerEvent 内部已吞掉所有异常，两条总线本身
  *   也各自隔离了 handler 异常，双重保险）。

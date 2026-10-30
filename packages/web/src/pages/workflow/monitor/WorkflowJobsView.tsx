@@ -44,7 +44,7 @@ type TagColor = 'amber' | 'blue' | 'cyan' | 'green' | 'grey' | 'orange' | 'red' 
 
 const JOB_TYPE_COLORS: Partial<Record<WorkflowJobType, TagColor>> = {
   delay_wake: 'cyan', task_timeout: 'amber', trigger_dispatch: 'blue', external_dispatch: 'violet',
-  subprocess_spawn: 'green', subprocess_join: 'green', event_dispatch: 'orange', automation_action: 'blue',
+  subprocess_spawn: 'green', subprocess_join: 'green', node_listener_delivery: 'orange', automation_action: 'blue',
   schedule_launch: 'cyan', webhook_delivery: 'orange', compensation_action: 'red',
 };
 const JOB_TYPE_META = Object.fromEntries(WORKFLOW_JOB_TYPES.map(value => [value, { text: WORKFLOW_JOB_TYPE_LABELS[value], color: JOB_TYPE_COLORS[value] ?? 'blue' }])) as Record<WorkflowJobType, { text: string; color: TagColor }>;
@@ -155,13 +155,11 @@ function renderStatusTag(status: WorkflowJobStatus) {
   return <Tag color={meta?.color ?? 'grey'} size="small">{meta?.text ?? status}</Tag>;
 }
 
-/** 从 payload 中提取最能区分同类型作业的摘要（如事件派发的事件类型） */
+/** 从 payload 中提取最能区分同类型作业的摘要（如 Webhook / 节点监听的事件类型） */
 function jobSummaryText(record: WorkflowJob): string {
   const p = (record.payload ?? {}) as Record<string, unknown>;
   const event = p.event as Record<string, unknown> | undefined;
   switch (record.jobType) {
-    case 'event_dispatch':
-      return (event?.type as string) ?? EMPTY_PLACEHOLDER;
     case 'webhook_delivery': {
       const sub = p.subscriptionId != null ? `#${p.subscriptionId} ` : '';
       return `${sub}${(event?.type as string) ?? ''}`.trim() || EMPTY_PLACEHOLDER;

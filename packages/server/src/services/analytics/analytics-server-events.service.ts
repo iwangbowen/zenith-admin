@@ -1,7 +1,7 @@
 /**
  * 服务端权威语义事件。
  *
- * 首批权威事件来自 paymentEventBus（5 种）、workflowEventBus（14 种，经 event_dispatch 作业投递）
+ * 首批权威事件来自 paymentEventBus（5 种）、工作流持久化领域事件消费者（14 种）
  * 以及会员关键业务操作（注册 / 资料更新 / 积分变动 / 优惠券领取核销 / 签到），统一落同一张
  * user_events 表，source='server'，与 HTTP 采集（analytics.service.ts）共用 Tracking Plan 治理、
  * 事件字典登记与用户画像 upsert，但完全不经 HTTP 请求路径，也不会阻断触发方的业务事务/事件总线投递。
@@ -9,7 +9,7 @@
  * 设计要点：
  * - trackServerEvent() 调用立即返回（queueMicrotask 异步执行），内部任何失败都仅 logger 记录，
  *   绝不向上抛出 —— 服务端事件是"锦上添花"的分析数据，不能成为业务可靠性的新故障点。
- * - 幂等：eventId 复用来源事件总线的稳定 eventId —— workflow 经 event_dispatch 保留原始 UUID；
+ * - 幂等：eventId 复用来源事件的稳定 eventId —— workflow 由 event_outbox 保留原始 UUID；
  *   payment outbox 投递的是 `payment-outbox-{id}` 稳定字符串（非 UUID），本服务对其做确定性
  *   UUID 派生（deriveDeterministicUuid），at-least-once 重投仍映射到同一 UUID；
  *   会员业务事件没有天然稳定 ID，每次调用生成新 UUID（一次性动作，无重试去重诉求）；

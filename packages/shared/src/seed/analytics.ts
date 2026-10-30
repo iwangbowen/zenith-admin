@@ -101,7 +101,7 @@ export const SEED_ANALYTICS_EVENT_META: SeedAnalyticsEventMeta[] = [
   { id: 1003, eventName: 'payment.failed', displayName: ANALYTICS_SEMANTIC_EVENT_LABELS['payment.failed'], category: 'payment', description: '支付订单支付失败（服务端权威事件，来自 paymentEventBus）', propertySchema: PAYMENT_BASE_SCHEMA, strictMode: false },
   { id: 1004, eventName: 'refund.succeeded', displayName: ANALYTICS_SEMANTIC_EVENT_LABELS['refund.succeeded'], category: 'payment', description: '退款成功（服务端权威事件，来自 paymentEventBus）', propertySchema: REFUND_SCHEMA, strictMode: false },
   { id: 1005, eventName: 'refund.failed', displayName: ANALYTICS_SEMANTIC_EVENT_LABELS['refund.failed'], category: 'payment', description: '退款失败（服务端权威事件，来自 paymentEventBus）', propertySchema: REFUND_SCHEMA, strictMode: false },
-  // ── 工作流（source=server，来自 workflowEventBus，经 event_dispatch 作业投递）──
+  // ── 工作流（source=server，来自持久化领域事件消费者）──
   { id: 1010, eventName: 'workflow.instance.created', displayName: ANALYTICS_SEMANTIC_EVENT_LABELS['workflow.instance.created'], category: 'workflow', description: '流程实例发起（服务端权威事件，来自 workflowEventBus）', propertySchema: WORKFLOW_INSTANCE_SCHEMA, strictMode: false },
   { id: 1011, eventName: 'workflow.instance.approved', displayName: ANALYTICS_SEMANTIC_EVENT_LABELS['workflow.instance.approved'], category: 'workflow', description: '流程实例审批通过（服务端权威事件，来自 workflowEventBus）', propertySchema: WORKFLOW_INSTANCE_SCHEMA, strictMode: false },
   { id: 1012, eventName: 'workflow.instance.rejected', displayName: ANALYTICS_SEMANTIC_EVENT_LABELS['workflow.instance.rejected'], category: 'workflow', description: '流程实例被驳回（服务端权威事件，来自 workflowEventBus）', propertySchema: WORKFLOW_INSTANCE_SCHEMA, strictMode: false },

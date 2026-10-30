@@ -246,7 +246,7 @@ export const WORKFLOW_ENGINE_ACTION_KEYS = [
 ] as const;
 
 export const WORKFLOW_ENGINE_ACTION_KEY_LABELS: Record<WorkflowEngineActionKey, string> = {
-  'replay-outbox': '重放事件派发',
+  'replay-outbox': '重试领域事件消费者',
   'recover-delays': '恢复延时任务',
   'recover-subprocess': '恢复子流程',
   'process-timeouts': '处理超时任务',
@@ -284,7 +284,7 @@ export const WORKFLOW_ENGINE_QUEUE_KEY_LABELS: Record<WorkflowEngineQueueKey, st
   triggerDispatch: '触发器调度',
   externalApprovals: '外部审批',
   subProcessJoin: '子流程汇聚',
-  eventOutbox: '事件派发',
+  eventOutbox: '领域事件 Outbox',
 };
 
 export const WORKFLOW_ENGINE_QUEUE_KEY_OPTIONS: Array<{ value: WorkflowEngineQueueKey; label: string }> =
@@ -309,8 +309,8 @@ export const WORKFLOW_HEALTH_ISSUE_TYPE_LABELS: Record<(typeof WORKFLOW_HEALTH_I
   delay_missing_wake_job: '延迟缺唤醒作业',
   task_timeout_overdue: '任务超时',
   token_task_mismatch: 'Token 与任务不一致',
-  workflow_event_outbox_failed: '事件派发失败',
-  workflow_event_outbox_pending: '事件派发待处理',
+  workflow_event_outbox_failed: '领域事件消费者失败',
+  workflow_event_outbox_pending: '领域事件消费者待处理',
   waiting_task_stuck: '任务等待过久',
   instance_stalled: '实例疑似卡死',
 };

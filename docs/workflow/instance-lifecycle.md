@@ -43,7 +43,7 @@ stateDiagram-v2
 2. 冻结定义快照和表单快照。
 3. 写入实例标题、优先级、表单数据、发起时抄送人和业务编号。
 4. 进入 `running` 后创建首批执行 Token 与任务。
-5. 入队 `event_dispatch` 作业，分发 `instance.created`、`task.created`、`task.assigned` 等事件。
+5. 在同一事务写入 `event_outbox` 事实，并为匹配的消费者登记独立回执；worker 随后分发 `instance.created`、`task.created`、`task.assigned` 等事件。
 
 保存草稿只保存当前表单与快照，不创建流转任务、不生成业务编号，也不分发创建事件。提交草稿和 `returned` 实例重提时，服务端重新读取当前仍已发布的流程定义和当前表单，重新校验结构、起始字段权限、必填字段与派生值，并冻结本轮定义 / 表单快照；定义已停用时拒绝提交。发起人自选审批人也在本轮提交时重新应用。
 

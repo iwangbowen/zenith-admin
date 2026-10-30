@@ -91,7 +91,7 @@ export function registerBizLeaveSubscribers() {
 
 订阅器在服务启动时注册，与其它事件订阅者一起响应 `instance.*` 事件。
 
-`onWorkflowResult` 的回调只有 `onCreated`、`onApproved`、`onRejected`、`onWithdrawn`。需要订阅 `instance.returned` 时直接使用工作流事件总线。业务桥接属于进程内 best-effort 消费方，业务模块应自行保证幂等并提供失败后的状态对账，不能把订阅回写与提交事务视为同一次提交。
+`onWorkflowResult` 的回调只有 `onCreated`、`onApproved`、`onRejected`、`onWithdrawn`。需要订阅 `instance.returned` 时直接使用工作流事件总线。业务桥接通过持久化领域事件消费者执行，拥有独立回执和重试；业务模块仍应保证幂等并提供失败后的状态对账，不能把异步回写与提交事务视为同一次提交。
 
 ### 4. 配置流程定义
 

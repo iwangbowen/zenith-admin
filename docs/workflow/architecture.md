@@ -13,7 +13,7 @@ flowchart TD
   Materialize --> Database[("实例 / Token / 任务 / 作业")]
   Database --> Worker["账本 Worker"]
   Worker --> Service
-  Worker --> Events["事件派发与外部调用"]
+  Worker --> Events["领域事件消费者与外部调用"]
 ```
 
 `workflow-token-engine.ts` 的 `advanceTokens()` 计算路径，实例服务通过 `advanceAndMaterialize()` 在事务内保存 Token、任务、审批轮次和实例结果。`workflow-engine.ts` 提供结构校验、条件和图遍历工具，不负责独立落库推进。仿真复用 Token 路径计算，在内存中生成模拟任务与结果。
@@ -40,7 +40,7 @@ flowchart TD
 
 API 角色处理请求和 WebSocket，Worker 角色执行后台作业。工作流推进与事件外呼分别使用账本执行池，直接领取到期作业；pg-boss 消息合并唤醒，短轮询负责补充发现。租约、执行截止时间和 generation 确定执行权，详见[作业执行与恢复](./jobs.md)。
 
-业务状态与事件派发作业在同一事务登记。`event_dispatch` 消费后调用进程内订阅者，并可靠登记自动化动作链和独立 Webhook 投递。进程内通知、业务回写和节点监听器有各自的失败边界，见[事件总线与事件订阅](./event-bus.md)。
+业务状态与 `event_outbox` 事件事实在同一事务登记。领域事件消费者通过 `event_consumer_deliveries` 独立确认；通知、业务回写、节点监听器、自动化和归档分别拥有自己的消费者失败边界，外部 Webhook 再交接到独立 `workflow_jobs` 作业，见[事件总线与事件订阅](./event-bus.md)。
 
 外部写请求使用稳定操作键并记录副作用标记；结果不明时进入待确认死信。作业入库幂等和数据库事务不代表外部 HTTP 只执行一次。
 

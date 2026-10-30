@@ -53,11 +53,11 @@ const COMPONENT_LABELS: Record<ComponentKey, { name: string; description: string
   },
   eventBus: {
     name: '事件总线',
-    description: '进程内工作流事件派发器，负责 node/task/instance 事件同步给内置订阅者。',
+    description: '工作流事件注册与消费者目录，负责 node/task/instance 事件的类型和订阅关系。',
   },
   outbox: {
-    name: '事件派发',
-    description: '持久化工作流事件，并通过周期性 replay 兜底重放失败事件派发。',
+    name: '领域事件 Outbox',
+    description: '持久化工作流事件，按消费者独立确认、租约和失败重试。',
   },
   scheduler: {
     name: 'pg-boss 调度器',
@@ -699,7 +699,7 @@ export async function getWorkflowEngineIntrospection(
     }),
     queueSnapshot({
       key: 'eventOutbox',
-      name: '工作流事件派发',
+      name: '领域事件 Outbox',
       ready: pendingOutbox.length,
       delayed: retryingOutbox.length,
       failed: failedOutbox.length,

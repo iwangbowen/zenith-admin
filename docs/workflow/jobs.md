@@ -19,7 +19,7 @@
 | `schedule_launch` | 定时规则的原周期或手动发起 | 推进 |
 | `trigger_dispatch` | 触发器节点派发 | 事件与外呼 |
 | `external_dispatch` | 外部审批派发 | 事件与外呼 |
-| `event_dispatch` | 工作流事件分发及可靠扇出 | 事件与外呼 |
+| `node_listener_delivery` | 节点监听器投递 | 事件与外呼 |
 | `webhook_delivery` | 事件订阅 Webhook 投递 | 事件与外呼 |
 | `compensation_action` | 反向 / 兜底补偿动作 | 事件与外呼 |
 | `automation_action` | 流程自动化的单个动作 | 事件与外呼 |

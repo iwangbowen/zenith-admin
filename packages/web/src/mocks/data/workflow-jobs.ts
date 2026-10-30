@@ -133,10 +133,10 @@ const baseWorkflowJobs: Array<Omit<WorkflowJob, 'instanceTitle' | 'definitionNam
     createdAt: offMin(-301),
     updatedAt: offMin(-300),
   },
-  // 同一实例 #10250 提交时派发的 3 条不同事件（演示「摘要」区分，非重复）
+  // 同一实例 #10250 产生的 3 条不同 Webhook 事件（演示「摘要」区分，非重复）
   {
     id: 9007,
-    jobType: 'event_dispatch',
+    jobType: 'webhook_delivery',
     status: 'succeeded',
     instanceId: 10250,
     taskId: null,
@@ -157,7 +157,7 @@ const baseWorkflowJobs: Array<Omit<WorkflowJob, 'instanceTitle' | 'definitionNam
   },
   {
     id: 9008,
-    jobType: 'event_dispatch',
+    jobType: 'webhook_delivery',
     status: 'succeeded',
     instanceId: 10250,
     taskId: null,
@@ -178,7 +178,7 @@ const baseWorkflowJobs: Array<Omit<WorkflowJob, 'instanceTitle' | 'definitionNam
   },
   {
     id: 9009,
-    jobType: 'event_dispatch',
+    jobType: 'webhook_delivery',
     status: 'succeeded',
     instanceId: 10250,
     taskId: 55211,
@@ -199,12 +199,12 @@ const baseWorkflowJobs: Array<Omit<WorkflowJob, 'instanceTitle' | 'definitionNam
   },
   {
     id: 9010,
-    jobType: 'event_dispatch',
+    jobType: 'webhook_delivery',
     status: 'pending',
     instanceId: 10250,
     taskId: null,
     nodeKey: 'event-emit-approved',
-    idempotencyKey: 'event_dispatch:evt-90210',
+    idempotencyKey: 'webhook:evt-90210',
     traceId: 'trace-evt-90210',
     payload: { event: { type: 'instance.approved', instanceId: 10250 } },
     priority: 0,

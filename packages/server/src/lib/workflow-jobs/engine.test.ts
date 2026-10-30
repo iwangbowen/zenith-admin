@@ -6,9 +6,9 @@ describe('WORKFLOW_ADVANCING_JOB_TYPES', () => {
     expect(WORKFLOW_ADVANCING_JOB_TYPES).not.toContain('trigger_dispatch');
   });
 
-  it('不包含通知类作业（事件派发 / Webhook 投递）', () => {
-    expect(WORKFLOW_ADVANCING_JOB_TYPES).not.toContain('event_dispatch');
+  it('不包含通知类作业（领域事件消费者 / Webhook 投递）', () => {
     expect(WORKFLOW_ADVANCING_JOB_TYPES).not.toContain('webhook_delivery');
+    expect(WORKFLOW_ADVANCING_JOB_TYPES).not.toContain('node_listener_delivery');
   });
 
   it('包含全部推进类作业', () => {

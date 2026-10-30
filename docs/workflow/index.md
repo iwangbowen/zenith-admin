@@ -63,7 +63,7 @@ flowchart TD
 | 流程任务 `workflow_tasks` | 人工审批、办理、抄送、等待回调、延迟、子流程等运行节点的任务记录；带激活轮次 `activationId`，同节点同轮同处理人的活动任务唯一 |
 | 节点轮次、席位与加签组 | `workflow_node_activations` 冻结当次审批条件，`workflow_approval_slots` 保存正式意见，`workflow_sign_groups` 保存前签、后签和并签关卡 |
 | 执行 Token `workflow_tokens` | 显式 DAG 执行路径，表示活动分支、汇聚状态和可恢复的推进位置；同节点同分支路径的 active Token 唯一 |
-| 作业账本 `workflow_jobs` | 延时唤醒、审批超时、触发器、外部审批、子流程、事件派发、Webhook、补偿动作、自动化动作和定时发起的统一异步账本 |
+| 作业账本 `workflow_jobs` | 延时唤醒、审批超时、触发器、外部审批、子流程、节点监听、Webhook、补偿动作、自动化动作和定时发起的统一异步账本 |
 | 作业执行 `workflow_job_executions` | 每次作业尝试的审计记录，保存请求、响应、错误、耗时和执行状态 |
 | 作业步骤回执 `workflow_job_effects` | 保存已经提交的事务步骤结果，重试时复用；外部请求副作用标记记录在执行尝试中 |
 | 补偿工单 `workflow_compensations` | 失败策略产生的人工处置工单，记录失败节点、错误、自动动作状态和处理历史 |

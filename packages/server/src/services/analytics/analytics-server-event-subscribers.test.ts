@@ -1,5 +1,5 @@
 /**
- * paymentEventBus / workflowEventBus → trackServerEvent 订阅桥接单测。
+ * paymentEventBus / 持久化工作流领域事件消费者 → trackServerEvent 订阅桥接单测。
  *
  * 覆盖要点：
  *  1. 注册幂等：重复调用 registerAnalyticsServerEventSubscribers 只挂载一次 onAny 监听器
@@ -11,8 +11,8 @@
  *  4. workflow userId 兜底链：actor.userId > instance.initiatorId > task.assigneeId
  *  5. handler 本身不 throw（即使 trackServerEvent 同步抛错也被内部 try/catch 吞掉）
  *
- * Mock 策略：完全 mock payment-event-bus / workflow-event-bus（仅捕获 onAny 注册的 handler，
- * 不触发真实事件总线的下游依赖如 db/redis/workflow-jobs）与 analytics-server-events.service。
+ * Mock 策略：完全 mock payment-event-bus / workflow-event-consumer（仅捕获注册的 handler，
+ * 不触发真实事件账本的下游依赖如 db/redis/workflow-jobs）与 analytics-server-events.service。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PaymentEvent } from '../../lib/payment-event-bus';
