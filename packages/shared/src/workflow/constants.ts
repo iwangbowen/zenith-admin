@@ -204,7 +204,7 @@ export const WORKFLOW_TRIGGER_EXECUTION_STATUS_OPTIONS: Array<{ value: WorkflowT
 /** 统一作业账本（workflow_jobs）作业类型 */
 export const WORKFLOW_JOB_TYPES = [
   'delay_wake', 'task_timeout', 'trigger_dispatch', 'external_dispatch',
-  'subprocess_spawn', 'subprocess_join', 'event_dispatch', 'webhook_delivery',
+  'subprocess_spawn', 'subprocess_join', 'node_listener_delivery', 'webhook_delivery',
   'compensation_action', 'automation_action', 'schedule_launch', 'access_grant_apply', 'access_review_build',
 ] as const;
 
@@ -215,7 +215,7 @@ export const WORKFLOW_JOB_TYPE_LABELS: Record<WorkflowJobType, string> = {
   external_dispatch: '外部派发',
   subprocess_spawn: '子流程发起',
   subprocess_join: '子流程汇聚',
-  event_dispatch: '事件派发',
+  node_listener_delivery: '节点监听投递',
   webhook_delivery: 'Webhook 投递',
   compensation_action: '补偿动作',
   automation_action: '自动化动作',

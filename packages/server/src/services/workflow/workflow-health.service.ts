@@ -227,33 +227,6 @@ export async function getWorkflowHealthSummary(thresholdMinutes = 30): Promise<W
     }
   }
 
-  const outboxRows = await db.select().from(workflowJobs)
-    .where(buildWhere(
-      eq(workflowJobs.jobType, 'event_dispatch'),
-      inArray(workflowJobs.status, ['pending', 'failed', 'dead']),
-      lte(workflowJobs.createdAt, cutoff),
-      tenantCondition(workflowJobs, user),
-    ))
-    .orderBy(desc(workflowJobs.id))
-    .limit(100);
-  for (const row of outboxRows) {
-    const failed = row.status === 'failed' || row.status === 'dead';
-    issues.push({
-      id: `outbox:${row.id}`,
-      type: failed ? 'workflow_event_outbox_failed' : 'workflow_event_outbox_pending',
-      severity: failed ? 'critical' : 'warning',
-      title: failed ? '事件派发重放失败' : '事件派发待处理过久',
-      description: failed ? (row.lastError ?? '事件派发作业失败，请查看服务日志。') : '事件派发作业超过阈值仍未处理。',
-      instanceId: row.instanceId ?? null,
-      taskId: row.taskId ?? null,
-      nodeKey: null,
-      nodeName: null,
-      status: failed ? 'failed' : 'pending',
-      ageMinutes: ageMinutes(row.createdAt, now),
-      createdAt: formatDateTime(row.createdAt),
-    });
-  }
-
   // 卡死实例：running 且超阈值未更新，既无待办/等待任务也无在途作业
   // （典型场景：并行汇聚残留孤儿 parked token、推进链路中断），需人工用监控页恢复动作处理。
   const runningRows = await db.select({ id: workflowInstances.id, title: workflowInstances.title, updatedAt: workflowInstances.updatedAt })

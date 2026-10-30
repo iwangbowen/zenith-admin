@@ -14,7 +14,9 @@ import type { WorkflowInstance, WorkflowInstancePriority, WorkflowInstanceStatus
 import type { WorkflowFormType } from '@zenith/shared/workflow';
 import { db } from '../db';
 import { workflowDefinitions, workflowInstances } from '../db/schema';
-import { workflowEventBus } from './workflow-event-bus';
+import { registerWorkflowEventConsumer } from './workflow-event-consumer';
+import type { DbTransaction } from '../db/types';
+import type { ConsumerResult } from './domain-events';
 import logger from './logger';
 import { createInstance } from '../services/workflow/workflow-instances.service';
 
@@ -85,31 +87,22 @@ export async function resolveBizDefinitionId(params: {
   return rows[0].id;
 }
 
+type WorkflowResultHandler = (tx: DbTransaction, instance: WorkflowInstance) => Promise<ConsumerResult | void>;
 export interface WorkflowResultHandlers {
-  onApproved?: (instance: WorkflowInstance) => void | Promise<void>;
-  onRejected?: (instance: WorkflowInstance) => void | Promise<void>;
-  onWithdrawn?: (instance: WorkflowInstance) => void | Promise<void>;
-  onCreated?: (instance: WorkflowInstance) => void | Promise<void>;
+  onApproved?: WorkflowResultHandler;
+  onRejected?: WorkflowResultHandler;
+  onWithdrawn?: WorkflowResultHandler;
+  onCreated?: WorkflowResultHandler;
 }
-
-/**
- * 订阅指定业务类型流程的生命周期事件。
- * 仅当实例的 bizType 与订阅一致且存在 bizId 时回调，便于业务模块回写自己的记录状态。
- */
+/** Business result consumers commit their writeback and independent receipt together. */
 export function onWorkflowResult(bizType: string, handlers: WorkflowResultHandlers): void {
-  const match = (instance: WorkflowInstance) => instance.bizType === bizType && !!instance.bizId;
-  if (handlers.onCreated) {
-    workflowEventBus.on('instance.created', (e) => match(e.instance) ? handlers.onCreated?.(e.instance) : undefined);
-  }
-  if (handlers.onApproved) {
-    workflowEventBus.on('instance.approved', (e) => match(e.instance) ? handlers.onApproved?.(e.instance) : undefined);
-  }
-  if (handlers.onRejected) {
-    workflowEventBus.on('instance.rejected', (e) => match(e.instance) ? handlers.onRejected?.(e.instance) : undefined);
-  }
-  if (handlers.onWithdrawn) {
-    workflowEventBus.on('instance.withdrawn', (e) => match(e.instance) ? handlers.onWithdrawn?.(e.instance) : undefined);
-  }
+  registerWorkflowEventConsumer(`workflow.business.${bizType}`, ['instance.created', 'instance.approved', 'instance.rejected', 'instance.withdrawn'],
+    async (tx, event) => {
+      if (!event.instance.bizId) return { outcome: 'skipped', reason: 'business subject missing' };
+      const handle = event.type === 'instance.created' ? handlers.onCreated : event.type === 'instance.approved' ? handlers.onApproved
+        : event.type === 'instance.rejected' ? handlers.onRejected : handlers.onWithdrawn;
+      return handle ? await handle(tx, event.instance) : { outcome: 'skipped', reason: 'business result not applicable' };
+    }, { bizType });
 }
 
 export interface WorkflowStatusForBiz {

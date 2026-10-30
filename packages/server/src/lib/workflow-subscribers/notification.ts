@@ -13,18 +13,16 @@
  *
  * 站内信走 `notify()` 统一派发，幂等与派发留痕自动具备（不直写 in_app_messages）。
  */
-import { eq } from 'drizzle-orm';
 import type {
   NotificationChannelOptions,
   NotificationChannelPolicy,
 } from '@zenith/shared/messaging';
 import type { WorkflowNotifyChannels } from '@zenith/shared/workflow';
-import { db } from '../../db';
-import { workflowInstances } from '../../db/schema';
+import type { DbTransaction } from '../../db/types';
+import type { OutboxEventRow } from '../../db/schema/event-outbox';
 import { escapeHtml } from '@zenith/shared/core';
-import { notify } from '../../services/messaging/notification-outbox.service';
-import { workflowEventBus } from '../workflow-event-bus';
-import logger from '../logger';
+import { notifyWithin } from '../../services/messaging/notification-outbox.service';
+import { registerWorkflowEventConsumer } from '../workflow-event-consumer';
 
 interface NotifyContext {
   label: string;
@@ -32,16 +30,9 @@ interface NotifyContext {
   notifyInitiator: boolean;
 }
 
-async function loadNotifyContext(instanceId: number): Promise<NotifyContext> {
-  const [row] = await db
-    .select({ title: workflowInstances.title, serialNo: workflowInstances.serialNo, snapshot: workflowInstances.definitionSnapshot })
-    .from(workflowInstances)
-    .where(eq(workflowInstances.id, instanceId))
-    .limit(1);
-  if (!row) return { label: `#${instanceId}`, channels: undefined, notifyInitiator: true };
-  const label = row.serialNo ? `${row.title}（${row.serialNo}）` : row.title;
-  const settings = row.snapshot?.flowData?.settings;
-  return { label, channels: settings?.notifyChannels, notifyInitiator: settings?.notifyInitiator !== false };
+function loadNotifyContext(fact: OutboxEventRow): NotifyContext {
+  return { label: String(fact.scope.label), channels: fact.scope.notifyChannels as WorkflowNotifyChannels | undefined,
+    notifyInitiator: fact.scope.notifyInitiator !== false };
 }
 
 /** 待办处理深链（待我审批页自动弹出对应详情） */
@@ -74,22 +65,18 @@ function toChannelOptions(
   return options;
 }
 
-function logFailure(scope: string, err: unknown, meta: Record<string, unknown>): void {
-  logger.error(`[workflow notification] ${scope} 失败`, { err, ...meta });
-}
-
 export function registerNotificationWorkflowSubscriber(): void {
-  workflowEventBus.on('task.created', async (event) => {
+  registerWorkflowEventConsumer('workflow.notification', ['task.created'], async (tx, event, fact) => {
     const task = event.task;
     if (!task.assigneeId) return;
     const isCc = task.nodeType === 'ccNode';
     if (!isCc && task.status !== 'pending') return;
-    try {
-      const { label, channels } = await loadNotifyContext(event.instanceId);
+
+      const { label, channels } = loadNotifyContext(fact);
       const vars = { instanceId: event.instanceId, taskId: task.id, title: label, node: task.nodeName };
       if (isCc) {
         // 抄送只走站内信：抄送人往往不需要处理，外发短信会变成骚扰
-        await notify('workflow.task.cc', {
+        await notifyWithin(tx, 'workflow.task.cc', {
           recipients: [{ type: 'user', id: task.assigneeId }],
           vars,
           tenantId: event.tenantId,
@@ -99,7 +86,7 @@ export function registerNotificationWorkflowSubscriber(): void {
         });
         return;
       }
-      await notify('workflow.task.created', {
+      await notifyWithin(tx, 'workflow.task.created', {
         recipients: [{ type: 'user', id: task.assigneeId }],
         vars,
         tenantId: event.tenantId,
@@ -114,17 +101,14 @@ export function registerNotificationWorkflowSubscriber(): void {
           { title: label, node: task.nodeName },
         ),
       });
-    } catch (err) {
-      logFailure('待办通知', err, { instanceId: event.instanceId, taskId: task.id });
-    }
   });
 
-  workflowEventBus.on('task.urged', async (event) => {
+  registerWorkflowEventConsumer('workflow.notification', ['task.urged'], async (tx, event, fact) => {
     const task = event.task;
     if (!task.assigneeId) return;
-    try {
-      const { label } = await loadNotifyContext(event.instanceId);
-      await notify('workflow.task.urged', {
+
+      const { label } = loadNotifyContext(fact);
+      await notifyWithin(tx, 'workflow.task.urged', {
         recipients: [{ type: 'user', id: task.assigneeId }],
         vars: {
           instanceId: event.instanceId,
@@ -138,17 +122,14 @@ export function registerNotificationWorkflowSubscriber(): void {
         dedupeKey: `workflow-event:${event.eventId}`,
         link: pendingLink(event.instanceId, task.id),
       });
-    } catch (err) {
-      logFailure('催办通知', err, { instanceId: event.instanceId, taskId: task.id });
-    }
   });
 
-  workflowEventBus.on('task.transferred', async (event) => {
+  registerWorkflowEventConsumer('workflow.notification', ['task.transferred'], async (tx, event, fact) => {
     const task = event.task;
     if (!task.assigneeId || task.status !== 'pending') return;
-    try {
-      const { label } = await loadNotifyContext(event.instanceId);
-      await notify('workflow.task.transferred', {
+
+      const { label } = loadNotifyContext(fact);
+      await notifyWithin(tx, 'workflow.task.transferred', {
         recipients: [{ type: 'user', id: task.assigneeId }],
         vars: { instanceId: event.instanceId, taskId: task.id, title: label, node: task.nodeName },
         tenantId: event.tenantId,
@@ -156,9 +137,6 @@ export function registerNotificationWorkflowSubscriber(): void {
         dedupeKey: `workflow-event:${event.eventId}`,
         link: pendingLink(event.instanceId, task.id),
       });
-    } catch (err) {
-      logFailure('转交通知', err, { instanceId: event.instanceId, taskId: task.id });
-    }
   });
 
   const INSTANCE_EVENTS = {
@@ -169,13 +147,13 @@ export function registerNotificationWorkflowSubscriber(): void {
   } as const;
 
   const notifyInitiator = (status: keyof typeof INSTANCE_EVENTS) => async (
-    event: { eventId: string; instanceId: number; tenantId: number | null; instance: { initiatorId: number; title: string; serialNo?: string | null } },
+    tx: DbTransaction, event: { eventId: string; instanceId: number; tenantId: number | null; instance: { initiatorId: number; title: string; serialNo?: string | null } }, fact: OutboxEventRow,
   ) => {
     const inst = event.instance;
     const label = inst.serialNo ? `${inst.title}（${inst.serialNo}）` : inst.title;
     const meta = INSTANCE_EVENTS[status];
-    try {
-      const { channels, notifyInitiator: shouldNotify } = await loadNotifyContext(event.instanceId);
+
+      const { channels, notifyInitiator: shouldNotify } = loadNotifyContext(fact);
       if (!shouldNotify) return;
       const text = {
         approved: `你发起的流程「${label}」已审批通过`,
@@ -183,7 +161,7 @@ export function registerNotificationWorkflowSubscriber(): void {
         withdrawn: `你发起的流程「${label}」已撤回`,
         returned: `你发起的流程「${label}」已被退回，请修改后重新提交`,
       }[status];
-      await notify(meta.key, {
+      await notifyWithin(tx, meta.key, {
         recipients: [{ type: 'user', id: inst.initiatorId }],
         vars: { instanceId: event.instanceId, title: label, status: meta.status },
         tenantId: event.tenantId,
@@ -193,13 +171,10 @@ export function registerNotificationWorkflowSubscriber(): void {
         channelPolicy: toChannelPolicy(channels),
         channelOptions: toChannelOptions(channels, `【${meta.status}】${label}`, text, { title: label, status: meta.status }),
       });
-    } catch (err) {
-      logFailure('流程结果通知', err, { instanceId: event.instanceId, status });
-    }
   };
 
-  workflowEventBus.on('instance.approved', notifyInitiator('approved'));
-  workflowEventBus.on('instance.rejected', notifyInitiator('rejected'));
-  workflowEventBus.on('instance.withdrawn', notifyInitiator('withdrawn'));
-  workflowEventBus.on('instance.returned', notifyInitiator('returned'));
+  registerWorkflowEventConsumer('workflow.notification', ['instance.approved'], notifyInitiator('approved'));
+  registerWorkflowEventConsumer('workflow.notification', ['instance.rejected'], notifyInitiator('rejected'));
+  registerWorkflowEventConsumer('workflow.notification', ['instance.withdrawn'], notifyInitiator('withdrawn'));
+  registerWorkflowEventConsumer('workflow.notification', ['instance.returned'], notifyInitiator('returned'));
 }

@@ -11,10 +11,10 @@ import { db } from '../../db';
 import {
   paymentApps, paymentChannelAccounts, paymentChannelConfigs, paymentJournalLines, paymentJournals, paymentLedgerAccounts,
   paymentOrders, paymentReconAdjustments, paymentReconCaseEvents, paymentReconCases, paymentRefunds,
-  paymentStatementPeriods, paymentStatements, workflowDefinitions, workflowInstances, workflowJobs, workflowTasks,
+  paymentStatementPeriods, paymentStatements, workflowDefinitions, workflowInstances, eventOutbox, workflowTasks,
   type PaymentReconAdjustmentRow, type PaymentReconCaseRow,
 } from '../../db/schema';
-import type { DbExecutor } from '../../db/types';
+import type { DbExecutor, DbTransaction } from '../../db/types';
 import { currentUser, hasPermission } from '../../lib/context';
 import { requireRow } from '../../lib/db-assert';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
@@ -199,9 +199,11 @@ async function assertFrozenEvidence(tx: DbExecutor, row: PaymentReconAdjustmentR
 async function humanApprovalProof(tx: DbExecutor, row: PaymentReconAdjustmentRow, instanceId: number) {
   const tasks = await tx.select().from(workflowTasks).where(and(eq(workflowTasks.instanceId, instanceId), eq(workflowTasks.status, 'approved'), inArray(workflowTasks.nodeType, ['approve', 'handler']))).orderBy(asc(workflowTasks.id));
   if (!tasks.length || tasks.some((task) => !task.assigneeId || !task.actionAt || task.assigneeId === row.applicantId)) throw new HTTPException(409, { message: '审批未提供独立人工决定，禁止资金过账' });
-  const jobs = await tx.select({ payload: workflowJobs.payload }).from(workflowJobs).where(and(eq(workflowJobs.instanceId, instanceId), eq(workflowJobs.jobType, 'event_dispatch')));
+  const facts = await tx.select({ payload: eventOutbox.payload, eventId: eventOutbox.eventId }).from(eventOutbox).where(and(
+    eq(eventOutbox.domain, 'workflow'), eq(eventOutbox.eventType, 'workflow.task.approved'), eq(eventOutbox.orderingKey, `workflow:${instanceId}`), exactTenantCondition(eventOutbox.tenantId, row.tenantId),
+  ));
   return tasks.map((task) => {
-    const event = jobs.map((job) => isPlainObject(job.payload) && isPlainObject(job.payload.event) ? job.payload.event : null).find((event) => event?.type === 'task.approved' && isPlainObject(event.task) && event.task.id === task.id);
+    const event = facts.map((fact) => ({ ...fact.payload, eventId: fact.eventId })).find((event) => isPlainObject(event.task) && event.task.id === task.id);
     const actorId = event && isPlainObject(event.actor) ? event.actor.userId : null;
     if (typeof actorId !== 'number') throw new HTTPException(409, { message: '审批缺少持久化操作人证据，禁止过账' });
     assertIndependentReconApproval(PAYMENT_RECON_ADJUSTMENT_BIZ_TYPE, row.applicantId, actorId);
@@ -209,8 +211,7 @@ async function humanApprovalProof(tx: DbExecutor, row: PaymentReconAdjustmentRow
   });
 }
 
-async function syncAdjustmentWorkflow(id: number, tenantId: number | null, instanceId: number) {
-  await db.transaction(async (tx) => {
+export async function syncAdjustmentWorkflowWithin(tx: DbTransaction, id: number, tenantId: number | null, instanceId: number) {
     const [candidate] = await tx.select({ caseId: paymentReconAdjustments.caseId }).from(paymentReconAdjustments).where(adjustmentWhere(id, tenantId)).limit(1);
     if (!candidate) return;
     await lockCase(tx, candidate.caseId, tenantId);
@@ -236,9 +237,11 @@ async function syncAdjustmentWorkflow(id: number, tenantId: number | null, insta
     const approverId = proofs.at(-1)?.actorId ?? null;
     const [updated] = await tx.update(paymentReconAdjustments).set({ status: instance.status === 'approved' && !approvalFailure ? 'approved' : 'rejected', workflowInstanceId: instance.id, approverId, approvedAt: approverId ? new Date() : null, evidence: { ...row.evidence, approvalProof: proofs, approvalFailure } }).where(adjustmentWhere(id, tenantId)).returning();
     await tx.insert(paymentReconCaseEvents).values({ caseId: row.caseId, action: `adjustment.${updated.status}`, actorId: approverId, remark: approvalFailure ?? `审批实例 #${instance.id}：${instance.status}`, before: reconJson(mapAdjustment(row)), after: reconJson(mapAdjustment(updated)), tenantId });
-  });
 }
 
+async function syncAdjustmentWorkflow(id: number, tenantId: number | null, instanceId: number) {
+  return db.transaction((tx) => syncAdjustmentWorkflowWithin(tx, id, tenantId, instanceId));
+}
 export async function executeReconAdjustment(id: number) {
   const row = await requireAdjustment(id);
   assertReconWriteScope(row.tenantId);
@@ -344,9 +347,9 @@ let registered = false;
 export function registerReconAdjustmentSubscribers() {
   if (registered) return;
   registered = true;
-  const sync = async (instance: { id: number; bizId?: string | null; tenantId?: number | null }) => {
+  const sync = async (tx: DbTransaction, instance: { id: number; bizId?: string | null; tenantId?: number | null }) => {
     const id = Number(instance.bizId);
-    if (Number.isSafeInteger(id) && id > 0) await syncAdjustmentWorkflow(id, instance.tenantId ?? null, instance.id);
+    if (Number.isSafeInteger(id) && id > 0) await syncAdjustmentWorkflowWithin(tx, id, instance.tenantId ?? null, instance.id);
   };
   onWorkflowResult(PAYMENT_RECON_ADJUSTMENT_BIZ_TYPE, { onCreated: sync, onApproved: sync, onRejected: sync, onWithdrawn: sync });
 }

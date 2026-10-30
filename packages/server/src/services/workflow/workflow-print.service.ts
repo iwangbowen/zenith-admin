@@ -311,13 +311,14 @@ function archiveActor(instance: { initiatorId: number }): JwtPayload {
 }
 
 /** 生成并落盘归档件；已归档的实例幂等跳过 */
-export async function archiveWorkflowInstancePrint(instanceId: number): Promise<{ archived: boolean; reason?: string }> {
+export async function archiveWorkflowInstancePrint(instanceId: number, expected?: { expectedStatus: string; expectedUpdatedAt: string }): Promise<{ archived: boolean; reason?: string }> {
   const [row] = await db.select({
     id: workflowInstances.id, initiatorId: workflowInstances.initiatorId, tenantId: workflowInstances.tenantId,
-    status: workflowInstances.status, archiveFileId: workflowInstances.archiveFileId, definitionId: workflowInstances.definitionId,
+    status: workflowInstances.status, updatedAt: workflowInstances.updatedAt, archiveFileId: workflowInstances.archiveFileId, definitionId: workflowInstances.definitionId,
   }).from(workflowInstances).where(eq(workflowInstances.id, instanceId)).limit(1);
   if (!row) return { archived: false, reason: '实例不存在' };
   if (row.archiveFileId) return { archived: false, reason: '已归档' };
+  if (expected && (expected.expectedStatus !== row.status || expected.expectedUpdatedAt !== formatDateTime(row.updatedAt))) return { archived: false, reason: '归档来源终态已变化' };
   if (row.status !== 'approved' && row.status !== 'rejected') return { archived: false, reason: `状态 ${row.status} 不归档` };
   const definitionPrint = await loadDefinitionPrintConfig(row.definitionId);
   if (!definitionPrint.settings.autoArchive) return { archived: false, reason: '流程未开启自动归档' };
@@ -337,7 +338,7 @@ export async function archiveWorkflowInstancePrint(instanceId: number): Promise<
   await db.transaction(async (tx) => {
     const updated = await tx.update(workflowInstances)
       .set({ archiveFileId: file.id, archiveSha256: sha256, archiveTemplateId: doc.templateId, archivedAt: new Date() })
-      .where(and(eq(workflowInstances.id, instanceId), isNull(workflowInstances.archiveFileId)))
+      .where(and(eq(workflowInstances.id, instanceId), isNull(workflowInstances.archiveFileId), eq(workflowInstances.status, row.status), eq(workflowInstances.updatedAt, row.updatedAt)))
       .returning({ id: workflowInstances.id });
     // 并发重复归档：晚到的一份不落库，交给托管文件 GC 回收孤儿对象
     if (updated.length > 0) await retainManagedFiles(tx, [file.id]);

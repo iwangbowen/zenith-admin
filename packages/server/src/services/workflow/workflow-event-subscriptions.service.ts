@@ -4,6 +4,7 @@ import { and, desc, eq, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { db } from '../../db';
+import type { DbExecutor } from '../../db/types';
 import {
   workflowEventSubscriptions,
   workflowDefinitions,
@@ -237,11 +238,11 @@ export async function findMatchingSubscriptions(params: {
   definitionId: number;
   eventType: WorkflowEventType;
   tenantId: number | null;
-}) {
+}, executor: DbExecutor = db) {
   const { definitionId, eventType, tenantId } = params;
   const tenantCond = inheritedTenantCondition(workflowEventSubscriptions.tenantId, tenantId);
   const defCond = or(isNull(workflowEventSubscriptions.definitionId), eq(workflowEventSubscriptions.definitionId, definitionId))!;
-  const rows = await db.select().from(workflowEventSubscriptions).where(and(
+  const rows = await executor.select().from(workflowEventSubscriptions).where(and(
     eq(workflowEventSubscriptions.enabled, true),
     tenantCond,
     defCond,

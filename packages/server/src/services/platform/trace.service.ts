@@ -4,7 +4,7 @@
  * traceId = hono requestId（见 middleware/request-trace.ts 的合并说明）。
  * 五类锚点纯读聚合，无独立存储：
  *   request      ← operation_logs.request_id
- *   job / event  ← workflow_jobs.trace_id（event = job_type 'event_dispatch'，事件体在 payload 内）
+ *   job / event  ← workflow_jobs.trace_id（event = job_type 'domain_event'，事件体在 payload 内）
  *   notification ← notification_outbox.trace_id + notification_dispatches（渠道级投递结果）
  *   task         ← async_tasks.trace_id
  */
@@ -56,7 +56,7 @@ const TASK_STATUS_MAP: Record<string, TraceNodeStatus> = {
   cancelled: 'failed',
 };
 
-/** event_dispatch 作业 payload 中的事件体（见 workflow-event-bus.emit） */
+/** domain_event 作业 payload 中的事件体（见 workflow-event-bus.emit） */
 interface DispatchedEventPayload {
   event?: { type?: string; eventId?: string; occurredAt?: string; [k: string]: unknown };
 }
@@ -83,7 +83,7 @@ function requestNodes(rows: (typeof operationLogs.$inferSelect)[]): TraceTimelin
 
 function jobNodes(rows: (typeof workflowJobs.$inferSelect)[]): TraceTimelineNode[] {
   return rows.map((r) => {
-    if (r.jobType === 'event_dispatch') {
+    if (r.jobType === 'domain_event') {
       const event = (r.payload as DispatchedEventPayload | null)?.event;
       return {
         kind: 'event' as const,

@@ -10,8 +10,9 @@
  */
 import type { PaymentEvent } from '../../lib/payment-event-bus';
 import { paymentEventBus } from '../../lib/payment-event-bus';
-import { workflowEventBus } from '../../lib/workflow-event-bus';
 import type { WorkflowEvent } from '@zenith/shared/workflow';
+import { WORKFLOW_EVENT_TYPES } from '@zenith/shared/workflow';
+import { registerWorkflowEventConsumer } from '../../lib/workflow-event-consumer';
 import { trackServerEvent } from './analytics-server-events.service';
 import logger from '../../lib/logger';
 
@@ -82,7 +83,7 @@ export function registerAnalyticsServerEventSubscribers(): void {
     }
   });
 
-  workflowEventBus.onAny((event) => {
+  registerWorkflowEventConsumer('workflow.analytics', WORKFLOW_EVENT_TYPES, async (_tx, event) => {
     try {
       trackServerEvent({
         eventName: `workflow.${event.type}`,
@@ -96,6 +97,7 @@ export function registerAnalyticsServerEventSubscribers(): void {
     } catch (err) {
       logger.error('[analytics-server-event-subscribers] workflow handler error', { type: event.type, err });
     }
+    return { outcome: 'completed' };
   });
 
   logger.info('[analytics-server-event-subscribers] registered payment/workflow -> analytics bridge');

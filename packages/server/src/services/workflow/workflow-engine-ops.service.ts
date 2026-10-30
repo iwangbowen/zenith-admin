@@ -144,7 +144,7 @@ export async function getLatestEngineHealthMetrics(): Promise<{ workflowHealth: 
 
 /** 各运维动作固定对应的作业类型（drain 时按类型细分，避免"全部只 drain 一遍"）。 */
 const ACTION_META: Record<WorkflowEngineActionKey, { label: string; jobTypes: WorkflowJobType[] }> = {
-  'replay-outbox': { label: '事件派发重放（作业账本）', jobTypes: ['event_dispatch'] },
+  'replay-outbox': { label: '领域事件消费者重试', jobTypes: ['webhook_delivery'] },
   'recover-delays': { label: '延时任务兜底（作业账本）', jobTypes: ['delay_wake'] },
   'recover-subprocess': { label: '子流程兜底（作业账本）', jobTypes: ['subprocess_spawn', 'subprocess_join'] },
   'process-timeouts': { label: '超时任务兜底（作业账本）', jobTypes: ['task_timeout'] },

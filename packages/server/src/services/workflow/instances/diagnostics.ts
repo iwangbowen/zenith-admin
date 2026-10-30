@@ -31,7 +31,7 @@ function mapRuntimeOutboxEvent(row: typeof workflowJobs.$inferSelect): WorkflowR
   return {
     id: row.id,
     eventId: event?.eventId ?? row.idempotencyKey ?? String(row.id),
-    eventType: event?.type ?? 'event_dispatch',
+    eventType: event?.type ?? 'domain_event',
     taskId: row.taskId ?? null,
     status: row.status,
     attempts: row.attempts,
@@ -267,10 +267,7 @@ export async function getInstanceRuntimeDiagnostics(id: number): Promise<Workflo
       .where(and(eq(workflowJobs.instanceId, id), eq(workflowJobExecutions.jobType, 'trigger_dispatch')))
       .orderBy(desc(workflowJobExecutions.id))
       .limit(50),
-    db.select().from(workflowJobs)
-      .where(and(eq(workflowJobs.instanceId, id), eq(workflowJobs.jobType, 'event_dispatch')))
-      .orderBy(desc(workflowJobs.id))
-      .limit(80),
+    Promise.resolve([] as typeof workflowJobs.$inferSelect[]),
     db.select().from(workflowJobs).where(eq(workflowJobs.instanceId, id)).limit(200),
     db.select().from(workflowTokens).where(eq(workflowTokens.instanceId, id)).orderBy(workflowTokens.id),
   ]);
@@ -322,7 +319,7 @@ function nodeActionWord(nodeType: string | null): string {
 function jobPayloadSuffix(jobType: WorkflowJobType, payload: unknown): string {
   const p = (payload ?? {}) as Record<string, unknown>;
   const event = p.event as Record<string, unknown> | undefined;
-  if ((jobType === 'event_dispatch' || jobType === 'webhook_delivery') && typeof event?.type === 'string') return ` · ${event.type}`;
+  if (jobType === 'webhook_delivery' && typeof event?.type === 'string') return ` · ${event.type}`;
   return '';
 }
 

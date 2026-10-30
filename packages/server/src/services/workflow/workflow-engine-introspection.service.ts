@@ -395,14 +395,14 @@ export async function getWorkflowEngineIntrospection(
   // 事件处理延迟（毫秒）SQL 片段 + 「近 24h 成功且已处理」过滤片段，复用于 P95/P99/直方图/Apdex。
   // 延迟口径：作业入库到落终态的耗时（updatedAt - createdAt）。
   const evLatency = sql`extract(epoch from (${workflowJobs.updatedAt} - ${workflowJobs.createdAt})) * 1000`;
-  const evDone24h = and(eq(workflowJobs.jobType, 'event_dispatch'), eq(workflowJobs.status, 'succeeded'), gte(workflowJobs.createdAt, since24h));
+  const evDone24h = and(eq(workflowJobs.jobType, 'webhook_delivery'), eq(workflowJobs.status, 'succeeded'), gte(workflowJobs.createdAt, since24h));
   const trDone24h = and(eq(workflowJobExecutions.jobType, 'trigger_dispatch'), eq(workflowJobExecutions.status, 'succeeded'), isNotNull(workflowJobExecutions.durationMs), gte(workflowJobExecutions.createdAt, since24h));
   const trDuration = sql`${workflowJobExecutions.durationMs}`;
   const terminalStatuses = ['approved', 'rejected', 'withdrawn', 'cancelled'] as const;
   const canceledStatuses = ['withdrawn', 'cancelled'] as const;
   const outboxScopeWhere = buildWhere(
     outboxTenant,
-    eq(workflowJobs.jobType, 'event_dispatch'),
+    eq(workflowJobs.jobType, 'webhook_delivery'),
     or(isNull(workflowJobs.instanceId), instanceBaseWhere ?? sql`true`)!,
   );
   const triggerScopeWhere = buildWhere(eq(workflowJobExecutions.jobType, 'trigger_dispatch'), instTenant, taskScope);
@@ -508,7 +508,7 @@ export async function getWorkflowEngineIntrospection(
       .leftJoin(users, eq(workflowInstances.initiatorId, users.id))
       .where(buildWhere(
         outboxTenant,
-        eq(workflowJobs.jobType, 'event_dispatch'),
+        eq(workflowJobs.jobType, 'webhook_delivery'),
         or(isNull(workflowJobs.instanceId), instanceBaseWhere ?? sql`true`)!,
         notInArray(workflowJobs.status, ['succeeded']),
       ))

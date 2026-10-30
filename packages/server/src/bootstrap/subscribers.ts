@@ -5,7 +5,9 @@
  * delay/trigger/external/webhook 由 workflow_jobs 作业处理。
  */
 import logger from '../lib/logger';
+import { registerQuotaNotificationConsumer } from '../services/open-platform/open-quota-alerts.service';
 import { registerOpenEventConsumer } from '../services/open-platform/open-events.service';
+import { registerWorkflowEventConsumers } from '../services/workflow/workflow-event-consumers';
 import { initNotificationAdapters } from '../lib/notification/adapters';
 import { initPaymentAdapters } from '../lib/payment';
 import { registerChatWorkflowSubscriber } from '../lib/workflow-subscribers/chat';
@@ -30,6 +32,8 @@ import { registerDriveOwnershipSubscriber } from '../services/drive/drive-handof
 
 export function registerEventSubscribers(): void {
   registerOpenEventConsumer();
+  registerQuotaNotificationConsumer();
+  registerWorkflowEventConsumers();
   initNotificationAdapters();
   registerWsWorkflowSubscriber();
   registerNodeListenersSubscriber();

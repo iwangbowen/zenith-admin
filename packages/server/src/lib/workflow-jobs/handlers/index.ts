@@ -8,7 +8,7 @@ import './trigger-dispatch';
 import './external-dispatch';
 import './subprocess-spawn';
 import './subprocess-join';
-import './event-dispatch';
+import './node-listener-delivery';
 import './webhook-delivery';
 import './compensation-action';
 import './automation-action';

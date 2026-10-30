@@ -100,7 +100,7 @@ export async function emitInstanceEvent(
     tenantId: instance.tenantId ?? null,
     actor,
     instance,
-  } as Parameters<typeof workflowEventBus.emit>[0];
+  } as Parameters<typeof workflowEventBus.emitInTx>[0];
   return workflowEventBus.emitInTx(ev, executor);
 }
 
@@ -119,7 +119,7 @@ export function emitTaskEvent(
     actor: meta.actor,
     task,
     comment: meta.comment,
-  } as Parameters<typeof workflowEventBus.emit>[0];
+  } as Parameters<typeof workflowEventBus.emitInTx>[0];
   return workflowEventBus.emitInTx(ev, executor);
 }
 
@@ -138,7 +138,7 @@ export function emitNodeEvent(
     nodeKey: meta.nodeKey,
     nodeName: meta.nodeName,
     nodeType: meta.nodeType,
-  } as Parameters<typeof workflowEventBus.emit>[0];
+  } as Parameters<typeof workflowEventBus.emitInTx>[0];
   return workflowEventBus.emitInTx(ev, executor);
 }
 

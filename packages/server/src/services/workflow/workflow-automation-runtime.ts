@@ -67,13 +67,12 @@ function enqueueAction(tx: DbTransaction, eventId: string, position: number, act
   }, tx);
 }
 
-/** Persist a frozen chain once per event. Enqueue failures propagate to event_dispatch. */
-export async function enqueueWorkflowAutomationsForEvent(event: WorkflowEvent): Promise<void> {
+/** Prepare the frozen action chain and first job in the consumer receipt transaction. */
+export async function enqueueWorkflowAutomationsForEventWithin(tx: DbTransaction, event: WorkflowEvent) {
   const triggerByType = { 'instance.created': 'created', 'instance.approved': 'approved',
     'instance.rejected': 'rejected', 'instance.withdrawn': 'withdrawn' } as const;
-  if (!(event.type in triggerByType) || !('instance' in event)) return;
+  if (!(event.type in triggerByType) || !('instance' in event)) return { jobId: null };
   const trigger = triggerByType[event.type as keyof typeof triggerByType];
-  await runWorkflowJobStep('automation-fanout', async (tx) => {
     const rules = await tx.select().from(workflowAutomations).where(and(
       eq(workflowAutomations.definitionId, event.instance.definitionId), eq(workflowAutomations.trigger, trigger),
       eq(workflowAutomations.status, 'enabled'), exactTenantCondition(workflowAutomations.tenantId, event.tenantId ?? null),
@@ -91,7 +90,6 @@ export async function enqueueWorkflowAutomationsForEvent(event: WorkflowEvent): 
     };
     const first = await enqueueAction(tx, event.eventId, 0, actions[0], context, actions.slice(1));
     return { jobId: first?.id ?? null };
-  });
 }
 
 async function enqueueContinuation(tx: DbTransaction, payload: AutomationActionPayload, formData: Record<string, unknown>) {

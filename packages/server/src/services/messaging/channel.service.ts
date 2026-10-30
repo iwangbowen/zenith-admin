@@ -11,7 +11,8 @@ import type { SemanticStatus } from '@zenith/shared/core';
  */
 import { and, desc, eq, exists, gt, inArray, isNull, lte, or, sql, type SQL } from 'drizzle-orm';
 import { db } from '../../db';
-import type { DbExecutor } from '../../db/types';
+import { rememberTransactionEffect, flushTransactionEffects } from '../../lib/transaction-effects';
+import type { DbExecutor, DbTransaction } from '../../db/types';
 import {
   channels, channelMessages, channelSubscriptions, channelMessageTargets, users, userRoles,
   type ChannelRow, type ChannelMessageRow,
@@ -136,16 +137,12 @@ export async function publishBroadcast(channelId: number, input: PublishInput): 
   return msg;
 }
 
-/** 定向：发布一条仅指定用户可见的频道消息，写入收件人并实时推送 */
-export async function publishTargeted(
-  channelId: number,
-  userIds: number[],
-  input: PublishInput,
-): Promise<ChannelMessage | null> {
+/** Caller commits the message, target rows and consumer receipt together; WS is only a post-commit hint. */
+export async function publishTargetedWithin(tx: DbTransaction, channelId: number, userIds: number[], input: PublishInput): Promise<ChannelMessage | null> {
   const unique = [...new Set(userIds)].filter((id) => id > 0);
   if (unique.length === 0) return null;
   const dedupeKey = input.dedupeKey?.slice(0, 192) || null;
-  const result = await db.transaction(async (tx) => {
+  const result = await (async () => {
     const [inserted] = await tx.insert(channelMessages).values({
       channelId,
       audienceType: 'targeted',
@@ -168,12 +165,25 @@ export async function publishTargeted(
     }
     await tx.insert(channelMessageTargets).values(unique.map((userId) => ({ messageId: inserted.id, userId })));
     return { row: inserted, inserted: true };
-  });
-
+  })();
   const msg = mapChannelMessage(result.row, false);
-  if (!result.inserted) return msg;
-  scheduleSendToUsers(unique.map((userId) => ({ userId })), { type: 'channel:message', payload: msg });
+  if (result.inserted) rememberTransactionEffect(tx, `channel-message:${msg.id}`, async () => {
+    scheduleSendToUsers(unique.map((userId) => ({ userId })), { type: 'channel:message', payload: msg });
+  });
   return msg;
+}
+
+/** 定向发布的请求入口。 */
+export async function publishTargeted(channelId: number, userIds: number[], input: PublishInput): Promise<ChannelMessage | null> {
+  let committed: DbTransaction | undefined;
+  const message = await db.transaction((tx) => { committed = tx; return publishTargetedWithin(tx, channelId, userIds, input); });
+  await flushTransactionEffects(committed!);
+  return message;
+}
+
+export async function getSystemChannelIdWithin(tx: DbTransaction): Promise<number | null> {
+  const [row] = await tx.select({ id: channels.id }).from(channels).where(eq(channels.code, SYSTEM_CHANNEL_CODE)).limit(1);
+  return row?.id ?? null;
 }
 
 // ─── 查询（HTTP 上下文） ───────────────────────────────────────────────────────
@@ -339,34 +349,45 @@ export async function markChannelRead(channelId: number): Promise<void> {
 }
 
 /** 将某条卡片消息标记为已处理（置灰按钮 + 结果文案），并广播实时更新 */
-export async function markChannelCardDone(messageId: number, semanticStatus: SemanticStatus): Promise<void> {
-  const row = await db.query.channelMessages.findFirst({ where: eq(channelMessages.id, messageId) });
+export async function markChannelCardDoneWithin(tx: DbTransaction, messageId: number, semanticStatus: SemanticStatus): Promise<void> {
+  const row = await tx.query.channelMessages.findFirst({ where: eq(channelMessages.id, messageId) });
   if (!row || row.type !== 'card') return;
   const extra = (row.extra as ChatMessageExtra | null) ?? {};
   if (!extra.card || extra.card.status === 'done') return;
 
   const newExtra: ChatMessageExtra = { ...extra, card: { ...extra.card, status: 'done', semanticStatus } };
-  const [updated] = await db.update(channelMessages).set({ extra: newExtra })
+  const [updated] = await tx.update(channelMessages).set({ extra: newExtra })
     .where(eq(channelMessages.id, messageId)).returning();
 
   const msg = mapChannelMessage(updated, false);
   if (updated.audienceType === 'broadcast') {
-    scheduleBroadcast({ type: 'channel:message', payload: msg });
+    rememberTransactionEffect(tx, `channel-card:${msg.id}`, async () => { scheduleBroadcast({ type: 'channel:message', payload: msg }); });
   } else {
-    const tg = await db.select({ userId: channelMessageTargets.userId })
+    const tg = await tx.select({ userId: channelMessageTargets.userId })
       .from(channelMessageTargets).where(eq(channelMessageTargets.messageId, messageId));
-    scheduleSendToUsers(tg, { type: 'channel:message', payload: msg });
+    rememberTransactionEffect(tx, `channel-card:${msg.id}`, async () => { scheduleSendToUsers(tg, { type: 'channel:message', payload: msg }); });
   }
 }
 
 /** 将某工作流任务对应的待审批卡片置灰（jsonb 包含查询定位，重启后仍可靠） */
-export async function markChannelTaskCardsDone(taskId: number, semanticStatus: SemanticStatus): Promise<void> {
+export async function markChannelTaskCardsDoneWithin(tx: DbTransaction, taskId: number, semanticStatus: SemanticStatus): Promise<void> {
   const match = JSON.stringify({ card: { status: 'pending', actions: [{ taskId }] } });
-  const rows = await db.select({ id: channelMessages.id }).from(channelMessages)
+  const rows = await tx.select({ id: channelMessages.id }).from(channelMessages)
     .where(and(eq(channelMessages.type, 'card'), sql`${channelMessages.extra} @> ${match}::jsonb`));
   for (const r of rows) {
-    await markChannelCardDone(r.id, semanticStatus);
+    await markChannelCardDoneWithin(tx, r.id, semanticStatus);
   }
+}
+
+export async function markChannelCardDone(messageId: number, semanticStatus: SemanticStatus): Promise<void> {
+  let committed: DbTransaction | undefined;
+  await db.transaction((tx) => { committed = tx; return markChannelCardDoneWithin(tx, messageId, semanticStatus); });
+  await flushTransactionEffects(committed!);
+}
+export async function markChannelTaskCardsDone(taskId: number, semanticStatus: SemanticStatus): Promise<void> {
+  let committed: DbTransaction | undefined;
+  await db.transaction((tx) => { committed = tx; return markChannelTaskCardsDoneWithin(tx, taskId, semanticStatus); });
+  await flushTransactionEffects(committed!);
 }
 
 // ─── 管理后台 ────────────────────────────────────────────────────────────────

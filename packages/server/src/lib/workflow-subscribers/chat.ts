@@ -8,37 +8,25 @@
  * 卡片经「系统机器人 → 用户单聊」投递（notifyUserWithCard），按钮在前端调用
  * 审批任务的通过 / 驳回操作（`workflowTaskContract.approve` / `reject`）。
  */
-import { eq } from 'drizzle-orm';
-import { db } from '../../db';
-import { workflowInstances } from '../../db/schema';
+import type { DbTransaction } from '../../db/types';
+import type { OutboxEventRow } from '../../db/schema/event-outbox';
 import type { ChatCard } from '@zenith/shared/chat';
 import type { SemanticStatus } from '@zenith/shared/core';
 import { getNotificationEvent } from '@zenith/shared/messaging';
-import { workflowEventBus } from '../workflow-event-bus';
+import { registerWorkflowEventConsumer } from '../workflow-event-consumer';
 import {
-  getSystemChannelId, publishTargeted, markChannelTaskCardsDone,
+  getSystemChannelIdWithin, publishTargetedWithin, markChannelTaskCardsDoneWithin,
 } from '../../services/messaging/channel.service';
-import logger from '../logger';
-
-async function loadInstanceLabel(instanceId: number): Promise<string> {
-  const [row] = await db
-    .select({ title: workflowInstances.title, serialNo: workflowInstances.serialNo })
-    .from(workflowInstances)
-    .where(eq(workflowInstances.id, instanceId))
-    .limit(1);
-  if (!row) return `#${instanceId}`;
-  return row.serialNo ? `${row.title}（${row.serialNo}）` : row.title;
-}
 
 export function registerChatWorkflowSubscriber(): void {
   // 待办审批 → 审批卡片
-  workflowEventBus.on('task.created', async (event) => {
+  registerWorkflowEventConsumer('workflow.chat', ['task.created'], async (tx, event, fact) => {
     const task = event.task;
     if (!task.assigneeId || task.nodeType === 'ccNode' || task.status !== 'pending') return;
-    try {
-      const channelId = await getSystemChannelId();
+
+      const channelId = await getSystemChannelIdWithin(tx);
       if (!channelId) return;
-      const label = await loadInstanceLabel(event.instanceId);
+      const label = String(fact.scope.label);
       const card: ChatCard = {
         title: '待办审批提醒',
         text: `流程「${label}」需要你审批`,
@@ -52,37 +40,28 @@ export function registerChatWorkflowSubscriber(): void {
         semanticStatus: getNotificationEvent('workflow.task.created').inAppType,
         instanceId: event.instanceId,
       };
-      await publishTargeted(channelId, [task.assigneeId], {
+      await publishTargetedWithin(tx, channelId, [task.assigneeId], {
         type: 'card', content: card.title, extra: { card },
         dedupeKey: `workflow-event:${event.eventId}:chat`,
       });
-    } catch (err) {
-      logger.error('[chat-workflow] 审批卡片推送失败', { err, taskId: task.id });
-    }
   });
 
   // 审批完成 → 置灰卡片
-  const resolveCard = (semanticStatus: SemanticStatus) => async (event: { task: { id: number } }) => {
-    try {
-      await markChannelTaskCardsDone(event.task.id, semanticStatus);
-    } catch (err) {
-      logger.error('[chat-workflow] 卡片置灰失败', { err, taskId: event.task.id });
-    }
+  const resolveCard = (semanticStatus: SemanticStatus) => async (tx: DbTransaction, event: { task: { id: number } }) => {
+
+      await markChannelTaskCardsDoneWithin(tx, event.task.id, semanticStatus);
   };
-  workflowEventBus.on('task.approved', resolveCard('agreed'));
-  workflowEventBus.on('task.rejected', resolveCard('declined'));
-  workflowEventBus.on('task.skipped', resolveCard('skipped'));
-  workflowEventBus.on('task.transferred', resolveCard('transferred'));
+  registerWorkflowEventConsumer('workflow.chat', ['task.approved'], resolveCard('agreed'));
+  registerWorkflowEventConsumer('workflow.chat', ['task.rejected'], resolveCard('declined'));
+  registerWorkflowEventConsumer('workflow.chat', ['task.skipped'], resolveCard('skipped'));
+  registerWorkflowEventConsumer('workflow.chat', ['task.transferred'], resolveCard('transferred'));
 
   // 流程结束 → 通知发起人
   const notifyInitiator = (kind: 'approved' | 'rejected' | 'withdrawn' | 'returned') => async (
-    event: { eventId: string; instanceId: number; instance: { initiatorId: number; title: string; serialNo?: string | null } },
+    tx: DbTransaction, event: { eventId: string; instanceId: number; instance: { initiatorId: number; title: string; serialNo?: string | null } }, fact: OutboxEventRow,
   ) => {
     const inst = event.instance;
-    const [snapRow] = await db.select({ snapshot: workflowInstances.definitionSnapshot })
-      .from(workflowInstances).where(eq(workflowInstances.id, event.instanceId)).limit(1);
-    const notify = snapRow?.snapshot?.flowData?.settings?.notifyInitiator;
-    if (notify === false) return;
+    if (fact.scope.notifyInitiator === false) return;
     const label = inst.serialNo ? `${inst.title}（${inst.serialNo}）` : inst.title;
     const map = {
       approved: { title: '审批通过', text: `你发起的流程「${label}」已审批通过` },
@@ -91,8 +70,8 @@ export function registerChatWorkflowSubscriber(): void {
       returned: { title: '申请被退回', text: `你发起的流程「${label}」已被退回，请修改后重新提交` },
     };
     const m = map[kind];
-    try {
-      const channelId = await getSystemChannelId();
+
+      const channelId = await getSystemChannelIdWithin(tx);
       if (!channelId) return;
       const card: ChatCard = {
         title: m.title,
@@ -102,16 +81,13 @@ export function registerChatWorkflowSubscriber(): void {
         semanticStatus: getNotificationEvent(`workflow.instance.${kind}`).inAppType,
         instanceId: event.instanceId,
       };
-      await publishTargeted(channelId, [inst.initiatorId], {
+      await publishTargetedWithin(tx, channelId, [inst.initiatorId], {
         type: 'card', content: card.title, extra: { card },
         dedupeKey: `workflow-event:${event.eventId}:chat`,
       });
-    } catch (err) {
-      logger.error('[chat-workflow] 结果卡片推送失败', { err, instanceId: event.instanceId });
-    }
   };
-  workflowEventBus.on('instance.approved', notifyInitiator('approved'));
-  workflowEventBus.on('instance.rejected', notifyInitiator('rejected'));
-  workflowEventBus.on('instance.withdrawn', notifyInitiator('withdrawn'));
-  workflowEventBus.on('instance.returned', notifyInitiator('returned'));
+  registerWorkflowEventConsumer('workflow.chat', ['instance.approved'], notifyInitiator('approved'));
+  registerWorkflowEventConsumer('workflow.chat', ['instance.rejected'], notifyInitiator('rejected'));
+  registerWorkflowEventConsumer('workflow.chat', ['instance.withdrawn'], notifyInitiator('withdrawn'));
+  registerWorkflowEventConsumer('workflow.chat', ['instance.returned'], notifyInitiator('returned'));
 }

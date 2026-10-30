@@ -134,12 +134,12 @@ export async function startCmsContentWorkflow(input: {
  */
 export function registerCmsWorkflowSubscribers(): void {
   onWorkflowResult(CMS_CONTENT_BIZ_TYPE, {
-    onCreated: async (instance) => {
+    onCreated: async (_tx, instance) => {
       const revisionId = Number(instance.formData?.revisionId);
       if (!Number.isInteger(revisionId) || revisionId <= 0) throw new HTTPException(409, { message: '内容审核实例缺少精确修订' });
       await bindCmsReviewRevision(Number(instance.bizId), instance.id, revisionId);
     },
-    onApproved: async (instance) => {
+    onApproved: async (_tx, instance) => {
       const contentId = Number(instance.bizId);
       const revision = await getCmsReviewRevision(contentId, instance.id);
       await db.transaction(async (tx) => {
@@ -155,13 +155,13 @@ export function registerCmsWorkflowSubscribers(): void {
       await publishCmsContent(contentId, { fromWorkflow: true, skipAccessCheck: true, revisionId: revision.id });
       logger.info(`[cms-workflow] 内容 #${contentId} 的修订 #${revision.id} 审核通过，发布单已提交`);
     },
-    onRejected: async (instance) => {
+    onRejected: async (_tx, instance) => {
       const contentId = Number(instance.bizId);
       const revision = await getCmsReviewRevision(contentId, instance.id);
       const { rejectCmsContent } = await import('./cms-contents.service');
       await rejectCmsContent(contentId, '工作流审核驳回', { fromWorkflow: true, skipAccessCheck: true, revisionId: revision.id });
     },
-    onWithdrawn: async (instance) => {
+    onWithdrawn: async (_tx, instance) => {
       const contentId = Number(instance.bizId);
       const revision = await getCmsReviewRevision(contentId, instance.id);
       await db.update(cmsContentWorkingCopies).set({ editorialStatus: 'draft', submittedRevisionId: null, approvedRevisionId: null,

@@ -5,6 +5,7 @@
 import { eq } from 'drizzle-orm';
 import type { WorkflowFlowData, WorkflowPrintSettings } from '@zenith/shared/workflow';
 import { db } from '../../db';
+import type { DbExecutor } from '../../db/types';
 import { workflowDefinitions } from '../../db/schema';
 
 export interface DefinitionPrintConfig {
@@ -13,8 +14,8 @@ export interface DefinitionPrintConfig {
 }
 
 /** 流程定义上的打印配置：绑定模板列 + flowData.settings.print（实例快照的设置随定义变化，打印按当前定义生效） */
-export async function loadDefinitionPrintConfig(definitionId: number): Promise<DefinitionPrintConfig> {
-  const [row] = await db.select({ printTemplateId: workflowDefinitions.printTemplateId, flowData: workflowDefinitions.flowData })
+export async function loadDefinitionPrintConfig(definitionId: number, executor: DbExecutor = db): Promise<DefinitionPrintConfig> {
+  const [row] = await executor.select({ printTemplateId: workflowDefinitions.printTemplateId, flowData: workflowDefinitions.flowData })
     .from(workflowDefinitions).where(eq(workflowDefinitions.id, definitionId)).limit(1);
   const settings = (row?.flowData as WorkflowFlowData | null)?.settings?.print ?? {};
   return { templateId: row?.printTemplateId ?? null, settings };

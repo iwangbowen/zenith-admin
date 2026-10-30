@@ -130,17 +130,6 @@ export async function registerSystemTasks(): Promise<void> {
     },
   });
 
-  const { retryPendingQuotaAlerts } = await import('../services/open-platform/open-quota-alerts.service');
-  await registerSystemRecurringJob({
-    name: 'open-quota-alert-retry',
-    title: '开放平台配额告警补偿',
-    module: '开放平台',
-    cronExpression: '* * * * *',
-    description: '补偿因进程退出或临时故障而未完成的配额告警与 Webhook 事件。',
-    allowManualRun: true,
-    run: retryPendingQuotaAlerts,
-  });
-
   const { runDueWorkflowSchedules } = await import('../services/workflow/workflow-schedules.service');
   await registerSystemRecurringJob({
     name: 'workflow-schedule-tick',
