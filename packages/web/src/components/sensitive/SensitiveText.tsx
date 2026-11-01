@@ -27,7 +27,6 @@ export function SensitiveText({ entity, id, field, value }: SensitiveTextProps) 
     <span className="sensitive-text">
       <Typography.Text
         className="sensitive-text__value"
-        ellipsis={{ showTooltip: true }}
         title={text}
         style={{ flex: '1 1 auto', minWidth: 0, maxWidth: '100%' }}
       >
