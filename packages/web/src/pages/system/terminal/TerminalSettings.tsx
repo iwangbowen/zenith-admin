@@ -3,7 +3,7 @@ import { SideSheet, Select, InputNumber, Button, Typography, Switch } from '@dou
 import { RotateCcw } from 'lucide-react';
 import { useTerminalPreferences } from './useTerminalPreferences';
 import { usePreferences, type TerminalPreferences } from '@/hooks/usePreferences';
-import { PreferenceResetButton } from '@/components/settings/SettingRow';
+import { PreferenceControl } from '@/components/settings/SettingRow';
 import { DARK_THEMES, LIGHT_THEMES, FONT_FAMILY_PRESETS } from './themes';
 import ThemePicker from './ThemePicker';
 
@@ -19,17 +19,13 @@ interface TerminalSettingsProps {
 }
 
 function Field({ field, label, children }: { readonly field: Exclude<keyof TerminalPreferences, 'favorites'>; readonly label: string; readonly children: ReactNode }) {
-  const { canEditPreference } = usePreferences();
-  const path = `terminal.${field}` as const;
-  if (!canEditPreference(path)) return null;
   return (
-    <div style={{ marginBottom: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-        <Typography.Text size="small" type="tertiary">{label}</Typography.Text>
-        <PreferenceResetButton path={path} />
+    <PreferenceControl path={`terminal.${field}`}>
+      <div style={{ marginBottom: 16 }}>
+        <Typography.Text size="small" type="tertiary" style={{ display: 'block', marginBottom: 6 }}>{label}</Typography.Text>
+        {children}
       </div>
-      {children}
-    </div>
+    </PreferenceControl>
   );
 }
 

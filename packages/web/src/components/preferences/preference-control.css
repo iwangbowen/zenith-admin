@@ -1,11 +1,31 @@
 .preference-control {
+  position: relative;
   min-width: 0;
 }
 
+/* 重置入口落在设置名称左侧的留白（抽屉正文水平内边距）里，不占布局，出现与消失都不推动名称 */
+.preference-control__gutter {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -22px;
+  width: 20px;
+  pointer-events: none;
+}
+
 .preference-control__reset {
+  position: absolute;
+  top: 10px;
+  left: 0;
   display: flex;
-  justify-content: flex-end;
-  margin-top: 4px;
+  transform: translateY(-50%);
+  pointer-events: auto;
+}
+
+.preference-reset-button.semi-button.semi-button-with-icon-only.semi-button-size-small {
+  width: 20px;
+  height: 20px;
+  padding: 0;
 }
 
 .preference-control--inline {
@@ -13,8 +33,4 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
-}
-
-.preference-control--inline .preference-control__reset {
-  margin-top: 0;
 }

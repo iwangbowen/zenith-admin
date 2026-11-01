@@ -141,7 +141,7 @@ function PrefDarkToneRow({
 
 /**
  * 定时深色的 HH:mm 输入：非受控输入 + 合法才提交，键入过程中的非法中间态不回写，
- * 外部值变化（跟随系统 / 重置）时 key 强制重挂载回填。
+ * 外部值变化（单项重置 / 恢复系统默认）时 key 强制重挂载回填。
  */
 function ScheduleTimeInput({ path, label, value, onCommit }: Readonly<{
   path: 'scheduledDarkStart' | 'scheduledDarkEnd';

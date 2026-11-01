@@ -62,12 +62,22 @@ describe('个人偏好策略控件', () => {
     expect(screen.queryByRole('heading', { name: '标签页' })).not.toBeInTheDocument();
   });
 
-  it('单项恢复只清除指定字段的个人覆盖', async () => {
+  it('单项重置只清除指定字段的个人覆盖', async () => {
     setContext(defaultPreferencePolicy, { tablePageSize: 20, tableStriped: true });
-    render(<PreferenceControl path="tablePageSize"><span>默认分页大小</span></PreferenceControl>);
-    await userEvent.click(screen.getByRole('button', { name: 'tablePageSize恢复系统默认' }));
+    render(<PreferenceControl path="tablePageSize"><div><span>默认分页大小</span></div></PreferenceControl>);
+    const reset = screen.getByRole('button', { name: '重置设置：默认分页大小' });
+    expect(reset).not.toHaveTextContent('重置设置');
+    // 重置图标位于设置名称之前：DOM 顺序与视觉顺序一致
+    expect(reset.compareDocumentPosition(screen.getByText('默认分页大小')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await userEvent.click(reset);
     expect(context.resetPreference).toHaveBeenCalledExactlyOnceWith('tablePageSize');
     expect(context.resetPreferences).not.toHaveBeenCalled();
+  });
+
+  it('未覆盖的项目不显示重置图标', () => {
+    setContext(defaultPreferencePolicy, { tableStriped: true });
+    render(<PreferenceControl path="tablePageSize"><div><span>默认分页大小</span></div></PreferenceControl>);
+    expect(screen.queryByRole('button', { name: /^重置设置/ })).not.toBeInTheDocument();
   });
 });
 
