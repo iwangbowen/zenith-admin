@@ -27,6 +27,7 @@ import { createdAtColumn, dateTimeColumn, overflowTagColumn, renderEllipsis } fr
 import { UserMenuPermissionModal } from './UserMenuPermissionModal';
 import { UserDataScopeModal } from './UserDataScopeModal';
 import { UserAvatarModal } from './UserAvatarModal';
+import { UserPreferencesModal } from './UserPreferencesModal';
 import { UserLogsSheet } from './UserLogsSheet';
 import ExportButton from '@/components/ExportButton';
 import ImportButton from '@/components/ImportButton';
@@ -137,6 +138,8 @@ export default function UsersPage() {
   const [roleAssignIds, setRoleAssignIds] = useState<number[]>([]);
   const [avatarUser, setAvatarUser] = useState<User | null>(null);
   const [avatarModalVisible, setAvatarModalVisible] = useState(false);
+  const [preferencesUser, setPreferencesUser] = useState<User | null>(null);
+  const [preferencesVisible, setPreferencesVisible] = useState(false);
   const [logsUser, setLogsUser] = useState<User | null>(null);
   const [logsVisible, setLogsVisible] = useState(false);
   const [relationUser, setRelationUser] = useState<User | null>(null);
@@ -520,6 +523,15 @@ export default function UsersPage() {
             hidden: !hasPermission('system:user:credentials'),
             onClick: () => {
               openPassword(record);
+            },
+          },
+          {
+            key: 'preferences',
+            label: '偏好设置',
+            hidden: !hasPermission('system:user:update'),
+            onClick: () => {
+              setPreferencesUser(record);
+              setPreferencesVisible(true);
             },
           },
           {
@@ -982,6 +994,16 @@ export default function UsersPage() {
             setAvatarUser(updated);
             updateUser(updated);
           }}
+        />
+      )}
+
+      {/* 偏好设置 */}
+      {preferencesUser && (
+        <UserPreferencesModal
+          userId={preferencesUser.id}
+          userName={`${preferencesUser.nickname || preferencesUser.username}（${preferencesUser.username}）`}
+          visible={preferencesVisible}
+          onClose={() => setPreferencesVisible(false)}
         />
       )}
 

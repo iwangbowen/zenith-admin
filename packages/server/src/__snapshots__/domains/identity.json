@@ -115,6 +115,7 @@
   "GET /api/users/:id/data-permission",
   "GET /api/users/:id/effective-permissions",
   "GET /api/users/:id/menus",
+  "GET /api/users/:id/preferences",
   "GET /api/users/alert-recipients",
   "GET /api/users/all",
   "GET /metrics",
@@ -205,6 +206,7 @@
   "PUT /api/users/:id/menus",
   "PUT /api/users/:id/organization",
   "PUT /api/users/:id/password",
+  "PUT /api/users/:id/preferences",
   "PUT /api/users/:id/roles",
   "PUT /api/users/batch-password",
   "PUT /api/users/batch-status"

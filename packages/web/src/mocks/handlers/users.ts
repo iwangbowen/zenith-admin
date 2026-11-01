@@ -1,4 +1,4 @@
-import { userContract, type Department, type Position, type Role, type User } from '@zenith/shared/identity';
+import { userContract, type Department, type ManagedUserPreferences, type Position, type Role, type User } from '@zenith/shared/identity';
 import { mock } from '@/mocks/utils/contract';
 import { removeByIds, requireItem } from '@/mocks/utils/crud';
 import { badRequest, conflict } from '@/mocks/utils/handlers';
@@ -14,6 +14,9 @@ import { includesKeyword } from '@/mocks/utils/filter';
 
 // Demo 模式下新增/重置用户时使用的默认初始口令（明文仅用于演示环境）
 const DEMO_INITIAL_CREDENTIAL = ['1', '2', '3', '4', '5', '6'].join('');
+
+/** Demo 模式下按用户保存偏好覆盖（与个人偏好同一文档结构） */
+const userPreferencesMap = new Map<number, ManagedUserPreferences>();
 
 function removesProtectedAdminRole(user: MockUser, roleIds: number[]) {
   return user.tenantId == null && user.username.trim().toLowerCase() === 'admin'
@@ -200,6 +203,17 @@ export const usersHandlers = [
       if (space.ownerId === params.id) { space.ownerId = null; space.ownerName = null; }
     }
     return ok(null, '删除成功');
+  }),
+
+  mock(userContract.preferences, ({ params, ok }) => {
+    requireItem(mockUsers, params.id, '用户不存在', { status: 404 });
+    return ok(userPreferencesMap.get(params.id) ?? { overrides: {} });
+  }),
+
+  mock(userContract.updatePreferences, ({ params, body, ok }) => {
+    requireItem(mockUsers, params.id, '用户不存在', { status: 404 });
+    userPreferencesMap.set(params.id, body);
+    return ok(body, '保存成功');
   }),
 
   mock(userContract.assignRoles, ({ params, body, ok }) => {

@@ -25,6 +25,9 @@ import {
   getUserDataPermission,
   updateUserDataPermission,
   getUserEffectivePermissions,
+  getUserPreferences,
+  getUserPreferencesBeforeAudit,
+  updateUserPreferences,
   assignRolesToUser,
   getUserRoleAssignmentAudit,
   getUserMenuPermissionsBeforeAudit,
@@ -148,6 +151,22 @@ const getUserEffectivePermissionsRoute = defineContractRoute(userContract.effect
   handler: async (c) => c.json(okBody(await getUserEffectivePermissions(c.req.valid('param').id)), 200),
 });
 
+const getUserPreferencesRoute = defineContractRoute(userContract.preferences, {
+  handler: async (c) => c.json(okBody(await getUserPreferences(c.req.valid('param').id)), 200),
+});
+
+const updateUserPreferencesRoute = defineContractRoute(userContract.updatePreferences, {
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const before = await getUserPreferencesBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
+    const saved = await updateUserPreferences(id, c.req.valid('json'));
+    const after = await getUserPreferencesBeforeAudit(id);
+    if (after) setAuditAfterData(c, after);
+    return c.json(okBody(saved), 200);
+  },
+});
+
 mountCrud(usersRouter, userContract,
   { list: listUsers, get: getUser, create: createUser, update: updateUser, remove: deleteUser },
   { exclude: ['removeBatch'] },
@@ -167,6 +186,8 @@ mountCrud(usersRouter, userContract,
     getUserDataPermissionRoute,
     updateUserDataPermissionRoute,
     getUserEffectivePermissionsRoute,
+    getUserPreferencesRoute,
+    updateUserPreferencesRoute,
   ],
 );
 

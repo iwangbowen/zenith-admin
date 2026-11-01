@@ -4,6 +4,7 @@ import { LOOKUP_STALE_TIME } from '@/lib/query';
 import { invalidateCurrentUserAccess } from './menus';
 import { invalidateScopeMemberPreviews } from './scope-members';
 import { invalidateEntityRelations } from '@/lib/entity-relation-cache';
+import { preferencesKey } from './preferences';
 
 const resource = createResourceQueries(userContract, {
   // 下拉源展示昵称与用户名，且被角色分配、岗位成员、用户组等多页共享；告警接收人下拉同样渲染昵称。
@@ -30,6 +31,7 @@ export const userKeys = {
   allUsers: resource.keys.lookup,
   alertRecipients: contractKey(userContract.alertRecipients),
   dataPermission: (userId: number | undefined) => contractKey(userContract.dataPermission, { params: { id: userId ?? 0 } }),
+  preferences: (userId: number | undefined) => contractKey(userContract.preferences, { params: { id: userId ?? 0 } }),
   /** 全部用户的有效权限视图（用户组角色变更等定位不到具体用户时用） */
   effectivePermissionsAll: contractKey(userContract.effectivePermissions),
   effectivePermissions: (userId: number | undefined) => contractKey(userContract.effectivePermissions, { params: { id: userId ?? 0 } }),
@@ -145,6 +147,30 @@ export function useSaveUserMenus() {
 
 export function useUserEffectivePermissions(userId: number | undefined, enabled = true) {
   return useApiQuery(userContract.effectivePermissions, { params: { id: userId ?? 0 } }, { enabled: enabled && userId !== undefined });
+}
+
+export function useUserPreferences(userId: number | undefined, enabled = true) {
+  return useApiQuery(
+    userContract.preferences,
+    { params: { id: userId ?? 0 } },
+    {
+      enabled: enabled && userId !== undefined,
+      // 偏好可能刚被用户本人或其他管理员修改，弹窗每次打开都要取最新值。
+      staleTime: 0,
+      refetchOnMount: 'always',
+      refetchOnWindowFocus: true,
+    },
+  );
+}
+
+/** 管理端保存指定用户的偏好覆盖；若改的是自己，个人偏好缓存也需重新读取 */
+export function useSaveUserPreferences() {
+  return useApiMutation(userContract.updatePreferences, {
+    invalidate: (qc, _output, { params }) => {
+      void qc.invalidateQueries({ queryKey: userKeys.preferences(params.id) });
+      void qc.invalidateQueries({ queryKey: preferencesKey });
+    },
+  });
 }
 
 export function useManageUser() {

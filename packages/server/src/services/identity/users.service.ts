@@ -21,6 +21,7 @@ import { batchIterable, streamToExcel, streamToCsv, formatDateTimeForExcel, type
 import { clearUserPermissionCache, getUserMenuIds, getUserPermissions } from '../../lib/permissions';
 import type { JwtPayload } from '../../middleware/auth';
 import type { AlertRecipientUser, User, CreateUserInput, UpdateUserInput } from '@zenith/shared/identity';
+import { canOverridePreference, getPreferenceValue, preferenceDefinitions, readUserPreferencesDocument, type UserPreferencesDocument } from '@zenith/shared/preferences';
 import { accessScopeKey, mostPermissiveDataScope, userContract, createUserSchema, updateUserSchema, manageUserSchema } from '@zenith/shared/identity';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { navigationForPermissions } from './permission-catalog.service';
@@ -877,4 +878,47 @@ export async function getUserEffectivePermissions(userId: number) {
     inheritedRoles,
     menuSources: menuSourcesResult,
   };
+}
+
+// ─── 用户级偏好设置 ────────────────────────────────────────────────────────────
+
+export async function getUserPreferences(userId: number): Promise<UserPreferencesDocument> {
+  await ensureUserManageable(userId);
+  const row = await requireFirstRow(
+    db.select({ preferences: users.preferences }).from(users).where(eq(users.id, userId)).limit(1),
+    '用户不存在',
+  );
+  return readUserPreferencesDocument(row.preferences);
+}
+
+export async function getUserPreferencesBeforeAudit(userId: number) {
+  const before = await getUserBeforeAudit(userId);
+  if (!before) return null;
+  return {
+    id: before.id,
+    username: before.username,
+    nickname: before.nickname,
+    ...(await getUserPreferences(userId)),
+  };
+}
+
+export async function updateUserPreferences(userId: number, document: UserPreferencesDocument): Promise<UserPreferencesDocument> {
+  await ensureUserManageable(userId);
+  // 冷设置读取会借用全局连接，必须在事务外完成。
+  const { preferences: policy } = await getSettings('ui');
+  await db.transaction(async (tx) => {
+    const [row] = await tx.select({ preferences: users.preferences }).from(users).where(eq(users.id, userId)).for('update');
+    const previous = readUserPreferencesDocument(requireRow(row, '用户不存在').preferences);
+    for (const definition of preferenceDefinitions) {
+      if (canOverridePreference(definition.path, policy)) continue;
+      const nextValue = getPreferenceValue(document.overrides, definition.path);
+      const oldValue = getPreferenceValue(previous.overrides, definition.path);
+      // 可以清除旧覆盖，但不允许新增 / 修改系统统一管理的项。
+      if (nextValue !== undefined && !Object.is(nextValue, oldValue)) {
+        throw new HTTPException(403, { message: `「${definition.label}」由系统统一设置，无法修改` });
+      }
+    }
+    await tx.update(users).set({ preferences: document }).where(eq(users.id, userId));
+  });
+  return document;
 }

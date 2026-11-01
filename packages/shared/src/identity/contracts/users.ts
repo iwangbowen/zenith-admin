@@ -14,10 +14,12 @@ import {
   updateUserSchema,
   updateUserOrganizationSchema,
   manageUserSchema,
+  userPreferencesInputSchema,
 } from '../validation';
 import { positionSchema } from './positions';
 import { roleSchema } from './roles';
 import { impersonationStateSchema } from './impersonation';
+import { userPreferencesDocumentSchema } from '../../preferences';
 
 // ─── 实体 ────────────────────────────────────────────────────────────────────
 
@@ -118,6 +120,11 @@ export const userEffectivePermissionsSchema = z.object({
 
 export type UserEffectivePermissions = z.infer<typeof userEffectivePermissionsSchema>;
 
+/** 管理端查看 / 编辑指定用户的偏好覆盖，与个人偏好使用同一文档结构 */
+export const managedUserPreferencesSchema = userPreferencesDocumentSchema.meta({ id: 'ManagedUserPreferences' });
+
+export type ManagedUserPreferences = z.infer<typeof managedUserPreferencesSchema>;
+
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 
 export const userListQuery = paginationQuery.extend({
@@ -151,4 +158,6 @@ export const userContract = defineContract('/api/users', {
   dataPermission: op.get('/{id}/data-permission', { access: { permission: 'system:user:assign' }, params: idParam, response: userDataPermissionSchema, summary: '获取用户数据权限' }),
   updateDataPermission: op.put('/{id}/data-permission', { access: { permission: 'system:user:assign' }, audit: '设置用户数据权限', params: idParam, body: updateUserDataPermissionSchema, summary: '设置用户数据权限' }),
   effectivePermissions: op.get('/{id}/effective-permissions', { access: { permission: 'system:user:assign' }, params: idParam, response: userEffectivePermissionsSchema, summary: '获取用户最终有效权限' }),
+  preferences: op.get('/{id}/preferences', { access: { permission: 'system:user:update' }, params: idParam, response: managedUserPreferencesSchema, summary: '获取用户偏好设置' }),
+  updatePreferences: op.put('/{id}/preferences', { access: { permission: 'system:user:update' }, audit: '修改用户偏好设置', params: idParam, body: userPreferencesInputSchema, response: managedUserPreferencesSchema, summary: '修改用户偏好设置' }),
 }, { auditModule: '用户管理', tags: ['Users'] });
