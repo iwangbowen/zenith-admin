@@ -105,9 +105,9 @@ describe('business-job processing deep links', () => {
     expect(screen.getByRole('region', { name: '运行历史' })).toBeInTheDocument();
   });
 
-  it('applies payment event status and consumes the parameter', async () => {
-    show(<PaymentEventsPage />, '/payment/events?status=failed');
-    await waitFor(() => expect(state.events).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'failed' }), undefined));
+  it('applies the dead payment event status and consumes the parameter', async () => {
+    show(<PaymentEventsPage />, '/payment/events?status=dead');
+    await waitFor(() => expect(state.events).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'dead' }), undefined));
     expect(screen.getByLabelText('地址')).toHaveTextContent('');
   });
 
