@@ -1,10 +1,10 @@
-import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, notInArray, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNotNull, lt, notInArray, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { CronExpressionParser } from 'cron-parser';
 import type { WorkflowEngineApdex, WorkflowEngineComponent, WorkflowEngineComponentStatus, WorkflowEngineDefinitionSnapshot, WorkflowEngineEventBucket, WorkflowEngineHistogramBucket, WorkflowEngineInstanceBucket, WorkflowEngineIntrospection, WorkflowEngineMetric, WorkflowEngineQueueKey, WorkflowEngineQueueSnapshot, WorkflowEngineRuntimeIssue, WorkflowEngineRuntimeTask, WorkflowEngineScoreFactor, WorkflowEngineTelemetry, WorkflowEngineThresholds, WorkflowEngineTriggerExecution, WorkflowEngineOutboxEvent, WorkflowFlowData, WorkflowInstancePriority } from '@zenith/shared/workflow';
 import { buildWorkflowEngineIssues as buildIssues, buildWorkflowEngineQueueSnapshot as queueSnapshot, worstWorkflowEngineStatus as worstStatus } from '@zenith/shared/workflow';
 import { db } from '../../db';
-import { workflowDefinitions, workflowInstances, workflowJobExecutions, workflowJobs, workflowTasks, workflowTokens, users } from '../../db/schema';
+import { eventConsumerDeliveries, eventOutbox, workflowDefinitions, workflowInstances, workflowJobExecutions, workflowJobs, workflowTasks, workflowTokens, users } from '../../db/schema';
 import { currentUser } from '../../lib/context';
 import { getDataScopeCondition } from '../../lib/data-scope';
 import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
@@ -14,7 +14,6 @@ import { tenantCondition } from '../../lib/tenant';
 import { getWorkflowEventBusIntrospection } from '../../lib/workflow-event-bus';
 import { validateFlowData } from '../../lib/workflow-engine';
 import { mapTriggerExecution as mapSharedTriggerExecution } from './workflow-trigger-executions.service';
-import { payloadString } from './payload-utils';
 import { jobExecutionsWithJob } from './workflow-job-execution-helpers';
 import { buildWhere } from '../../lib/where-helpers';
 import { getWorkflowJobRuntimeStatus } from './workflow-jobs.service';
@@ -185,28 +184,23 @@ function mapTriggerExecution(row: {
   };
 }
 
-function mapOutboxEvent(row: typeof workflowJobs.$inferSelect & { instanceTitle?: string | null }, now: Date): WorkflowEngineOutboxEvent {
-  const status = row.status === 'succeeded'
-    ? 'success'
-    : row.status === 'running'
-      ? 'processing'
-      : row.status === 'failed' || row.status === 'dead'
-        ? 'failed'
-        : 'pending';
+function mapOutboxEvent(row: { delivery: typeof eventConsumerDeliveries.$inferSelect; event: typeof eventOutbox.$inferSelect }, now: Date): WorkflowEngineOutboxEvent {
+  const payload = row.event.payload;
+  const rawInstanceId = payload.instanceId;
+  const rawTask = payload.task;
+  const rawTaskId = rawTask && typeof rawTask === 'object' && 'id' in rawTask ? (rawTask as { id?: unknown }).id : null;
+  const status = row.delivery.status === 'succeeded' || row.delivery.status === 'skipped'
+    ? 'success' : row.delivery.status === 'running' ? 'processing' : row.delivery.status === 'dead' ? 'failed' : row.delivery.status;
   return {
-    id: row.id,
-    eventId: payloadString(row.payload, 'eventId') ?? row.idempotencyKey ?? String(row.id),
-    eventType: payloadString(row.payload, 'eventType') ?? row.jobType,
-    instanceId: row.instanceId ?? null,
-    instanceTitle: row.instanceTitle ?? null,
-    taskId: row.taskId ?? null,
-    status,
-    attempts: row.attempts,
-    errorMessage: row.lastError ?? null,
-    nextRetryAt: row.status === 'failed' ? formatNullableDateTime(row.runAt) : null,
-    processedAt: row.status === 'succeeded' ? formatNullableDateTime(row.updatedAt) : null,
-    ageMinutes: ageMinutes(row.createdAt, now) ?? 0,
-    createdAt: formatDateTime(row.createdAt),
+    id: row.delivery.id, eventId: row.event.eventId, eventType: row.event.eventType,
+    instanceId: typeof rawInstanceId === 'number' ? rawInstanceId : null,
+    instanceTitle: typeof row.event.scope.label === 'string' ? row.event.scope.label : null,
+    taskId: typeof rawTaskId === 'number' ? rawTaskId : null,
+    status, attempts: row.delivery.attempts, errorMessage: row.delivery.lastError ?? null,
+    nextRetryAt: row.delivery.status === 'retrying' ? formatDateTime(row.delivery.runAt) : null,
+    processedAt: row.delivery.finishedAt ? formatDateTime(row.delivery.finishedAt) : null,
+    ageMinutes: ageMinutes(row.event.occurredAt, now) ?? 0,
+    createdAt: formatDateTime(row.event.occurredAt),
   };
 }
 
@@ -331,7 +325,7 @@ function buildEventSeries(rows: Array<{ createdAt: Date; status: string }>, now:
     const idx = slotIndexOf(row.createdAt, firstStart);
     if (idx < 0 || idx >= out.length) continue;
     out[idx].total += 1;
-    if (row.status === 'success' || row.status === 'succeeded') out[idx].success += 1;
+    if (row.status === 'success' || row.status === 'succeeded' || row.status === 'skipped') out[idx].success += 1;
     else if (row.status === 'failed' || row.status === 'dead') out[idx].failed += 1;
   }
   return out;
@@ -374,7 +368,7 @@ export async function getWorkflowEngineIntrospection(
   const delayJob = alias(workflowJobs, 'workflow_engine_delay_job');
   const instTenant = user ? tenantCondition(workflowInstances, user) : undefined;
   const defTenant = user ? tenantCondition(workflowDefinitions, user) : undefined;
-  const outboxTenant = user ? tenantCondition(workflowJobs, user) : undefined;
+  const outboxTenant = user ? tenantCondition(eventOutbox, user) : undefined;
   const taskScope = user
     ? await getDataScopeCondition({
         currentUserId: user.userId,
@@ -392,19 +386,14 @@ export async function getWorkflowEngineIntrospection(
   const since48h = new Date(now.getTime() - 48 * 60 * 60_000);
   const thresholds = await getWorkflowEngineThresholds();
   const apdexT = thresholds.apdexThresholdMs;
-  // 事件处理延迟（毫秒）SQL 片段 + 「近 24h 成功且已处理」过滤片段，复用于 P95/P99/直方图/Apdex。
-  // 延迟口径：作业入库到落终态的耗时（updatedAt - createdAt）。
-  const evLatency = sql`extract(epoch from (${workflowJobs.updatedAt} - ${workflowJobs.createdAt})) * 1000`;
-  const evDone24h = and(eq(workflowJobs.jobType, 'webhook_delivery'), eq(workflowJobs.status, 'succeeded'), gte(workflowJobs.createdAt, since24h));
+  // 消费者处理延迟：事件发生到该消费者终结；复用于 P95/P99/直方图/Apdex。
+  const evLatency = sql`extract(epoch from (${eventConsumerDeliveries.finishedAt} - ${eventOutbox.occurredAt})) * 1000`;
+  const evDone24h = and(inArray(eventConsumerDeliveries.status, ['succeeded', 'skipped']), gte(eventOutbox.occurredAt, since24h));
   const trDone24h = and(eq(workflowJobExecutions.jobType, 'trigger_dispatch'), eq(workflowJobExecutions.status, 'succeeded'), isNotNull(workflowJobExecutions.durationMs), gte(workflowJobExecutions.createdAt, since24h));
   const trDuration = sql`${workflowJobExecutions.durationMs}`;
   const terminalStatuses = ['approved', 'rejected', 'withdrawn', 'cancelled'] as const;
   const canceledStatuses = ['withdrawn', 'cancelled'] as const;
-  const outboxScopeWhere = buildWhere(
-    outboxTenant,
-    eq(workflowJobs.jobType, 'webhook_delivery'),
-    or(isNull(workflowJobs.instanceId), instanceBaseWhere ?? sql`true`)!,
-  );
+  const outboxScopeWhere = buildWhere(outboxTenant, eq(eventOutbox.domain, 'workflow'));
   const triggerScopeWhere = buildWhere(eq(workflowJobExecutions.jobType, 'trigger_dispatch'), instTenant, taskScope);
 
   const [definitions, runningInstanceRows, activeInstanceRows, runtimeTaskRows, triggerRows, outboxRows, eventStatsRows, triggerStatsRows, instanceStatsRows, eventSeriesRows, instanceSeriesRows] = await Promise.all([
@@ -502,29 +491,23 @@ export async function getWorkflowEngineIntrospection(
       ))
       .orderBy(desc(workflowJobExecutions.id))
       .limit(100),
-    db.select({ row: workflowJobs, instanceTitle: workflowInstances.title })
-      .from(workflowJobs)
-      .leftJoin(workflowInstances, eq(workflowJobs.instanceId, workflowInstances.id))
-      .leftJoin(users, eq(workflowInstances.initiatorId, users.id))
-      .where(buildWhere(
-        outboxTenant,
-        eq(workflowJobs.jobType, 'webhook_delivery'),
-        or(isNull(workflowJobs.instanceId), instanceBaseWhere ?? sql`true`)!,
-        notInArray(workflowJobs.status, ['succeeded']),
-      ))
-      .orderBy(desc(workflowJobs.id))
+    db.select({ delivery: eventConsumerDeliveries, event: eventOutbox })
+      .from(eventConsumerDeliveries)
+      .innerJoin(eventOutbox, eq(eventOutbox.id, eventConsumerDeliveries.eventId))
+      .where(buildWhere(outboxScopeWhere, notInArray(eventConsumerDeliveries.status, ['succeeded', 'skipped'])))
+      .orderBy(desc(eventConsumerDeliveries.id))
       .limit(100),
     db.select({
-      total1h: sql<number>`count(*) filter (where ${gte(workflowJobs.createdAt, since1h)})`.mapWith(Number),
-      success1h: sql<number>`count(*) filter (where ${and(eq(workflowJobs.status, 'succeeded'), gte(workflowJobs.createdAt, since1h))})`.mapWith(Number),
-      failed1h: sql<number>`count(*) filter (where ${and(inArray(workflowJobs.status, ['failed', 'dead']), gte(workflowJobs.createdAt, since1h))})`.mapWith(Number),
-      total24h: sql<number>`count(*) filter (where ${gte(workflowJobs.createdAt, since24h)})`.mapWith(Number),
-      success24h: sql<number>`count(*) filter (where ${and(eq(workflowJobs.status, 'succeeded'), gte(workflowJobs.createdAt, since24h))})`.mapWith(Number),
-      failed24h: sql<number>`count(*) filter (where ${and(inArray(workflowJobs.status, ['failed', 'dead']), gte(workflowJobs.createdAt, since24h))})`.mapWith(Number),
-      totalPrev24h: sql<number>`count(*) filter (where ${and(gte(workflowJobs.createdAt, since48h), lt(workflowJobs.createdAt, since24h))})`.mapWith(Number),
-      successPrev24h: sql<number>`count(*) filter (where ${and(eq(workflowJobs.status, 'succeeded'), gte(workflowJobs.createdAt, since48h), lt(workflowJobs.createdAt, since24h))})`.mapWith(Number),
-      failedPrev24h: sql<number>`count(*) filter (where ${and(inArray(workflowJobs.status, ['failed', 'dead']), gte(workflowJobs.createdAt, since48h), lt(workflowJobs.createdAt, since24h))})`.mapWith(Number),
-      pendingRetry: sql<number>`count(*) filter (where ${inArray(workflowJobs.status, ['pending', 'running'])})`.mapWith(Number),
+      total1h: sql<number>`count(*) filter (where ${gte(eventOutbox.occurredAt, since1h)})`.mapWith(Number),
+      success1h: sql<number>`count(*) filter (where ${and(inArray(eventConsumerDeliveries.status, ['succeeded', 'skipped']), gte(eventOutbox.occurredAt, since1h))})`.mapWith(Number),
+      failed1h: sql<number>`count(*) filter (where ${and(eq(eventConsumerDeliveries.status, 'dead'), gte(eventOutbox.occurredAt, since1h))})`.mapWith(Number),
+      total24h: sql<number>`count(*) filter (where ${gte(eventOutbox.occurredAt, since24h)})`.mapWith(Number),
+      success24h: sql<number>`count(*) filter (where ${and(inArray(eventConsumerDeliveries.status, ['succeeded', 'skipped']), gte(eventOutbox.occurredAt, since24h))})`.mapWith(Number),
+      failed24h: sql<number>`count(*) filter (where ${and(eq(eventConsumerDeliveries.status, 'dead'), gte(eventOutbox.occurredAt, since24h))})`.mapWith(Number),
+      totalPrev24h: sql<number>`count(*) filter (where ${and(gte(eventOutbox.occurredAt, since48h), lt(eventOutbox.occurredAt, since24h))})`.mapWith(Number),
+      successPrev24h: sql<number>`count(*) filter (where ${and(inArray(eventConsumerDeliveries.status, ['succeeded', 'skipped']), gte(eventOutbox.occurredAt, since48h), lt(eventOutbox.occurredAt, since24h))})`.mapWith(Number),
+      failedPrev24h: sql<number>`count(*) filter (where ${and(eq(eventConsumerDeliveries.status, 'dead'), gte(eventOutbox.occurredAt, since48h), lt(eventOutbox.occurredAt, since24h))})`.mapWith(Number),
+      pendingRetry: sql<number>`count(*) filter (where ${inArray(eventConsumerDeliveries.status, ['pending', 'running', 'retrying'])})`.mapWith(Number),
       avgLatencyMs: sql<number | null>`avg(${evLatency}) filter (where ${evDone24h})`.mapWith(Number),
       p95LatencyMs: sql<number | null>`percentile_cont(0.95) within group (order by ${evLatency}) filter (where ${evDone24h})`.mapWith(Number),
       p99LatencyMs: sql<number | null>`percentile_cont(0.99) within group (order by ${evLatency}) filter (where ${evDone24h})`.mapWith(Number),
@@ -539,9 +522,8 @@ export async function getWorkflowEngineIntrospection(
       apdexTolerating: sql<number>`count(*) filter (where ${evDone24h} and ${evLatency} > ${apdexT} and ${evLatency} <= ${apdexT * 4})`.mapWith(Number),
       apdexFrustrated: sql<number>`count(*) filter (where ${evDone24h} and ${evLatency} > ${apdexT * 4})`.mapWith(Number),
     })
-      .from(workflowJobs)
-      .leftJoin(workflowInstances, eq(workflowJobs.instanceId, workflowInstances.id))
-      .leftJoin(users, eq(workflowInstances.initiatorId, users.id))
+      .from(eventConsumerDeliveries)
+      .innerJoin(eventOutbox, eq(eventOutbox.id, eventConsumerDeliveries.eventId))
       .where(outboxScopeWhere),
     jobExecutionsWithJob({
       total24h: sql<number>`count(*) filter (where ${gte(workflowJobExecutions.createdAt, since24h)})`.mapWith(Number),
@@ -576,11 +558,10 @@ export async function getWorkflowEngineIntrospection(
       .from(workflowInstances)
       .leftJoin(users, eq(workflowInstances.initiatorId, users.id))
       .where(instanceBaseWhere),
-    db.select({ createdAt: workflowJobs.createdAt, status: workflowJobs.status })
-      .from(workflowJobs)
-      .leftJoin(workflowInstances, eq(workflowJobs.instanceId, workflowInstances.id))
-      .leftJoin(users, eq(workflowInstances.initiatorId, users.id))
-      .where(buildWhere(outboxScopeWhere, gte(workflowJobs.createdAt, since24h)))
+    db.select({ createdAt: eventOutbox.occurredAt, status: eventConsumerDeliveries.status })
+      .from(eventConsumerDeliveries)
+      .innerJoin(eventOutbox, eq(eventOutbox.id, eventConsumerDeliveries.eventId))
+      .where(buildWhere(outboxScopeWhere, gte(eventOutbox.occurredAt, since24h)))
       .limit(SERIES_ROW_LIMIT),
     db.select({ createdAt: workflowInstances.createdAt, updatedAt: workflowInstances.updatedAt, status: workflowInstances.status })
       .from(workflowInstances)
@@ -634,7 +615,7 @@ export async function getWorkflowEngineIntrospection(
     return queues.map((queue) => mapRuntimeTask({ ...row, queue }, now));
   });
   const triggerExecutions = triggerRows.map((row) => mapTriggerExecution(row));
-  const outboxEvents = outboxRows.map(({ row, instanceTitle }) => mapOutboxEvent({ ...row, instanceTitle }, now));
+  const outboxEvents = outboxRows.map((row) => mapOutboxEvent(row, now));
   const eventBus = getWorkflowEventBusIntrospection();
   const scheduler = getSchedulerIntrospection();
 
