@@ -2,10 +2,11 @@ import { and, asc, eq, isNull } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { isOrphanedDriveSpace, type HandoffDriveSpaceInput } from '@zenith/shared/drive';
 import { db } from '../../db';
+import type { DbTransaction } from '../../db/types';
 import { driveNodes, driveSpaces, roles, userRoles, users } from '../../db/schema';
 import { requireRow } from '../../lib/db-assert';
 import { exactTenantCondition } from '../../lib/tenant';
-import { notify } from '../messaging/notification-outbox.service';
+import { notifyWithin } from '../messaging/notification-outbox.service';
 import { getDriveSettings } from './drive-settings.service';
 import { ensureDriveSpaceExists, getDriveSpace, orphanDriveSpaceCondition } from './drive-spaces.service';
 import { assertSubtreeNotLockedByOthers, existingNamesIn, pickFreeName, transferDriveSubtree } from './drive-nodes.service';
@@ -56,19 +57,24 @@ export async function handoffDriveSpace(id: number, input: HandoffDriveSpaceInpu
   return getDriveSpace(targetId);
 }
 
-export async function reportOrphanDriveSpaces(): Promise<void> {
-  const spaces = await db.select({ id: driveSpaces.id, name: driveSpaces.name, tenantId: driveSpaces.tenantId }).from(driveSpaces).where(orphanDriveSpaceCondition());
-  if (!spaces.length) return;
-  const admins = await db.select({ id: users.id }).from(users).innerJoin(userRoles, eq(userRoles.userId, users.id)).innerJoin(roles, eq(roles.id, userRoles.roleId))
+export async function reportOrphanDriveSpacesWithin(tx: DbTransaction): Promise<number> {
+  const spaces = await tx.select({ id: driveSpaces.id, name: driveSpaces.name, tenantId: driveSpaces.tenantId }).from(driveSpaces).where(orphanDriveSpaceCondition());
+  if (!spaces.length) return 0;
+  const admins = await tx.select({ id: users.id }).from(users).innerJoin(userRoles, eq(userRoles.userId, users.id)).innerJoin(roles, eq(roles.id, userRoles.roleId))
     .where(and(eq(roles.code, 'super_admin'), eq(roles.status, 'enabled'), eq(users.status, 'enabled'), isNull(users.tenantId)));
-  if (!admins.length) return;
+  if (!admins.length) return 0;
   for (const space of spaces) {
-    await notify('drive.space.orphaned', {
+    await notifyWithin(tx, 'drive.space.orphaned', {
       recipients: admins.map((admin) => ({ type: 'user', id: admin.id })),
       vars: { spaceId: space.id, spaceName: space.name }, tenantId: space.tenantId,
       link: '/drive/admin/spaces', dedupeKey: `drive-orphan:${space.id}`,
     });
   }
+  return spaces.length;
+}
+
+export async function reportOrphanDriveSpaces(): Promise<void> {
+  await db.transaction(async (tx) => { await reportOrphanDriveSpacesWithin(tx); });
 }
 
 export function registerDriveOwnershipSubscriber(): void {

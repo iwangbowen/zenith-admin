@@ -18,7 +18,9 @@ async function handle({ payload }: WorkflowJobContext): Promise<WorkflowJobResul
   }
   const [instance] = await db.select({ status: workflowInstances.status }).from(workflowInstances).where(eq(workflowInstances.id, event.instanceId)).limit(1);
   const [task] = await db.select({ activationId: workflowTasks.activationId }).from(workflowTasks).where(eq(workflowTasks.id, event.task.id)).limit(1);
-  if (!instance || ['cancelled', 'withdrawn', 'returned'].includes(instance.status) || !task || task.activationId !== event.task.activationId) {
+  const terminalBeforeDelivery = ['cancelled', 'withdrawn'].includes(instance?.status ?? '')
+    || (instance?.status === 'returned' && event.type !== 'task.rejected');
+  if (!instance || terminalBeforeDelivery || !task || task.activationId !== event.task.activationId) {
     throw new WorkflowJobSkip('Node listener source activation is no longer applicable');
   }
   const listenerUrl = String(listener.url);

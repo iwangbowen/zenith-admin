@@ -1,6 +1,8 @@
 import type { PaymentEvent } from '../../lib/payment-event-bus';
 import { registerEventConsumer } from '../../lib/domain-events';
 import { formatDateTime } from '../../lib/datetime';
+import { rememberTransactionEffect } from '../../lib/transaction-effects';
+import { sendToUser } from '../../lib/ws-manager';
 import { settlePaymentEventWithin } from './payment-local-settlement.service';
 import { preparePaymentOpenWebhookWithin } from './payment-open-webhook-bridge.service';
 import { prepareAutomaticSharingWithin } from './payment-sharing.service';
@@ -12,12 +14,30 @@ function readPaymentEvent(fact: { eventId: string; occurredAt: Date; payload: Re
   return { ...payload, eventId: fact.eventId, occurredAt: formatDateTime(fact.occurredAt) };
 }
 
+function paymentWsMessage(event: PaymentEvent): Parameters<typeof sendToUser>[1] {
+  switch (event.type) {
+    case 'payment.succeeded': return { type: 'payment:success', payload: { orderNo: event.orderNo, bizType: event.bizType, bizId: event.bizId, amount: event.amount } };
+    case 'payment.closed': return { type: 'payment:closed', payload: { orderNo: event.orderNo, bizType: event.bizType, bizId: event.bizId } };
+    case 'payment.failed': return { type: 'payment:failed', payload: { orderNo: event.orderNo, bizType: event.bizType, bizId: event.bizId } };
+    case 'refund.succeeded': return { type: 'payment:refunded', payload: { orderNo: event.orderNo, refundNo: event.refundNo, refundAmount: event.refundAmount ?? 0 } };
+    case 'refund.failed': return { type: 'payment:refund-failed', payload: { orderNo: event.orderNo, refundNo: event.refundNo, refundAmount: event.refundAmount ?? 0 } };
+  }
+}
+
 /** Payment facts have one local settlement consistency unit; optional handoffs follow it. */
 export function registerPaymentEventConsumers(): void {
   if (registered) return;
   registered = true;
   registerEventConsumer({ key: 'payment.local-settlement', matches: (event) => event.domain === 'payment',
     handle: async (tx, fact) => { await settlePaymentEventWithin(tx, readPaymentEvent(fact)); return { outcome: 'completed' }; },
+  });
+  registerEventConsumer({ key: 'payment.ws', after: ['payment.local-settlement'], matches: (event) => event.domain === 'payment',
+    handle: async (tx, fact) => {
+      const event = readPaymentEvent(fact);
+      if (!event.userId) return { outcome: 'skipped', reason: 'no online recipient' };
+      rememberTransactionEffect(tx, `payment-ws:${event.eventId}:${event.userId}`, async () => { sendToUser(event.userId!, paymentWsMessage(event)); });
+      return { outcome: 'completed' };
+    },
   });
   registerEventConsumer({ key: 'payment.open-webhook', after: ['payment.local-settlement'], matches: (event) => event.domain === 'payment',
     handle: async (tx, fact) => {
@@ -32,3 +52,5 @@ export function registerPaymentEventConsumers(): void {
     },
   });
 }
+
+export function __resetPaymentEventConsumersForTest(): void { registered = false; }
