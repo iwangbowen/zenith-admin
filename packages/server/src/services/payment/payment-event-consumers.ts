@@ -19,8 +19,8 @@ function paymentWsMessage(event: PaymentEvent): Parameters<typeof sendToUser>[1]
     case 'payment.succeeded': return { type: 'payment:success', payload: { orderNo: event.orderNo, bizType: event.bizType, bizId: event.bizId, amount: event.amount } };
     case 'payment.closed': return { type: 'payment:closed', payload: { orderNo: event.orderNo, bizType: event.bizType, bizId: event.bizId } };
     case 'payment.failed': return { type: 'payment:failed', payload: { orderNo: event.orderNo, bizType: event.bizType, bizId: event.bizId } };
-    case 'refund.succeeded': return { type: 'payment:refunded', payload: { orderNo: event.orderNo, refundNo: event.refundNo, refundAmount: event.refundAmount ?? 0 } };
-    case 'refund.failed': return { type: 'payment:refund-failed', payload: { orderNo: event.orderNo, refundNo: event.refundNo, refundAmount: event.refundAmount ?? 0 } };
+    case 'refund.succeeded': return { type: 'payment:refunded', payload: { orderNo: event.orderNo, refundNo: event.refundNo!, refundAmount: event.refundAmount ?? 0 } };
+    case 'refund.failed': return { type: 'payment:refund-failed', payload: { orderNo: event.orderNo, refundNo: event.refundNo!, refundAmount: event.refundAmount ?? 0 } };
   }
 }
 

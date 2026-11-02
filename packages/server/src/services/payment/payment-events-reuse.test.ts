@@ -6,7 +6,6 @@ vi.mock('./payment-events.service', () => ({ getPaymentEventHealth: mocks.health
 vi.mock('../../lib/context', () => ({ currentUser: mocks.user }));
 vi.mock('../../lib/tenant', () => ({ getTenantScopeId: mocks.scope, tenantCondition: vi.fn() }));
 vi.mock('./payment.service', () => ({ buildAdapterContext: vi.fn(), handleNotify: vi.fn(), mapOrder: vi.fn(), loadOrderConfig: vi.fn() }));
-vi.mock('./payment-outbox.service', () => ({ processEvent: vi.fn() }));
 import { getPaymentAlertMetrics } from './payment-alert-metrics.service';
 import { getPaymentHealth } from './payment-ops.service';
 

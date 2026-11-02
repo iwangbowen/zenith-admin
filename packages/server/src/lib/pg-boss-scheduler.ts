@@ -728,12 +728,6 @@ handlerRegistry.set('paymentReconciliation', async () => {
   return `支付对账完成：核对 ${r.checked} 笔，纠正 ${r.fixed} 笔`;
 });
 
-handlerRegistry.set('dispatchPaymentEvents', async () => {
-  const { dispatchPendingPaymentEvents } = await import('../services/payment/payment-outbox.service');
-  const count = await dispatchPendingPaymentEvents();
-  return `补投支付事件 ${count} 条`;
-});
-
 handlerRegistry.set('dispatchNotifications', async () => {
   const { dispatchPendingNotifications } = await import('../services/messaging/notification-outbox.service');
   const count = await dispatchPendingNotifications();

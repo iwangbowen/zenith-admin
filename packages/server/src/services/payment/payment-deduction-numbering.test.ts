@@ -8,7 +8,7 @@ vi.mock('../../lib/context', () => ({ currentUser: () => ({ userId: 9, tenantId:
 vi.mock('../../lib/payment', () => ({ getAdapter: () => ({ deductContract: mocks.deduct }) }));
 vi.mock('./payment-capability-evaluator', () => ({ assertEffectivePaymentOperation: vi.fn() }));
 vi.mock('./payment-apps.service', () => ({ resolveApplicationChannelConfig: async () => ({ appId: 2, channelConfigId: 3 }) }));
-vi.mock('./payment-outbox.service', () => ({ recordEvent: async () => null, processEvent: vi.fn() }));
+vi.mock('./payment-outbox.service', () => ({ recordEvent: async () => null }));
 vi.mock('./payment.service', () => ({ buildAdapterContext: () => ({}), markOrderPaid: vi.fn(), syncOrderStatus: mocks.sync }));
 vi.mock('../platform/numbering-runtime', () => ({ allocateBusinessNumber: mocks.allocate, attachBusinessNumber: mocks.attach }));
 

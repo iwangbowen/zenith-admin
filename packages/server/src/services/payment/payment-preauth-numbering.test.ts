@@ -9,7 +9,7 @@ vi.mock('../../lib/payment', () => ({ getAdapter: () => ({ preauthCapture: mocks
 vi.mock('./payment-capability-evaluator', () => ({ assertEffectivePaymentOperation: vi.fn() }));
 vi.mock('./payment-apps.service', () => ({ resolveApplicationChannelConfig: vi.fn() }));
 vi.mock('./payment-journal.service', () => ({ postSystemJournalWithin: vi.fn() }));
-vi.mock('./payment-outbox.service', () => ({ recordEvent: async () => null, processEvent: vi.fn() }));
+vi.mock('./payment-outbox.service', () => ({ recordEvent: async () => null }));
 vi.mock('./payment.service', () => ({ buildAdapterContext: () => ({}), markOrderPaid: vi.fn() }));
 vi.mock('../platform/numbering-runtime', () => ({ allocateBusinessNumber: mocks.allocate, attachBusinessNumber: mocks.attach }));
 

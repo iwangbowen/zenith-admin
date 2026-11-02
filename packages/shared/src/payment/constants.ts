@@ -472,26 +472,30 @@ export const PAYMENT_APP_ENVIRONMENTS = ['production', 'sandbox'] as const;
 
 export type PaymentAppEnvironment = typeof PAYMENT_APP_ENVIRONMENTS[number];
 
-export const PAYMENT_OUTBOX_EVENT_STATUSES = ['pending', 'done', 'failed'] as const;
+export const PAYMENT_OUTBOX_EVENT_STATUSES = ['pending', 'running', 'retrying', 'succeeded', 'skipped', 'dead'] as const;
 
 export type PaymentOutboxEventStatus = typeof PAYMENT_OUTBOX_EVENT_STATUSES[number];
 
 export const PAYMENT_OUTBOX_EVENT_STATUS_LABELS: Record<PaymentOutboxEventStatus, string> = {
   pending: '待处理',
-  done: '已完成',
-  failed: '失败',
+  running: '处理中',
+  retrying: '等待重试',
+  succeeded: '已完成',
+  skipped: '已跳过',
+  dead: '死信',
 };
 
 export const PAYMENT_OUTBOX_EVENT_STATUS_OPTIONS: Array<{ value: PaymentOutboxEventStatus; label: string }> =
   createLabelOptions(PAYMENT_OUTBOX_EVENT_STATUSES, PAYMENT_OUTBOX_EVENT_STATUS_LABELS);
 
-export const PAYMENT_EVENT_ATTEMPT_STATUSES = ['processing', 'succeeded', 'failed'] as const;
+export const PAYMENT_EVENT_ATTEMPT_STATUSES = ['running', 'succeeded', 'skipped', 'failed'] as const;
 
 export type PaymentEventAttemptStatus = typeof PAYMENT_EVENT_ATTEMPT_STATUSES[number];
 
 export const PAYMENT_EVENT_ATTEMPT_STATUS_LABELS: Record<PaymentEventAttemptStatus, string> = {
-  processing: '处理中',
+  running: '处理中',
   succeeded: '成功',
+  skipped: '已跳过',
   failed: '失败',
 };
 

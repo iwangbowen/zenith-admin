@@ -10,7 +10,7 @@ vi.mock('../../db', () => ({ db: { select: mocks.select, insert: mocks.insert, u
 vi.mock('../../lib/context', () => ({ currentUser: () => ({ userId: 9, tenantId: 7 }), currentUserOrNull: () => ({ userId: 9, tenantId: 7 }), setAuditSubjects: mocks.audit, addAuditSubject: mocks.addAudit }));
 vi.mock('../../lib/tenant', () => ({ tenantCondition: () => undefined, exactTenantCondition: () => undefined, inheritedTenantCondition: () => undefined, requireTenantScopeId: () => 7 }));
 vi.mock('../platform/relations/events.service', () => ({ recordDomainEvent: mocks.event }));
-vi.mock('./payment-outbox.service', () => ({ recordEvent: async () => null, processEvent: async () => undefined }));
+vi.mock('./payment-outbox.service', () => ({ recordEvent: async () => null }));
 vi.mock('./payment.service', () => ({ refund: mocks.refund }));
 
 import { paymentDisputes, paymentDisputeReplies, paymentOrders, paymentRefunds, paymentRiskReviews } from '../../db/schema';

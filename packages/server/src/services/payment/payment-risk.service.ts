@@ -21,10 +21,9 @@ import type { DbTransaction } from '../../db/types';
 import { recordDomainEvent } from '../platform/relations/events.service';
 import { requireTenantScopeId, tenantCondition, exactTenantCondition, inheritedTenantCondition } from '../../lib/tenant';
 import { buildWhere, dateRangeConditions, keywordCondition, nullableEq } from '../../lib/where-helpers';
-import logger from '../../lib/logger';
 import { pageOffset } from '../../lib/pagination';
 import { formatDateTime, formatNullableDateTime, formatTimestamps, startOfToday } from '../../lib/datetime';
-import { recordEvent, processEvent } from './payment-outbox.service';
+import { recordEvent } from './payment-outbox.service';
 import { buildPaymentEventPayload } from './payment-events';
 import { checkRuleListsBatch, type RuleListBatchHit } from '../platform/rules-lists.service';
 import { decide } from '../platform/rules-runtime.service';
@@ -572,7 +571,6 @@ export async function rejectRiskReview(id: number, remark?: string): Promise<Pay
         exactTenantCondition(paymentOrders.tenantId, row.tenantId),
       ))
       .limit(1);
-    let eventId: number | null = null;
     if (order && (order.status === 'pending' || order.status === 'paying')) {
       const closed = await tx
         .update(paymentOrders)
@@ -580,7 +578,7 @@ export async function rejectRiskReview(id: number, remark?: string): Promise<Pay
         .where(and(eq(paymentOrders.id, order.id), inArray(paymentOrders.status, ['pending', 'paying'])))
         .returning({ id: paymentOrders.id });
       if (closed.length > 0) {
-        eventId = await recordEvent(tx, {
+        await recordEvent(tx, {
           type: 'payment.closed',
           orderNo: order.orderNo,
           tenantId: order.tenantId,
@@ -589,12 +587,7 @@ export async function rejectRiskReview(id: number, remark?: string): Promise<Pay
       }
     }
     await recordRiskReviewEvent(tx, 'payment.risk.review.decided', updated, order?.id);
-    return { updated, eventId };
+    return updated;
   });
-  if (result.eventId != null) {
-    setImmediate(() => {
-      void processEvent(result.eventId!).catch((err) => logger.error('[payment-risk] process event failed', { eventId: result.eventId, err }));
-    });
-  }
-  return mapRiskReview(result.updated);
+  return mapRiskReview(result);
 }

@@ -28,7 +28,7 @@ import { buildWhere, dateRangeConditions, keywordCondition, withPagination } fro
 import { isPgUniqueViolation } from '../../lib/db-errors';
 import { getAdapter } from '../../lib/payment';
 import { paymentEventBus } from '../../lib/payment-event-bus';
-import { recordEvent, processEvent } from './payment-outbox.service';
+import { recordEvent } from './payment-outbox.service';
 import { buildPaymentEventPayload } from './payment-events';
 import { buildAdapterContext, markOrderPaid, syncOrderStatus } from './payment.service';
 import { resolveApplicationChannelConfig } from './payment-apps.service';
@@ -616,7 +616,7 @@ async function recordDeductFailure(row: PaymentContractRow, plan: PaymentDeductP
 
 /** 扣款失败订单落终态 + 可靠发 payment.failed 事件（与 createPayment 失败分支同模式） */
 async function markDeductOrderFailed(order: PaymentOrderRow, reason: string): Promise<void> {
-  const eventId = await db.transaction(async (tx) => {
+  await db.transaction(async (tx) => {
     const [failed] = await tx.update(paymentOrders).set({ status: 'failed', errorMessage: reason.slice(0, 500), version: sql`${paymentOrders.version} + 1` })
       .where(and(eq(paymentOrders.id, order.id), eq(paymentOrders.version, order.version), inArray(paymentOrders.status, ['pending', 'paying', 'unknown']))).returning();
     if (!failed) return null;
@@ -627,7 +627,6 @@ async function markDeductOrderFailed(order: PaymentOrderRow, reason: string): Pr
       payload: buildPaymentEventPayload('payment.failed', failed),
     });
   });
-  if (eventId != null) setImmediate(() => { void processEvent(eventId).catch((err) => logger.error('[payment-contract] process failure event failed', { eventId, err })); });
 }
 
 /**

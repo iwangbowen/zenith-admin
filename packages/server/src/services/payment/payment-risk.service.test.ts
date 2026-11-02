@@ -24,7 +24,6 @@ vi.mock('../../lib/context', () => ({
 
 vi.mock('./payment-outbox.service', () => ({
   recordEvent: vi.fn(),
-  processEvent: vi.fn(),
 }));
 
 vi.mock('../platform/rules-lists.service', () => ({

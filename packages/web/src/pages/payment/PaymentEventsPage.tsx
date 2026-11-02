@@ -16,8 +16,8 @@ import { enumValueOf } from '@zenith/shared/core';
 import { useListPage } from '@/hooks/useListPage';
 import { useListDeepLink } from '@/hooks/useListDeepLink';
 
-const EVENT_STATUS_COLOR = { pending: 'blue', done: 'green', failed: 'red' } as const satisfies Record<PaymentOutboxEvent['status'], string>;
-const ATTEMPT_STATUS_COLOR = { processing: 'blue', succeeded: 'green', failed: 'red' } as const satisfies Record<PaymentEventAttempt['status'], string>;
+const EVENT_STATUS_COLOR = { pending: 'blue', running: 'cyan', retrying: 'orange', succeeded: 'green', skipped: 'grey', dead: 'red' } as const satisfies Record<PaymentOutboxEvent['status'], string>;
+const ATTEMPT_STATUS_COLOR = { running: 'blue', succeeded: 'green', skipped: 'grey', failed: 'red' } as const satisfies Record<PaymentEventAttempt['status'], string>;
 const HEALTH_LABELS = [
   ['outboxPending', 'Outbox 积压'],
   ['outboxFailed', 'Outbox 死信'],
@@ -32,13 +32,8 @@ interface SearchParams { keyword: string; status?: string; type?: string; }
 const defaultSearch: SearchParams = { keyword: '', status: undefined, type: undefined };
 
 /** payload 为 JSON 字符串时美化缩进，解析失败原样展示 */
-function formatPayload(raw: string | null | undefined): string {
-  if (!raw) return '（无）';
-  try {
-    return JSON.stringify(JSON.parse(raw), null, 2);
-  } catch {
-    return raw;
-  }
+function formatPayload(raw: Record<string, unknown>): string {
+  return JSON.stringify(raw, null, 2);
 }
 
 const attemptColumns: ColumnProps<PaymentEventAttempt>[] = [
@@ -54,7 +49,7 @@ function PaymentEventExpandedDetail({ event }: Readonly<{ event: PaymentOutboxEv
   const attemptsQuery = usePaymentEventAttempts(event.id);
   return (
     <PaymentExpandedDetail
-      meta={`事件 ID：${event.id} · 当前轮次：${event.generation} · 手动重投：${event.redispatchCount} 次`}
+      meta={`事件：${event.eventId} · 消费者：${event.consumerKey} · 当前轮次：${event.generation}`}
       sections={[
         { title: '当前错误', visible: Boolean(event.lastError), content: <Typography.Text type="danger" style={{ wordBreak: 'break-all' }}>{event.lastError}</Typography.Text> },
         {
@@ -76,6 +71,7 @@ function PaymentEventExpandedDetail({ event }: Readonly<{ event: PaymentOutboxEv
             </Spin>
           ),
         },
+        { title: '消费者结果', visible: Boolean(event.result), content: <JsonBlock value={event.result ?? {}} /> },
         { title: '事件载荷', content: <JsonBlock value={formatPayload(event.payload)} /> },
       ]}
     />
@@ -106,13 +102,7 @@ export default function PaymentEventsPage() {
   function handleRedispatch(record: PaymentOutboxEvent) {
     redispatchMutation.mutate({ params: { id: record.id } }, {
       onSuccess: (event) => {
-        if (event.status === 'done') {
-          Toast.success('事件重投完成');
-          return;
-        }
-        Toast.warning(event.lastError
-          ? `事件已重新入队，本次投递仍未完成：${event.lastError}`
-          : '事件已重新入队，等待后台继续投递');
+        Toast.success(event.status === 'pending' ? '消费者已重新入队' : '消费者重试已提交');
       },
     });
   }
@@ -121,16 +111,17 @@ export default function PaymentEventsPage() {
     // 订单号置于首列承载展开箭头；内部事件 ID 移入展开详情
     copyableNoColumn('订单号', 'orderNo', { width: 300 }),
     { title: '事件类型', dataIndex: 'type', width: 180, render: renderEllipsis },
+    { title: '消费者', dataIndex: 'consumerKey', width: 220, render: renderEllipsis },
     { title: '当前轮次', dataIndex: 'generation', width: 90, align: 'right' },
     { title: '本轮次数', dataIndex: 'attempts', width: 90, align: 'right' },
     { title: '当前错误', dataIndex: 'lastError', minWidth: 260, render: renderEllipsis },
     dateTimeColumn('创建时间', 'createdAt'),
-    dateTimeColumn('处理时间', 'processedAt'),
+    dateTimeColumn('完成时间', 'finishedAt'),
     { title: '状态', dataIndex: 'status', width: 90, fixed: 'right', render: (v: PaymentOutboxEvent['status']) => <Tag color={EVENT_STATUS_COLOR[v]}>{PAYMENT_OUTBOX_EVENT_STATUS_LABELS[v]}</Tag> },
     createOperationColumn<PaymentOutboxEvent>({
       width: 100,
       actions: (r) => [
-        ...(r.status !== 'done' && hasPermission('payment:ops:manage') ? [{
+        ...((r.status === 'dead' || r.status === 'retrying') && hasPermission('payment:ops:manage') ? [{
           key: 'redispatch',
           label: '重投',
           loading: redispatchingId === r.id,

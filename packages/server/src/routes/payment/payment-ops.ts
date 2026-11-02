@@ -1,6 +1,6 @@
 import { OpenAPIHono } from '@hono/zod-openapi';
 import { paymentOpsContract } from '@zenith/shared/payment';
-import { setAuditAfterData, setAuditBeforeData } from '../../middleware/guard';
+import { setAuditBeforeData } from '../../middleware/guard';
 import { defineContractRoute } from '../../lib/contract-route';
 import { okBody, validationHook } from '../../lib/openapi-schemas';
 import { getClientIp } from '../../lib/request-helpers';
@@ -25,8 +25,7 @@ const redispatchRoute = defineContractRoute(paymentOpsContract.redispatchEvent, 
     const { id } = c.req.valid('param');
     setAuditBeforeData(c, await getPaymentEvent(id));
     const event = await redispatchEvent(id);
-    setAuditAfterData(c, event);
-    return c.json(okBody(event, '已重投'), 200);
+    return c.json(okBody(event, '已提交消费者重试'), 200);
   },
 });
 

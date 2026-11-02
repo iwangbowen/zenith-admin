@@ -79,17 +79,17 @@ const reconHandlers = [
 ];
 // ─── 支付事件（Outbox / 运营排障）────────────────────────────────────────────
 const outboxEvents: PaymentOutboxEvent[] = [
-  { id: 1, type: 'payment.succeeded', orderNo: 'PAY1700000000001', status: 'done', attempts: 1, generation: 1, redispatchCount: 0, lastError: null, createdAt: SEED, processedAt: SEED },
-  { id: 2, type: 'refund.succeeded', orderNo: 'PAY1700000000003', status: 'done', attempts: 1, generation: 1, redispatchCount: 0, lastError: null, createdAt: SEED, processedAt: SEED },
-  { id: 3, type: 'payment.succeeded', orderNo: 'PAY1700000000099', status: 'failed', attempts: 3, generation: 1, redispatchCount: 0, lastError: '业务订阅者处理超时', createdAt: SEED, processedAt: SEED },
+  { id: 1, eventId: '00000000-0000-4000-8000-000000000001', type: 'payment.succeeded', orderNo: 'PAY1700000000001', consumerKey: 'payment.local-settlement', status: 'succeeded', attempts: 1, maxAttempts: 5, generation: 1, payload: {}, result: { outcome: 'completed' }, lastError: null, createdAt: SEED, runAt: SEED, finishedAt: SEED },
+  { id: 2, eventId: '00000000-0000-4000-8000-000000000002', type: 'refund.succeeded', orderNo: 'PAY1700000000003', consumerKey: 'payment.local-settlement', status: 'succeeded', attempts: 1, maxAttempts: 5, generation: 1, payload: {}, result: { outcome: 'completed' }, lastError: null, createdAt: SEED, runAt: SEED, finishedAt: SEED },
+  { id: 3, eventId: '00000000-0000-4000-8000-000000000003', type: 'payment.succeeded', orderNo: 'PAY1700000000099', consumerKey: 'payment.local-settlement', status: 'dead', attempts: 3, maxAttempts: 3, generation: 3, payload: {}, result: null, lastError: '业务订阅者处理超时', createdAt: SEED, runAt: SEED, finishedAt: SEED },
 ];
 let nextEventId = 4;
 const outboxAttempts: PaymentEventAttempt[] = [
   { id: 1, eventId: 1, generation: 1, attemptNo: 1, status: 'succeeded', errorMessage: null, startedAt: SEED, finishedAt: SEED },
   { id: 2, eventId: 2, generation: 1, attemptNo: 1, status: 'succeeded', errorMessage: null, startedAt: SEED, finishedAt: SEED },
   { id: 3, eventId: 3, generation: 1, attemptNo: 1, status: 'failed', errorMessage: '业务订阅者处理超时', startedAt: SEED, finishedAt: SEED },
-  { id: 4, eventId: 3, generation: 1, attemptNo: 2, status: 'failed', errorMessage: '业务订阅者处理超时', startedAt: SEED, finishedAt: SEED },
-  { id: 5, eventId: 3, generation: 1, attemptNo: 3, status: 'failed', errorMessage: '业务订阅者处理超时', startedAt: SEED, finishedAt: SEED },
+  { id: 4, eventId: 3, generation: 2, attemptNo: 2, status: 'failed', errorMessage: '业务订阅者处理超时', startedAt: SEED, finishedAt: SEED },
+  { id: 5, eventId: 3, generation: 3, attemptNo: 3, status: 'failed', errorMessage: '业务订阅者处理超时', startedAt: SEED, finishedAt: SEED },
 ];
 let nextEventAttemptId = 6;
 
@@ -98,7 +98,10 @@ type MockPaymentEventType = 'payment.succeeded' | 'refund.succeeded' | 'payment.
 function recordMockOutboxEvent(eventType: MockPaymentEventType, orderNo: string) {
   if (outboxEvents.some((e) => e.type === eventType && e.orderNo === orderNo)) return;
   const now = mockDateTime();
-  const event: PaymentOutboxEvent = { id: nextEventId++, type: eventType, orderNo, status: 'done', attempts: 1, generation: 1, redispatchCount: 0, lastError: null, createdAt: now, processedAt: now };
+  const id = nextEventId++;
+  const event: PaymentOutboxEvent = { id, eventId: `00000000-0000-4000-8000-${String(id).padStart(12, '0')}`, type: eventType, orderNo,
+    consumerKey: 'payment.local-settlement', status: 'succeeded', attempts: 1, maxAttempts: 5, generation: 1,
+    payload: {}, result: { outcome: 'completed' }, lastError: null, createdAt: now, runAt: now, finishedAt: now };
   outboxEvents.unshift(event);
   outboxAttempts.unshift({ id: nextEventAttemptId++, eventId: event.id, generation: 1, attemptNo: 1, status: 'succeeded', errorMessage: null, startedAt: now, finishedAt: now });
 }
@@ -192,13 +195,12 @@ const opsHandlers = [
       const refund = mockPaymentRefunds.find((r) => r.orderNo === e.orderNo && r.status === 'success');
       if (refund) recordMockRefundSucceeded(refund);
     }
-    e.status = 'done';
+    e.status = 'pending';
     e.generation += 1;
-    e.redispatchCount += 1;
-    e.attempts = 1;
+    e.attempts = 0;
     e.lastError = null;
-    e.processedAt = mockDateTime();
-    outboxAttempts.unshift({ id: nextEventAttemptId++, eventId: e.id, generation: e.generation, attemptNo: 1, status: 'succeeded', errorMessage: null, startedAt: e.processedAt, finishedAt: e.processedAt });
+    e.runAt = mockDateTime();
+    e.finishedAt = null;
     return ok(e, '已重投');
   }),
   mock(paymentOpsContract.simulateOrderPaid, ({ params, ok }) => {

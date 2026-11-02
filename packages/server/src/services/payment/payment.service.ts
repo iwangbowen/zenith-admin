@@ -27,7 +27,7 @@ import { PAYMENT_METHOD_CHANNEL, paymentOrderContract, paymentRefundContract, pa
 import type { CreatePaymentInput, CreatePaymentResult, CreateRefundInput, PaymentChannel, PaymentNotifyLog, PaymentOrder, PaymentOrderStatus, PaymentRefund } from '@zenith/shared/payment';
 import { getAdapter } from '../../lib/payment';
 import type { AdapterContext, DecryptedSecrets, NotifyResult } from '../../lib/payment';
-import { recordEvent, processEvent } from './payment-outbox.service';
+import { recordEvent } from './payment-outbox.service';
 import { buildPaymentEventPayload } from './payment-events';
 import { assertMethodEnabled } from './payment-method.service';
 import { assertNoPendingRiskReview, evaluateRisk, recordRiskHit, suspendOrderForReview, type RiskCheckInput } from './payment-risk.service';
@@ -158,15 +158,8 @@ async function buildOrderNoWhere(orderNo: string) {
   return buildWhere(buildWhere(eq(paymentOrders.orderNo, orderNo), tenantCondition(paymentOrders, user)), scope);
 }
 
-function enqueuePaymentEvent(eventId: number | null): void {
-  if (eventId == null) return;
-  setImmediate(() => {
-    void processEvent(eventId).catch((err) => logger.error('[payment] process event failed', { eventId, err: errMessage(err) }));
-  });
-}
-
 async function markOrderClosed(order: PaymentOrderRow): Promise<void> {
-  const eventId = await db.transaction(async (tx) => {
+  await db.transaction(async (tx) => {
     const updated = await tx
       .update(paymentOrders)
       .set({ status: 'closed', version: sql`${paymentOrders.version} + 1` })
@@ -180,7 +173,6 @@ async function markOrderClosed(order: PaymentOrderRow): Promise<void> {
     const finalOrder = updated[0];
     return recordEvent(tx, { type: 'payment.closed', orderNo: finalOrder.orderNo, tenantId: finalOrder.tenantId, payload: buildPaymentEventPayload('payment.closed', finalOrder) });
   });
-  enqueuePaymentEvent(eventId);
 }
 
 async function recomputeOrderRefundState(executor: DbExecutor, orderId: number): Promise<PaymentOrderStatus> {
@@ -216,7 +208,7 @@ async function recomputeOrderRefundState(executor: DbExecutor, orderId: number):
 async function markRefundFailed(order: PaymentOrderRow, refund: Pick<PaymentRefundRow, 'id' | 'refundNo' | 'refundAmount'>, message?: string): Promise<void> {
   const setValues: Partial<PaymentRefundRow> = { status: 'failed' };
   if (message) setValues.errorMessage = message.slice(0, 500);
-  const eventId = await db.transaction(async (tx) => {
+  await db.transaction(async (tx) => {
     const updated = await tx
       .update(paymentRefunds)
       .set({ ...setValues, version: sql`${paymentRefunds.version} + 1` })
@@ -231,7 +223,6 @@ async function markRefundFailed(order: PaymentOrderRow, refund: Pick<PaymentRefu
       payload: buildPaymentEventPayload('refund.failed', order, { refundId: refund.id, refundNo: refund.refundNo, refundAmount: refund.refundAmount }),
     });
   });
-  enqueuePaymentEvent(eventId);
 }
 
 // ─── 映射 ─────────────────────────────────────────────────────────────────────
@@ -608,8 +599,8 @@ export async function markOrderPaid(
   if (paidAmount !== order.amount) {
     throw new HTTPException(409, { message: `支付金额不一致：订单 ${order.amount} 分，渠道 ${paidAmount} 分` });
   }
-  // 原子条件更新 + outbox 事件同事务持久化：确保「标记成功 + 可靠发事件」exactly-once，
-  // 即使进程在发事件前崩溃，cron 也会从 outbox 补投，杜绝漏履约。
+  // 原子条件更新 + 领域事件同事务持久化：确保「标记成功 + 可靠发事件」exactly-once；
+  // 提交后的公共 ledger worker 会持续领取，进程崩溃也不会漏履约。
   const eventId = await db.transaction(async (tx) => {
     const updated = await tx
       .update(paymentOrders)
@@ -633,7 +624,6 @@ export async function markOrderPaid(
     return recordEvent(tx, { type: 'payment.succeeded', orderNo: finalOrder.orderNo, tenantId: finalOrder.tenantId, payload: buildPaymentEventPayload('payment.succeeded', finalOrder) });
   });
   if (eventId == null) return false;
-  enqueuePaymentEvent(eventId);
   return true;
 }
 
@@ -720,7 +710,6 @@ async function markOrderFailedAfterQuery(order: PaymentOrderRow): Promise<Paymen
     });
     return { row: failed, eventId };
   });
-  enqueuePaymentEvent(result.eventId);
   return result.row;
 }
 
@@ -840,7 +829,6 @@ async function settleRefundSuccess(
     return recordEvent(tx, { type: 'refund.succeeded', orderNo: order.orderNo, tenantId: order.tenantId, payload: buildPaymentEventPayload('refund.succeeded', order, { refundId: refund.id, refundNo: refund.refundNo, refundAmount: refund.refundAmount }) });
   });
   if (eventId == null) return false;
-  enqueuePaymentEvent(eventId);
   return true;
 }
 
@@ -1089,7 +1077,7 @@ export async function approveRefund(id: number, remark?: string): Promise<{ refu
 /** 驳回待审批退款单（退款单置失败，订单不变）。 */
 export async function rejectRefund(id: number, remark: string): Promise<void> {
   const { user, refundRow, order } = await loadPendingRefundForApproval(id);
-  const eventId = await db.transaction(async (tx) => {
+  await db.transaction(async (tx) => {
     const updated = await tx
       .update(paymentRefunds)
       .set({ approvalStatus: 'rejected', approverId: user.userId, approvedAt: new Date(), approvalRemark: remark, status: 'failed', errorMessage: '退款审批被驳回', version: sql`${paymentRefunds.version} + 1` })
@@ -1104,7 +1092,6 @@ export async function rejectRefund(id: number, remark: string): Promise<void> {
       payload: buildPaymentEventPayload('refund.failed', order, { refundId: refundRow.id, refundNo: refundRow.refundNo, refundAmount: refundRow.refundAmount }),
     });
   });
-  enqueuePaymentEvent(eventId);
 }
 
 // ─── 异步回调处理 ───────────────────────────────────────────────────────────────

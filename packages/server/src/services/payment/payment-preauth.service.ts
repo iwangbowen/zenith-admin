@@ -11,7 +11,6 @@ import { requireRow } from '../../lib/db-assert';
 import { currentUser, currentUserOrNull } from '../../lib/context';
 import type { PaymentEvent } from '../../lib/payment-event-bus';
 import { getAdapter } from '../../lib/payment';
-import logger from '../../lib/logger';
 import { pageOffset } from '../../lib/pagination';
 import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../../lib/tenant';
 import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
@@ -25,7 +24,7 @@ import type {
 import { resolveApplicationChannelConfig } from './payment-apps.service';
 import { assertEffectivePaymentOperation } from './payment-capability-evaluator';
 import { postSystemJournalWithin } from './payment-journal.service';
-import { recordEvent, processEvent } from './payment-outbox.service';
+import { recordEvent } from './payment-outbox.service';
 import { buildAdapterContext, markOrderPaid } from './payment.service';
 import { allocateBusinessNumber, attachBusinessNumber } from '../platform/numbering-runtime';
 import { pickEntity } from '../../lib/entity-map';
@@ -149,7 +148,7 @@ export async function ensurePreauth(id: number, applicationId: number): Promise<
 }
 
 async function markOrderFailed(order: PaymentOrderRow, reason: string): Promise<void> {
-  const eventId = await db.transaction(async (tx) => {
+  await db.transaction(async (tx) => {
     const [failed] = await tx
       .update(paymentOrders)
       .set({ status: 'failed', errorMessage: reason.slice(0, 500), version: sql`${paymentOrders.version} + 1` })
@@ -164,9 +163,6 @@ async function markOrderFailed(order: PaymentOrderRow, reason: string): Promise<
     };
     return recordEvent(tx, { type: 'payment.failed', orderNo: failed.orderNo, tenantId: failed.tenantId, payload });
   });
-  if (eventId != null) {
-    setImmediate(() => { void processEvent(eventId).catch((err) => logger.error('[payment-preauth] process failure event failed', { eventId, err })); });
-  }
 }
 
 export async function createPreauth(input: CreatePaymentPreauthInput): Promise<PaymentPreauth> {

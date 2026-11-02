@@ -20,7 +20,7 @@ export function usePaymentEventAttempts(id: number | undefined, enabled = true) 
   return useApiQuery(paymentOpsContract.eventAttempts, { params: { id: id ?? 0 } }, { enabled: enabled && id !== undefined });
 }
 
-/** 重投改变事件状态与 outbox 积压指标 */
+/** 重试改变单个消费者状态与公共 Outbox 积压指标 */
 export function useRedispatchPaymentEvent() {
   return useApiMutation(paymentOpsContract.redispatchEvent, {
     invalidate: (qc, _event, variables) => {
