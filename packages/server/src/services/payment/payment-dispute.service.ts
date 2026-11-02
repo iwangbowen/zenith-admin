@@ -298,10 +298,6 @@ export async function completeDisputeRefundWithin(tx: DbTransaction, refundNo: s
 }
 
 /** 退款失败仅追加说明并保持工单开放，允许人工核实后再次发起。 */
-export async function recordDisputeRefundFailure(refundNo: string, tenantId: number | null): Promise<void> {
-  return db.transaction((tx) => recordDisputeRefundFailureWithin(tx, refundNo, tenantId));
-}
-
 export async function recordDisputeRefundFailureWithin(tx: DbTransaction, refundNo: string, tenantId: number | null): Promise<void> {
   const rows = await tx
     .select(disputeEventColumns)

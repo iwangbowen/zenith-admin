@@ -112,7 +112,7 @@
 - UA 解析复用 `ua-parser-js`，IP → 地域复用离线库 `node-ip2region`，无需外部服务。
 - 行为事件、会话、画像在同一事务中写入；错误 Issue 与错误事件写入亦在事务中完成；SDK 事件通过 `eventId` 唯一索引实现重试幂等（`ON CONFLICT DO NOTHING`）。
 - 生产环境建议配置 `REQUEST_BODY_LIMIT=23068672`（22MiB）：可容纳 20MB Source Map 与 JSON 包装开销，同时给匿名采集入口设置全局请求体上限。
-- **服务端权威事件**（`source='server'`）不经 HTTP，由 `paymentEventBus` / `workflowEventBus` 订阅与会员业务 Service 调用点直接写入 `user_events`，与 SDK 采集共用同一张表、同一套治理与查询/漏斗/事件分析能力。详见 [埋点采集 SDK · 服务端权威事件](./tracking#服务端权威事件-source-server)。
+- **服务端权威事件**（`source='server'`）不经 HTTP，由支付持久化领域事件消费者（`payment.analytics`）、`workflowEventBus` 订阅与会员业务 Service 调用点直接写入 `user_events`，与 SDK 采集共用同一张表、同一套治理与查询/漏斗/事件分析能力。详见 [埋点采集 SDK · 服务端权威事件](./tracking#服务端权威事件-source-server)。
 
 ## 数据链路
 
@@ -130,8 +130,8 @@ user_events / analytics_sessions / analytics_user_profiles / error_groups / erro
   ↓ 查询接口实时聚合，定时任务维护 analytics_daily_rollup 与保留清理
 packages/web/src/pages/analytics/*
 
-paymentEventBus / workflowEventBus / 会员 Service 调用点（成功后 best-effort）
-  ↓ analytics-server-event-subscribers.ts（总线 onAny 映射）或直接调用
+支付领域事件消费者 payment.analytics / workflowEventBus / 会员 Service 调用点（成功后 best-effort）
+  ↓ analytics-server-event-subscribers.ts（持久化消费者 / 总线 onAny 映射）或直接调用
 services/analytics/analytics-server-events.service.ts::trackServerEvent()
   ↓ queueMicrotask 异步、治理复用、eventId 幂等（ON CONFLICT DO NOTHING）
 user_events（source='server'，不创建 analytics_sessions）

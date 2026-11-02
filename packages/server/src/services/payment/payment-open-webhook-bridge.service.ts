@@ -2,7 +2,7 @@ import { and, eq } from 'drizzle-orm';
 import type { DbTransaction } from '../../db/types';
 import { exactTenantCondition } from '../../lib/tenant';
 import { oauth2Clients, paymentApps } from '../../db/schema';
-import type { PaymentEvent } from '../../lib/payment-event-bus';
+import type { PaymentEvent } from '../../lib/payment-event';
 import { publishOpenEventInTx } from '../open-platform/open-events.service';
 
 export async function preparePaymentOpenWebhookWithin(tx: DbTransaction, event: PaymentEvent): Promise<number[]> {

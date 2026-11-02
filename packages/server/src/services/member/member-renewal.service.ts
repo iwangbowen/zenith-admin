@@ -140,13 +140,9 @@ export async function deductMyRenewalNow(memberId: number, applicationId: number
 }
 
 /**
- * 支付成功事件触发 VIP 延期（按订单号幂等，防重投重复延期）。
- * 事务级咨询锁串行化并发重投；幂等检查与延期同一事务提交。
+ * 支付本地结算消费者在支付成功时触发 VIP 延期（按订单号幂等，防重投重复延期）。
+ * 事务级咨询锁串行化同一会员的并发续费；幂等检查与延期在消费者事务内同一提交。
  */
-export async function extendVipOnRenewal(event: { bizId: string; orderNo: string; amount: number; appId?: number | null; tenantId?: number | null }): Promise<void> {
-  return db.transaction((tx) => extendVipOnRenewalWithin(tx, event));
-}
-
 export async function extendVipOnRenewalWithin(tx: DbTransaction, event: { bizId: string; orderNo: string; amount: number; appId?: number | null; tenantId?: number | null }): Promise<void> {
   const memberId = Number(event.bizId);
   if (!Number.isSafeInteger(memberId) || memberId <= 0 || event.appId == null || event.tenantId === undefined) {

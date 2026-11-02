@@ -1,7 +1,7 @@
 /** Payment facts are persisted directly in the shared durable domain-event ledger. */
 import { randomUUID } from 'node:crypto';
 import type { DbTransaction } from '../../db/types';
-import type { PaymentEvent, PaymentEventType } from '../../lib/payment-event-bus';
+import type { PaymentEvent, PaymentEventType } from '../../lib/payment-event';
 import { currentParentRef, currentTraceId } from '../../lib/context';
 import { publishEventInTx } from '../../lib/domain-events';
 import { recordDomainEvent } from '../platform/relations/events.service';

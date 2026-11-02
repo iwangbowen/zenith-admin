@@ -2,8 +2,8 @@
  * 支付立减（会员券）Service。
  *
  * 生命周期与支付订单严格对齐，防双花/防丢券：
- * 下单锁券（unused→frozen 原子条件更新）→ 支付成功核销（frozen→used，事件订阅者幂等）
- * → 订单关闭/支付失败释放（frozen→unused）。事件由 outbox 可靠投递，崩溃后补投。
+ * 下单锁券（unused→frozen 原子条件更新）→ 支付成功核销（frozen→used，支付本地结算消费者幂等执行）
+ * → 订单关闭/支付失败释放（frozen→unused）。事件经共享领域事件账本可靠投递，崩溃后补投。
  * 券规则：amount 满减券按面值立减；percent 折扣券按折扣计算并受 maxDiscount 封顶；
  * 实付至少 1 分（渠道不支持 0 元单）。
  */
@@ -13,8 +13,6 @@ import { requireRow } from '../../lib/db-assert';
 import { db } from '../../db';
 import type { DbTransaction } from '../../db/types';
 import { memberCoupons, paymentOrders } from '../../db/schema';
-import { paymentEventBus } from '../../lib/payment-event-bus';
-import logger from '../../lib/logger';
 
 export interface CouponLockResult {
   memberCouponId: number;
@@ -84,10 +82,6 @@ export async function releaseCouponForPaymentWithin(tx: DbTransaction, memberCou
 }
 
 /** 支付成功核销（frozen→used，记录核销订单号；重投幂等：已 used 直接跳过） */
-export async function redeemCouponForPayment(memberCouponId: number, orderNo: string): Promise<void> {
-  return db.transaction((tx) => redeemCouponForPaymentWithin(tx, memberCouponId, orderNo));
-}
-
 export async function redeemCouponForPaymentWithin(tx: DbTransaction, memberCouponId: number, orderNo: string): Promise<void> {
   await tx
     .update(memberCoupons)
@@ -102,29 +96,6 @@ async function couponIdOfOrder(orderNo: string, executor: Pick<DbTransaction, 's
     .where(eq(paymentOrders.orderNo, orderNo))
     .limit(1);
   return order?.memberCouponId ?? null;
-}
-
-let registered = false;
-
-/** 订阅支付结果事件，驱动券的核销/释放（幂等，注册一次） */
-export function registerCouponPaymentSubscribers(): void {
-  if (registered) return;
-  registered = true;
-  paymentEventBus.on('payment.succeeded', async (e) => {
-    const couponId = await couponIdOfOrder(e.orderNo);
-    if (couponId == null) return;
-    await redeemCouponForPayment(couponId, e.orderNo);
-    logger.info('[payment-coupon] coupon redeemed', { orderNo: e.orderNo, memberCouponId: couponId });
-  });
-  const release = async (orderNo: string) => {
-    const couponId = await couponIdOfOrder(orderNo);
-    if (couponId == null) return;
-    await releaseCouponForPayment(couponId);
-    logger.info('[payment-coupon] coupon released', { orderNo, memberCouponId: couponId });
-  };
-  paymentEventBus.on('payment.closed', (e) => release(e.orderNo));
-  paymentEventBus.on('payment.failed', (e) => release(e.orderNo));
-  logger.info('Payment coupon subscribers registered');
 }
 
 /** Apply the authoritative order's coupon effect in the settlement transaction. */

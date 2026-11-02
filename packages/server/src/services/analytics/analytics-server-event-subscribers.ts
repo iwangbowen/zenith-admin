@@ -1,5 +1,5 @@
 /** Durable payment/workflow facts → server-side semantic analytics hints. */
-import type { PaymentEvent } from '../../lib/payment-event-bus';
+import type { PaymentEvent } from '../../lib/payment-event';
 import type { WorkflowEvent } from '@zenith/shared/workflow';
 import { WORKFLOW_EVENT_TYPES } from '@zenith/shared/workflow';
 import type { DbTransaction } from '../../db/types';

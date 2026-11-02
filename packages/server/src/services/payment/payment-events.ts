@@ -1,8 +1,8 @@
 import type { PaymentOrderRow } from '../../db/schema';
-import type { PaymentEvent, PaymentEventType } from '../../lib/payment-event-bus';
+import type { PaymentEvent, PaymentEventType } from '../../lib/payment-event';
 
 /**
- * 由订单行构造支付事件载荷（outbox 持久化与事件总线派发共用的唯一形态）。
+ * 由订单行构造支付事件载荷（写入共享领域事件账本的唯一形态）。
  * 支付成功 / 失败 / 关单与退款事件均经此构造，保证订阅方（Webhook、行为分析、业务桥接）拿到一致的字段集。
  */
 export function buildPaymentEventPayload(

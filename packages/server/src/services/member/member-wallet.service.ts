@@ -5,7 +5,7 @@ import type { QueryOutputOf } from '@zenith/shared/core';
  *
  * - changeWallet() 统一记账（事务 + 乐观锁 + 流水），余额单位为分
  * - rechargeWallet() 发起充值：调用支付中心 createPayment（bizType='member_recharge'）
- * - creditWalletOnRecharge() 由支付成功事件触发入账，按支付单号幂等
+ * - creditWalletOnRechargeWithin() 由支付本地结算消费者入账，按支付单号幂等
  */
 import { and, desc, eq, inArray, isNull, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
@@ -239,13 +239,9 @@ export async function rechargeWallet(memberId: number, applicationId: number, am
   return payParams;
 }
 
-/** 支付成功事件触发钱包入账（按支付单号幂等，防重投重复入账）。
- * 事务级咨询锁串行化同一支付单的并发重投；幂等检查与入账同一事务提交，杜绝双入账。 */
+/** 支付本地结算消费者在支付成功时为钱包入账（按支付单号幂等，防重投重复入账）。
+ * 支付单行锁串行化同一支付单的并发重投；幂等检查与入账在消费者事务内同一提交，杜绝双入账。 */
 type RechargePaymentFact = { eventId: string; bizId: string; orderNo: string; amount: number; originalAmount?: number | null; appId?: number | null; tenantId?: number | null };
-
-export async function creditWalletOnRecharge(event: RechargePaymentFact): Promise<void> {
-  return withOptimisticRetry(() => db.transaction((tx) => creditWalletOnRechargeWithin(tx, event)));
-}
 
 /** Validate the paid fact independently of the order's later refund state. */
 export async function creditWalletOnRechargeWithin(tx: DbTransaction, event: RechargePaymentFact): Promise<void> {
@@ -299,10 +295,6 @@ async function ensureSettlementWalletWithin(tx: DbTransaction, memberId: number)
  * 以 refundNo 作为幂等键，并允许余额暂时为负数形成可追收欠款。
  */
 type RechargeRefundFact = { eventId: string; orderNo: string; refundNo?: string; refundAmount?: number; appId?: number | null; tenantId?: number | null };
-
-export async function reverseWalletRechargeOnRefund(event: RechargeRefundFact): Promise<void> {
-  return withOptimisticRetry(() => db.transaction((tx) => reverseWalletRechargeOnRefundWithin(tx, event)));
-}
 
 export async function reverseWalletRechargeOnRefundWithin(tx: DbTransaction, event: RechargeRefundFact): Promise<void> {
   if (event.appId == null || event.tenantId === undefined || !event.refundNo

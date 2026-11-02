@@ -143,7 +143,7 @@ JWT 签名有效不等于会员仍然有效：`memberAuthMiddleware`（CMS 前�
 - 过期时间为 30 分钟
 - 可选 `memberCouponId` 用于充值满减；支付成功后钱包按支付单 `originalAmount` 入账，平台补贴优惠差额
 
-支付成功后，`paymentEventBus` 触发 `payment.succeeded` 事件，`payment-subscribers.ts` 监听 `bizType = 'member_recharge'` 并调用 `creditWalletOnRecharge()` 入账。入账按支付单号做幂等校验：若 `member_wallet_transactions` 中已存在 `biz_type = 'member_recharge'` 且 `biz_id = orderNo` 的流水，则不重复入账。
+支付成功事实写入共享领域事件账本后，`payment.local-settlement` 持久化消费者按 `bizType = 'member_recharge'` 调用 `creditWalletOnRechargeWithin()` 在消费者事务内入账。入账按支付单号做幂等校验：若 `member_wallet_transactions` 中已存在 `biz_type = 'member_recharge'` 且 `biz_id = orderNo` 的流水，则不重复入账；充值订单退款成功时由同一消费者调用 `reverseWalletRechargeOnRefundWithin()` 冲正。
 
 后台支持手动调整余额与退款入账（两个接口均带 `idempotencyGuard({ ttlSeconds: 10 })` 防重复提交）：
 
@@ -164,7 +164,7 @@ JWT 签名有效不等于会员仍然有效：`memberAuthMiddleware`（CMS 前�
 - **手动补扣**：`POST /api/member/renewal/deduct` 对当前协议手动扣一期（到期前手动续费）。
 - **解约**：`POST /api/member/renewal/terminate` 终止本人协议。
 
-扣款成功后由 `payment.succeeded` 事件订阅者调用 `extendVipOnRenewal()` 延长 VIP：按订单号幂等（`member_vip_renewals.order_no` 唯一约束 + 事务级咨询锁串行化并发重投）；未过期时从原到期时间顺延，已过期从当前时间起算，顺延周期取协议绑定的计划周期。前台 SPA 提供自动续费页管理签约状态。
+扣款成功后由 `payment.local-settlement` 持久化消费者调用 `extendVipOnRenewalWithin()` 延长 VIP：按订单号幂等（`member_vip_renewals.order_no` 唯一约束 + 事务级咨询锁串行化同一会员的并发续费）；未过期时从原到期时间顺延，已过期从当前时间起算，顺延周期取协议绑定的计划周期。前台 SPA 提供自动续费页管理签约状态。
 
 ---
 

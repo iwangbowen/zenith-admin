@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PaymentEvent } from '../../lib/payment-event-bus';
+import type { PaymentEvent } from '../../lib/payment-event';
 
 const { register, settle, prepareWebhook, prepareSharing, rememberEffect, sendToUser } = vi.hoisted(() => ({
   register: vi.fn(), settle: vi.fn(), prepareWebhook: vi.fn(), prepareSharing: vi.fn(), rememberEffect: vi.fn(), sendToUser: vi.fn(),

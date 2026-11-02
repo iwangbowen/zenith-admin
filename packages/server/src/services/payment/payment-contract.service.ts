@@ -27,7 +27,6 @@ import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../
 import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { isPgUniqueViolation } from '../../lib/db-errors';
 import { getAdapter } from '../../lib/payment';
-import { paymentEventBus } from '../../lib/payment-event-bus';
 import { recordEvent } from './payment-outbox.service';
 import { buildPaymentEventPayload } from './payment-events';
 import { buildAdapterContext, markOrderPaid, syncOrderStatus } from './payment.service';
@@ -844,7 +843,7 @@ export async function executeDueDeductions(): Promise<number> {
   return processed;
 }
 
-// ─── 排期推进（支付成功事件订阅者，幂等）──────────────────────────────────────
+// ─── 排期推进（支付本地结算消费者 / 扣款补单路径，幂等）─────────────────────────
 
 /**
  * 扣款单支付成功后原子推进协议排期。
@@ -902,16 +901,4 @@ export async function advanceContractOnPaidWithin(tx: DbTransaction, event: { or
     inArray(paymentContracts.status, ['signed', 'paused', 'terminated']),
     or(isNull(paymentContracts.lastDeductAt), lt(paymentContracts.lastDeductAt, paidAt)),
   ));
-}
-
-let contractSubscribersRegistered = false;
-
-/** 订阅支付成功事件推进协议排期（幂等，可重复调用注册一次） */
-export function registerContractSubscribers(): void {
-  if (contractSubscribersRegistered) return;
-  contractSubscribersRegistered = true;
-  paymentEventBus.on('payment.succeeded', async (e) => {
-    await advanceContractOnPaid(e);
-  });
-  logger.info('Payment contract subscribers registered');
 }

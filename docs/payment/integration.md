@@ -88,11 +88,11 @@ const { refundNo, status } = await refund({ orderNo, refundAmount: 500, reason: 
 
 会员前台充值接口 `POST /api/member/wallet/recharge` 是前台业务调用统一门面的内置范例。
 
-## 订阅支付结果事件
+## 消费支付结果事件
 
-支付结果通过事件总线 + Outbox 送达业务方。业务方不应轮询订单作为履约主链路，而应订阅事件完成履约。
+支付结果以领域事件写入共享领域事件账本（`event_outbox`），由持久化消费者按至少一次语义投递。业务方不应轮询订单作为履约主链路。
 
-`packages/server/src/lib/payment-event-bus.ts` 定义 5 类事件：
+`packages/server/src/lib/payment-event.ts` 定义事件载荷，共 5 类事件：
 
 | 事件 | 触发时机 |
 | --- | --- |
@@ -102,14 +102,19 @@ const { refundNo, status } = await refund({ orderNo, refundAmount: 500, reason: 
 | `refund.succeeded` | 退款到账 |
 | `refund.failed` | 退款失败或退款审批被驳回 |
 
+业务方按副作用类型选择接入点：
+
+- **本地数据库履约**（置业务单已支付、入账、发权益）：在 `payment-local-settlement.service.ts` 的 `settlePaymentEventWithin()` 中按 `bizType` 增加分支，调用业务模块的 `xxxWithin(tx, event)`。该函数与消费回执在同一事务提交，必须幂等，且只能做本库写入，不得调用外部渠道或独立提交的事务。
+- **外部或可交接副作用**（推送、Webhook、外部履约）：用 `registerEventConsumer()` 注册独立消费者，声明 `after: ['payment.local-settlement']` 保证在本地结算之后执行；外部 I/O 应通过 `rememberTransactionEffect` 或交接给作业/投递层。
+
 ```ts
-paymentEventBus.on('payment.succeeded', async (e) => {
-  if (e.bizType !== 'xxx_order') return;
-  await fulfillXxxOrder(e.bizId, e.orderNo); // 必须幂等
-});
+// payment-local-settlement.service.ts
+case 'payment.succeeded':
+  // ...
+  if (event.bizType === XXX_ORDER_BIZ_TYPE) await fulfillXxxOrderWithin(tx, event); // 必须幂等
 ```
 
-订阅者在 `packages/server/src/bootstrap/subscribers.ts` 注册。Outbox 为至少一次送达，handler 抛错会触发重试；失败死信可在「支付事件」页重派。
+持久化消费者在 `payment-event-consumers.ts` 注册，并由 `bootstrap/subscribers.ts` 在 HTTP 与 worker 启动前装载。处理失败会按退避重试，死信可在「支付事件」页查看尝试记录并重新投递。
 
 ## WebSocket 与 Open Platform Webhook
 

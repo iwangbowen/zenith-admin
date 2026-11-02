@@ -9,7 +9,7 @@ import { paymentChannelConfigs, paymentOrders, paymentPreauths, type PaymentChan
 import type { DbExecutor } from '../../db/types';
 import { requireRow } from '../../lib/db-assert';
 import { currentUser, currentUserOrNull } from '../../lib/context';
-import type { PaymentEvent } from '../../lib/payment-event-bus';
+import type { PaymentEvent } from '../../lib/payment-event';
 import { getAdapter } from '../../lib/payment';
 import { pageOffset } from '../../lib/pagination';
 import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../../lib/tenant';

@@ -1,7 +1,7 @@
 /**
  * 请假业务的工作流事件订阅者
  *
- * 监听 biz_leave 类型流程的终态事件，回写请假单状态（仿 payment-subscribers）。
+ * 监听 biz_leave 类型流程的终态事件，回写请假单状态。
  * 事件处理在请求上下文之外异步触发，审计 Proxy 会自动跳过 createdBy/updatedBy 注入。
  */
 import { and, eq } from 'drizzle-orm';

@@ -24,7 +24,6 @@ import { pageOffset } from '../../lib/pagination';
 import { buildAdapterContext, createOrderConfigResolver, loadOrderConfig } from './payment.service';
 import { postSystemJournal } from './payment-journal.service';
 import { getAdapter } from '../../lib/payment/registry';
-import { paymentEventBus } from '../../lib/payment-event-bus';
 import logger from '../../lib/logger';
 import { isIndeterminateProviderError } from '../../lib/payment/provider-http';
 import type { CreatePaymentSharingReceiverInput, UpdatePaymentSharingReceiverInput, PaymentSharingOrder, PaymentSharingOrderStatus, PaymentSharingReceiver } from '@zenith/shared/payment';
@@ -349,54 +348,6 @@ async function executeSharingAtChannel(
     });
     return { row, error: err };
   }
-}
-
-// ─── 自动分账（payment.succeeded 订阅者）──────────────────────────────────────
-
-/** 支付成功后自动分账：对启用 autoShare 且配置了 ratioBps 的接收方逐个发起。
- * 幂等：业务操作标识按订单 ID 和接收方 ID 固定，重复事件复用已创建的分账单；
- * 合计校验：所有自动分账金额之和不超过订单实付。 */
-export async function autoShareOrder(orderNo: string): Promise<void> {
-  const [order] = await db.select().from(paymentOrders).where(eq(paymentOrders.orderNo, orderNo)).limit(1);
-  if (!order) return;
-  if (!['success', 'refunding', 'refunded'].includes(order.status)) return;
-
-  const tenantCond = exactTenantCondition(paymentSharingReceivers.tenantId, order.tenantId);
-  const receivers = await db
-    .select()
-    .from(paymentSharingReceivers)
-    .where(and(eq(paymentSharingReceivers.status, 'enabled'), eq(paymentSharingReceivers.autoShare, true), tenantCond));
-  if (receivers.length === 0) return;
-
-  for (const receiver of receivers) {
-    if (receiver.ratioBps == null || receiver.ratioBps <= 0) continue;
-    try {
-      const reserved = await createReservedSharing({
-        orderNo: order.orderNo,
-        receiver,
-        allocationKey: `order:${order.id}:receiver:${receiver.id}`,
-        remark: '自动分账',
-      });
-      if (reserved.created) await executeSharingAtChannel(reserved.sharing, reserved.order, receiver);
-    } catch (err) {
-      // 余额不足等业务错误记录后跳过，重投不会再次调用渠道。
-      logger.warn('[payment-sharing] auto share skipped', { orderNo, receiverId: receiver.id, err });
-    }
-  }
-}
-
-let sharingSubscribersRegistered = false;
-/** 注册自动分账订阅者（支付成功后按接收方配置自动发起分账）。 */
-export function registerSharingSubscribers(): void {
-  if (sharingSubscribersRegistered) return;
-  sharingSubscribersRegistered = true;
-  paymentEventBus.on('payment.succeeded', (e) => {
-    return autoShareOrder(e.orderNo).catch((err) => {
-      logger.error('[payment-sharing] auto share failed', { orderNo: e.orderNo, err });
-      throw err;
-    });
-  });
-  logger.info('Payment sharing subscribers registered');
 }
 
 // ─── 失败分账重试（cron 兜底）────────────────────────────────────────────────

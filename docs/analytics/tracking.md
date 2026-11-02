@@ -186,7 +186,7 @@ SDK 内置轻量实验客户端：
 | 来源 | 事件名 | 触发点 |
 |------|--------|--------|
 | 客户端系统事件 | `$experiment_exposure`、`page_not_found`、`page_forbidden` | `getVariant()` 命中实验变体时自动曝光；404 / 403 页面组件分别上报导航失败事件 |
-| 支付总线 `paymentEventBus` | `payment.succeeded` / `payment.closed` / `payment.failed` / `refund.succeeded` / `refund.failed` | `lib/payment-event-bus.ts` 的 5 种事件类型，`analytics-server-event-subscribers.ts` 通过 `onAny` 桥接，属性仅含 `orderNo`/`bizType`/`bizId`/`channel`/`amount`（退款事件另含 `refundNo`/`refundAmount`），不含 `outTradeNo` 等网关凭据 |
+| 支付领域事件 | `payment.succeeded` / `payment.closed` / `payment.failed` / `refund.succeeded` / `refund.failed` | `lib/payment-event.ts` 的 5 种事件类型，`analytics-server-event-subscribers.ts` 注册 `payment.analytics` 持久化消费者（`after: payment.local-settlement`）桥接，属性仅含 `orderNo`/`bizType`/`bizId`/`channel`/`amount`（退款事件另含 `refundNo`/`refundAmount`），不含 `outTradeNo` 等网关凭据 |
 | 工作流总线 `workflowEventBus` | `workflow.instance.created/approved/rejected/withdrawn`、`workflow.node.entered/left`、`workflow.task.created/assigned/approved/rejected/skipped/transferred/addSigned/reduceSigned/urged`（共 15 种） | `WorkflowEventType` 全部 15 个类型，`analytics-server-event-subscribers.ts` 通过 `onAny` 桥接；`userId` 按 `actor.userId > instance.initiatorId > task.assigneeId` 兜底取值；属性仅含 `instanceId`/`nodeKey`/`taskId`/`status` 等标量，不展开 `task`/`formData` |
 | 会员业务 | `member.registered` | `member-auth.service.ts::registerMember` 成功后（是否有手机号/邮箱的布尔标记，不传原值） |
 | 会员业务 | `member.profile.updated` | `member-auth.service.ts::updateMyMemberProfile` 成功后（仅传变更字段名数组，不传变更后的值） |

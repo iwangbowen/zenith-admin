@@ -22,7 +22,7 @@ import {
   type PaymentOrderRow,
 } from '../../db/schema';
 import { formatDateTime, formatTimestamps } from '../../lib/datetime';
-import type { PaymentEvent } from '../../lib/payment-event-bus';
+import type { PaymentEvent } from '../../lib/payment-event';
 import logger from '../../lib/logger';
 import { syncOrderStatus } from './payment.service';
 
@@ -393,13 +393,6 @@ export async function getPublicCashierSession(linkToken: string, sessionToken: s
     session = await setTerminalSessionState({ id: session.id, status: 'expired', errorMessage: '收银台会话已过期', expectedVersion: session.version });
   }
   return mapCashierSession(session);
-}
-
-export async function updateCashierSessionFromPaymentEvent(
-  event: PaymentEvent,
-  status: 'succeeded' | 'failed',
-): Promise<void> {
-  return db.transaction((tx) => updateCashierSessionFromPaymentEventWithin(tx, event, status));
 }
 
 export async function updateCashierSessionFromPaymentEventWithin(

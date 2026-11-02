@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import type { DbTransaction } from '../../db/types';
 import { paymentOrders, paymentRefunds } from '../../db/schema';
-import type { PaymentEvent } from '../../lib/payment-event-bus';
+import type { PaymentEvent } from '../../lib/payment-event';
 import { exactTenantCondition } from '../../lib/tenant';
 import { MEMBER_RENEWAL_BIZ_TYPE } from '@zenith/shared/member';
 import { creditWalletOnRechargeWithin, reverseWalletRechargeOnRefundWithin, WALLET_RECHARGE_BIZ_TYPE } from '../member/member-wallet.service';

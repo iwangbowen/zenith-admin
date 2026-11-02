@@ -2,7 +2,7 @@
  * 业务接入示例：支付接入（演示业务模块如何对接支付中心）
  *
  * 演示标准三步：① 业务自有实体落库（biz_pay_demos）；② 发起支付调用统一支付门面
- * createPayment 拿到二维码/跳转链接；③ 支付成功后由 paymentEventBus 订阅器按 bizType
+ * createPayment 拿到二维码/跳转链接；③ 支付成功后由 payment.local-settlement 持久化消费者按 bizType
  * 履约（置 paid、发放权益）。「模拟支付成功」用于在未配置真实渠道时演示完整闭环。
  */
 import { useRef, useState, type CSSProperties } from 'react';
@@ -64,7 +64,7 @@ const payDemoBannerStyle: CSSProperties = {
 const SNIPPET_BACKEND_PAY = `// 后端 · 发起支付：调用统一支付门面 createPayment（services/biz-pay-demo.service.ts）
 const { orderNo, payParams } = await createPayment({
   applicationId,             // 显式绑定支付应用，不做唯一应用猜测
-  bizType: 'biz_pay_demo',   // 业务类型标识（订阅器据此路由）
+  bizType: 'biz_pay_demo',   // 业务类型标识（本地结算消费者据此分派）
   bizId: String(demo.id),    // 业务方主键（履约时回填状态）
   subject: demo.subject,
   amount: demo.amount,       // 金额（整数分）
@@ -77,16 +77,14 @@ await db.update(bizPayDemos)
   .where(eq(bizPayDemos.id, demo.id));
 return payParams;`;
 
-const SNIPPET_BACKEND_SUB = `// 后端 · 监听支付成功并履约（services/biz-pay-demo-subscribers.ts）
-paymentEventBus.on('payment.succeeded', (e) => {
-  if (e.bizType !== 'biz_pay_demo') return;            // 只处理本业务的事件
-  return markBizPayDemoPaid({ bizId: e.bizId, orderNo: e.orderNo, amount: e.amount });
-});
+const SNIPPET_BACKEND_SUB = `// 后端 · 支付成功后在本地结算消费者中履约（services/payment/payment-local-settlement.service.ts）
+case 'payment.succeeded':
+  if (event.bizType === 'biz_pay_demo') await markBizPayDemoPaidWithin(tx, event); // 与消费回执同事务提交
 
 // 履约（幂等）：按「主键 + 状态」原子更新，重复投递只生效一次
-await db.update(bizPayDemos)
+await tx.update(bizPayDemos)
   .set({ status: 'paid', paidAt: new Date(), fulfillRemark: '已自动发放示例权益' })
-  .where(and(eq(bizPayDemos.id, Number(bizId)), eq(bizPayDemos.status, 'paying')));`;
+  .where(and(eq(bizPayDemos.id, Number(bizId)), inArray(bizPayDemos.status, ['pending', 'paying'])));`;
 
 const SNIPPET_FRONTEND = `// 前端 · 发起支付并展示二维码（pages/biz/pay-demo/PayDemoPage.tsx）
 const payMutation = useApiMutation(bizPayDemoContract.pay);   // 契约驱动：URL / 入参 / 响应类型均来自 @zenith/shared/biz
@@ -245,7 +243,7 @@ export default function PayDemoPage() {
         closeIcon={null}
         icon={<Info size={18} style={{ color: 'var(--semi-color-primary)' }} />}
         style={payDemoBannerStyle}
-        description="本页演示业务模块如何对接支付中心：新建示例单 → 发起支付（拿到二维码/跳转链接）→ 支付成功后由事件订阅器自动履约。未配置真实微信/支付宝渠道时，可点「模拟支付成功」跑通完整闭环。展开下方「前后端集成示例代码」查看接入方式。"
+        description="本页演示业务模块如何对接支付中心：新建示例单 → 发起支付（拿到二维码/跳转链接）→ 支付成功后由支付领域事件消费者自动履约。未配置真实微信/支付宝渠道时，可点「模拟支付成功」跑通完整闭环。展开下方「前后端集成示例代码」查看接入方式。"
       />
 
       <ListSearchToolbar
@@ -265,10 +263,10 @@ export default function PayDemoPage() {
         <Collapse.Panel header="前后端集成示例代码" itemKey="code">
           <Space vertical align="start" style={{ width: '100%' }} spacing={12}>
             <CodeBlock title="① 后端发起支付（统一支付门面）" code={SNIPPET_BACKEND_PAY} />
-            <CodeBlock title="② 后端监听支付成功并履约（事件订阅）" code={SNIPPET_BACKEND_SUB} />
+            <CodeBlock title="② 后端在支付本地结算消费者中履约" code={SNIPPET_BACKEND_SUB} />
             <CodeBlock title="③ 前端发起支付并展示二维码" code={SNIPPET_FRONTEND} />
             <Typography.Text type="tertiary" size="small">
-              金额全链路使用整数分；订阅者必须幂等（支付成功事件可能被低延迟投递与 cron 兜底重复投递）。详见文档站「支付中心 · 业务接入实战示例」。
+              金额全链路使用整数分；履约必须幂等（持久化消费者按至少一次语义投递，失败会重试）。详见文档站「支付中心 · 业务接入实战示例」。
             </Typography.Text>
           </Space>
         </Collapse.Panel>
@@ -301,7 +299,7 @@ export default function PayDemoPage() {
         onClose={() => { setPayResult(null); setPayResultMethod(null); }}
         extra={(
           <div style={{ marginTop: 12 }}>
-            <Typography.Text type="tertiary" size="small">扫码支付成功后，后端订阅器会自动履约（本演示可关闭弹窗后点「模拟支付成功」）。</Typography.Text>
+            <Typography.Text type="tertiary" size="small">扫码支付成功后，后端支付事件消费者会自动履约（本演示可关闭弹窗后点「模拟支付成功」）。</Typography.Text>
           </div>
         )}
       />

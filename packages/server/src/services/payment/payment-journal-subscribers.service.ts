@@ -1,7 +1,5 @@
-import logger from '../../lib/logger';
-import { db } from '../../db';
 import type { DbTransaction } from '../../db/types';
-import { paymentEventBus, type PaymentEvent } from '../../lib/payment-event-bus';
+import type { PaymentEvent } from '../../lib/payment-event';
 import { postSystemJournalWithin, type PostSystemPaymentJournalInput } from './payment-journal.service';
 
 function eventJournalInput(event: PaymentEvent): PostSystemPaymentJournalInput | null {
@@ -29,14 +27,4 @@ function eventJournalInput(event: PaymentEvent): PostSystemPaymentJournalInput |
 export async function postPaymentEventJournalWithin(tx: DbTransaction, event: PaymentEvent): Promise<void> {
   const input = eventJournalInput(event);
   if (input) await postSystemJournalWithin(tx, input);
-}
-
-let registered = false;
-export function registerPaymentJournalSubscribers(): void {
-  if (registered) return;
-  registered = true;
-  const post = (event: PaymentEvent) => db.transaction((tx) => postPaymentEventJournalWithin(tx, event));
-  paymentEventBus.on('payment.succeeded', post);
-  paymentEventBus.on('refund.succeeded', post);
-  logger.info('Payment journal subscribers registered');
 }

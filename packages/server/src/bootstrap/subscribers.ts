@@ -19,14 +19,7 @@ import { registerAnalyticsServerEventSubscribers } from '../services/analytics/a
 import { registerBizLeaveSubscribers } from '../services/biz-demo/biz-leave-subscribers';
 import { registerCmsWorkflowSubscribers } from '../services/cms/cms-workflow.service';
 import { registerCmsFeedbackWorkflowSubscribers } from '../services/cms/cms-feedback-workflow.service';
-import { registerBizPayDemoSubscribers } from '../services/payment/biz-pay-demo-subscribers';
-import { registerContractSubscribers } from '../services/payment/payment-contract.service';
-import { registerCouponPaymentSubscribers } from '../services/payment/payment-coupon.service';
-import { registerFeeSubscribers } from '../services/payment/payment-fee.service';
 import { registerReconAdjustmentSubscribers } from '../services/payment/payment-recon-adjustment.service';
-import { registerPaymentJournalSubscribers } from '../services/payment/payment-journal-subscribers.service';
-import { registerSharingSubscribers } from '../services/payment/payment-sharing.service';
-import { registerPaymentSubscribers } from '../services/payment/payment-subscribers';
 import { registerPaymentEventConsumers } from '../services/payment/payment-event-consumers';
 import { registerWorkflowPrintArchiveSubscriber } from '../services/workflow/workflow-print-archive';
 
@@ -43,17 +36,10 @@ export function registerEventSubscribers(): void {
   registerChatWorkflowSubscriber();
   registerWorkflowPrintArchiveSubscriber(); // 流程终态 → 投递审批单归档件生成作业
   initPaymentAdapters();
-  registerPaymentSubscribers();
-  registerContractSubscribers();
-  registerCouponPaymentSubscribers();
   registerBizLeaveSubscribers();
-  registerBizPayDemoSubscribers();
   registerCmsWorkflowSubscribers(); // CMS 内容工作流审核（通过→发布+静态化，驳回/撤回→回写状态）
   registerCmsFeedbackWorkflowSubscribers();
-  registerPaymentJournalSubscribers();
   registerReconAdjustmentSubscribers();
-  registerFeeSubscribers();
-  registerSharingSubscribers();
   registerAnalyticsServerEventSubscribers();
   logger.info('Workflow event subscribers registered');
 }

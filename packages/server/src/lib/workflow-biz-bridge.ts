@@ -3,7 +3,7 @@
  *
  * 为「业务模块自有实体」接入工作流提供统一 SDK：
  * - startWorkflowForBiz：业务保存自己的数据后，发起并关联一个工作流实例（businessKey = bizType + bizId）
- * - onWorkflowResult：订阅某业务类型流程的终态事件，回写业务记录状态（仿 payment-subscribers）
+ * - onWorkflowResult：订阅某业务类型流程的终态事件，回写业务记录状态
  * - getWorkflowStatusByBiz：按 businessKey 批量查询流程状态，供业务列表页展示
  *
  * 业务数据始终留在业务模块自己的表，工作流仅存 businessKey + 路由变量（formData）。

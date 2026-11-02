@@ -1,4 +1,4 @@
-import type { PaymentEvent } from '../../lib/payment-event-bus';
+import type { PaymentEvent } from '../../lib/payment-event';
 import { registerEventConsumer } from '../../lib/domain-events';
 import { formatDateTime } from '../../lib/datetime';
 import { rememberTransactionEffect } from '../../lib/transaction-effects';

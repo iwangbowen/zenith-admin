@@ -7,12 +7,12 @@ import type { QueryOutputOf } from '@zenith/shared/core';
  *   1) 业务自有实体落库（biz_pay_demos，状态 pending）；
  *   2) 发起支付：调用统一支付门面 createPayment（bizType='biz_pay_demo'），
  *      回填 paymentOrderNo 并置 paying，返回二维码 / 跳转链接给前端；
- *   3) 监听 paymentEventBus 'payment.succeeded'（见 biz-pay-demo-subscribers）按
- *      bizType 过滤后履约：markBizPayDemoPaid 幂等置 paid 并发放示例权益。
+ *   3) 支付成功事实写入共享领域事件账本后，由 payment.local-settlement 持久化消费者
+ *      （payment-local-settlement.service）按 bizType 分派履约：markBizPayDemoPaidWithin 在消费者事务内幂等置 paid。
  *
  * 「模拟支付成功」为演示专用：
  * - 已发起支付（存在支付订单）时，调用支付中心运营接口 simulateOrderPaid 走与真实回调
- *   完全一致的 markOrderPaid 链路（状态机 → Outbox 事件 → 台账/手续费 → Webhook → 订阅器履约），
+ *   完全一致的 markOrderPaid 链路（状态机 → 领域事件账本 → 本地结算（履约/台账/手续费）→ Webhook），
  *   保证业务侧与支付中心数据一致；
  * - 尚未发起支付时（无支付订单），仅执行本地履约演示业务闭环（不存在支付订单，无一致性问题）。
  */
@@ -157,7 +157,7 @@ export async function payBizPayDemo(
 /**
  * 模拟支付成功（演示专用）。
  * 已存在支付订单时走支付中心完整模拟链路（与订单页「模拟支付」同一入口），
- * 由 payment.succeeded 事件订阅器完成履约；markBizPayDemoPaid 幂等兜底保证本次请求内即时可见。
+ * 由 payment.local-settlement 消费者完成履约；markBizPayDemoPaid 幂等兜底保证本次请求内即时可见。
  * 没有支付订单时拒绝模拟，避免业务状态绕过支付事实来源。
  */
 export async function simulateBizPayDemoPaid(id: number): Promise<BizPayDemo> {
@@ -176,14 +176,14 @@ export async function simulateBizPayDemoPaid(id: number): Promise<BizPayDemo> {
   } else if (order.status !== 'success') {
     throw new HTTPException(400, { message: `当前支付订单状态 ${order.status} 不可模拟成功` });
   }
-  // 幂等兜底：订阅器异步履约可能尚未执行，此处复用同一履约函数保证响应内即时可见。
+  // 幂等兜底：消费者异步履约可能尚未执行，此处复用同一履约函数保证响应内即时可见。
   await markBizPayDemoPaid({ bizId: String(row.id), orderNo: order.orderNo, amount: row.amount, appId: order.appId, tenantId: order.tenantId });
   return getBizPayDemo(id);
 }
 
 /**
  * 履约（幂等）：支付成功后置 paid 并发放示例权益。
- * 由订阅器在请求上下文之外调用，故不依赖 currentUser；按主键 + 状态条件保证幂等，
+ * 由支付本地结算消费者或本服务的演示兜底调用，故不依赖 currentUser；按主键 + 状态条件保证幂等，
  * 仅当订单处于待支付/支付中（pending/paying）时才履约，重复投递（at-least-once）只生效一次。
  */
 export async function markBizPayDemoPaid(event: { bizId: string; orderNo: string; amount: number; appId?: number | null; tenantId?: number | null }): Promise<void> {

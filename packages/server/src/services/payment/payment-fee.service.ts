@@ -1,7 +1,7 @@
 /**
  * 支付手续费/费率 Service。
  * 维护费率规则（按渠道/支付方式匹配，万分比 + 固定费，clamp 上下限），
- * 监听 payment.succeeded 计算手续费：回写订单 feeAmount/netAmount 并记资金台账（type=fee）。
+ * 由支付本地结算消费者在 payment.succeeded 时计算手续费：回写订单 feeAmount/netAmount 并记资金台账（type=fee）。
  */
 import { and, desc, eq, isNull, ne, or, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
@@ -11,8 +11,6 @@ import { paymentFeeRules, paymentJournalLines, paymentJournals, paymentLedgerAcc
 import { currentUser } from '../../lib/context';
 import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../../lib/tenant';
 import { postSystemJournalWithin } from './payment-journal.service';
-import { paymentEventBus } from '../../lib/payment-event-bus';
-import logger from '../../lib/logger';
 import { PAYMENT_METHOD_CHANNEL, paymentFeeRuleContract, paymentFeeRuleSchema } from '@zenith/shared/payment';
 import type { PaymentChannel, PaymentMethod } from '@zenith/shared/payment';
 import { defineCrudService } from '../../lib/crud-service';
@@ -173,26 +171,6 @@ export async function settleOrderFeeWithin(tx: DbTransaction, orderNo: string): 
       ],
     });
   }
-}
-
-let registered = false;
-/** 注册手续费订阅者（支付成功结算手续费，退款成功按比例冲销）。 */
-export function registerFeeSubscribers(): void {
-  if (registered) return;
-  registered = true;
-  paymentEventBus.on('payment.succeeded', (e) => {
-    return settleOrderFee(e.orderNo).catch((err) => {
-      logger.error('[payment-fee] settle fee failed', { orderNo: e.orderNo, err });
-      throw err;
-    });
-  });
-  paymentEventBus.on('refund.succeeded', (e) => {
-    return reverseFeeOnRefund({ orderNo: e.orderNo, refundNo: e.refundNo, refundAmount: e.refundAmount }).catch((err) => {
-      logger.error('[payment-fee] reverse fee failed', { orderNo: e.orderNo, refundNo: e.refundNo, err });
-      throw err;
-    });
-  });
-  logger.info('Payment fee subscribers registered');
 }
 
 /**

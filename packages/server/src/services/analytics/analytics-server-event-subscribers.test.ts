@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PaymentEvent } from '../../lib/payment-event-bus';
+import type { PaymentEvent } from '../../lib/payment-event';
 import type { WorkflowEvent } from '@zenith/shared/workflow';
 
 const { registerEvent, registerWorkflow, rememberEffect, trackServerEvent } = vi.hoisted(() => ({
