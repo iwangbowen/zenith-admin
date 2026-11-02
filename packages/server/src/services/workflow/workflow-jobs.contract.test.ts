@@ -1,8 +1,24 @@
 import { beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
-import { workflowJobChainSchema, workflowJobDetailSchema, type WorkflowJob, type WorkflowJobExecution } from '@zenith/shared/workflow';
+import {
+  workflowEngineContract,
+  workflowJobChainSchema,
+  workflowJobDetailSchema,
+  type WorkflowJob,
+  type WorkflowJobExecution,
+} from '@zenith/shared/workflow';
 
-const { select, drain } = vi.hoisted(() => ({ select: vi.fn(), drain: vi.fn() }));
-vi.mock('../../db', () => ({ db: { select } }));
+const { select, transaction, drain, wakeEventConsumers, currentUser, isPlatformAdmin } = vi.hoisted(() => ({
+  select: vi.fn(),
+  transaction: vi.fn(),
+  drain: vi.fn(),
+  wakeEventConsumers: vi.fn(),
+  currentUser: vi.fn(() => ({ userId: 7, username: 'operator', roles: [], tenantId: 1 })),
+  isPlatformAdmin: vi.fn(() => false),
+}));
+vi.mock('../../db', () => ({ db: { select, transaction } }));
+vi.mock('../../lib/context', () => ({ currentUser }));
+vi.mock('../../lib/tenant', () => ({ isPlatformAdmin }));
+vi.mock('../../lib/domain-events', () => ({ wakeEventConsumers }));
 vi.mock('../../lib/workflow-jobs', () => ({ retryJob: vi.fn(), skipJob: vi.fn(), drainWorkflowJobs: drain }));
 vi.mock('../../lib/workflow-jobs/engine', () => ({ expiredWorkflowJobCondition: vi.fn() }));
 vi.mock('./workflow-engine-introspection.service', () => ({
@@ -10,12 +26,12 @@ vi.mock('./workflow-engine-introspection.service', () => ({
 }));
 
 import { getWorkflowJobChain, getWorkflowJobDetail } from './workflow-jobs.service';
-import { runWorkflowEngineAction } from './workflow-engine-ops.service';
+import { previewWorkflowEngineAction, runWorkflowEngineAction } from './workflow-engine-ops.service';
 import { formatDateTime } from '../../lib/datetime';
 
 function queryResult(rows: unknown[]) {
   return {
-    from: vi.fn().mockReturnThis(), leftJoin: vi.fn().mockReturnThis(), where: vi.fn().mockReturnThis(),
+    from: vi.fn().mockReturnThis(), leftJoin: vi.fn().mockReturnThis(), innerJoin: vi.fn().mockReturnThis(), where: vi.fn().mockReturnThis(),
     limit: vi.fn().mockResolvedValue(rows), orderBy: vi.fn().mockResolvedValue(rows),
   };
 }
@@ -37,7 +53,13 @@ const execution = {
 
 beforeEach(() => {
   select.mockReset();
+  transaction.mockReset();
   drain.mockReset();
+  wakeEventConsumers.mockReset();
+  currentUser.mockReset();
+  currentUser.mockReturnValue({ userId: 7, username: 'operator', roles: [], tenantId: 1 });
+  isPlatformAdmin.mockReset();
+  isPlatformAdmin.mockReturnValue(false);
 });
 
 describe('workflow job API mapping', () => {
@@ -80,5 +102,55 @@ describe('workflow recovery response', () => {
     expect(result).toMatchObject({ ok: true, detail: { recovered: 2, requeued: 1, dead: 1 } });
     expect(result.message).toContain('已提交补投');
     expect(result.detail).not.toHaveProperty('processed');
+  });
+
+  it('requires a platform administrator before replaying event consumers', async () => {
+    await expect(runWorkflowEngineAction('replay-outbox', {})).rejects.toMatchObject({
+      status: 403,
+      message: '仅平台超管可以恢复领域事件消费者',
+    });
+    expect(transaction).not.toHaveBeenCalled();
+    expect(wakeEventConsumers).not.toHaveBeenCalled();
+  });
+
+  it('requires a platform administrator before previewing event consumers', async () => {
+    await expect(previewWorkflowEngineAction('replay-outbox', {})).rejects.toMatchObject({
+      status: 403,
+      message: '仅平台超管可以恢复领域事件消费者',
+    });
+    expect(select).not.toHaveBeenCalled();
+  });
+
+  it('allows the platform administrator path and wakes consumers after recovery', async () => {
+    isPlatformAdmin.mockReturnValue(true);
+    const tx = {
+      select: vi.fn(() => ({
+        from: vi.fn().mockReturnThis(),
+        innerJoin: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        orderBy: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([{ id: 11 }]),
+      })),
+      update: vi.fn(),
+    };
+    const updateChain = {
+      set: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      returning: vi.fn().mockResolvedValue([]),
+    };
+    tx.update.mockReturnValue(updateChain);
+    transaction.mockImplementation(async (callback: (executor: typeof tx) => unknown) => callback(tx));
+
+    const result = await runWorkflowEngineAction('replay-outbox', { limit: 1 });
+
+    expect(result).toMatchObject({ ok: true, detail: { recovered: 0, requeued: 0, dead: 0 } });
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(wakeEventConsumers).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the shared action permission unchanged while service-scoping replay-outbox', () => {
+    expect(workflowEngineContract.runAction.access).toEqual({
+      permission: 'workflow:engine:operate',
+    });
   });
 });

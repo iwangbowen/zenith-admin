@@ -5,12 +5,15 @@
  * - 运维动作复用现有恢复函数，全部为幂等恢复扫描。
  */
 import { and, asc, desc, eq, gte, inArray, sql } from 'drizzle-orm';
+import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { eventConsumerDeliveries, eventOutbox, workflowEngineHealthSnapshots } from '../../db/schema';
 import { formatDateTime } from '../../lib/datetime';
 import logger from '../../lib/logger';
 import type { WorkflowEngineActionFilter, WorkflowEngineActionKey, WorkflowEngineActionPreview, WorkflowEngineActionResult, WorkflowEngineComponentStatus, WorkflowEngineHealthHistory, WorkflowEngineHealthPoint, WorkflowJobType } from '@zenith/shared/workflow';
 import { wakeEventConsumers } from '../../lib/domain-events';
+import { currentUser } from '../../lib/context';
+import { isPlatformAdmin } from '../../lib/tenant';
 import { buildWhere } from '../../lib/where-helpers';
 import { getWorkflowEngineIntrospection, getWorkflowEngineThresholds, severityFromHealth } from './workflow-engine-introspection.service';
 
@@ -175,7 +178,14 @@ function eventConsumerFilter(filter?: WorkflowEngineActionFilter) {
   );
 }
 
+function assertPlatformEventConsumerRecovery(): void {
+  if (!isPlatformAdmin(currentUser())) {
+    throw new HTTPException(403, { message: '仅平台超管可以恢复领域事件消费者' });
+  }
+}
+
 async function previewEventConsumerRecovery(filter?: WorkflowEngineActionFilter) {
+  assertPlatformEventConsumerRecovery();
   const base = eventConsumerFilter(filter);
   const [row] = await db.select({
     duePending: sql<number>`count(*) filter (where ${eventConsumerDeliveries.status} in ('dead', 'retrying') and ${eventConsumerDeliveries.runAt} <= clock_timestamp())`,
@@ -186,6 +196,7 @@ async function previewEventConsumerRecovery(filter?: WorkflowEngineActionFilter)
 }
 
 async function recoverEventConsumers(filter?: WorkflowEngineActionFilter) {
+  assertPlatformEventConsumerRecovery();
   const base = eventConsumerFilter(filter);
   const result = await db.transaction(async (tx) => {
     const candidates = await tx.select({ id: eventConsumerDeliveries.id })
@@ -246,6 +257,8 @@ export async function runWorkflowEngineAction(
   filter?: WorkflowEngineActionFilter,
 ): Promise<WorkflowEngineActionResult> {
   const meta = ACTION_META[action];
+  // 授权失败必须置于结果归一化 catch 之外，向调用方返回 HTTP 403，不能变成 HTTP 200 + ok:false。
+  if (meta.kind === 'event-consumers') assertPlatformEventConsumerRecovery();
   try {
     if (meta.kind === 'event-consumers') {
       const r = await recoverEventConsumers(filter);
