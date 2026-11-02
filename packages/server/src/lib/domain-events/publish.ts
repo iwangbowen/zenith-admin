@@ -21,6 +21,11 @@ export async function publishEventInTx(tx: DbTransaction, input: PublishEventInp
   const signature = stableStringify({ payload: input.payload, scope: input.scope ?? {}, subjects: input.subjectRefs, orderingKey: input.orderingKey });
   if (Buffer.byteLength(signature) > 262144) throw new Error('Event snapshot exceeds 256 KiB');
   const payloadHash = createHash('sha256').update(signature).digest('hex');
+  // Identity values are allocated before commit, so they cannot establish ordering on their own.
+  // Serialize publishers for the same business stream before allocating the event id; the xact lock
+  // is released only after commit/rollback, making id order match commit order for that stream.
+  const streamKey = `${input.tenantId ?? 'platform'}:${input.domain}:${input.orderingKey}`;
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${streamKey}, 0))`);
   const matched = matchingEventConsumers(input);
   const [inserted] = await tx.insert(eventOutbox).values({ ...input, scope: input.scope ?? {},
     eventId: input.eventId ?? randomUUID(), payloadHash, traceId: currentTraceId(), parentRef: currentParentRef(),

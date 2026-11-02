@@ -18,7 +18,7 @@ describe.skipIf(!connection)('durable events real PostgreSQL transactions', () =
     database = await import('../../db'); tables = await import('../../db/schema/event-outbox');
     ({ publishEventInTx: publish } = await import('./publish'));
     ({ claimEventConsumers: claim, executeEventConsumer: execute, retryEventConsumer: retry } = await import('./engine'));
-    const { registerEventConsumer } = await import('./registry');
+    const { registerEventConsumer, sealEventConsumerRegistry } = await import('./registry');
     registerEventConsumer({ key: `integration:${prefix}`, matches: (event) => event.domain === prefix,
       handle: async (tx, event) => {
         await tx.execute(sql`insert into outbox_test_effects (key) values (${event.eventId})`);
@@ -27,6 +27,7 @@ describe.skipIf(!connection)('durable events real PostgreSQL transactions', () =
         return { outcome: 'completed' };
       },
     });
+    sealEventConsumerRegistry();
     await database.db.execute(sql`create table if not exists outbox_test_effects (key uuid primary key)`);
   }, 120_000);
   afterAll(async () => {

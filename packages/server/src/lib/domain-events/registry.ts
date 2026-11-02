@@ -11,9 +11,24 @@ export interface EventConsumer {
 }
 
 const consumers = new Map<string, EventConsumer>();
+let sealed = false;
 export function registerEventConsumer(consumer: EventConsumer): void {
+  if (sealed) throw new Error(`Event consumer registry is already sealed: ${consumer.key}`);
   if (consumers.has(consumer.key)) throw new Error(`Duplicate event consumer: ${consumer.key}`);
   consumers.set(consumer.key, consumer);
+}
+/** Seal after bootstrap so every published fact sees the complete, immutable consumer catalog. */
+export function sealEventConsumerRegistry(): void {
+  if (consumers.size === 0) throw new Error('Cannot seal an empty event consumer registry');
+  sealed = true;
+}
+export function assertEventConsumerRegistrySealed(): void {
+  if (!sealed) throw new Error('Event consumer registry must be sealed before publication');
+}
+/** Test isolation only; production bootstrap seals once for the process lifetime. */
+export function __resetEventConsumerRegistryForTest(): void {
+  consumers.clear();
+  sealed = false;
 }
 export function getEventConsumer(key: string): EventConsumer {
   const consumer = consumers.get(key);
@@ -21,6 +36,7 @@ export function getEventConsumer(key: string): EventConsumer {
   return consumer;
 }
 export function matchingEventConsumers(event: Pick<OutboxEventRow, 'eventType' | 'domain' | 'payload'>): EventConsumer[] {
+  assertEventConsumerRegistrySealed();
   const matches = [...consumers.values()].filter((consumer) => consumer.matches(event));
   const keys = new Set(matches.map((consumer) => consumer.key));
   const visited = new Set<string>();

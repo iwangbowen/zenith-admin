@@ -37,6 +37,7 @@ import { closeRedis } from './lib/redis';
 import { initTelemetry, shutdownTelemetry } from './lib/telemetry';
 import { registerErrorAlertListener } from './services/analytics/error-alert.service';
 import { registerOpenWebhookSubscriber } from './services/open-platform/app-webhooks.service';
+import { sealEventConsumerRegistry } from './lib/domain-events';
 
 // 密钥不合规（非开发环境缺失 JWT_SECRET / FIELD_ENCRYPTION_KEY 或仍是默认值）时在开始监听前终止
 assertRuntimeSecrets(logger);
@@ -79,6 +80,11 @@ void startInvalidationBus();
 // 落库后的告警评估由 analytics 域注册监听，lib 不反向依赖 service
 startErrorReporter();
 registerErrorAlertListener();
+
+// Consumer receipts are materialized at publication time. Register and freeze the complete
+// catalog before either HTTP ingress or a ledger worker can observe business facts.
+registerEventSubscribers();
+sealEventConsumerRegistry();
 
 // ─── 按角色启动 ─────────────────────────────────────────────────────────────
 let apiRole: ApiRoleHandle | null = null;
@@ -140,9 +146,8 @@ async function shutdown(signal: NodeJS.Signals) {
 process.on('SIGINT', () => { if (shuttingDown || isFatalShutdownInProgress()) process.exit(130); void shutdown('SIGINT'); });
 process.on('SIGTERM', () => { if (shuttingDown || isFatalShutdownInProgress()) process.exit(143); void shutdown('SIGTERM'); });
 
-// ─── 后台作业声明 + 事件订阅（所有角色）→ 执行期收尾（worker）──────────────────
+// ─── 后台作业声明（所有角色）→ 执行期收尾（worker）────────────────────────────
 const declared = await declareBackgroundJobs();
-registerEventSubscribers();
 if (declared && config.roles.worker) {
   await activateWorkerJobs().catch((err) => logger.error('Failed to activate worker jobs', err));
 }

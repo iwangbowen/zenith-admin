@@ -8,11 +8,14 @@ import { flushTransactionEffects } from '../transaction-effects';
 import logger from '../logger';
 import { runWithTraceId, runWithParentRef } from '../context';
 import { EventLeaseLostError, getEventConsumer, PermanentEventError } from './registry';
+import { captureException } from '../error-tracking/reporter';
 import { EVENT_OUTBOX_QUEUE } from './publication';
 import { runInEventConsumer } from './context';
 
 const now = sql`clock_timestamp()`;
-const leaseMs = 30_000;
+// Consumers only perform local transactional work; long-running/external work must be handed off.
+// Five minutes covers bounded multi-step settlements while still recovering a crashed process promptly.
+const leaseMs = 5 * 60_000;
 const clearLease = { leaseToken: null, leaseUntil: null };
 function owned(delivery: ConsumerDeliveryRow) {
   return and(eq(deliveries.id, delivery.id), eq(deliveries.status, 'running'),
@@ -76,15 +79,18 @@ export async function executeEventConsumer(delivery: ConsumerDeliveryRow): Promi
     if (committed) await flushTransactionEffects(committed);
   } catch (error) {
     const message = (error instanceof Error ? error.message : String(error)).slice(0, 2048);
+    let final = false;
     await db.transaction(async (tx) => {
       const dead = error instanceof PermanentEventError || delivery.attempts >= delivery.maxAttempts;
       const changed = await tx.update(deliveries).set({ status: dead ? 'dead' : 'retrying', lastError: message,
         runAt: sql`clock_timestamp() + ${Math.min(300_000, 1000 * 2 ** Math.min(delivery.attempts, 8))} * interval '1 millisecond'`,
         finishedAt: dead ? now : null, ...clearLease,
       }).where(owned(delivery)).returning({ id: deliveries.id });
+      final = dead && changed.length > 0;
       if (changed.length) await tx.update(eventConsumerAttempts).set({ status: 'failed', error: message, finishedAt: now })
         .where(and(eq(eventConsumerAttempts.deliveryId, delivery.id), eq(eventConsumerAttempts.generation, delivery.generation)));
     });
+    if (final) captureException(error, { kind: 'event_failure', job: { type: delivery.consumerKey, id: delivery.id, attempt: delivery.attempts, maxAttempts: delivery.maxAttempts, final: true } });
     logger.warn('[domain-events] consumer did not confirm', { consumer: delivery.consumerKey, deliveryId: delivery.id, error: message,
       causeCode: (error as { cause?: { code?: string } })?.cause?.code,
       causeMessage: (error as { cause?: { message?: string } })?.cause?.message,
