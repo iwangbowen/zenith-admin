@@ -92,7 +92,6 @@
 - `executeDueDeductions`
 - `syncPaymentDisputes`
 - `paymentReconciliation`
-- `dispatchPaymentEvents`
 - `dispatchNotifications`
 - `aggregateNotificationDigests`
 - `retryFailedSharing`

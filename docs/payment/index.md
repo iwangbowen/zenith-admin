@@ -35,11 +35,11 @@
 渠道下单 / 查单 / 回调验签 / 退款 / 扩展能力
         │
         ▼
-订单状态机 + 事件 Outbox（payment_events）
+订单状态机 + 共享领域事件账本（event_outbox）
         │
-        ├─ 业务订阅者（进程内，至少一次送达）
-        ├─ 资金台账 / 手续费 / 分账 / 签约扣款排期等内置订阅者
-        └─ Open Platform Webhook（HMAC 签名 + 指数退避）
+        ├─ payment.local-settlement：本地履约 / 资金台账 / 手续费 / 业务回写（单一一致性单元）
+        ├─ payment.ws / payment.analytics / payment.sharing.prepare：结算后的独立消费者
+        └─ payment.open-webhook → Open Platform Webhook（HMAC 签名 + 指数退避）
         │
         ▼
 结算批次 / 账户快照 / 财务报表 / 对账中心 / 投诉处理
@@ -54,7 +54,7 @@
 | 风控 | 规则中心 `payment_risk` 决策表优先裁决；原生规则提供名单、单笔、单日金额、单日笔数校验 |
 | 投诉 | `dispute_triage` 决策表分流，投诉回复/完结/退款，SLA 收紧与时间线留痕 |
 | 进阶交易 | 签约代扣、预授权、支付链接公开收银台、应用维度渠道路由 |
-| 可观测 | 回调日志、Outbox 事件、Open Platform Webhook 投递日志、支付链路健康指标 |
+| 可观测 | 回调日志、支付事件消费者回执、Open Platform Webhook 投递日志、支付链路健康指标 |
 
 后台共 **19 个管理页面**，入口与操作见[后台管理页面](./admin.md)。
 
@@ -65,7 +65,7 @@
 | 金额一律整数「分」 | DB、API、事件载荷均使用分；前端展示层格式化为元 |
 | `bizType` / `bizId` 松耦合 | 支付订单不外键关联业务表，业务方以业务类型与业务单 ID 建立关联 |
 | 适配器模式 | 渠道签名、报文、状态映射封装在 `packages/server/src/lib/payment/` |
-| 事件 Outbox | 支付/退款终态事件先落 `payment_events`，再低延迟派发，cron 补投，至少一次送达 |
+| 事件 Outbox | 支付/退款终态事实与状态更新同事务写入共享 `event_outbox`，各消费者独立回执、退避重试与死信，至少一次送达 |
 | 条件更新状态机 | 回调、查单、模拟支付、退款查询均通过条件 UPDATE 推进状态，重复触发无副作用 |
 | 密钥加密落库 | 渠道私钥/密钥用 `encryptField` 存储，API 只返回 `hasXxx` 布尔位 |
 | 规则中心决策 | 支付风控与交易投诉通过 `decide()` 接入规则中心，执行记录可在规则中心追溯 |
@@ -83,7 +83,8 @@
 | `payment_orders` | 支付订单；记录业务标识、金额、渠道、方式、应用、部门、手续费、净额与状态 |
 | `payment_refunds` | 退款单；记录可退余额校验、审批状态、渠道退款号与退款结果 |
 | `payment_notify_logs` | 渠道回调日志；记录原始报文、请求头、验签结果、来源 IP 与处理结果 |
-| `payment_events` | 支付事件 Outbox；`pending` / `done` / `failed`，最多 5 次投递 |
+
+支付事件不再使用独立表，统一落在共享领域事件账本（`event_outbox` / `event_consumer_deliveries` / `event_consumer_attempts`），见[领域事件](../backend/domain-events.md)。
 
 关键索引：`payment_orders_channel_out_trade_no_uq`、`payment_orders_active_biz_uq`、`payment_journals_source_scope_uq`、`payment_fund_reservations_source_uq`。
 

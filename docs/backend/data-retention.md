@@ -80,7 +80,6 @@
 | `analytics_event_quality_daily` | 180 | 埋点质量日报 |
 | `error_alert_logs` | 90 | 错误告警日志 |
 | `payment_notify_logs` | 365 | 支付通知日志 |
-| `payment_events` | 180 | 支付事件 |
 | `payment_risk_hits` | 365 | 支付风控命中 |
 | `member_login_logs` | 180 | 会员登录日志 |
 | `member_notifications` | 365 | 会员通知 |

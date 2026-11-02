@@ -92,6 +92,6 @@ openGatewayAuth → openApiMetering → openRateLimit → 业务端点
 | `open_api_call_stats_daily` | 每日聚合统计 |
 | `app_webhook_subscriptions` | 应用 Webhook 订阅 |
 | `app_webhook_deliveries` | Webhook 投递记录 |
-| `open_quota_alerts` | 配额预警持久化 outbox |
+| `open_quota_alerts` | 配额阈值事实，按应用 × 维度 × 周期 × 阈值去重；通知投递状态由共享领域事件回执记录 |
 | `cms_open_app_grants` | CMS 站点 / 栏目开放写入授权 |
 

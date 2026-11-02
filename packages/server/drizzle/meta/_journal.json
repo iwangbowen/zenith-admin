@@ -64,6 +64,13 @@
       "when": 1793334622256,
       "tag": "0008_supreme_warlock",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793593927661,
+      "tag": "0009_clammy_inertia",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { db } from '../../db';
 import { oauth2Clients, openQuotaAlerts, users } from '../../db/schema';
@@ -47,7 +46,7 @@ export async function maybeSendQuotaWarning(input: {
       }).from(oauth2Clients).leftJoin(users, eq(oauth2Clients.ownerId, users.id)).where(eq(oauth2Clients.clientId, input.clientId)).limit(1);
       if (!client) throw new Error('Quota fact requires an existing application');
       const [fact] = await tx.insert(openQuotaAlerts).values({ clientId: input.clientId, dimension: input.dimension,
-        period: input.period, threshold, used: input.used, quotaLimit: input.limit, planCode: input.planCode, eventId: randomUUID(),
+        period: input.period, threshold, used: input.used, quotaLimit: input.limit, planCode: input.planCode,
       }).onConflictDoNothing({ target: [openQuotaAlerts.clientId, openQuotaAlerts.dimension, openQuotaAlerts.period, openQuotaAlerts.threshold] }).returning();
       if (!fact) return;
       await publishOpenEventInTx(tx, { type: 'app.quota.warning', clientId: input.clientId, tenantId: client.tenantId,

@@ -40,7 +40,7 @@ const EXEMPT: Record<string, string> = {
   cms_interaction_responses: '互动应答数据，属于业务数据',
   cms_feedback_history: '审稿批注哈希链账本（previousHash/hash 链式校验），迁移在数据库层拒绝 UPDATE/DELETE，保留框架无法清理且删除会破坏链式完整性校验',
   cms_form_submissions: '表单提交，属于业务数据',
-  open_quota_alerts: '配额告警，由开放平台聚合任务按状态回收',
+  open_quota_alerts: '配额阈值事实（周期内去重键），由开放平台聚合任务按创建时间回收',
   analytics_daily_rollup: '按日聚合结果，体积远小于原始事件，是原始数据裁剪后的留存载体',
   identity_provider_sync_records: '身份源同步明细，随同步日志级联回收',
   wiki_review_records: '审核时间线，随文档级联删除（doc_id cascade），属于业务过程数据而非日志',

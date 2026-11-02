@@ -337,7 +337,7 @@ export const NOTIFICATION_DIGEST_MODE_LABELS: Record<NotificationDigestMode, str
 export const NOTIFICATION_DIGEST_MODE_OPTIONS: Array<{ value: NotificationDigestMode; label: string }> =
   createLabelOptionsFromMap(NOTIFICATION_DIGEST_MODE_LABELS);
 
-/** Outbox 行状态，语义对齐 payment_events。 */
+/** 通知 Outbox 行状态。 */
 export const NOTIFICATION_OUTBOX_STATUSES = ['pending', 'done', 'failed'] as const;
 
 export type NotificationOutboxStatus = (typeof NOTIFICATION_OUTBOX_STATUSES)[number];

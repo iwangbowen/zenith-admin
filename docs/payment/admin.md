@@ -172,9 +172,9 @@
 
 ### 支付事件
 
-- 查询 `payment_events`，支持查看 payload、错误信息与处理时间；
-- failed 死信可重派；
-- 健康指标接口 `GET /api/payment/ops/health` 返回 Outbox 积压/死信、Open Platform Webhook 待投/失败、处理中分账/转账、待处理对账差异。
+- 按消费者回执查询支付事件（`event_outbox` + `event_consumer_deliveries`），支持查看 payload、消费者、尝试历史与错误信息；
+- dead / 等待重试的消费者可单独重试，不影响同一事件的其它消费者；
+- 健康指标接口 `GET /api/payment/ops/health` 返回支付消费者积压/死信、Open Platform Webhook 待投/失败、处理中分账/转账、待处理对账差异。
 
 ## 统计接口
 

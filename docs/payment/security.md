@@ -59,7 +59,7 @@ POST /api/public/payment/notify/{channel}
 | HTTP | `idempotencyGuard` 支持 `X-Idempotency-Key`，否则按用户、方法、路径与请求体指纹生成 15s 幂等键 |
 | 业务订单 | 同一 `bizType + bizId` 的 pending/paying 订单复用；`payment_orders_active_biz_uq` 兜底 |
 | 渠道单号 | `out_trade_no`、`out_refund_no`、`out_transfer_no`、确定性分账单号作为渠道侧幂等键 |
-| 事件 | `payment_events` at-least-once；订阅者用条件更新或业务唯一键幂等 |
+| 事件 | 支付事实写入共享 `event_outbox`，各消费者在 `event_consumer_deliveries` 独立 at-least-once 确认；消费者用条件更新或业务唯一键幂等 |
 | 记账 | Journal 来源作用域唯一键、借贷平衡约束与 reservation 版本 CAS 兜底重复过账与并发超支 |
 
 ## 资金一致性

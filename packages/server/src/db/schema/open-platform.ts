@@ -354,7 +354,7 @@ export const appWebhookAttempts = pgTable('app_webhook_attempts', {
   errorMessage: text(),
 }, (t) => [unique('app_webhook_attempts_delivery_attempt_unique').on(t.deliveryId, t.attempt)]);
 
-/** 配额告警持久化 outbox，确保进程崩溃后可恢复投递 */
+/** Quota threshold facts provide period-level dedupe; delivery state lives in the shared domain-event ledger. */
 export const openQuotaAlerts = pgTable('open_quota_alerts', {
   id: idColumn(),
   clientId: varchar({ length: 64 }).notNull(),
@@ -364,16 +364,8 @@ export const openQuotaAlerts = pgTable('open_quota_alerts', {
   used: bigint({ mode: 'number' }).notNull(),
   quotaLimit: bigint({ mode: 'number' }).notNull(),
   planCode: varchar({ length: 64 }).notNull(),
-  eventId: varchar({ length: 64 }).notNull(),
-  status: varchar({ length: 20 }).notNull().default('pending'),
-  attempt: integer().notNull().default(0),
-  startedAt: timestamptz(),
-  sentAt: timestamptz(),
-  lastError: text(),
   createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   unique('open_quota_alerts_dedupe_unique').on(t.clientId, t.dimension, t.period, t.threshold),
-  index('open_quota_alerts_status_idx').on(t.status, t.startedAt),
+  index('open_quota_alerts_created_idx').on(t.createdAt),
 ]);
-
-export type OpenQuotaAlertRow = typeof openQuotaAlerts.$inferSelect;

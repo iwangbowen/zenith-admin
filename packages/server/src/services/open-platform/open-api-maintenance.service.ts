@@ -1,5 +1,5 @@
 import dayjs from 'dayjs';
-import { and, eq, lt, sql } from 'drizzle-orm';
+import { lt, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import { oauth2Clients, openApiCallLogs, openApiCallStatsDaily, openQuotaAlerts } from '../../db/schema';
 import { APP_TIME_ZONE } from '../../lib/datetime';
@@ -70,10 +70,8 @@ export async function rollupOpenApiCallLogs(): Promise<{ statDate: string }> {
     previousClientSecretEncrypted: null,
     previousSecretExpiresAt: null,
   }).where(lt(oauth2Clients.previousSecretExpiresAt, new Date()));
-  await db.delete(openQuotaAlerts).where(and(
-    eq(openQuotaAlerts.status, 'sent'),
-    lt(openQuotaAlerts.createdAt, now.subtract(180, 'day').toDate()),
-  ));
+  // Threshold facts only dedupe within their daily/monthly period, so old facts are safe to drop.
+  await db.delete(openQuotaAlerts).where(lt(openQuotaAlerts.createdAt, now.subtract(180, 'day').toDate()));
 
   return { statDate };
 }

@@ -482,15 +482,6 @@ export const RETENTION_POLICIES: readonly RetentionPolicyDefinition[] = [
     description: '渠道异步回调原始报文，用于对账与纠纷举证。',
   },
   {
-    key: 'payment_events',
-    title: '支付事件 outbox',
-    module: '支付中心',
-    tableName: 'payment_events',
-    timeColumn: 'created_at',
-    defaultDays: 180,
-    description: '支付领域事件投递记录。',
-  },
-  {
     key: 'payment_risk_hits',
     title: '支付风控命中',
     module: '支付中心',

@@ -24,7 +24,7 @@ import { dbBackups } from './db-admin';
 import { ruleDecisionTables, ruleDecisionTableVersions, ruleTestCases } from './rules';
 import { chatConversationMembers, chatConversations, chatMessageReactions, chatMessages, chatWebhooks, chatQuickReplies, chatScheduledMessages, chatCustomEmojis, chatGroupInvites, chatGroupJoinRequests } from './chat';
 import { channelAutoReplies, channelConversations, channelMenus, channelMessages, channelMessageTargets, channelQuickReplies, channels, channelSubscriptions } from './channels';
-import { paymentApps, paymentCashierSessions, paymentChannelAccounts, paymentChannelCredentialVersions, paymentChannelConfigs, paymentContracts, paymentDeductPlans, paymentDisputeReplies, paymentDisputes, paymentEventAttempts, paymentEvents, paymentFundReservations, paymentJournalLines, paymentJournals, paymentLedgerAccounts, paymentLinkRedemptions, paymentLinks, paymentOrders, paymentPreauths, paymentRefunds, paymentRiskHits, paymentRiskReviews, paymentRiskRules, paymentSettlementBatches, paymentSettlementItems, paymentSharingOrders, paymentSharingReceivers, paymentSharingReversals, paymentTransfers } from './payment';
+import { paymentApps, paymentCashierSessions, paymentChannelAccounts, paymentChannelCredentialVersions, paymentChannelConfigs, paymentContracts, paymentDeductPlans, paymentDisputeReplies, paymentDisputes, paymentFundReservations, paymentJournalLines, paymentJournals, paymentLedgerAccounts, paymentLinkRedemptions, paymentLinks, paymentOrders, paymentPreauths, paymentRefunds, paymentRiskHits, paymentRiskReviews, paymentRiskRules, paymentSettlementBatches, paymentSettlementItems, paymentSharingOrders, paymentSharingReceivers, paymentSharingReversals, paymentTransfers } from './payment';
 import { aiConversations, aiMessages, aiPromptTemplates, aiProviderConfigs, userAiConfigs, aiKnowledgeBases, aiKbDocuments, aiKbChunks } from './ai';
 import { appWebhookDeliveries, appWebhookSubscriptions, oauth2AuthorizationCodes, oauth2Clients, oauth2TokenFamilies, oauth2Tokens, oauth2UserGrants, ratePlans } from './open-platform';
 import { checkinMilestones, coupons, memberCheckinMilestoneAwards, memberCheckins, memberCoupons, memberLevels, memberNotifications, memberPointAccounts, memberPointTransactions, members, memberTagBindings, memberTags, memberVipRenewals, memberWallets, memberWalletTransactions } from './member';
@@ -325,14 +325,6 @@ export const paymentOrdersRelations = relations(paymentOrders, ({ one, many }) =
 export const paymentRefundsRelations = relations(paymentRefunds, ({ one }) => ({
   channelAccount: one(paymentChannelAccounts, { fields: [paymentRefunds.channelAccountId], references: [paymentChannelAccounts.id] }),
   order: one(paymentOrders, { fields: [paymentRefunds.orderId], references: [paymentOrders.id] }),
-}));
-
-export const paymentEventsRelations = relations(paymentEvents, ({ many }) => ({
-  attempts: many(paymentEventAttempts),
-}));
-
-export const paymentEventAttemptsRelations = relations(paymentEventAttempts, ({ one }) => ({
-  event: one(paymentEvents, { fields: [paymentEventAttempts.eventId], references: [paymentEvents.id] }),
 }));
 
 // ═══════════════════════════════════════════════════════════════════════════

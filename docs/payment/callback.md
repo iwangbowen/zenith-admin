@@ -46,7 +46,7 @@ POST /api/public/payment/notify/{channel}    # channel: wechat | alipay | unionp
 
 ## 事件 Outbox
 
-订单/退款进入终态时，状态更新与 `payment_events` 插入在同一事务内完成；事务提交后立即尝试投递，`dispatchPaymentEvents` cron 每分钟补投 pending/超时事件。
+订单/退款进入终态时，状态更新与支付事实写入共享 `event_outbox` 在同一事务内完成，并按发布时已封存的消费者目录为每个匹配消费者登记 `event_consumer_deliveries` 回执；提交后唤醒 worker，worker 轮询兜底，无需支付专属补投 cron。
 
 | 事件 | 说明 |
 | --- | --- |
@@ -58,10 +58,10 @@ POST /api/public/payment/notify/{channel}    # channel: wechat | alipay | unionp
 
 投递语义：
 
-- `processEvent` 先 claim 事件，再调用 `paymentEventBus.dispatch`；
-- handler 全部成功后置 `done`；
-- handler 抛错时 `attempts + 1`，未达 5 次保持 `pending`，达到上限置 `failed`；
-- 「支付事件」页可调用 `POST /api/payment/ops/events/{id}/redispatch` 将死信重置并重投。
+- 同一订单的事件以 `payment:{orderNo}` 为 ordering key，按提交顺序消费；
+- `payment.local-settlement` 是本地履约的单一一致性单元（资金台账、手续费、收银台会话、业务回写等在同一事务内完成）；
+- `payment.ws`、`payment.analytics`、`payment.open-webhook`、`payment.sharing.prepare` 依赖结算消费者完成后再执行，各自独立回执；
+- 消费者失败按退避重试，耗尽后进入 dead；「支付事件」页可调用 `POST /api/payment/ops/events/{id}/redispatch` 重试单个消费者回执。
 
 业务订阅者与 Open Platform Webhook 接收方都必须按 `eventId`、`orderNo`、`refundNo` 或业务键幂等。
 
@@ -85,7 +85,6 @@ POST /api/public/payment/notify/{channel}    # channel: wechat | alipay | unionp
 
 | handler | 频率 | 职责 |
 | --- | --- | --- |
-| `dispatchPaymentEvents` | 每分钟 | 补投支付/退款 Outbox 事件 |
 | `closeExpiredPaymentOrders` | 每 5 分钟 | 查单确认后关闭过期未支付订单 |
 | `paymentReconciliation` | 每 10 分钟 | 支付中订单查单补偿 |
 | `retryFailedSharing` | 每 10 分钟 | 分账失败重试与处理中分账同步 |

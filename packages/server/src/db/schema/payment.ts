@@ -251,50 +251,6 @@ export type PaymentNotifyLogRow = typeof paymentNotifyLogs.$inferSelect;
 
 export type NewPaymentNotifyLog = typeof paymentNotifyLogs.$inferInsert;
 
-// ─── 支付事件 Outbox 表（保证支付/退款成功事件可靠投递，进程崩溃后由 cron 补投）─────
-export const paymentEventStatusEnum = pgEnum('payment_event_status', ['pending', 'done', 'failed']);
-export const paymentEventAttemptStatusEnum = pgEnum('payment_event_attempt_status', ['processing', 'succeeded', 'failed']);
-
-export const paymentEvents = pgTable('payment_events', {
-  id: idColumn(),
-  type: varchar({ length: 32 }).notNull(),
-  orderNo: varchar({ length: 64 }).notNull(),
-  payload: text().notNull(),
-  status: paymentEventStatusEnum().notNull().default('pending'),
-  attempts: integer().notNull().default(0),
-  generation: integer().notNull().default(1),
-  redispatchCount: integer().notNull().default(0),
-  lastError: varchar({ length: 512 }),
-  tenantId: tenantIdColumn(),
-  createdAt: timestamptz().defaultNow().notNull(),
-  processedAt: timestamptz(),
-}, (t) => [
-  index('payment_events_tenant_idx').on(t.tenantId), index('payment_events_status_idx').on(t.status),
-  index('payment_events_status_created_idx').on(t.status, t.createdAt),
-  index('payment_events_status_processed_idx').on(t.status, t.processedAt),
-]);
-
-export type PaymentEventRow = typeof paymentEvents.$inferSelect;
-
-export type NewPaymentEvent = typeof paymentEvents.$inferInsert;
-
-export const paymentEventAttempts = pgTable('payment_event_attempts', {
-  id: idColumn(),
-  eventId: integer().notNull().references(() => paymentEvents.id, { onDelete: 'cascade' }),
-  generation: integer().notNull(),
-  attemptNo: integer().notNull(),
-  status: paymentEventAttemptStatusEnum().notNull().default('processing'),
-  errorMessage: varchar({ length: 512 }),
-  startedAt: timestamptz().defaultNow().notNull(),
-  finishedAt: timestamptz(),
-}, (t) => [
-  uniqueIndex('payment_event_attempts_event_generation_attempt_uq').on(t.eventId, t.generation, t.attemptNo),
-  index('payment_event_attempts_event_idx').on(t.eventId, t.id),
-]);
-
-export type PaymentEventAttemptRow = typeof paymentEventAttempts.$inferSelect;
-export type NewPaymentEventAttempt = typeof paymentEventAttempts.$inferInsert;
-
 // ─── 手续费/费率规则 ─────────────────────────────────────────────────────────
 export const paymentFeeRules = pgTable('payment_fee_rules', {
   id: idColumn(),
@@ -868,7 +824,7 @@ export const paymentDisputes = pgTable('payment_disputes', {
   /** 渠道投诉单号（微信 complaint_id / 支付宝反馈单号） */
   channelDisputeNo: varchar({ length: 128 }),
   channel: paymentChannelEnum().notNull(),
-  /** 关联支付订单号（松耦合，与 payment_events 一致） */
+  /** 关联支付订单号（松耦合，不建外键） */
   orderNo: varchar({ length: 64 }).notNull(),
   /** 投诉人标识（openid / 手机号掩码） */
   complainant: varchar({ length: 128 }),
