@@ -24,7 +24,7 @@ export async function getDomainEventConsumerHealth(): Promise<JobSourceRawSummar
     failed24h: sql<number>`count(*) filter (where ${eventConsumerDeliveries.status} = 'dead' and ${eventConsumerDeliveries.finishedAt} >= ${sql.param(since, eventConsumerDeliveries.finishedAt)})::int`,
     succeeded24h: sql<number>`count(*) filter (where ${eventConsumerDeliveries.status} in ('succeeded','skipped') and ${eventConsumerDeliveries.finishedAt} >= ${sql.param(since, eventConsumerDeliveries.finishedAt)})::int`,
     failed1h: sql<number>`count(*) filter (where ${eventConsumerDeliveries.status} = 'dead' and ${eventConsumerDeliveries.finishedAt} >= ${sql.param(hour, eventConsumerDeliveries.finishedAt)})::int`,
-    oldestPendingAgeSec: sql<number | null>`floor(extract(epoch from (${sql.param(now, eventConsumerDeliveries.runAt)}::timestamptz - min(${eventConsumerDeliveries.runAt}) filter (where ${eventConsumerDeliveries.status} in ('pending','running','retrying'))))::int`,
+    oldestPendingAgeSec: sql<number | null>`floor(extract(epoch from (${sql.param(now, eventConsumerDeliveries.runAt)}::timestamptz - min(${eventConsumerDeliveries.runAt}) filter (where ${eventConsumerDeliveries.status} in ('pending','running','retrying')))))::int`,
   }).from(eventConsumerDeliveries).where(or(inArray(eventConsumerDeliveries.status, [...ACTIVE, 'dead']),
     and(inArray(eventConsumerDeliveries.status, ['succeeded', 'skipped']), gte(eventConsumerDeliveries.finishedAt, since))));
   return { counts: { pending: row?.pending ?? 0, running: row?.running ?? 0, stuck: row?.stuck ?? 0, dead: row?.dead ?? 0,

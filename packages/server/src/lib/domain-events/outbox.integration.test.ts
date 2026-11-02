@@ -66,4 +66,13 @@ describe.skipIf(!connection)('durable events real PostgreSQL transactions', () =
     const delivery = (await claim(32)).find((row) => row.eventId === event.id)!; await execute(delivery);
     expect((await database.db.execute<{ n: number }>(sql`select count(*)::int n from outbox_test_effects where key = ${event.eventId}`))[0].n).toBe(0);
   });
+  it('executes job-monitor health queries for domain and payment consumers', async () => {
+    const monitor = await import('./monitor');
+    const payment = await import('../../services/payment/payment-events.service');
+    for (const health of [await monitor.getDomainEventConsumerHealth(), await payment.getPaymentEventHealth()]) {
+      expect(health.counts.pending).toBeGreaterThanOrEqual(0);
+    }
+    expect(Array.isArray(await monitor.listStuckDomainEventConsumers(5))).toBe(true);
+    expect(Array.isArray(await payment.listStuckPaymentEvents(5))).toBe(true);
+  });
 });
