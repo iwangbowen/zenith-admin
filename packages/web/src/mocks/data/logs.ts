@@ -1,5 +1,5 @@
 import type { LoginLog } from '@zenith/shared/identity';
-import type { IpAccessLog, OperationLog } from '@zenith/shared/platform';
+import type { ApiAccessLog, IpAccessLog, OperationLog } from '@zenith/shared/platform';
 import { mockDateTimeOffset } from '@/mocks/utils/date';
 
 export const mockLoginLogs: LoginLog[] = [
@@ -116,4 +116,21 @@ export const mockIpAccessLogs: IpAccessLog[] = [
   { id: 3, ip: '10.99.0.5', blockType: 'whitelist', path: '/api/settings/auth', method: 'GET', userAgent: 'curl/7.88.1', createdAt: mockDateTimeOffset(-3600 * 1000) },
   { id: 4, ip: '192.168.99.1', blockType: 'whitelist', path: '/api/roles', method: 'GET', userAgent: 'Mozilla/5.0 (Macintosh) Firefox/121.0', createdAt: mockDateTimeOffset(-7200 * 1000) },
   { id: 5, ip: '1.2.3.4', blockType: 'blacklist', path: '/api/menus', method: 'GET', userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0', createdAt: mockDateTimeOffset(-10800 * 1000) },
+];
+
+export const mockApiAccessLogs: ApiAccessLog[] = [
+  {
+    id: 1, tenantId: null, userId: 1, username: 'admin', impersonatorId: null, impersonatorName: null,
+    principalType: 'admin', authType: 'jwt', method: 'GET', path: '/api/users?page=1&pageSize=20', routePath: '/api/users', requestId: 'mock-request-001',
+    queryParams: { page: '1', pageSize: '20' }, requestBody: null, module: '用户管理', operationKey: 'users.list', operationName: '用户列表', operationType: 'GET',
+    responseCode: 200, durationMs: 18, errorName: null, errorMessage: null, serviceName: 'zenith-admin', processRole: 'api', hostname: 'demo-host', pid: 1001,
+    ip: '127.0.0.1', location: '内网地址', userAgent: 'Mozilla/5.0 Chrome/120', os: 'Windows 11', browser: 'Chrome 120', createdAt: mockDateTimeOffset(-120000),
+  },
+  {
+    id: 2, tenantId: null, userId: 1, username: 'admin', impersonatorId: null, impersonatorName: null,
+    principalType: 'admin', authType: 'jwt', method: 'POST', path: '/api/users', routePath: '/api/users', requestId: 'mock-request-002',
+    queryParams: {}, requestBody: { username: 'demo', password: '***' }, module: '用户管理', operationKey: 'users.create', operationName: '创建用户', operationType: 'POST',
+    responseCode: 400, durationMs: 42, errorName: 'ValidationError', errorMessage: '用户名已存在', serviceName: 'zenith-admin', processRole: 'api', hostname: 'demo-host', pid: 1001,
+    ip: '127.0.0.1', location: '内网地址', userAgent: 'Mozilla/5.0 Chrome/120', os: 'Windows 11', browser: 'Chrome 120', createdAt: mockDateTimeOffset(-240000),
+  },
 ];
