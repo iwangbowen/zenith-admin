@@ -71,6 +71,13 @@
       "when": 1793593927661,
       "tag": "0009_clammy_inertia",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793699047436,
+      "tag": "0010_futuristic_zeigeist",
+      "breakpoints": true
     }
   ]
 }

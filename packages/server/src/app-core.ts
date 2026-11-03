@@ -33,6 +33,7 @@ import { SessionRevokedException, sessionRevokedBody } from './lib/session-liven
 import { registerZenithMetrics } from './lib/prometheus-metrics';
 import { httpMetricsMiddleware } from './middleware/http-metrics';
 import { httpLoggerMiddleware } from './middleware/http-logger';
+import { apiAccessLogMiddleware } from './middleware/api-access-log';
 import { ipAccessMiddleware } from './middleware/ip-access';
 import { maintenanceMiddleware } from './middleware/maintenance';
 import { authRateLimit, captchaRateLimit, pathBoundRateLimit, sensitiveRateLimit } from './middleware/rate-limit';
@@ -77,6 +78,8 @@ export function createAppWithDomains(routeDomains: readonly RouteDomain[], docCa
   app.use('*', contextStorage());
   // 链路关联 traceId：贯穿请求触发的工作流作业/事件 fan-out（跨异步/跨实例）
   app.use('*', requestTraceMiddleware);
+  // 全量 API 请求访问事实（与业务操作审计 operation_logs 分离）；采集器异步批量落库。
+  app.use('/api/*', apiAccessLogMiddleware);
   app.use('*', secureHeaders({
     crossOriginResourcePolicy: 'cross-origin', // API 允许跨域访问
     crossOriginOpenerPolicy: false,             // 纯 API 服务，不适用

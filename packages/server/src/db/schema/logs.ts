@@ -1,4 +1,4 @@
-import { check, integer, index, pgEnum, pgTable, primaryKey, smallint, text, varchar } from 'drizzle-orm/pg-core';
+import { check, integer, index, jsonb, pgEnum, pgTable, primaryKey, smallint, text, varchar } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { LOGIN_EVENT_TYPES } from '@zenith/shared/identity';
 import { tenantIdColumn } from './core';
@@ -108,6 +108,55 @@ export const operationLogSubjects = pgTable('operation_log_subjects', {
 
 export type OperationLogSubjectRow = typeof operationLogSubjects.$inferSelect;
 export type NewOperationLogSubject = typeof operationLogSubjects.$inferInsert;
+
+// ─── API 访问日志表 ───────────────────────────────────────────────────────────
+// 全量 HTTP 访问留痕与业务操作审计分离：这里记录请求事实，不记录 before/after diff 或完整响应体。
+export const apiAccessLogs = pgTable('api_access_logs', {
+  id: idColumn(),
+  tenantId: tenantIdColumn('set null'),
+  userId: integer(),
+  username: varchar({ length: 64 }),
+  impersonatorId: integer(),
+  impersonatorName: varchar({ length: 64 }),
+  principalType: varchar({ length: 24 }).notNull().default('anonymous'),
+  authType: varchar({ length: 24 }).notNull().default('none'),
+  method: varchar({ length: 16 }).notNull(),
+  path: varchar({ length: 512 }).notNull(),
+  routePath: varchar({ length: 512 }),
+  requestId: varchar({ length: 64 }),
+  queryParams: jsonb().$type<Record<string, string> | null>(),
+  requestBody: jsonb().$type<unknown>(),
+  module: varchar({ length: 128 }),
+  operationKey: varchar({ length: 160 }),
+  operationName: varchar({ length: 256 }),
+  operationType: varchar({ length: 32 }),
+  responseCode: integer(),
+  durationMs: integer(),
+  errorName: varchar({ length: 128 }),
+  errorMessage: varchar({ length: 512 }),
+  serviceName: varchar({ length: 128 }),
+  processRole: varchar({ length: 16 }),
+  hostname: varchar({ length: 128 }),
+  pid: integer(),
+  ip: varchar({ length: 64 }),
+  location: varchar({ length: 128 }),
+  userAgent: varchar({ length: 512 }),
+  os: varchar({ length: 64 }),
+  browser: varchar({ length: 64 }),
+  createdAt: timestamptz().notNull().defaultNow(),
+}, (t) => [
+  index('api_access_logs_tenant_created_idx').on(t.tenantId, t.createdAt),
+  index('api_access_logs_created_at_idx').on(t.createdAt),
+  index('api_access_logs_user_idx').on(t.userId),
+  index('api_access_logs_request_idx').on(t.requestId),
+  index('api_access_logs_path_idx').on(t.path),
+  index('api_access_logs_route_idx').on(t.routePath),
+  index('api_access_logs_status_idx').on(t.responseCode),
+]);
+
+export type ApiAccessLogRow = typeof apiAccessLogs.$inferSelect;
+
+export type NewApiAccessLog = typeof apiAccessLogs.$inferInsert;
 
 // ─── IP 访问控制拦截日志表 ───────────────────────────────────────────────────────
 export const ipAccessLogs = pgTable('ip_access_logs', {

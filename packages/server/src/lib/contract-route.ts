@@ -28,6 +28,7 @@ import { platformAdminOnly } from '../middleware/platform-admin';
 import { withDataMasking } from './data-mask/boundary';
 import { licenseFeatureGate } from './licensing';
 import { apiResponse, commonErrorResponses, jsonContent, okCsv, okExcel, okFile } from './openapi-schemas';
+import type { ApiAccessOperationContext } from './api-access-log';
 
 /**
  * 契约凭证类型对应的 OpenAPI securitySchemes 组件（`BearerAuth` 为全局默认方案，由 app.ts 注册）。
@@ -255,6 +256,15 @@ export function defineContractRoute<
   const { middleware, preAuth, responses, hide, handler, hook } = def;
   const route = toRoute(op, { middleware, preAuth, responses, hide });
   const masked = withDataMasking(op, handler as unknown as (c: Context) => Response | Promise<Response>);
+  const withAccessMetadata = async (c: Context) => {
+    c.set('apiAccessOperation', {
+      operationKey: op.name,
+      operationName: op.summary,
+      module: op.audit?.module ?? null,
+      operationType: op.method.toUpperCase(),
+    } satisfies ApiAccessOperationContext);
+    return masked(c);
+  };
   // 同 toRoute：泛型 Op 下 RouteOf 无法静态满足 RouteConfig 约束，具体实例的类型由返回类型给出
-  return defineOpenAPIRoute({ route: route as RouteConfig, handler: masked as never, hook: hook as never }) as unknown as Registered<RouteOf<Op, M, Extra>>;
+  return defineOpenAPIRoute({ route: route as RouteConfig, handler: withAccessMetadata as never, hook: hook as never }) as unknown as Registered<RouteOf<Op, M, Extra>>;
 }

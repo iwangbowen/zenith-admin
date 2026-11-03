@@ -111,6 +111,15 @@ export const RETENTION_POLICIES: readonly RetentionPolicyDefinition[] = [
     description: '后台写操作的审计留痕，含变更前后快照与响应体，单行体积较大。',
   },
   {
+    key: 'api_access_logs',
+    title: 'API 访问日志',
+    module: '系统监控',
+    tableName: 'api_access_logs',
+    timeColumn: 'created_at',
+    defaultDays: 90,
+    description: '全站 API 请求访问事实，含身份、路由、状态码、耗时和脱敏请求快照。',
+  },
+  {
     key: 'domain_events',
     title: '对象领域事件',
     module: '系统管理',
