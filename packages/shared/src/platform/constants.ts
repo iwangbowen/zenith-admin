@@ -1,6 +1,15 @@
 import { createLabelOptions, createLabelOptionsFromMap } from '../core/enum-options';
 import type { FileObjectAcl } from './types';
 
+export const API_ACCESS_PRINCIPAL_TYPES = ['admin', 'member', 'open-gateway', 'device', 'anonymous'] as const;
+export type ApiAccessPrincipalType = (typeof API_ACCESS_PRINCIPAL_TYPES)[number];
+export const API_ACCESS_PRINCIPAL_LABELS: Record<ApiAccessPrincipalType, string> = { admin: '管理员', member: '会员', 'open-gateway': '开放应用', device: '设备', anonymous: '匿名' };
+export const API_ACCESS_PRINCIPAL_OPTIONS = createLabelOptions(API_ACCESS_PRINCIPAL_TYPES, API_ACCESS_PRINCIPAL_LABELS);
+export const API_ACCESS_AUTH_TYPES = ['jwt', 'apiToken', 'member-jwt', 'bearer', 'signature', 'device-signature', 'none'] as const;
+export type ApiAccessAuthType = (typeof API_ACCESS_AUTH_TYPES)[number];
+export const API_ACCESS_AUTH_LABELS: Record<ApiAccessAuthType, string> = { jwt: '管理员令牌', apiToken: 'API 令牌', 'member-jwt': '会员令牌', bearer: 'OAuth2 令牌', signature: 'HMAC 签名', 'device-signature': '设备签名', none: '无认证' };
+export const API_ACCESS_AUTH_OPTIONS = createLabelOptions(API_ACCESS_AUTH_TYPES, API_ACCESS_AUTH_LABELS);
+
 // ─── WebSocket ────────────────────────────────────────────────────────────────
 
 /**

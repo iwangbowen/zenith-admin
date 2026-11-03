@@ -11,6 +11,7 @@ import { metricsSampler } from './metrics-sampler';
 import { countActiveWorkerNodes, getQueueDepths } from './pg-boss-scheduler';
 import { getWsFanoutCounters } from './ws-fanout';
 import { getWsSnapshot } from './ws-manager';
+import { apiAccessLogStats } from './api-access-log';
 import type { WorkflowJobRuntimeStatus } from '@zenith/shared/workflow';
 
 let workflowMetricsCache: { until: number; value: Promise<WorkflowJobRuntimeStatus> } | null = null;
@@ -59,6 +60,9 @@ export function registerZenithMetrics(registry: Registry): void {
   gauge('zenith_http_requests_total', 'Total HTTP requests since process start', () => metricsSampler.http.totals().total);
   gauge('zenith_http_errors_4xx_total', 'Total HTTP 4xx responses since process start', () => metricsSampler.http.totals().total4xx);
   gauge('zenith_http_errors_5xx_total', 'Total HTTP 5xx responses since process start', () => metricsSampler.http.totals().total5xx);
+  gauge('zenith_api_access_log_pending', 'Buffered API access records awaiting persistence', () => apiAccessLogStats().pending);
+  gauge('zenith_api_access_log_dropped_total', 'API access records dropped since process start', () => apiAccessLogStats().dropped);
+  gauge('zenith_api_access_log_flush_failures_total', 'Failed API access log batches since process start', () => apiAccessLogStats().flushFailures);
 
   // ── WebSocket ──
   gauge('zenith_ws_connections', 'Current WebSocket connections', () => getWsSnapshot().currentConnections);

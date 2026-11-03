@@ -1,17 +1,19 @@
 import * as z from 'zod';
 import { dateRangeQuery, idParam, idQuery, keywordQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
-import { OPERATION_LOG_RESULTS } from '../constants';
+import { API_ACCESS_PRINCIPAL_TYPES, API_ACCESS_AUTH_TYPES, OPERATION_LOG_RESULTS } from '../constants';
 
 export const apiAccessLogSchema = z.object({
   id: z.int(),
   tenantId: z.int().nullable(),
   userId: z.int().nullable(),
+  memberId: z.int().nullable(),
+  clientId: z.string().nullable(),
   username: z.string().nullable(),
   impersonatorId: z.int().nullable(),
   impersonatorName: z.string().nullable(),
-  principalType: z.string(),
-  authType: z.string(),
+  principalType: z.enum(API_ACCESS_PRINCIPAL_TYPES),
+  authType: z.enum(API_ACCESS_AUTH_TYPES),
   method: z.string(),
   path: z.string(),
   routePath: z.string().nullable(),
@@ -40,17 +42,26 @@ export const apiAccessLogSchema = z.object({
 
 export type ApiAccessLog = z.infer<typeof apiAccessLogSchema>;
 
+/** 列表摘要不携带请求快照、UA 和错误正文；详情接口才返回这些较大字段。 */
+export const apiAccessLogListItemSchema = apiAccessLogSchema.omit({ queryParams: true, requestBody: true, userAgent: true, errorMessage: true }).meta({ id: 'ApiAccessLogListItem' });
+export type ApiAccessLogListItem = z.infer<typeof apiAccessLogListItemSchema>;
+
 export const apiAccessLogListQuery = paginationQuery.extend({
   userId: idQuery(),
+  memberId: idQuery(),
+  clientId: keywordQuery('应用 ID'),
   username: keywordQuery('用户名 / 标识'),
-  principalType: keywordQuery('主体类型'),
-  authType: keywordQuery('认证方式'),
+  principalType: queryEnum(API_ACCESS_PRINCIPAL_TYPES),
+  authType: queryEnum(API_ACCESS_AUTH_TYPES),
   module: keywordQuery('模块'),
   operationKey: keywordQuery('操作标识'),
   method: keywordQuery('请求方法'),
   path: keywordQuery('请求地址'),
   routePath: keywordQuery('路由模板'),
   requestId: keywordQuery('请求 ID'),
+  serviceName: keywordQuery('服务名'),
+  ip: keywordQuery('IP 地址'),
+  responseCode: z.coerce.number().int().min(100).max(599).optional(),
   status: queryEnum(OPERATION_LOG_RESULTS),
   content: keywordQuery('请求参数'),
   ...dateRangeQuery('请求时间'),
@@ -59,7 +70,7 @@ export const apiAccessLogListQuery = paginationQuery.extend({
 });
 
 export const apiAccessLogContract = defineContract('/api/api-access-logs', {
-  list: op.get('/', { access: { permission: 'system:api-access-log:list', platformOnly: 'multi-tenant' }, query: apiAccessLogListQuery, response: paginated(apiAccessLogSchema), summary: 'API 访问日志分页列表' }),
+  list: op.get('/', { access: { permission: 'system:api-access-log:list', platformOnly: 'multi-tenant' }, query: apiAccessLogListQuery, response: paginated(apiAccessLogListItemSchema), summary: 'API 访问日志分页列表' }),
   detail: op.get('/{id}', { access: { permission: 'system:api-access-log:list', platformOnly: 'multi-tenant' }, params: idParam, response: apiAccessLogSchema, summary: 'API 访问日志详情' }),
 }, { auditModule: 'API 访问日志', tags: ['ApiAccessLogs'] });
 

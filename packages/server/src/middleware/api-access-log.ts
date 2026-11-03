@@ -1,26 +1,15 @@
 import { createMiddleware } from 'hono/factory';
-import { captureApiAccessRequest, buildApiAccessLogEntry, enqueueApiAccessLog } from '../lib/api-access-log';
+import { captureApiAccessRequest, buildApiAccessLogEntry, enqueueApiAccessLog, shouldCaptureApiAccessPath } from '../lib/api-access-log';
 
-/** 全站 API 请求访问事实采集；数据库写入走有界异步队列，不阻塞业务响应。 */
+/** Response-ready request facts; streaming response bodies are never read or cloned. */
 export const apiAccessLogMiddleware = createMiddleware(async (c, next) => {
+  if (!shouldCaptureApiAccessPath(c.req.path)) { await next(); return; }
   const startedAt = Date.now();
-  let snapshot: Awaited<ReturnType<typeof captureApiAccessRequest>>;
+  const startedTick = performance.now();
+  await next();
+  // Hono's error handler completes inside next(): c.res has final 4xx/5xx/404 here.
   try {
-    snapshot = await captureApiAccessRequest(c);
-  } catch {
-    snapshot = { method: c.req.method, url: c.req.url, route: c.req.routePath, status: null, ip: null, headers: {}, query: null, params: null };
-  }
-  try {
-    await next();
-  } catch (error) {
-    c.set('apiAccessError', { name: error instanceof Error ? error.name : 'Error', message: error instanceof Error ? error.message : String(error) });
-    throw error;
-  } finally {
-    try {
-      enqueueApiAccessLog(buildApiAccessLogEntry(c, snapshot, startedAt));
-    } catch {
-      // Access logging must never change the request outcome.
-    }
-  }
+    const snapshot = await captureApiAccessRequest(c);
+    enqueueApiAccessLog(buildApiAccessLogEntry(c, snapshot, startedAt, startedTick));
+  } catch { /* Access-log collection must never alter the response. */ }
 });
-

@@ -120,17 +120,24 @@ export const mockIpAccessLogs: IpAccessLog[] = [
 
 export const mockApiAccessLogs: ApiAccessLog[] = [
   {
-    id: 1, tenantId: null, userId: 1, username: 'admin', impersonatorId: null, impersonatorName: null,
-    principalType: 'admin', authType: 'jwt', method: 'GET', path: '/api/users?page=1&pageSize=20', routePath: '/api/users', requestId: 'mock-request-001',
+    id: 1, tenantId: null, userId: 1, memberId: null, clientId: null, username: 'admin', impersonatorId: null, impersonatorName: null,
+    principalType: 'admin', authType: 'jwt', method: 'GET', path: '/api/users', routePath: '/api/users', requestId: 'mock-request-001',
     queryParams: { page: '1', pageSize: '20' }, requestBody: null, module: '用户管理', operationKey: 'users.list', operationName: '用户列表', operationType: 'GET',
     responseCode: 200, durationMs: 18, errorName: null, errorMessage: null, serviceName: 'zenith-admin', processRole: 'api', hostname: 'demo-host', pid: 1001,
     ip: '127.0.0.1', location: '内网地址', userAgent: 'Mozilla/5.0 Chrome/120', os: 'Windows 11', browser: 'Chrome 120', createdAt: mockDateTimeOffset(-120000),
   },
   {
-    id: 2, tenantId: null, userId: 1, username: 'admin', impersonatorId: null, impersonatorName: null,
+    id: 2, tenantId: null, userId: 1, memberId: null, clientId: null, username: 'admin', impersonatorId: null, impersonatorName: null,
     principalType: 'admin', authType: 'jwt', method: 'POST', path: '/api/users', routePath: '/api/users', requestId: 'mock-request-002',
     queryParams: {}, requestBody: { username: 'demo', password: '***' }, module: '用户管理', operationKey: 'users.create', operationName: '创建用户', operationType: 'POST',
     responseCode: 400, durationMs: 42, errorName: 'ValidationError', errorMessage: '用户名已存在', serviceName: 'zenith-admin', processRole: 'api', hostname: 'demo-host', pid: 1001,
     ip: '127.0.0.1', location: '内网地址', userAgent: 'Mozilla/5.0 Chrome/120', os: 'Windows 11', browser: 'Chrome 120', createdAt: mockDateTimeOffset(-240000),
+  },
+  {
+    id: 3, tenantId: 2, userId: null, memberId: 18, clientId: null, username: 'member018', impersonatorId: null, impersonatorName: null,
+    principalType: 'member', authType: 'member-jwt', method: 'GET', path: '/api/member/orders', routePath: '/api/member/orders', requestId: 'mock-request-003',
+    queryParams: { status: 'paid' }, requestBody: null, module: '会员订单', operationKey: 'member-orders.list', operationName: '查询会员订单', operationType: 'GET',
+    responseCode: 200, durationMs: 120, errorName: null, errorMessage: null, serviceName: 'zenith-admin', processRole: 'api', hostname: 'demo-host', pid: 1001,
+    ip: '192.168.1.18', location: '内网地址', userAgent: 'Mozilla/5.0 Safari/18', os: 'iOS 18', browser: 'Safari 18', createdAt: mockDateTimeOffset(-360000),
   },
 ];

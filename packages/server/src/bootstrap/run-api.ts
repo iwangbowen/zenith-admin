@@ -104,6 +104,8 @@ export async function startApiRole(): Promise<ApiRoleHandle> {
       await withTimeout('stopWsFanoutSubscriber', stopWsFanoutSubscriber(), 3_000);
     },
     async drainRuntime() {
+      const { stopApiAccessLogs } = await import('../lib/api-access-log');
+      await withTimeout('stopApiAccessLogs', stopApiAccessLogs(), 3_000);
       // IoT 接入：先把微批缓冲里未落库的遥测写完，再排空按设备串行的派生动作（告警判定 / 联动 / 流转）
       const { flushIotIngestBuffer } = await import('../services/iot/iot-ingest-buffer');
       await withTimeout('flushIotIngestBuffer', flushIotIngestBuffer(), 5_000);

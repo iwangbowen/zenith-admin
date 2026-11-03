@@ -1,24 +1,39 @@
-import { apiAccessLogContract } from '@zenith/shared/platform';
+import { apiAccessLogContract, apiAccessLogListItemSchema } from '@zenith/shared/platform';
 import { mockApiAccessLogs } from '@/mocks/data/logs';
 import { mock } from '@/mocks/utils/contract';
+import { includesKeyword, matchesFilter, withinDateRange } from '@/mocks/utils/filter';
+import { notFound } from '@/mocks/utils/handlers';
 
 export const apiAccessLogsHandlers = [
   mock(apiAccessLogContract.list, ({ query, ok, paginate }) => {
     const list = mockApiAccessLogs.filter((row) => {
-      if (query.username && !(row.username ?? '').includes(query.username)) return false;
-      if (query.module && !(row.module ?? '').includes(query.module)) return false;
-      if (query.method && row.method !== query.method) return false;
-      if (query.path && !row.path.includes(query.path)) return false;
-      if (query.routePath && !(row.routePath ?? '').includes(query.routePath)) return false;
-      if (query.requestId && !(row.requestId ?? '').startsWith(query.requestId)) return false;
-      if (query.status === 'success' && (row.responseCode == null || row.responseCode >= 400)) return false;
+      if (!matchesFilter(row.userId, query.userId) || !matchesFilter(row.memberId, query.memberId)) return false;
+      if (!matchesFilter(row.principalType, query.principalType) || !matchesFilter(row.authType, query.authType)) return false;
+      if (!includesKeyword(query.username?.trim(), row.username)) return false;
+      if (!includesKeyword(query.module?.trim(), row.module)) return false;
+      if (!includesKeyword(query.operationKey?.trim(), row.operationKey)) return false;
+      if (!includesKeyword(query.clientId?.trim(), row.clientId)) return false;
+      if (query.method && row.method !== query.method.toUpperCase()) return false;
+      if (!includesKeyword(query.path?.trim(), row.path)) return false;
+      if (!includesKeyword(query.routePath?.trim(), row.routePath)) return false;
+      if (!includesKeyword(query.serviceName?.trim(), row.serviceName) || !includesKeyword(query.ip?.trim(), row.ip)) return false;
+      if (query.requestId && !(row.requestId ?? '').startsWith(query.requestId.trim())) return false;
+      if (!matchesFilter(row.responseCode, query.responseCode)) return false;
+      if (query.status === 'success' && (row.responseCode == null || row.responseCode < 200 || row.responseCode >= 400)) return false;
       if (query.status === 'fail' && (row.responseCode == null || row.responseCode < 400)) return false;
+      if (!includesKeyword(query.content?.trim(), JSON.stringify(row.queryParams), JSON.stringify(row.requestBody), { caseInsensitive: true })) return false;
+      if (!withinDateRange(row.createdAt, query.startTime, query.endTime)) return false;
       if (query.minDurationMs != null && (row.durationMs == null || row.durationMs < query.minDurationMs)) return false;
       if (query.maxDurationMs != null && (row.durationMs == null || row.durationMs > query.maxDurationMs)) return false;
       return true;
     });
-    return ok(paginate(list));
+    list.sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id - a.id);
+    // Parse through the summary schema so Demo cannot accidentally expose detail payloads in a list.
+    return ok(paginate(list.map((row) => apiAccessLogListItemSchema.parse(row))));
   }),
-  mock(apiAccessLogContract.detail, ({ params, ok }) => ok(mockApiAccessLogs.find((row) => row.id === params.id) ?? mockApiAccessLogs[0])),
+  mock(apiAccessLogContract.detail, ({ params, ok }) => {
+    const row = mockApiAccessLogs.find((item) => item.id === params.id);
+    return row ? ok(row) : notFound('API 访问日志不存在或已清理', { status: 404 });
+  }),
 ];
 

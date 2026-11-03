@@ -1,6 +1,7 @@
 import { check, integer, index, jsonb, pgEnum, pgTable, primaryKey, smallint, text, varchar } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { LOGIN_EVENT_TYPES } from '@zenith/shared/identity';
+import type { ApiAccessAuthType, ApiAccessPrincipalType } from '@zenith/shared/platform';
 import { tenantIdColumn } from './core';
 import { idColumn, timestamptz } from './common';
 import { entitySubjectRoleEnum } from './entity-relations';
@@ -118,8 +119,10 @@ export const apiAccessLogs = pgTable('api_access_logs', {
   username: varchar({ length: 64 }),
   impersonatorId: integer(),
   impersonatorName: varchar({ length: 64 }),
-  principalType: varchar({ length: 24 }).notNull().default('anonymous'),
-  authType: varchar({ length: 24 }).notNull().default('none'),
+  principalType: varchar({ length: 24 }).$type<ApiAccessPrincipalType>().notNull().default('anonymous'),
+  memberId: integer(),
+  clientId: varchar({ length: 64 }),
+  authType: varchar({ length: 24 }).$type<ApiAccessAuthType>().notNull().default('none'),
   method: varchar({ length: 16 }).notNull(),
   path: varchar({ length: 512 }).notNull(),
   routePath: varchar({ length: 512 }),

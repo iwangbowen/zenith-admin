@@ -1,17 +1,17 @@
-import { desc } from 'drizzle-orm';
-import type { QueryOutputOf } from '@zenith/shared/core';
-import { apiAccessLogContract } from '@zenith/shared/platform';
+import { desc, lt, lte } from 'drizzle-orm';
+import { API_ACCESS_AUTH_LABELS, API_ACCESS_PRINCIPAL_LABELS, apiAccessLogListQuery } from '@zenith/shared/platform';
 import { db } from '../../../db';
 import { apiAccessLogs } from '../../../db/schema';
-import { batchIterable } from '../../excel-export';
-import { buildApiAccessLogsWhere, type ApiAccessLogsListFilter } from '../../../services/platform/api-access-logs.service';
+import { buildApiAccessLogsWhere, apiAccessLogSummaryColumns, assertApiAccessLogScope, type ApiAccessLogsListFilter } from '../../../services/platform/api-access-logs.service';
+import { buildWhere } from '../../where-helpers';
+import type { JwtPayload } from '../../../middleware/auth';
 import { defineExport } from '../registry';
 import type { ExportColumn } from '../types';
 
 const columns: ExportColumn[] = [
   { key: 'id', header: 'ID', width: 10, type: 'number' },
-  { key: 'principalType', header: '主体类型', width: 14 },
-  { key: 'authType', header: '认证方式', width: 14 },
+  { key: 'principalType', header: '主体类型', width: 14, enumMap: API_ACCESS_PRINCIPAL_LABELS },
+  { key: 'authType', header: '认证方式', width: 14, enumMap: API_ACCESS_AUTH_LABELS },
   { key: 'username', header: '用户 / 标识', width: 20 },
   { key: 'method', header: '方法', width: 10 },
   { key: 'path', header: '请求地址', width: 42 },
@@ -25,7 +25,25 @@ const columns: ExportColumn[] = [
   { key: 'createdAt', header: '请求时间', width: 22, type: 'datetime' },
 ];
 
-type ExportQuery = Omit<QueryOutputOf<typeof apiAccessLogContract.list>, 'page' | 'pageSize'> & Record<string, unknown>;
+const filterSchema = apiAccessLogListQuery.omit({ page: true, pageSize: true });
+function normalizeQuery(query: Record<string, unknown>) {
+  return filterSchema.parse(query);
+}
+
+async function* streamRows(query: ApiAccessLogsListFilter, user: JwtPayload) {
+  const where = buildApiAccessLogsWhere(query, user);
+  const [max] = await db.select({ id: apiAccessLogs.id }).from(apiAccessLogs).where(where).orderBy(desc(apiAccessLogs.id)).limit(1);
+  if (!max) return;
+  let cursor: number | undefined;
+  while (true) {
+    const rows = await db.select(apiAccessLogSummaryColumns).from(apiAccessLogs)
+      .where(buildWhere(where, lte(apiAccessLogs.id, max.id), cursor === undefined ? undefined : lt(apiAccessLogs.id, cursor)))
+      .orderBy(desc(apiAccessLogs.id)).limit(1000);
+    if (rows.length === 0) return;
+    yield* rows;
+    cursor = rows[rows.length - 1].id;
+  }
+}
 
 export const apiAccessLogsExportDefinition = defineExport<ApiAccessLogsListFilter & Record<string, unknown>, Record<string, unknown>>({
   entity: 'system.api-access-logs',
@@ -37,7 +55,8 @@ export const apiAccessLogsExportDefinition = defineExport<ApiAccessLogsListFilte
   execution: { mode: 'auto', syncMaxRows: 5000, syncModeOverridesAsyncPolicies: false },
   retention: { normalDays: 7, sensitiveDays: 3, rawDays: 3 },
   columns,
-  countRows: async (query) => db.$count(apiAccessLogs, buildApiAccessLogsWhere(query)),
-  streamRows: (query: ExportQuery) => batchIterable((limit, offset) => db.select().from(apiAccessLogs).where(buildApiAccessLogsWhere(query)).orderBy(desc(apiAccessLogs.id)).limit(limit).offset(offset)),
+  prepareQuery: async (query, user) => { assertApiAccessLogScope(user); return normalizeQuery(query); },
+  countRows: async (query, user) => db.$count(apiAccessLogs, buildApiAccessLogsWhere(normalizeQuery(query), user)),
+  streamRows: (query, user) => streamRows(normalizeQuery(query), user),
 });
 

@@ -1,39 +1,49 @@
-import { and, desc, eq, gte, ilike, lte, or, sql } from 'drizzle-orm';
+import { and, desc, eq, getTableColumns, gte, lte, sql } from 'drizzle-orm';
+import { HTTPException } from 'hono/http-exception';
 import type { QueryOutputOf } from '@zenith/shared/core';
-import { apiAccessLogContract } from '@zenith/shared/platform';
+import { apiAccessLogContract, apiAccessLogSchema, apiAccessLogListItemSchema } from '@zenith/shared/platform';
 import { db } from '../../db';
 import { apiAccessLogs } from '../../db/schema';
 import { currentUser } from '../../lib/context';
-import { formatDateTime } from '../../lib/datetime';
+import { entityMapper } from '../../lib/entity-map';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
-import { tenantCondition } from '../../lib/tenant';
+import { isPlatformAdmin, tenantCondition } from '../../lib/tenant';
+import type { JwtPayload } from '../../middleware/auth';
+import { config } from '../../config';
 
 export type ApiAccessLogsListFilter = Omit<QueryOutputOf<typeof apiAccessLogContract.list>, 'page' | 'pageSize'>;
 
-function contentCondition(keyword: string | undefined) {
-  const trimmed = keyword?.trim();
-  if (!trimmed) return undefined;
-  const escaped = trimmed.replaceAll('\\', String.raw`\\`).replaceAll('%', String.raw`\%`).replaceAll('_', String.raw`\_`);
-  const pattern = `%${escaped}%`;
-  return or(ilike(sql`${apiAccessLogs.queryParams}::text`, pattern), ilike(sql`${apiAccessLogs.requestBody}::text`, pattern));
+export function assertApiAccessLogScope(user: JwtPayload): void {
+  if (config.multiTenantMode && !isPlatformAdmin(user)) throw new HTTPException(403, { message: '仅平台管理员可查看 API 访问日志' });
 }
 
-export function buildApiAccessLogsWhere(q: ApiAccessLogsListFilter) {
-  const user = currentUser();
+/** 列表/导出投影一致，禁止将请求快照与UA带入高频分页传输。 */
+export const apiAccessLogSummaryColumns = (() => {
+  const { queryParams: _query, requestBody: _body, userAgent: _agent, errorMessage: _message, ...columns } = getTableColumns(apiAccessLogs);
+  return columns;
+})();
+
+export function buildApiAccessLogsWhere(q: ApiAccessLogsListFilter, user: JwtPayload = currentUser()) {
+  assertApiAccessLogScope(user);
   return buildWhere(
     q.userId ? eq(apiAccessLogs.userId, q.userId) : undefined,
+    q.memberId ? eq(apiAccessLogs.memberId, q.memberId) : undefined,
+    keywordCondition(q.clientId, [apiAccessLogs.clientId]),
     keywordCondition(q.username, [apiAccessLogs.username]),
-    keywordCondition(q.principalType, [apiAccessLogs.principalType]),
-    keywordCondition(q.authType, [apiAccessLogs.authType]),
+    q.principalType ? eq(apiAccessLogs.principalType, q.principalType) : undefined,
+    q.authType ? eq(apiAccessLogs.authType, q.authType) : undefined,
     keywordCondition(q.module, [apiAccessLogs.module]),
     keywordCondition(q.operationKey, [apiAccessLogs.operationKey]),
     q.method ? eq(apiAccessLogs.method, q.method.toUpperCase()) : undefined,
     keywordCondition(q.path, [apiAccessLogs.path]),
     keywordCondition(q.routePath, [apiAccessLogs.routePath]),
     keywordCondition(q.requestId, [apiAccessLogs.requestId], 'like', 'prefix'),
-    contentCondition(q.content),
+    keywordCondition(q.content, [sql`${apiAccessLogs.queryParams}::text`, sql`${apiAccessLogs.requestBody}::text`], 'ilike'),
+    keywordCondition(q.serviceName, [apiAccessLogs.serviceName]),
+    keywordCondition(q.ip, [apiAccessLogs.ip]),
+    q.responseCode != null ? eq(apiAccessLogs.responseCode, q.responseCode) : undefined,
     q.status === 'success' ? and(gte(apiAccessLogs.responseCode, 200), lte(apiAccessLogs.responseCode, 399)) : undefined,
     q.status === 'fail' ? gte(apiAccessLogs.responseCode, 400) : undefined,
     ...dateRangeConditions(apiAccessLogs.createdAt, q.startTime, q.endTime),
@@ -43,9 +53,8 @@ export function buildApiAccessLogsWhere(q: ApiAccessLogsListFilter) {
   );
 }
 
-function mapApiAccessLog(row: typeof apiAccessLogs.$inferSelect) {
-  return { ...row, createdAt: formatDateTime(row.createdAt) };
-}
+const mapApiAccessLog = entityMapper(apiAccessLogSchema);
+const mapApiAccessLogSummary = entityMapper(apiAccessLogListItemSchema);
 
 export async function listApiAccessLogs(q: QueryOutputOf<typeof apiAccessLogContract.list>) {
   const where = buildApiAccessLogsWhere(q);
@@ -53,12 +62,13 @@ export async function listApiAccessLogs(q: QueryOutputOf<typeof apiAccessLogCont
     page: q.page,
     pageSize: q.pageSize,
     count: () => db.$count(apiAccessLogs, where),
-    rows: () => withPagination(db.select().from(apiAccessLogs).where(where).orderBy(desc(apiAccessLogs.createdAt), desc(apiAccessLogs.id)).$dynamic(), q.page, q.pageSize),
-    map: mapApiAccessLog,
+    rows: () => withPagination(db.select(apiAccessLogSummaryColumns).from(apiAccessLogs).where(where).orderBy(desc(apiAccessLogs.createdAt), desc(apiAccessLogs.id)).$dynamic(), q.page, q.pageSize),
+    map: mapApiAccessLogSummary,
   });
 }
 
 export async function getApiAccessLog(id: number) {
+  assertApiAccessLogScope(currentUser());
   const [row] = await db.select().from(apiAccessLogs).where(and(eq(apiAccessLogs.id, id), tenantCondition(apiAccessLogs, currentUser()))).limit(1);
   requireRow(row, 'API 访问日志不存在');
   return mapApiAccessLog(row);

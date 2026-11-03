@@ -24,6 +24,7 @@
 | 意见反馈 | `/api/feedbacks` | 登录用户提交反馈，管理端查询、处理与删除 |
 | 数据脱敏 | `/api/data-mask` | 契约声明的敏感字段清单与生效策略、当前用户视角、按需查看明文（审计）；详见[安全体系](../backend/security.md#数据脱敏) |
 | 操作审计 | `/api/operation-logs` | 操作记录、筛选与变更前后快照；详见[操作日志与变更记录](../backend/audit-log-changes.md) |
+| API 访问日志 | `/api/api-access-logs` | 独立的结构化请求访问事实、脱敏快照、过滤、详情、导出与 90 天保留；详见[API 访问日志](../backend/api-access-logs.md) |
 | IP 访问与限流 | `/api/ip-access-logs`、`/api/rate-limit` | IP 拦截日志、限流规则、统计与拦截处置；IP 黑白名单配置及中间件行为见[安全体系](../backend/security.md) |
 | 缓存 | `/api/cache` | Redis 概览、key 浏览与清理等管理操作；详见[数据库、缓存与保留策略](../ops/data-platform.md) |
 | 监控与告警 | `/api/monitor`、`/api/monitor-alerts` | 实时监控、历史趋势、告警规则与事件处理；详见[监控与告警](../ops/observability.md) |
@@ -48,6 +49,7 @@ API 的方法、参数和响应以共享契约及运行中的 `/api/docs`、`/ap
 | 标签管理 | `/system/tags` |
 | 意见反馈 | `/system/feedbacks` |
 | 数据脱敏 | `/system/data-mask` |
+| API 访问日志 | `/system/api-access-logs` |
 | 缓存管理 | `/system/cache` |
 | License 授权 | `/system/license` |
 

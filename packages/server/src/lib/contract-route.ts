@@ -29,6 +29,7 @@ import { withDataMasking } from './data-mask/boundary';
 import { licenseFeatureGate } from './licensing';
 import { apiResponse, commonErrorResponses, jsonContent, okCsv, okExcel, okFile } from './openapi-schemas';
 import type { ApiAccessOperationContext } from './api-access-log';
+import { readRouteFact, tagMiddleware } from './route-facts';
 
 /**
  * 契约凭证类型对应的 OpenAPI securitySchemes 组件（`BearerAuth` 为全局默认方案，由 app.ts 注册）。
@@ -213,6 +214,21 @@ export function toRoute<
   const M extends readonly MiddlewareHandler[],
   const Extra extends ExtraResponses = Record<never, never>,
 >(op: Op, options: RouteOptions<M, Extra>): RouteOf<Op, M, Extra> {
+  const [firstMiddleware, ...restMiddleware] = resolveRouteMiddleware(op, options);
+  // Wrap the real first gate and retain its fact: CSRF and runtime permission checks
+  // inspect the first matched endpoint handler to recognize Bearer-only APIs.
+  const metadataMiddleware: MiddlewareHandler = async (c, next) => {
+    c.set('apiAccessOperation', {
+      operationKey: `${op.method.toUpperCase()} ${op.fullPath}`,
+      operationName: op.summary,
+      module: op.audit?.module ?? op.tags[0] ?? null,
+      operationType: op.method.toUpperCase(),
+      recordBody: op.audit?.recordBody !== false,
+    } satisfies ApiAccessOperationContext);
+    return firstMiddleware ? firstMiddleware(c, next) : next();
+  };
+  const fact = readRouteFact(firstMiddleware);
+  if (fact) tagMiddleware(metadataMiddleware, fact);
   const config: RouteConfig = {
     method: op.method,
     path: op.path,
@@ -221,7 +237,7 @@ export function toRoute<
     ...(op.description ? { description: op.description } : {}),
     ...(op.deprecated ? { deprecated: true } : {}),
     security: SECURITY_REQUIREMENTS[op.security],
-    middleware: resolveRouteMiddleware(op, options),
+    middleware: [metadataMiddleware, ...restMiddleware],
     ...(options.hide ? { hide: true } : {}),
     request: buildRequest(op),
     responses: { ...buildSuccess(op), ...commonErrorResponses, ...(options.responses ?? {}) },
@@ -256,15 +272,6 @@ export function defineContractRoute<
   const { middleware, preAuth, responses, hide, handler, hook } = def;
   const route = toRoute(op, { middleware, preAuth, responses, hide });
   const masked = withDataMasking(op, handler as unknown as (c: Context) => Response | Promise<Response>);
-  const withAccessMetadata = async (c: Context) => {
-    c.set('apiAccessOperation', {
-      operationKey: op.name,
-      operationName: op.summary,
-      module: op.audit?.module ?? null,
-      operationType: op.method.toUpperCase(),
-    } satisfies ApiAccessOperationContext);
-    return masked(c);
-  };
   // 同 toRoute：泛型 Op 下 RouteOf 无法静态满足 RouteConfig 约束，具体实例的类型由返回类型给出
-  return defineOpenAPIRoute({ route: route as RouteConfig, handler: withAccessMetadata as never, hook: hook as never }) as unknown as Registered<RouteOf<Op, M, Extra>>;
+  return defineOpenAPIRoute({ route: route as RouteConfig, handler: masked as never, hook: hook as never }) as unknown as Registered<RouteOf<Op, M, Extra>>;
 }

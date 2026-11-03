@@ -1,127 +1,210 @@
-import { db } from '../db';
-import { apiAccessLogs, type NewApiAccessLog } from '../db/schema';
-import logger from './logger';
 import type { Context } from 'hono';
-import { snapshotRequest } from './error-tracking/scrub';
+import { db } from '../db';
+import { apiAccessLogs, type IotDeviceRow, type NewApiAccessLog } from '../db/schema';
+import type { JwtPayload } from '../middleware/auth';
+import type { MemberJwtPayload } from '../middleware/member-auth';
+import type { OpenPrincipal } from '../middleware/open-gateway';
+import logger from './logger';
+import { clampAuditJson } from './audit-clamp';
+import { redactBody, truncateVarchar } from './sanitize';
 import { getClientIp, getPlatformVersion, resolveRequestClient } from './request-helpers';
 import { lookupIpLocation } from './ip-location';
 import { getEffectiveTenantId } from './tenant';
 import { PROCESS_HOSTNAME, PROCESS_PID } from './process-identity';
 import { config } from '../config';
 
-/** 契约路由在处理器执行前写入的操作元数据，供全局访问日志在响应结束后读取。 */
+/** 契约元数据独立于审计门禁：未登录、无权限与校验失败的访问也能定位到操作。 */
 export interface ApiAccessOperationContext {
   operationKey: string;
   operationName: string;
   module: string | null;
   operationType: string;
-}
-
-export const API_ACCESS_BODY_MAX_BYTES = 16 * 1024;
-
-export async function captureApiAccessRequest(c: Context) {
-  return snapshotRequest(c, { captureBody: true, bodyMaxBytes: API_ACCESS_BODY_MAX_BYTES, extraKeys: [] });
-}
-
-export function buildApiAccessLogEntry(c: Context, snapshot: Awaited<ReturnType<typeof captureApiAccessRequest>>, startedAt: number): NewApiAccessLog {
-  const user = c.get('user') as { userId: number; username: string; tenantId: number | null; impersonation?: { byUserId: number; byUsername: string }; authType?: string; os?: string } | undefined;
-  const member = c.get('member') as { memberId: number; identifier: string; tenantId: number | null } | undefined;
-  const principal = c.get('openPrincipal') as { tenantId: number | null; userId: number | null; channel: string; app?: { name?: string } } | undefined;
-  const ip = getClientIp(c);
-  const client = resolveRequestClient(c.req.header('user-agent') ?? '', getPlatformVersion(c), user?.os);
-  const operation = c.get('apiAccessOperation');
-  const error = c.get('apiAccessError');
-  const tenantId = user ? getEffectiveTenantId(user as never) : member?.tenantId ?? principal?.tenantId ?? null;
-  const principalType = user ? 'admin' : member ? 'member' : principal ? 'open-gateway' : 'anonymous';
-  const authType = user?.authType ?? (member ? 'member-jwt' : principal?.channel ?? 'none');
-  return {
-    tenantId,
-    userId: user?.userId ?? principal?.userId ?? null,
-    username: user?.username ?? member?.identifier ?? null,
-    impersonatorId: user?.impersonation?.byUserId ?? null,
-    impersonatorName: user?.impersonation?.byUsername ?? null,
-    principalType,
-    authType,
-    method: c.req.method,
-    path: c.req.url.slice(0, 512),
-    routePath: c.req.routePath?.slice(0, 512) ?? null,
-    requestId: (c.get('requestId') as string | undefined) ?? null,
-    queryParams: snapshot.query ?? null,
-    requestBody: snapshot.body,
-    module: operation?.module ?? null,
-    operationKey: operation?.operationKey ?? null,
-    operationName: operation?.operationName ?? null,
-    operationType: operation?.operationType ?? null,
-    responseCode: c.res.status,
-    durationMs: Date.now() - startedAt,
-    errorName: error?.name ?? null,
-    errorMessage: error?.message?.slice(0, 512) ?? null,
-    serviceName: config.otel.serviceName?.slice(0, 128) ?? 'zenith-admin',
-    processRole: config.roles.label,
-    hostname: PROCESS_HOSTNAME.slice(0, 128),
-    pid: PROCESS_PID,
-    ip: ip.slice(0, 64),
-    location: lookupIpLocation(ip)?.slice(0, 128) ?? null,
-    userAgent: (c.req.header('user-agent') ?? '').slice(0, 512) || null,
-    os: client.os === 'Unknown' ? null : client.os.slice(0, 64),
-    browser: client.browser === 'Unknown' ? null : client.browser.slice(0, 64),
-  };
+  recordBody: boolean;
 }
 
 declare module 'hono' {
-  interface ContextVariableMap {
-    apiAccessOperation?: ApiAccessOperationContext;
-    apiAccessError?: { name: string; message: string };
+  interface ContextVariableMap { apiAccessOperation?: ApiAccessOperationContext }
+}
+
+export const API_ACCESS_BODY_MAX_BYTES = 16 * 1024;
+const MAX_QUERY_KEYS = 32;
+const MAX_QUERY_BYTES = 8 * 1024;
+const MAX_SNAPSHOT_NODES = 256;
+const EXCLUDED_PREFIXES = ['/api/health', '/api/metrics', '/api/ws', '/api/openapi.json', '/api/docs', '/api/console-logs', '/api/log-files', '/api/log-viewer'];
+const CREDENTIAL_PATH = /(?:^|\/)(?:auth|oauth|oauth2|signatures?|credentials?|secrets?|passwords?|tokens?)(?:\/|$)/i;
+const EXTRA_SECRET_KEY = /^(?:code|otp|pin|signature|sign|key|session|sessionid|ticket|assertion|samlresponse|samlrequest)$/i;
+const BODY_NOT_READY = Symbol('body-not-ready');
+
+export function shouldCaptureApiAccessPath(path: string): boolean {
+  return path.startsWith('/api/') && !EXCLUDED_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
+}
+
+function sensitiveKey(key: string): boolean {
+  // Check original names before clipping: a long '...password' key must stay redacted.
+  const redacted = redactBody({ [key]: true }) as Record<string, unknown>;
+  return redacted[key] === '***' || EXTRA_SECRET_KEY.test(key);
+}
+
+/** Bounded traversal before serialization; the handler's parsed JSON may be large. */
+function boundedBody(value: unknown): unknown {
+  let remaining = MAX_SNAPSHOT_NODES;
+  const visit = (node: unknown, depth: number): unknown => {
+    if (--remaining < 0 || depth > 6) return '[truncated]';
+    if (typeof node === 'string') return node.slice(0, 1024);
+    if (node == null || typeof node === 'number' || typeof node === 'boolean') return node;
+    if (Array.isArray(node)) return node.slice(0, 20).map((item) => visit(item, depth + 1));
+    if (typeof node !== 'object') return '[omitted]';
+    const out: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+    let keys = 0;
+    for (const key in node) {
+      if (!Object.hasOwn(node, key)) continue;
+      if (++keys > 32 || remaining <= 0) { out._truncated = true; break; }
+      out[key.slice(0, 128)] = sensitiveKey(key) ? '***' : visit((node as Record<string, unknown>)[key], depth + 1);
+    }
+    return out;
+  };
+  const result = clampAuditJson(visit(value, 0), API_ACCESS_BODY_MAX_BYTES);
+  return result === undefined ? null : JSON.parse(result) as unknown;
+}
+
+/** No raw URL, headers or stream reads: only already parsed query/JSON values. */
+export async function captureApiAccessRequest(c: Context): Promise<{ query: Record<string, string>; body: unknown }> {
+  const query: Record<string, string> = {};
+  let bytes = 0;
+  for (const [key, value] of Object.entries(c.req.query()).slice(0, MAX_QUERY_KEYS)) {
+    const name = key.slice(0, 128);
+    const safeValue = sensitiveKey(key) ? '***' : value.slice(0, 1024);
+    bytes += Buffer.byteLength(name) + Buffer.byteLength(safeValue);
+    if (bytes > MAX_QUERY_BYTES) { query._truncated = 'true'; break; }
+    query[name] = safeValue;
   }
-}
-
-const MAX_QUEUE_SIZE = 2_000;
-const BATCH_SIZE = 100;
-const FLUSH_DELAY_MS = 50;
-
-const queue: NewApiAccessLog[] = [];
-let flushTimer: ReturnType<typeof setTimeout> | undefined;
-let flushing = false;
-
-function scheduleFlush(): void {
-  if (flushTimer !== undefined) return;
-  flushTimer = setTimeout(() => {
-    flushTimer = undefined;
-    void flushApiAccessLogs();
-  }, FLUSH_DELAY_MS);
-  // The timer must not keep a worker/API process alive during shutdown.
-  if (typeof flushTimer === 'object' && 'unref' in flushTimer) flushTimer.unref();
-}
-
-/**
- * 将访问日志放入有界内存队列。请求路径不等待数据库写入；队列满时丢弃最旧的一批，
- * 以保证日志故障不会把 API 主链路拖垮。
- */
-export function enqueueApiAccessLog(entry: NewApiAccessLog): void {
-  if (queue.length >= MAX_QUEUE_SIZE) {
-    queue.splice(0, Math.max(BATCH_SIZE, Math.floor(MAX_QUEUE_SIZE / 10)));
-    logger.warn('[api-access-log] queue full; oldest entries dropped');
-  }
-  queue.push(entry);
-  if (queue.length >= BATCH_SIZE) void flushApiAccessLogs();
-  else scheduleFlush();
-}
-
-/** 批量写入访问日志；导出供测试与优雅停机使用。 */
-export async function flushApiAccessLogs(): Promise<void> {
-  if (flushing || queue.length === 0) return;
-  flushing = true;
-  const batch = queue.splice(0, BATCH_SIZE);
-  try {
-    await db.insert(apiAccessLogs).values(batch);
-  } catch (error) {
-    logger.warn('[api-access-log] batch insert failed', { error: error instanceof Error ? error.message : String(error), count: batch.length });
-  } finally {
-    flushing = false;
-    if (queue.length > 0) {
-      if (queue.length >= BATCH_SIZE) void flushApiAccessLogs();
-      else scheduleFlush();
+  let body: unknown = null;
+  const type = c.req.header('content-type')?.split(';')[0].trim().toLowerCase();
+  const declaredLength = c.req.header('content-length');
+  const tooLarge = declaredLength !== undefined && (!/^\d+$/.test(declaredLength) || Number(declaredLength) > API_ACCESS_BODY_MAX_BYTES);
+  if (!tooLarge && type === 'application/json' && !CREDENTIAL_PATH.test(c.req.path) && c.get('apiAccessOperation')?.recordBody !== false) {
+    // Never clone/read an unconsumed stream for logging (body limits, uploads, live streams).
+    const cache = (c.req as unknown as { bodyCache?: { json?: Promise<unknown>; text?: Promise<string> } }).bodyCache;
+    if (cache?.json || cache?.text) {
+      let skipPending: ReturnType<typeof setImmediate> | undefined;
+      try {
+        // Hono 4.13 caches json() as text. Only parse a complete bounded cached string.
+        const cachedJson = cache.json ?? cache.text!.then((text) => Buffer.byteLength(text) <= API_ACCESS_BODY_MAX_BYTES ? JSON.parse(text) as unknown : null);
+        const parsed = await Promise.race([cachedJson, new Promise<typeof BODY_NOT_READY>((resolve) => {
+          skipPending = setImmediate(() => resolve(BODY_NOT_READY));
+        })]);
+        // Scalar JSON strings can themselves be credentials without a field name.
+        if (parsed !== BODY_NOT_READY && parsed !== null && typeof parsed === 'object') body = boundedBody(parsed);
+      } catch { /* malformed JSON has no safe structured body */ }
+      finally { if (skipPending) clearImmediate(skipPending); }
     }
   }
+  return { query, body };
 }
 
+function loggedPath(c: Context): string {
+  // Tokens in path parameters are credentials too: retain their template only.
+  return Object.keys(c.req.param()).some(sensitiveKey) ? c.req.routePath || c.req.path : c.req.path;
+}
+
+export function buildApiAccessLogEntry(c: Context, snapshot: Awaited<ReturnType<typeof captureApiAccessRequest>>, startedAt: number, startedTick: number): NewApiAccessLog {
+  const user: JwtPayload | undefined = c.get('user');
+  const member: MemberJwtPayload | undefined = c.get('member');
+  const principal: OpenPrincipal | undefined = c.get('openPrincipal');
+  const device: IotDeviceRow | undefined = c.get('iotDevice');
+  const ip = getClientIp(c);
+  const client = resolveRequestClient(c.req.header('user-agent') ?? '', getPlatformVersion(c), user?.os);
+  const operation = c.get('apiAccessOperation');
+  const error = c.error;
+  return {
+    tenantId: user ? getEffectiveTenantId(user) : member?.tenantId ?? principal?.tenantId ?? device?.tenantId ?? null,
+    userId: user?.userId ?? principal?.userId ?? null,
+    memberId: member?.memberId ?? null,
+    clientId: principal?.app.clientId ?? null,
+    username: truncateVarchar(user?.username ?? member?.identifier ?? device?.sn, 64),
+    impersonatorId: user?.impersonation?.byUserId ?? null,
+    impersonatorName: truncateVarchar(user?.impersonation?.byUsername, 64),
+    principalType: user ? 'admin' : member ? 'member' : principal ? 'open-gateway' : device ? 'device' : 'anonymous',
+    authType: user ? (user.authType ?? 'jwt') : member ? 'member-jwt' : principal?.channel ?? (device ? 'device-signature' : 'none'),
+    method: c.req.method.slice(0, 16),
+    path: loggedPath(c).slice(0, 512),
+    routePath: truncateVarchar(c.req.routePath === '/*' ? undefined : c.req.routePath, 512),
+    requestId: truncateVarchar(c.get('requestId'), 64),
+    queryParams: snapshot.query,
+    requestBody: snapshot.body,
+    module: truncateVarchar(operation?.module, 128),
+    operationKey: truncateVarchar(operation?.operationKey, 160),
+    operationName: truncateVarchar(operation?.operationName, 256),
+    operationType: truncateVarchar(operation?.operationType, 32),
+    responseCode: c.res.status,
+    durationMs: Math.min(2_147_483_647, Math.max(0, Math.round(performance.now() - startedTick))),
+    errorName: truncateVarchar(error?.name, 128),
+    // Raw exception messages can embed URL credentials or SQL parameters. Look up the
+    // scrubbed error event by requestId instead of duplicating that unstructured text.
+    errorMessage: error ? `HTTP ${c.res.status}` : null,
+    serviceName: truncateVarchar(config.otel.serviceName, 128),
+    processRole: config.roles.label,
+    hostname: PROCESS_HOSTNAME.slice(0, 128),
+    pid: PROCESS_PID,
+    ip: truncateVarchar(ip, 64),
+    location: truncateVarchar(lookupIpLocation(ip), 128),
+    userAgent: truncateVarchar(c.req.header('user-agent'), 512),
+    os: client.os === 'Unknown' ? null : client.os.slice(0, 64),
+    browser: client.browser === 'Unknown' ? null : client.browser.slice(0, 64),
+    createdAt: new Date(startedAt),
+  };
+}
+
+/** Bounded batch sink with counters; no database work starts on the request stack. */
+export function createApiAccessLogBuffer(write: (entries: NewApiAccessLog[]) => Promise<unknown>) {
+  const queue: NewApiAccessLog[] = [];
+  const stats = { accepted: 0, stored: 0, dropped: 0, flushFailures: 0 };
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let inFlight: Promise<void> | undefined;
+  let stopped = false;
+  let lastWarn = 0;
+  const warn = () => {
+    if (Date.now() - lastWarn < 30_000) return;
+    lastWarn = Date.now();
+    logger.warn('[api-access-log] entries dropped', { ...stats, pending: queue.length });
+  };
+  const flush = (): Promise<void> => {
+    if (timer) { clearTimeout(timer); timer = undefined; }
+    if (inFlight) return inFlight;
+    if (queue.length === 0) return Promise.resolve();
+    inFlight = (async () => {
+      while (queue.length > 0) {
+        const batch = queue.splice(0, 100);
+        try { await write(batch); stats.stored += batch.length; }
+        catch (error) {
+          stats.flushFailures += 1;
+          stats.dropped += batch.length;
+          // Report the SQLSTATE only: database errors may otherwise embed the request snapshot.
+          const raw = error as { code?: string; cause?: { code?: string } };
+          const code = raw.code ?? raw.cause?.code ?? null;
+          if (stats.flushFailures === 1) logger.warn('[api-access-log] persistence failed', { sqlState: code, errorType: error instanceof Error ? error.name : typeof error });
+          warn();
+        }
+      }
+    })().finally(() => { inFlight = undefined; });
+    return inFlight;
+  };
+  return {
+    enqueue(entry: NewApiAccessLog): void {
+      if (stopped) { stats.dropped += 1; return; }
+      stats.accepted += 1;
+      if (queue.length >= 2_000) { stats.dropped += 1; warn(); return; }
+      queue.push(entry);
+      if (!timer && !inFlight) timer = setTimeout(() => { void flush().catch(warn); }, 50).unref();
+    },
+    flush,
+    async stop(): Promise<void> { stopped = true; await flush(); },
+    stats: () => ({ ...stats, pending: queue.length, flushing: inFlight !== undefined }),
+  };
+}
+
+const buffer = createApiAccessLogBuffer(async (entries) => { await db.insert(apiAccessLogs).values(entries); });
+export const enqueueApiAccessLog = buffer.enqueue;
+export const flushApiAccessLogs = buffer.flush;
+export const stopApiAccessLogs = buffer.stop;
+export const apiAccessLogStats = buffer.stats;

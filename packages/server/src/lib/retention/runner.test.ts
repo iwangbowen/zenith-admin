@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { PgDialect } from 'drizzle-orm/pg-core';
 
 const { execute, select, update, insert, deleteFrom } = vi.hoisted(() => ({
   execute: vi.fn(),
@@ -13,6 +14,7 @@ vi.mock('../../db', () => ({
 }));
 
 import { previewPolicy, runPolicy } from './runner';
+import { findPolicy } from './policies';
 
 /** 构造 `db.select().from().where().limit()` 链，返回给定配置行 */
 function mockConfig(row: Record<string, unknown> | undefined) {
@@ -106,5 +108,37 @@ describe('previewPolicy', () => {
     const result = await previewPolicy('operation_logs');
     expect(result.pending).toBe(42);
     expect(result.cutoff).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+  });
+});
+
+describe('API access log retention', () => {
+  it('registers one global 90-day source-data policy, separate from operation audit', () => {
+    expect(findPolicy('api_access_logs')).toMatchObject({ key: 'api_access_logs', title: 'API 访问日志', tableName: 'api_access_logs', timeColumn: 'created_at', defaultDays: 90 });
+    expect(findPolicy('api_access_logs')?.perTenant).toBeUndefined();
+    expect(findPolicy('operation_logs')?.defaultDays).toBe(180);
+  });
+
+  it.each([{ enabled: false, retentionDays: 90 }, { enabled: true, retentionDays: 0 }])('does not delete while disabled or permanently retained: %j', async (policy) => {
+    mockConfig({ ...BASE_CONFIG, policyKey: 'api_access_logs', ...policy });
+    await expect(runPolicy('api_access_logs')).resolves.toBe(0);
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it('deletes only rows strictly older than the rolling cutoff, in bounded batches', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-03T08:00:00Z'));
+    try {
+      mockConfig({ ...BASE_CONFIG, policyKey: 'api_access_logs', retentionDays: 90, batchSize: 100 });
+      execute.mockResolvedValueOnce({ rowCount: 100 }).mockResolvedValueOnce({ rowCount: 9 });
+      await expect(runPolicy('api_access_logs')).resolves.toBe(109);
+      expect(execute).toHaveBeenCalledTimes(2);
+      const compiled = new PgDialect().sqlToQuery(execute.mock.calls[0][0]);
+      expect(compiled.sql).toContain('DELETE FROM "api_access_logs"');
+      expect(compiled.sql).toContain('"created_at" <');
+      expect(compiled.sql).toContain('::timestamptz');
+      expect(compiled.params).toEqual([new Date(Date.now() - 90 * 86_400_000).toISOString(), 100]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

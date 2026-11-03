@@ -11,8 +11,8 @@ export const apiAccessLogKeys = {
   detail: (id: number | undefined) => contractKey(apiAccessLogContract.detail, { params: { id: id ?? 0 } }),
 };
 
-export function useApiAccessLogList(params: ApiAccessLogListParams) {
-  return useApiQuery(apiAccessLogContract.list, { query: params }, { placeholderData: keepPreviousData });
+export function useApiAccessLogList(params: ApiAccessLogListParams, enabled = true) {
+  return useApiQuery(apiAccessLogContract.list, { query: params }, { placeholderData: keepPreviousData, enabled });
 }
 
 export function useApiAccessLogDetail(id: number | undefined, enabled = true) {
