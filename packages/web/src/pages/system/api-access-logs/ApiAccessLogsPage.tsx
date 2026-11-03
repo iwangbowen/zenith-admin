@@ -1,8 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { Button, Space, Tag, Typography } from '@douyinfe/semi-ui';
+import { Button, Tag } from '@douyinfe/semi-ui';
 import { useNavigate } from 'react-router-dom';
-import dayjs from 'dayjs';
 import {
   apiAccessLogContract, API_ACCESS_AUTH_LABELS, API_ACCESS_AUTH_OPTIONS,
   API_ACCESS_PRINCIPAL_LABELS, API_ACCESS_PRINCIPAL_OPTIONS, OPERATION_LOG_RESULT_OPTIONS,
@@ -15,16 +14,11 @@ import { FilterSelect, KeywordInput, NumberFilter } from '@/components/search-fi
 import { useListPage } from '@/hooks/useListPage';
 import { useApiAccessLogList } from '@/hooks/queries/api-access-logs';
 import { usePermission } from '@/hooks/usePermission';
-import { formatDateTimeForApi } from '@/utils/date';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { copyableNoColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { ApiAccessLogDetailSheet } from './ApiAccessLogDetailSheet';
 
 const METHOD_OPTIONS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'].map((value) => ({ value, label: value }));
-
-function defaultRange() {
-  return { startTime: formatDateTimeForApi(dayjs().subtract(6, 'day').startOf('day').toDate()), endTime: formatDateTimeForApi(dayjs().endOf('day').toDate()) };
-}
 
 export default function ApiAccessLogsPage() {
   const navigate = useNavigate();
@@ -33,7 +27,6 @@ export default function ApiAccessLogsPage() {
   const page = useListPage({
     contract: apiAccessLogContract,
     useList: useApiAccessLogList,
-    defaults: defaultRange,
     pageSize: 20,
     table: { empty: '暂无 API 访问记录' },
   });
@@ -56,10 +49,7 @@ export default function ApiAccessLogsPage() {
 
   return (
     <div className="page-container">
-      <Space spacing={8} wrap style={{ marginBottom: 12 }}>
-        <Typography.Text type="tertiary" size="small">默认查询近 7 天，超期访问记录由数据保留策略自动清理。</Typography.Text>
-        {hasPermission('system:retention:view') && <Button size="small" theme="borderless" onClick={() => navigate('/system/retention')}>数据保留策略</Button>}
-      </Space>
+      {hasPermission('system:retention:view') && <Button size="small" theme="borderless" onClick={() => navigate('/system/retention')} style={{ marginBottom: 12 }}>数据保留策略</Button>}
       <ListSearchToolbar
         page={page}
         filters={['username', 'userId', 'memberId', 'principalType', 'authType', 'clientId', 'method', 'path', 'routePath', 'module', 'operationKey', 'requestId', 'serviceName', 'ip', 'status', 'responseCode', 'content', ['startTime', 'endTime'], 'minDurationMs', 'maxDurationMs']}

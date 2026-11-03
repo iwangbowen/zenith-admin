@@ -40,11 +40,11 @@ beforeEach(() => {
 });
 
 describe('API access log page', () => {
-  it('默认范围覆盖当天后续记录；草稿不查询，提交、导出与重置使用同一组条件', async () => {
+  it('默认不限制时间范围；草稿不查询，提交、导出与重置使用同一组条件', async () => {
     const { container } = renderPage();
     await screen.findByText('admin');
-    expect(lastListQuery().get('endTime')).toMatch(/23:59:59$/);
-    expect(lastListQuery().get('startTime')).toMatch(/00:00:00$/);
+    expect(lastListQuery().has('startTime')).toBe(false);
+    expect(lastListQuery().has('endTime')).toBe(false);
     const toolbar = desktopToolbar(container);
     recorder.resetCalls();
     fireEvent.change(toolbar.getByPlaceholderText('搜索用户名 / 标识'), { target: { value: 'operator' } });
@@ -54,7 +54,9 @@ describe('API access log page', () => {
     await waitFor(() => expect(lastListQuery().get('username')).toBe('operator'));
     expect(lastListQuery().get('responseCode')).toBe('403');
     const exported = JSON.parse(toolbar.getByTestId('export').getAttribute('data-query')!);
-    expect(exported).toMatchObject({ username: 'operator', responseCode: 403, startTime: lastListQuery().get('startTime'), endTime: lastListQuery().get('endTime') });
+    expect(exported).toMatchObject({ username: 'operator', responseCode: 403 });
+    expect(exported).not.toHaveProperty('startTime');
+    expect(exported).not.toHaveProperty('endTime');
     fireEvent.click(toolbar.getByText('重置'));
     await waitFor(() => expect(toolbar.getByPlaceholderText('搜索用户名 / 标识')).toHaveValue(''));
     await waitFor(() => expect(lastListQuery().has('username')).toBe(false));
