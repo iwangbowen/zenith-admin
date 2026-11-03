@@ -1,14 +1,14 @@
 import { createLabelOptions, createLabelOptionsFromMap } from '../core/enum-options';
 import type { FileObjectAcl } from './types';
 
-export const API_ACCESS_PRINCIPAL_TYPES = ['admin', 'member', 'open-gateway', 'device', 'anonymous'] as const;
-export type ApiAccessPrincipalType = (typeof API_ACCESS_PRINCIPAL_TYPES)[number];
-export const API_ACCESS_PRINCIPAL_LABELS: Record<ApiAccessPrincipalType, string> = { admin: '管理员', member: '会员', 'open-gateway': '开放应用', device: '设备', anonymous: '匿名' };
-export const API_ACCESS_PRINCIPAL_OPTIONS = createLabelOptions(API_ACCESS_PRINCIPAL_TYPES, API_ACCESS_PRINCIPAL_LABELS);
-export const API_ACCESS_AUTH_TYPES = ['jwt', 'apiToken', 'member-jwt', 'bearer', 'signature', 'device-signature', 'none'] as const;
-export type ApiAccessAuthType = (typeof API_ACCESS_AUTH_TYPES)[number];
-export const API_ACCESS_AUTH_LABELS: Record<ApiAccessAuthType, string> = { jwt: '管理员令牌', apiToken: 'API 令牌', 'member-jwt': '会员令牌', bearer: 'OAuth2 令牌', signature: 'HMAC 签名', 'device-signature': '设备签名', none: '无认证' };
-export const API_ACCESS_AUTH_OPTIONS = createLabelOptions(API_ACCESS_AUTH_TYPES, API_ACCESS_AUTH_LABELS);
+export const API_ACCESS_ACCESSOR_TYPES = ['admin_user', 'member_user', 'open_application', 'device_client', 'anonymous'] as const;
+export type ApiAccessAccessorType = (typeof API_ACCESS_ACCESSOR_TYPES)[number];
+export const API_ACCESS_ACCESSOR_TYPE_LABELS: Record<ApiAccessAccessorType, string> = { admin_user: '管理端用户', member_user: '会员端用户', open_application: '开放平台应用', device_client: '设备客户端', anonymous: '未登录访问' };
+export const API_ACCESS_ACCESSOR_TYPE_OPTIONS = createLabelOptions(API_ACCESS_ACCESSOR_TYPES, API_ACCESS_ACCESSOR_TYPE_LABELS);
+export const API_ACCESS_CREDENTIAL_TYPES = ['admin_session', 'admin_api_token', 'member_session', 'open_oauth', 'open_signature', 'device_signature', 'none'] as const;
+export type ApiAccessCredentialType = (typeof API_ACCESS_CREDENTIAL_TYPES)[number];
+export const API_ACCESS_CREDENTIAL_LABELS: Record<ApiAccessCredentialType, string> = { admin_session: '管理端登录态', admin_api_token: '管理端 API Token', member_session: '会员端登录态', open_oauth: '开放平台 OAuth2', open_signature: '开放平台应用签名', device_signature: '设备签名', none: '未使用凭证' };
+export const API_ACCESS_CREDENTIAL_OPTIONS = createLabelOptions(API_ACCESS_CREDENTIAL_TYPES, API_ACCESS_CREDENTIAL_LABELS);
 
 // ─── WebSocket ────────────────────────────────────────────────────────────────
 

@@ -1,7 +1,7 @@
 import { check, integer, index, jsonb, pgEnum, pgTable, primaryKey, smallint, text, varchar } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { LOGIN_EVENT_TYPES } from '@zenith/shared/identity';
-import type { ApiAccessAuthType, ApiAccessPrincipalType } from '@zenith/shared/platform';
+import type { ApiAccessAccessorType, ApiAccessCredentialType } from '@zenith/shared/platform';
 import { tenantIdColumn } from './core';
 import { idColumn, timestamptz } from './common';
 import { entitySubjectRoleEnum } from './entity-relations';
@@ -115,14 +115,16 @@ export type NewOperationLogSubject = typeof operationLogSubjects.$inferInsert;
 export const apiAccessLogs = pgTable('api_access_logs', {
   id: idColumn(),
   tenantId: tenantIdColumn('set null'),
+  accessorId: varchar({ length: 128 }),
   userId: integer(),
-  username: varchar({ length: 64 }),
+  accessorName: varchar({ length: 64 }),
   impersonatorId: integer(),
   impersonatorName: varchar({ length: 64 }),
-  principalType: varchar({ length: 24 }).$type<ApiAccessPrincipalType>().notNull().default('anonymous'),
+  accessorType: varchar({ length: 24 }).$type<ApiAccessAccessorType>().notNull().default('anonymous'),
   memberId: integer(),
+  deviceId: integer(),
   clientId: varchar({ length: 64 }),
-  authType: varchar({ length: 24 }).$type<ApiAccessAuthType>().notNull().default('none'),
+  credentialType: varchar({ length: 32 }).$type<ApiAccessCredentialType>().notNull().default('none'),
   method: varchar({ length: 16 }).notNull(),
   path: varchar({ length: 512 }).notNull(),
   routePath: varchar({ length: 512 }),
@@ -151,6 +153,9 @@ export const apiAccessLogs = pgTable('api_access_logs', {
   index('api_access_logs_tenant_created_idx').on(t.tenantId, t.createdAt),
   index('api_access_logs_created_at_idx').on(t.createdAt),
   index('api_access_logs_user_idx').on(t.userId),
+  index('api_access_logs_member_idx').on(t.memberId),
+  index('api_access_logs_device_idx').on(t.deviceId),
+  index('api_access_logs_accessor_idx').on(t.accessorId),
   index('api_access_logs_request_idx').on(t.requestId),
   index('api_access_logs_path_idx').on(t.path),
   index('api_access_logs_route_idx').on(t.routePath),

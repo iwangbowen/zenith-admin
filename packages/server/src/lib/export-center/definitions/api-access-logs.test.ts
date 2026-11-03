@@ -56,16 +56,16 @@ describe('API access log export authorization', () => {
   });
 
   it('revalidates persisted filters and uses the supplied job actor rather than request ALS', async () => {
-    const query = await definition.prepareQuery!({ userId: '11', memberId: '12', responseCode: '503', minDurationMs: '500', authType: 'signature', principalType: 'open-gateway', page: 90, unknown: 'drop' }, platform);
-    expect(query).toMatchObject({ userId: 11, memberId: 12, responseCode: 503, minDurationMs: 500, authType: 'signature', principalType: 'open-gateway' });
+    const query = await definition.prepareQuery!({ userId: '11', memberId: '12', responseCode: '503', minDurationMs: '500', credentialType: 'open_signature', accessorType: 'open_application', page: 90, unknown: 'drop' }, platform);
+    expect(query).toMatchObject({ userId: 11, memberId: 12, responseCode: 503, minDurationMs: 500, credentialType: 'open_signature', accessorType: 'open_application' });
     expect(query).not.toHaveProperty('page');
     expect(query).not.toHaveProperty('unknown');
     await expect(definition.countRows(query, platform)).resolves.toBe(0);
     expect(state.count).toHaveBeenCalledWith(apiAccessLogs, expect.anything());
-    expect(render(state.count.mock.calls[0][1]).params).toEqual([11, 12, 'open-gateway', 'signature', 503, 500]);
+    expect(render(state.count.mock.calls[0][1]).params).toEqual([11, 12, 'open_application', 'open_signature', 503, 500]);
   });
 
-  it.each([{ responseCode: 999 }, { minDurationMs: -1 }, { authType: 'invented' }, { principalType: 'invented' }])('rejects invalid export filters %j', async (query) => {
+  it.each([{ responseCode: 999 }, { minDurationMs: -1 }, { credentialType: 'invented' }, { accessorType: 'invented' }])('rejects invalid export filters %j', async (query) => {
     await expect(definition.prepareQuery!(query, platform)).rejects.toBeDefined();
     expect(state.count).not.toHaveBeenCalled();
   });

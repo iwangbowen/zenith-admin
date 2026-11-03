@@ -1,6 +1,6 @@
 import { Button, Descriptions, Empty, SideSheet, Space, Spin, Tag, Typography } from '@douyinfe/semi-ui';
 import { useNavigate } from 'react-router-dom';
-import { API_ACCESS_AUTH_LABELS, API_ACCESS_PRINCIPAL_LABELS } from '@zenith/shared/platform';
+import { API_ACCESS_CREDENTIAL_LABELS, API_ACCESS_ACCESSOR_TYPE_LABELS } from '@zenith/shared/platform';
 import JsonBlock from '@/components/JsonBlock';
 import { RefreshButton } from '@/components/toolbar-controls';
 import { useApiAccessLogDetail } from '@/hooks/queries/api-access-logs';
@@ -31,13 +31,15 @@ export function ApiAccessLogDetailSheet({ id, onClose }: Readonly<{ id: number |
             <Text code style={{ wordBreak: 'break-all' }}>{log.path}</Text>
           </Space>
           <Descriptions size="small" column={1} data={[
-            { key: '访问主体', value: log.username ?? API_ACCESS_PRINCIPAL_LABELS[log.principalType] },
-            { key: '管理员 ID', value: log.userId ?? EMPTY_PLACEHOLDER },
-            { key: '会员 ID', value: log.memberId ?? EMPTY_PLACEHOLDER },
+            { key: '访问人 / 调用方', value: log.accessorName ?? API_ACCESS_ACCESSOR_TYPE_LABELS[log.accessorType] },
+            { key: '访问人 / 调用方 ID', value: log.accessorId ?? EMPTY_PLACEHOLDER },
+            { key: '管理端用户 ID', value: log.userId ?? EMPTY_PLACEHOLDER },
+            { key: '会员用户 ID', value: log.memberId ?? EMPTY_PLACEHOLDER },
+            { key: '设备 ID', value: log.deviceId ?? EMPTY_PLACEHOLDER },
             { key: '所属租户', value: log.tenantId ?? '平台 / 无租户' },
             { key: '实际操作人', value: log.impersonatorId == null ? '本人操作' : `${log.impersonatorName ?? '管理员'}（#${log.impersonatorId}，模拟登录）` },
-            { key: '主体类型', value: API_ACCESS_PRINCIPAL_LABELS[log.principalType] },
-            { key: '认证方式', value: API_ACCESS_AUTH_LABELS[log.authType] },
+            { key: '访问端类型', value: API_ACCESS_ACCESSOR_TYPE_LABELS[log.accessorType] },
+            { key: '凭证方式', value: API_ACCESS_CREDENTIAL_LABELS[log.credentialType] },
             { key: '开放应用 Client ID', value: log.clientId ?? EMPTY_PLACEHOLDER },
             { key: '模块', value: log.module ?? EMPTY_PLACEHOLDER },
             { key: '操作', value: log.operationName ?? EMPTY_PLACEHOLDER },

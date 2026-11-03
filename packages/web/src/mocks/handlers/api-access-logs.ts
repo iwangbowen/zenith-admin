@@ -7,9 +7,10 @@ import { notFound } from '@/mocks/utils/handlers';
 export const apiAccessLogsHandlers = [
   mock(apiAccessLogContract.list, ({ query, ok, paginate }) => {
     const list = mockApiAccessLogs.filter((row) => {
-      if (!matchesFilter(row.userId, query.userId) || !matchesFilter(row.memberId, query.memberId)) return false;
-      if (!matchesFilter(row.principalType, query.principalType) || !matchesFilter(row.authType, query.authType)) return false;
-      if (!includesKeyword(query.username?.trim(), row.username)) return false;
+      if (!matchesFilter(row.userId, query.userId) || !matchesFilter(row.memberId, query.memberId) || !matchesFilter(row.deviceId, query.deviceId)) return false;
+      if (!includesKeyword(query.accessorId?.trim(), row.accessorId)) return false;
+      if (!matchesFilter(row.accessorType, query.accessorType) || !matchesFilter(row.credentialType, query.credentialType)) return false;
+      if (!includesKeyword(query.accessorName?.trim(), row.accessorName)) return false;
       if (!includesKeyword(query.module?.trim(), row.module)) return false;
       if (!includesKeyword(query.operationKey?.trim(), row.operationKey)) return false;
       if (!includesKeyword(query.clientId?.trim(), row.clientId)) return false;

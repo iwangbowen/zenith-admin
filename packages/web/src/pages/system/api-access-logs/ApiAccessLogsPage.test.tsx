@@ -47,19 +47,19 @@ describe('API access log page', () => {
     expect(lastListQuery().has('endTime')).toBe(false);
     const toolbar = desktopToolbar(container);
     recorder.resetCalls();
-    fireEvent.change(toolbar.getByPlaceholderText('搜索用户名 / 标识'), { target: { value: 'operator' } });
+    fireEvent.change(toolbar.getByPlaceholderText('搜索访问人 / 调用方'), { target: { value: 'operator' } });
     fireEvent.change(toolbar.getByPlaceholderText('HTTP 状态码'), { target: { value: '403' } });
     expect(recorder.calls).toHaveLength(0);
     fireEvent.click(toolbar.getByText('查询'));
-    await waitFor(() => expect(lastListQuery().get('username')).toBe('operator'));
+    await waitFor(() => expect(lastListQuery().get('accessorName')).toBe('operator'));
     expect(lastListQuery().get('responseCode')).toBe('403');
     const exported = JSON.parse(toolbar.getByTestId('export').getAttribute('data-query')!);
-    expect(exported).toMatchObject({ username: 'operator', responseCode: 403 });
+    expect(exported).toMatchObject({ accessorName: 'operator', responseCode: 403 });
     expect(exported).not.toHaveProperty('startTime');
     expect(exported).not.toHaveProperty('endTime');
     fireEvent.click(toolbar.getByText('重置'));
-    await waitFor(() => expect(toolbar.getByPlaceholderText('搜索用户名 / 标识')).toHaveValue(''));
-    await waitFor(() => expect(lastListQuery().has('username')).toBe(false));
+    await waitFor(() => expect(toolbar.getByPlaceholderText('搜索访问人 / 调用方')).toHaveValue(''));
+    await waitFor(() => expect(lastListQuery().has('accessorName')).toBe(false));
     expect(lastListQuery().has('responseCode')).toBe(false);
   });
 
@@ -71,7 +71,7 @@ describe('API access log page', () => {
     expect(recorder.countOf('GET', `${apiAccessLogContract.basePath}/1`)).toBe(0);
     fireEvent.click(screen.getByText('详情'));
     await screen.findByText('API 访问日志 #1');
-    expect(screen.getAllByText('管理员令牌')).toHaveLength(2);
+    expect(screen.getAllByText('管理端登录态')).toHaveLength(2);
     expect(screen.getByText(mockApiAccessLogs[0].userAgent!)).toBeInTheDocument();
     expect(screen.getByText('demo-host / 1001')).toBeInTheDocument();
     expect(recorder.countOf('GET', `${apiAccessLogContract.basePath}/1`)).toBe(1);

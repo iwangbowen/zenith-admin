@@ -29,10 +29,10 @@ describe('API 访问日志 Demo', () => {
     expect((await list('?page=2&pageSize=1')).list.map((row) => row.id)).toEqual([2]);
   });
 
-  it('主体、认证、精确状态、参数与耗时组合筛选返回同一批记录', async () => {
-    const params = new URLSearchParams({ userId: '1', username: 'admin', principalType: 'admin', authType: 'jwt', method: 'post', module: '用户', operationKey: 'users.create', routePath: '/api/users', path: '/api/users', requestId: 'mock-request-002', serviceName: 'zenith', ip: '127.0.', responseCode: '400', status: 'fail', content: 'DEMO', minDurationMs: '40', maxDurationMs: '50' });
+  it('访问端、凭证、精确状态、参数与耗时组合筛选返回同一批记录', async () => {
+    const params = new URLSearchParams({ userId: '1', accessorName: 'admin', accessorType: 'admin_user', credentialType: 'admin_session', method: 'post', module: '用户', operationKey: 'users.create', routePath: '/api/users', path: '/api/users', requestId: 'mock-request-002', serviceName: 'zenith', ip: '127.0.', responseCode: '400', status: 'fail', content: 'DEMO', minDurationMs: '40', maxDurationMs: '50' });
     expect((await list(`?${params}`)).list.map((row) => row.id)).toEqual([2]);
-    expect((await list('?memberId=18&principalType=member&authType=member-jwt')).list.map((row) => row.id)).toEqual([3]);
+    expect((await list('?memberId=18&accessorType=member_user&credentialType=member_session')).list.map((row) => row.id)).toEqual([3]);
     expect((await list('?clientId=missing-client')).list).toEqual([]);
     expect((await list('?userId=18')).list).toEqual([]);
   });

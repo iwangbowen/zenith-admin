@@ -1,0 +1,1 @@
+CREATE INDEX "api_access_logs_accessor_idx" ON "api_access_logs" USING btree ("accessor_id");

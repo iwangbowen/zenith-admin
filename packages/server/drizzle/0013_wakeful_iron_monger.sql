@@ -1,0 +1,2 @@
+CREATE INDEX "api_access_logs_member_idx" ON "api_access_logs" USING btree ("member_id");--> statement-breakpoint
+CREATE INDEX "api_access_logs_device_idx" ON "api_access_logs" USING btree ("device_id");

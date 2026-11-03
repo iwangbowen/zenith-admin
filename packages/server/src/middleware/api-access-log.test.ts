@@ -71,7 +71,7 @@ describe('API access logging with real Hono requests and a database sink substit
     app.get('/api/probe/:id', (c) => c.json({ ok: true }));
     await app.request('/api/probe/7?token=secret&password=hidden&sign=signature&page=2', { headers: { 'x-request-id': 'access-123', 'x-forwarded-for': '8.8.8.8' } });
     const log = await onlyRecord();
-    expect(log).toMatchObject({ path: '/api/probe/7', routePath: '/api/probe/:id', requestId: 'access-123', ip: '127.0.0.1', principalType: 'anonymous', authType: 'none', queryParams: { token: '***', password: '***', sign: '***', page: '2' } });
+    expect(log).toMatchObject({ path: '/api/probe/7', routePath: '/api/probe/:id', requestId: 'access-123', ip: '127.0.0.1', accessorType: 'anonymous', credentialType: 'none', queryParams: { token: '***', password: '***', sign: '***', page: '2' } });
     expect(log.createdAt).toBeInstanceOf(Date);
   });
 
@@ -148,14 +148,24 @@ describe('API access logging with real Hono requests and a database sink substit
     app.post('/api/source', (c) => c.json({ ok: true }));
     const response = await app.request('/api/source', { method: 'POST', headers: { origin: 'https://evil.example', 'content-type': 'text/plain' }, body: 'secret' });
     expect(response.status).toBe(403);
-    expect(await onlyRecord()).toMatchObject({ responseCode: 403, principalType: 'anonymous', requestBody: null });
+    expect(await onlyRecord()).toMatchObject({ responseCode: 403, accessorType: 'anonymous', requestBody: null });
   });
 
   it('keeps member IDs separate and authenticates attribution only from server context', async () => {
     const app = makeApp();
     app.get('/api/member', (c) => { c.set('member', { memberId: 41, identifier: 'member41', tenantId: 7, type: 'member' }); return c.json({ ok: true }); });
     await app.request('/api/member');
-    expect(await onlyRecord()).toMatchObject({ principalType: 'member', memberId: 41, userId: null, username: 'member41', authType: 'member-jwt', tenantId: 7 });
+    expect(await onlyRecord()).toMatchObject({ accessorType: 'member_user', memberId: 41, userId: null, accessorName: 'member41', credentialType: 'member_session', tenantId: 7 });
+  });
+
+  it('records the unified accessor ID and credential kind for a management user', async () => {
+    const app = makeApp();
+    app.get('/api/admin', (c) => {
+      c.set('user', { userId: 7, username: 'operator', tenantId: null, roles: [], authType: 'apiToken' });
+      return c.json({ ok: true });
+    });
+    await app.request('/api/admin');
+    expect(await onlyRecord()).toMatchObject({ accessorId: 'user:7', userId: 7, accessorName: 'operator', accessorType: 'admin_user', credentialType: 'admin_api_token' });
   });
 
   it('omits health/log-file noise and records access-log queries without recursive response snapshots', async () => {

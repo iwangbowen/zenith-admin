@@ -1,19 +1,21 @@
 import * as z from 'zod';
 import { dateRangeQuery, idParam, idQuery, keywordQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
-import { API_ACCESS_PRINCIPAL_TYPES, API_ACCESS_AUTH_TYPES, OPERATION_LOG_RESULTS } from '../constants';
+import { API_ACCESS_ACCESSOR_TYPES, API_ACCESS_CREDENTIAL_TYPES, OPERATION_LOG_RESULTS } from '../constants';
 
 export const apiAccessLogSchema = z.object({
   id: z.int(),
   tenantId: z.int().nullable(),
+  accessorId: z.string().nullable(),
   userId: z.int().nullable(),
+  deviceId: z.int().nullable(),
   memberId: z.int().nullable(),
   clientId: z.string().nullable(),
-  username: z.string().nullable(),
+  accessorName: z.string().nullable(),
   impersonatorId: z.int().nullable(),
   impersonatorName: z.string().nullable(),
-  principalType: z.enum(API_ACCESS_PRINCIPAL_TYPES),
-  authType: z.enum(API_ACCESS_AUTH_TYPES),
+  accessorType: z.enum(API_ACCESS_ACCESSOR_TYPES),
+  credentialType: z.enum(API_ACCESS_CREDENTIAL_TYPES),
   method: z.string(),
   path: z.string(),
   routePath: z.string().nullable(),
@@ -48,11 +50,13 @@ export type ApiAccessLogListItem = z.infer<typeof apiAccessLogListItemSchema>;
 
 export const apiAccessLogListQuery = paginationQuery.extend({
   userId: idQuery(),
+  deviceId: idQuery(),
+  accessorId: keywordQuery('访问人 / 调用方 ID'),
   memberId: idQuery(),
   clientId: keywordQuery('应用 ID'),
-  username: keywordQuery('用户名 / 标识'),
-  principalType: queryEnum(API_ACCESS_PRINCIPAL_TYPES),
-  authType: queryEnum(API_ACCESS_AUTH_TYPES),
+  accessorName: keywordQuery('访问人 / 调用方'),
+  accessorType: queryEnum(API_ACCESS_ACCESSOR_TYPES),
+  credentialType: queryEnum(API_ACCESS_CREDENTIAL_TYPES),
   module: keywordQuery('模块'),
   operationKey: keywordQuery('操作标识'),
   method: keywordQuery('请求方法'),

@@ -72,11 +72,11 @@ describe('API access log visibility', () => {
 
 describe('API access log filtering and projection', () => {
   it('keeps identity, HTTP result, duration and service filters parameterized', () => {
-    const compiled = render(buildApiAccessLogsWhere({ userId: 11, memberId: 12, clientId: 'app1', principalType: 'open-gateway', authType: 'signature', responseCode: 503, status: 'fail', method: 'post', minDurationMs: 100, maxDurationMs: 2500, serviceName: 'api', ip: '192.168.' }));
-    for (const column of ['user_id', 'member_id', 'client_id', 'principal_type', 'auth_type', 'response_code', 'method', 'duration_ms', 'service_name', 'ip']) {
+    const compiled = render(buildApiAccessLogsWhere({ accessorId: 'app:test', deviceId: 13, userId: 11, memberId: 12, clientId: 'app1', accessorType: 'open_application', credentialType: 'open_signature', responseCode: 503, status: 'fail', method: 'post', minDurationMs: 100, maxDurationMs: 2500, serviceName: 'api', ip: '192.168.' }));
+    for (const column of ['accessor_id', 'user_id', 'member_id', 'device_id', 'client_id', 'accessor_type', 'credential_type', 'response_code', 'method', 'duration_ms', 'service_name', 'ip']) {
       expect(compiled.sql).toContain(`"${column}"`);
     }
-    expect(compiled.params).toEqual([11, 12, '%app1%', 'open-gateway', 'signature', 'POST', '%api%', '%192.168.%', 503, 400, 100, 2500]);
+    expect(compiled.params).toEqual([11, 12, 13, '%app:test%', '%app1%', 'open_application', 'open_signature', 'POST', '%api%', '%192.168.%', 503, 400, 100, 2500]);
     expect(compiled.sql).not.toContain('192.168.');
   });
 
@@ -120,7 +120,7 @@ describe('API access log filtering and projection', () => {
   });
 
   it('projects detail through the contract and formats its timestamp', async () => {
-    selection([{ id: 42, tenantId: null, userId: 1, memberId: null, clientId: null, username: 'admin', principalType: 'admin', authType: 'jwt', method: 'POST', path: '/api/orders', routePath: '/api/orders', requestId: 'req-42', responseCode: 400, durationMs: 12, requestBody: { password: '***', title: '采购' }, queryParams: {}, createdAt: new Date('2026-11-03T08:00:00Z'), internalCredential: 'must-not-leak' }]);
+    selection([{ id: 42, tenantId: null, accessorId: 'user:1', userId: 1, memberId: null, deviceId: null, clientId: null, accessorName: 'admin', accessorType: 'admin_user', credentialType: 'admin_session', method: 'POST', path: '/api/orders', routePath: '/api/orders', requestId: 'req-42', responseCode: 400, durationMs: 12, requestBody: { password: '***', title: '采购' }, queryParams: {}, createdAt: new Date('2026-11-03T08:00:00Z'), internalCredential: 'must-not-leak' }]);
     const detail = await getApiAccessLog(42);
     expect(detail).toMatchObject({ id: 42, requestId: 'req-42', requestBody: { password: '***', title: '采购' }, queryParams: {}, responseCode: 400 });
     expect(detail.createdAt).toMatch(/^2026-11-03 \d{2}:00:00$/);

@@ -85,6 +85,27 @@
       "when": 1793703012067,
       "tag": "0011_yielding_marrow",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1793715190531,
+      "tag": "0012_wealthy_mole_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1793717372216,
+      "tag": "0013_wakeful_iron_monger",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1793719184978,
+      "tag": "0014_sad_masked_marvel",
+      "breakpoints": true
     }
   ]
 }

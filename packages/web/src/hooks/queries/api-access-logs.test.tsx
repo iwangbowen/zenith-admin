@@ -18,10 +18,10 @@ beforeEach(() => {
 describe('API access log queries', () => {
   it('列表筛选与分页按契约序列化，手动刷新使用当前筛选', async () => {
     const client = createTestQueryClient();
-    const hook = renderHook(() => useApiAccessLogList({ page: 2, pageSize: 20, responseCode: 400, minDurationMs: 0, username: '张 三' }), { wrapper: createWrapper(client) });
+    const hook = renderHook(() => useApiAccessLogList({ page: 2, pageSize: 20, responseCode: 400, minDurationMs: 0, accessorName: '张 三' }), { wrapper: createWrapper(client) });
     await waitFor(() => expect(hook.result.current.isSuccess).toBe(true));
     const first = new URL(recorder.urls('GET')[0], 'http://localhost');
-    expect(Object.fromEntries(first.searchParams)).toMatchObject({ page: '2', pageSize: '20', responseCode: '400', minDurationMs: '0', username: '张 三' });
+    expect(Object.fromEntries(first.searchParams)).toMatchObject({ page: '2', pageSize: '20', responseCode: '400', minDurationMs: '0', accessorName: '张 三' });
     recorder.resetCalls();
     await act(async () => { await hook.result.current.refetch(); });
     expect(recorder.urls('GET')).toEqual([`${first.pathname}${first.search}`]);

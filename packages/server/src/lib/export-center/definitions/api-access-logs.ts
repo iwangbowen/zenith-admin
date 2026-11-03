@@ -1,5 +1,5 @@
 import { desc, lt, lte } from 'drizzle-orm';
-import { API_ACCESS_AUTH_LABELS, API_ACCESS_PRINCIPAL_LABELS, apiAccessLogListQuery } from '@zenith/shared/platform';
+import { API_ACCESS_CREDENTIAL_LABELS, API_ACCESS_ACCESSOR_TYPE_LABELS, apiAccessLogListQuery } from '@zenith/shared/platform';
 import { db } from '../../../db';
 import { apiAccessLogs } from '../../../db/schema';
 import { buildApiAccessLogsWhere, apiAccessLogSummaryColumns, assertApiAccessLogScope, type ApiAccessLogsListFilter } from '../../../services/platform/api-access-logs.service';
@@ -10,9 +10,10 @@ import type { ExportColumn } from '../types';
 
 const columns: ExportColumn[] = [
   { key: 'id', header: 'ID', width: 10, type: 'number' },
-  { key: 'principalType', header: '主体类型', width: 14, enumMap: API_ACCESS_PRINCIPAL_LABELS },
-  { key: 'authType', header: '认证方式', width: 14, enumMap: API_ACCESS_AUTH_LABELS },
-  { key: 'username', header: '用户 / 标识', width: 20 },
+  { key: 'accessorType', header: '访问端类型', width: 14, enumMap: API_ACCESS_ACCESSOR_TYPE_LABELS },
+  { key: 'credentialType', header: '凭证方式', width: 14, enumMap: API_ACCESS_CREDENTIAL_LABELS },
+  { key: 'accessorName', header: '访问人 / 调用方', width: 20 },
+  { key: 'accessorId', header: '访问人 / 调用方 ID', width: 28 },
   { key: 'method', header: '方法', width: 10 },
   { key: 'path', header: '请求地址', width: 42 },
   { key: 'routePath', header: '路由模板', width: 36 },

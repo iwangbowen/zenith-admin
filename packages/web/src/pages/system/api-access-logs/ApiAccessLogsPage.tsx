@@ -3,8 +3,8 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Button, Tag } from '@douyinfe/semi-ui';
 import { useNavigate } from 'react-router-dom';
 import {
-  apiAccessLogContract, API_ACCESS_AUTH_LABELS, API_ACCESS_AUTH_OPTIONS,
-  API_ACCESS_PRINCIPAL_LABELS, API_ACCESS_PRINCIPAL_OPTIONS, OPERATION_LOG_RESULT_OPTIONS,
+  apiAccessLogContract, API_ACCESS_CREDENTIAL_LABELS, API_ACCESS_CREDENTIAL_OPTIONS,
+  API_ACCESS_ACCESSOR_TYPE_LABELS, API_ACCESS_ACCESSOR_TYPE_OPTIONS, OPERATION_LOG_RESULT_OPTIONS,
   type ApiAccessLogListItem,
 } from '@zenith/shared/platform';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
@@ -32,9 +32,10 @@ export default function ApiAccessLogsPage() {
   });
   const columns = useMemo<ColumnProps<ApiAccessLogListItem>[]>(() => [
     { title: 'ID', dataIndex: 'id', width: 80 },
-    { title: '访问主体', dataIndex: 'username', width: 160, render: (v: string | null, row) => renderEllipsis(v ?? API_ACCESS_PRINCIPAL_LABELS[row.principalType]) },
-    { title: '主体类型', dataIndex: 'principalType', width: 100, render: (v: ApiAccessLogListItem['principalType']) => API_ACCESS_PRINCIPAL_LABELS[v] },
-    { title: '认证方式', dataIndex: 'authType', width: 120, render: (v: ApiAccessLogListItem['authType']) => API_ACCESS_AUTH_LABELS[v] },
+    { title: '访问人 / 调用方', dataIndex: 'accessorName', width: 180, render: (v: string | null, row) => renderEllipsis(v ?? API_ACCESS_ACCESSOR_TYPE_LABELS[row.accessorType]) },
+    { title: '访问人 / 调用方 ID', dataIndex: 'accessorId', width: 180, render: (v: string | null) => renderEllipsis(v) },
+    { title: '访问端类型', dataIndex: 'accessorType', width: 120, render: (v: ApiAccessLogListItem['accessorType']) => API_ACCESS_ACCESSOR_TYPE_LABELS[v] },
+    { title: '凭证方式', dataIndex: 'credentialType', width: 140, render: (v: ApiAccessLogListItem['credentialType']) => API_ACCESS_CREDENTIAL_LABELS[v] },
     { title: '方法', dataIndex: 'method', width: 90, render: (v: string) => <Tag size="small" color="blue">{v}</Tag> },
     { title: '请求路径', dataIndex: 'path', minWidth: 280, render: (v: string) => renderEllipsis(v) },
     { title: '模块', dataIndex: 'module', width: 150, render: (v: string | null) => renderEllipsis(v) },
@@ -52,12 +53,14 @@ export default function ApiAccessLogsPage() {
       {hasPermission('system:retention:view') && <Button size="small" theme="borderless" onClick={() => navigate('/system/retention')} style={{ marginBottom: 12 }}>数据保留策略</Button>}
       <ListSearchToolbar
         page={page}
-        filters={['username', 'userId', 'memberId', 'principalType', 'authType', 'clientId', 'method', 'path', 'routePath', 'module', 'operationKey', 'requestId', 'serviceName', 'ip', 'status', 'responseCode', 'content', ['startTime', 'endTime'], 'minDurationMs', 'maxDurationMs']}
+        filters={['accessorName', 'accessorId', 'userId', 'memberId', 'deviceId', 'accessorType', 'credentialType', 'clientId', 'method', 'path', 'routePath', 'module', 'operationKey', 'requestId', 'serviceName', 'ip', 'status', 'responseCode', 'content', ['startTime', 'endTime'], 'minDurationMs', 'maxDurationMs']}
         overrides={{
-          userId: (p) => <NumberFilter placeholder="管理员 ID" min={1} {...p.bind('userId')} />,
+          userId: (p) => <NumberFilter placeholder="管理端用户 ID" min={1} {...p.bind('userId')} />,
           memberId: (p) => <NumberFilter placeholder="会员 ID" min={1} {...p.bind('memberId')} />,
-          principalType: (p) => <FilterSelect placeholder="全部主体类型" items={API_ACCESS_PRINCIPAL_OPTIONS} {...p.bind('principalType')} />,
-          authType: (p) => <FilterSelect placeholder="全部认证方式" items={API_ACCESS_AUTH_OPTIONS} {...p.bind('authType')} />,
+          deviceId: (p) => <NumberFilter placeholder="设备 ID" min={1} {...p.bind('deviceId')} />,
+          accessorId: (p) => <KeywordInput placeholder="访问人 / 调用方 ID" {...p.bindKeyword('accessorId')} />,
+          accessorType: (p) => <FilterSelect placeholder="全部访问端类型" items={API_ACCESS_ACCESSOR_TYPE_OPTIONS} {...p.bind('accessorType')} />,
+          credentialType: (p) => <FilterSelect placeholder="全部凭证方式" items={API_ACCESS_CREDENTIAL_OPTIONS} {...p.bind('credentialType')} />,
           clientId: (p) => <KeywordInput placeholder="开放应用 Client ID" {...p.bindKeyword('clientId')} />,
           method: (p) => <FilterSelect placeholder="全部请求方法" items={METHOD_OPTIONS} {...p.bind('method')} />,
           path: (p) => <KeywordInput placeholder="请求路径" {...p.bindKeyword('path')} />,
