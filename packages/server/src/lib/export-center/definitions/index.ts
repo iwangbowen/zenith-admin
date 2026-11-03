@@ -15,6 +15,7 @@ import { processesExportDefinition } from './processes';
 import { announcementsExportDefinition } from './announcements';
 import { loginLogsExportDefinition } from './login-logs';
 import { operationLogsExportDefinition } from './operation-logs';
+import { apiAccessLogsExportDefinition } from './api-access-logs';
 import { emailSendLogsExportDefinition } from './email-send-logs';
 import { smsSendLogsExportDefinition } from './sms-send-logs';
 import { membersExportDefinition } from './members';
@@ -74,6 +75,7 @@ const definitions = [
   announcementsExportDefinition,
   loginLogsExportDefinition,
   operationLogsExportDefinition,
+  apiAccessLogsExportDefinition,
   emailSendLogsExportDefinition,
   smsSendLogsExportDefinition,
   membersExportDefinition,

@@ -6,6 +6,7 @@ export * from './entity-relations';
 export * from './entity-timeline';
 export * from './dicts';
 export * from './exception-logs';
+export * from './api-access-logs';
 export * from './file-storage-configs';
 export * from './files';
 export * from './health';

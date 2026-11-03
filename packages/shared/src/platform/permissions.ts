@@ -40,6 +40,8 @@ export const PLATFORM_PERMISSIONS = definePermissions({
   'system:sql-monitor:terminate': { label: '取消 / 终止会话', menu: 'SystemSqlMonitor' },
   'system:sql-monitor:manage': { label: '管理采样设置 / 重置统计', menu: 'SystemSqlMonitor' },
   'system:log:operation': { label: '查询', menu: 'SystemOperationLogs' },
+  'system:api-access-log:list': { label: '查询', menu: 'SystemApiAccessLogs' },
+  'system:api-access-log:export': { label: '导出', menu: 'SystemApiAccessLogs' },
   'system:trace:view': { label: '查询', menu: 'SystemTrace' },
   'system:exception-log:list': { label: '查询', menu: 'SystemExceptionLogs' },
   'system:exception-log:manage': { label: '处理 / 删除 / 告警规则', menu: 'SystemExceptionLogs' },

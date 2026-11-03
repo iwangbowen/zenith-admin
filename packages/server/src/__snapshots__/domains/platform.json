@@ -29,6 +29,8 @@
   "DELETE /api/rules/scorecards/:id",
   "DELETE /api/tags/:id",
   "DELETE /api/tags/batch",
+  "GET /api/api-access-logs",
+  "GET /api/api-access-logs/:id",
   "GET /api/cache",
   "GET /api/cache/overview",
   "GET /api/cache/value",
