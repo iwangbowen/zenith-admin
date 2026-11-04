@@ -475,10 +475,6 @@ export default function ProfilePage({ user }: ProfilePageProps) {
               </div>
             </Tabs.TabPane>
 
-            <Tabs.TabPane itemKey="signature" tab={<span className="profile-tab-label"><PenTool size={14} /><span>我的签名</span></span>}>
-              {activeSection === 'signature' && <MySignatureTab />}
-            </Tabs.TabPane>
-
             {/* ── 账号安全 ──────────────────────────────────────── */}
             <Tabs.TabPane
               itemKey="security"
@@ -637,6 +633,10 @@ export default function ProfilePage({ user }: ProfilePageProps) {
                   />
                   )}
               </div>
+            </Tabs.TabPane>
+
+            <Tabs.TabPane itemKey="signature" tab={<span className="profile-tab-label"><PenTool size={14} /><span>我的签名</span></span>}>
+              {activeSection === 'signature' && <MySignatureTab />}
             </Tabs.TabPane>
 
             {/* ── 通知设置 ──────────────────────────────────────── */}
