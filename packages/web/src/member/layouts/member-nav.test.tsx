@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {} from '@testing-library/react';
-import { getSelectedMemberNavKey,} from './member-nav';
+import { getSelectedMemberNavKey } from './member-nav';
 
 describe('member nav model', () => {
   it('resolves active route keys', () => {

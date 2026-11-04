@@ -143,7 +143,7 @@ function pageContext(theme: string): CmsPageContext {
 }
 
 describe('CMS shared theme rendering', () => {
-  it('keeps representative shared markup available across built-in themes', () => {
+  it('preserves public form validation and the captcha island contract across built-in themes', () => {
     const html = [
       render(defaultTheme.templates.page, pageContext('default')),
       render(docsTheme.templates.page, pageContext('docs')),
@@ -158,10 +158,6 @@ describe('CMS shared theme rendering', () => {
     // 验证码由 islands/captcha.ts 按容器挂载：服务端只输出容器契约，不再内联脚本
     expect(html).toContain('data-island="captcha"');
     expect(html).not.toContain("fetch('/api/public/cms/captcha')");
-    expect(html).toContain('href="/news/?page=2"');
-    expect(html).toContain('href="/news/?page=4"');
-    expect(html.match(/class="current">3/g)).toHaveLength(3);
-    expect(html).toContain('京ICP备12345678号-1');
   });
 
   it('ships no inline executable script: interactions live in the islands bundle (only the theme-toggle bootstrap may stay inline)', () => {

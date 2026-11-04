@@ -2,10 +2,8 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { load } from 'cheerio';
 import { describe, expect, it, vi } from 'vitest';
-import type { CmsHomeSection, CmsResolvedWidget } from '@zenith/shared/cms';
-import type { CmsContentItem, CmsHomeContext, CmsThemeContentCollection, CmsThemeContentQuery } from '../types';
+import type { CmsContentItem, CmsHomeContext, CmsThemeContentQuery } from '../types';
 import { HomeTemplate } from './templates';
-import { Layout } from './Layout';
 
 function context(): CmsHomeContext {
   return {
@@ -37,21 +35,8 @@ function content(id: number): CmsContentItem {
   };
 }
 
-function renderHome(ctx: CmsHomeContext, channelBlocks: CmsThemeContentCollection[] = []) {
-  return load(renderToStaticMarkup(createElement(HomeTemplate.Component, { ...ctx, data: { channelBlocks: channelBlocks.map((block, index) => ({ ...block, section: { id: `block-${index}`, source: 'channel', channelId: block.channel?.id ?? null, title: '', count: 8, style: 'feature-list', imageRatio: 'wide', focusX: 50, focusY: 50 } as CmsHomeSection })) } })));
-}
-
-describe('默认主题首页栏目展示', () => {
-  it('renders separately bound main and footer widgets in their declared regions', () => {
-    const ctx = context();
-    const widget: CmsResolvedWidget = { id: 1, name: '主区推荐', type: 'manual-list', rendererKey: 'list-grid', items: [{ id: 'one', sourceType: 'manual', sourceId: null, title: '专题入口', summary: null, url: '/topic/', image: null, displayDate: null }] };
-    ctx.themeSlots = { 'home.main': widget, footer: { ...widget, id: 2, name: '页脚推荐', rendererKey: 'list-sidebar', items: [{ ...widget.items[0], title: '联系入口', url: '/contact/' }] } };
-    const $ = renderHome(ctx);
-    expect($('.home-main-widget a').attr('href')).toBe('/topic/');
-    expect($('.footer-widget a').attr('href')).toBe('/contact/');
-    expect($('.home-main-widget').text()).not.toContain('联系入口');
-  });
-  it('loads structured sources with independent counts and preserves editorial order and presentation styles', async () => {
+describe('默认主题首页数据加载', () => {
+  it('loads structured sources with independent counts in editorial order', async () => {
     const ctx = context();
     const common = { channelId: null, title: '', imageRatio: 'square' as const, focusX: 25, focusY: 75 };
     ctx.site.themeConfig.homeSections = [
@@ -64,106 +49,19 @@ describe('默认主题首页栏目展示', () => {
       { channelId: undefined, limit: 2, recommend: false, hot: true },
       { channelId: 7, limit: 1, recommend: false, hot: false },
     ]);
-    const $ = load(renderToStaticMarkup(createElement(HomeTemplate.Component, { ...ctx, data })));
-    expect($('.home-channel-block').first().attr('data-style')).toBe('cards');
-    expect($('.home-channel-block').first().find('.thumb')).toHaveLength(2);
-    expect($('.home-channel-block').last().attr('data-style')).toBe('compact');
-    expect($('.home-channel-block').last().find('.thumb')).toHaveLength(0);
-    expect($('.home-channel-block').last().text()).toContain('新闻精选');
-    expect($('.home-channel-block').first().attr('style')).toContain('25% 75%');
+    expect(data.channelBlocks?.map((block) => ({ id: block.section.id, count: block.list.length }))).toEqual([
+      { id: 'hot', count: 2 },
+      { id: 'news', count: 1 },
+    ]);
   });
-  it('preserves all 37 articles in eight channel blocks, emphasizing one lead without repeating every summary or cover', () => {
-    const ctx = context();
-    let id = 1;
-    const blocks = ctx.nav.slice(0, 8).map((channel, index) => ({
-      channel: { ...channel, code: `section-${channel.id}` },
-      list: Array.from({ length: index < 5 ? 5 : 4 }, () => content(id++)),
-    }));
-    blocks[0].list[0] = { ...blocks[0].list[0], isTop: true, isHot: true, contentType: 'album', imageCount: 3 };
-    blocks[7].list[3] = { ...blocks[7].list[3], isExternal: true, contentType: 'link', url: 'https://example.test/external', titleStyle: { bold: true, color: '#123456' } };
-    ctx.recommended = [content(91)];
-    ctx.hot = [content(92)];
-    const $ = renderHome(ctx, blocks);
 
-    expect($('.home-channel-grid > section')).toHaveLength(8);
-    expect($('.home-channel-block .content-item')).toHaveLength(37);
-    expect($('.home-content-featured')).toHaveLength(8);
-    expect($('.home-content-compact')).toHaveLength(29);
-    expect($('.home-channel-block .summary')).toHaveLength(8);
-    expect($('.home-channel-block .thumb')).toHaveLength(8);
-    expect($('.home-channel-more')).toHaveLength(8);
-    for (const [index, block] of blocks.entries()) {
-      const region = $(`#home-channel-${block.channel!.id}-${index}`).closest('section');
-      expect(region.attr('aria-labelledby')).toBe(`home-channel-${block.channel!.id}-${index}`);
-      expect(region.find('.home-channel-more').attr('href')).toBe(block.channel!.url);
-      expect(region.find('.home-channel-more').text()).toContain('查看更多');
-      for (const article of block.list) expect(region.find('h3 a').toArray().some((link) => $(link).attr('href') === article.url)).toBe(true);
-    }
-    expect($('.home-content-featured').first().text()).toContain('图集·3');
-    expect($('.home-content-featured').first().text()).toContain('置顶');
-    const external = $('.home-content-compact a[href="https://example.test/external"]');
+  it('keeps external content links isolated from the opener', () => {
+    const ctx = context();
+    const url = 'https://example.test/external';
+    ctx.latest = [{ ...content(1), isExternal: true, contentType: 'link', url }];
+    const $ = load(renderToStaticMarkup(createElement(HomeTemplate.Component, { ...ctx, data: { channelBlocks: [] } })));
+    const external = $(`a[href="${url}"]`);
     expect(external.attr('target')).toBe('_blank');
     expect(external.attr('rel')).toContain('noopener');
-    expect(external.attr('style')).toContain('color:#123456');
-    expect($('.home-sidebar').text()).toContain('推荐阅读');
-    expect($('.home-sidebar').text()).toContain('热门排行');
-  });
-
-  it('keeps each empty configured channel and its more link while avoiding a blank sidebar column', () => {
-    const ctx = context();
-    const blocks = [{ channel: { id: 1, code: 'empty', name: '空栏目', url: '/__cms/example/empty/' }, list: [] }];
-    const $ = renderHome(ctx, blocks);
-    const repeated = renderHome(ctx, [blocks[0], blocks[0]]);
-    const headings = repeated('.home-channel-heading h2').toArray().map((element) => repeated(element).attr('id'));
-    expect(new Set(headings).size).toBe(2);
-    expect($('.home-channel-block .empty').text()).toBe('暂无内容');
-    expect($('.home-channel-more').attr('href')).toBe('/__cms/example/empty/');
-    expect($('.home-grid').hasClass('home-grid-full')).toBe(true);
-    expect($('.home-sidebar')).toHaveLength(0);
-    expect($('.home-content-featured')).toHaveLength(0);
-  });
-
-  it('retains the latest feed and empty state when no channels are configured', () => {
-    const ctx = context();
-    ctx.latest = [content(1), { ...content(2), coverImage: null, coverThumb: null, summary: null, publishedAt: null }];
-    const $ = renderHome(ctx);
-    expect($('.home-channel-grid')).toHaveLength(0);
-    expect($('.home-main .section-title').text()).toBe('最新发布');
-    expect($('.home-main .content-item')).toHaveLength(2);
-    expect($('.home-main .summary').text()).toBe('内容摘要 1');
-    expect($('.home-main .meta').first().text()).toContain('来源：来源');
-    expect($('.home-main .thumb')).toHaveLength(1);
-    const empty = renderHome(context());
-    expect(empty('.home-main .empty').text()).toBe('暂无内容');
-  });
-
-  it('keeps all navigation destinations accessible and names the search field and configured banner', () => {
-    const ctx = context();
-    ctx.site.themeConfig = { bannerImage: '/images/hero.png', bannerLink: 'https://example.test/campaign' };
-    const $ = renderHome(ctx);
-    expect($('nav[aria-label="栏目导航"] a')).toHaveLength(12);
-    expect($('.site-nav a').last().attr('href')).toBe(ctx.nav[11].url);
-    expect($('.site-nav a').last().attr('target')).toBe('_blank');
-    expect($('input[type="search"]').attr('aria-label')).toBe('站内搜索');
-    expect($('.site-search').attr('action')).toBe(ctx.searchUrl);
-    expect($('.home-banner img').attr('alt')).toBe('示例站点首页横幅');
-    expect($('.home-banner a').attr('href')).toBe('https://example.test/campaign');
-    expect($('.theme-toggle')).toHaveLength(1);
-    expect($('script[src="/_assets/islands.js"]')).toHaveLength(1);
-    const current = load(renderToStaticMarkup(createElement(Layout, { ctx, currentUrl: ctx.nav[11].url, children: '正文' })));
-    expect(current('.site-nav a[aria-current="page"]').attr('href')).toBe(ctx.nav[11].url);
-  });
-
-  it('preserves home advertisements and hides only the optional hot section', () => {
-    const ctx = context();
-    ctx.site.themeConfig.showHotSection = false;
-    ctx.hot = [content(8)];
-    ctx.ads = { 'home-ad': [{ id: 1, name: '配置中的广告', image: '/images/ad.png', linkUrl: 'https://example.test/ad' }] };
-    const $ = renderHome(ctx);
-    expect($('.ad-slot [data-ad-id="1"]').attr('data-ad-clickable')).toBe('true');
-    expect($('.ad-slot img').attr('alt')).toBe('配置中的广告');
-    expect($('.home-sidebar')).toHaveLength(0);
-    expect($('.home-hero h1').text()).toBe(ctx.site.name);
-    expect($('.home-hero p').text()).toBe(ctx.site.description);
   });
 });

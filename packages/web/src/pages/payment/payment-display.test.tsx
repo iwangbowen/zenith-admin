@@ -1,4 +1,3 @@
-import {} from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { paymentMoneyColumn } from './payment-display';
 

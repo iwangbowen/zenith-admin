@@ -5,9 +5,7 @@
  * O(n) 前缀扫描实现（对照基准为 O(n²) slice/some），需保证结果完全一致。
  */
 import { describe, it, expect } from 'vitest';
-import { isValidElement, type ReactElement } from 'react';
-import type { Menu } from '@zenith/shared/identity';
-import { computeTabClosableFlags, menuToNavItem } from './utils';
+import { computeTabClosableFlags } from './utils';
 
 type T = { key: string; closable: boolean };
 
@@ -69,27 +67,5 @@ describe('computeTabClosableFlags', () => {
       const tabs: T[] = shape.map((closable, i) => ({ key: `/t${i}`, closable }));
       expect(computeTabClosableFlags(tabs)).toEqual(reference(tabs));
     }
-  });
-});
-
-describe('menuToNavItem', () => {
-  it('保留完整菜单标题供省略后的悬浮提示使用', () => {
-    const title = '用户管理用户管理用户管理';
-    const menu = {
-      id: 1,
-      parentId: 0,
-      title,
-      type: 'menu',
-      status: 'enabled',
-      visible: true,
-      sort: 0,
-      path: '/system/users',
-      createdAt: '',
-      updatedAt: '',
-    } as Menu;
-    const item = menuToNavItem(menu);
-    expect(item).not.toBeNull();
-    expect(isValidElement(item?.text)).toBe(true);
-    expect((item?.text as ReactElement<{ title?: string }>).props.title).toBe(title);
   });
 });

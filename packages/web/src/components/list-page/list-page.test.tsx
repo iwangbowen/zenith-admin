@@ -1,15 +1,9 @@
-import {} from '@testing-library/react';
 import { Toast } from '@douyinfe/semi-ui';
 import type { ModalReactProps } from '@douyinfe/semi-ui/lib/es/modal';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {} from './ListSearchToolbar';
-import {} from './InstantFilterToolbar';
 import { batchStatusHandler } from './batchStatus';
 import { confirmAndDelete, deleteAction } from './deleteAction';
 import { listTableProps } from './listTableProps';
-import {} from '@/components/toolbar-controls';
-import {} from '@/hooks/usePermission';
-import type {} from '@zenith/shared/core';
 
 // Modal.confirm 依赖 createRoot 命令式渲染，jsdom 下改为记录配置、由测试手动触发 onOk
 const confirmCalls = vi.hoisted(() => [] as ModalReactProps[]);

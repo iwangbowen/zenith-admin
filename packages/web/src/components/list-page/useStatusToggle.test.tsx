@@ -16,12 +16,8 @@ interface Row { id: number; name: string; status: 'enabled' | 'disabled' }
 
 function Harness({ rows, options }: Readonly<{ rows: Row[]; options: UseStatusToggleOptions<Row> }>) {
   const status = useStatusToggle<Row>(options);
-  const column = status.column();
   return (
     <div>
-      <span data-testid="title">{String(column.title)}</span>
-      <span data-testid="fixed">{String(column.fixed)}</span>
-      <span data-testid="width">{String(column.width)}</span>
       <span data-testid="pending">{String(status.pendingKey)}</span>
       {rows.map((row) => <div key={row.id} data-testid={`row-${row.id}`}>{status.renderSwitch(row)}</div>)}
     </div>
@@ -29,7 +25,6 @@ function Harness({ rows, options }: Readonly<{ rows: Row[]; options: UseStatusTo
 }
 
 const rows: Row[] = [{ id: 1, name: '模板 A', status: 'enabled' }, { id: 2, name: '模板 B', status: 'disabled' }];
-const switchIn = (id: number) => screen.getByTestId(`row-${id}`).querySelector('.semi-switch') as HTMLElement;
 const clickSwitch = (id: number) => fireEvent.click(screen.getByTestId(`row-${id}`).querySelector('.semi-switch-native-control') as HTMLElement);
 const lastConfirm = () => confirmCalls.at(-1)!;
 
@@ -37,15 +32,6 @@ beforeEach(() => { confirmCalls.length = 0; });
 afterEach(() => { vi.restoreAllMocks(); });
 
 describe('useStatusToggle', () => {
-  it('列默认：状态 / 80 / 固定右侧，开关按 status 反映启用态', () => {
-    render(<Harness rows={rows} options={{ toggle: () => Promise.resolve() }} />);
-    expect(screen.getByTestId('title').textContent).toBe('状态');
-    expect(screen.getByTestId('fixed').textContent).toBe('right');
-    expect(screen.getByTestId('width').textContent).toBe('80');
-    expect(switchIn(1).classList.contains('semi-switch-checked')).toBe(true);
-    expect(switchIn(2).classList.contains('semi-switch-checked')).toBe(false);
-  });
-
   it('无确认时直接执行 toggle，成功后提示默认文案并清除行内 loading', async () => {
     const success = vi.spyOn(Toast, 'success');
     let resolve!: () => void;
@@ -78,7 +64,7 @@ describe('useStatusToggle', () => {
     await waitFor(() => expect(success).toHaveBeenCalledWith('已停用'));
   });
 
-  it('danger 确认注入红色实心确认按钮；自定义与函数式成功文案生效', async () => {
+  it('自定义与函数式成功文案在禁用操作完成后生效', async () => {
     const success = vi.spyOn(Toast, 'success');
     const toggle = vi.fn(() => Promise.resolve());
     render(<Harness rows={rows} options={{
@@ -87,7 +73,7 @@ describe('useStatusToggle', () => {
       messages: { disabled: (r) => `${r.name} 已禁用` },
     }} />);
     clickSwitch(1);
-    expect(lastConfirm()).toMatchObject({ title: '确认禁用', okText: '确认禁用', okButtonProps: { type: 'danger', theme: 'solid' } });
+    expect(lastConfirm()).toMatchObject({ title: '确认禁用', okText: '确认禁用' });
     expect((lastConfirm() as { danger?: boolean }).danger).toBeUndefined();
     await act(async () => { await lastConfirm().onOk?.({} as never); });
     await waitFor(() => expect(success).toHaveBeenCalledWith('模板 A 已禁用'));

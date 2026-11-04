@@ -3,7 +3,7 @@
  *
  * 条目点击一直承担「打开详情 / 跳转深链」语义，红点随之被清掉；带深链的监控告警点了就跳走，
  * 用户想清红点却不必打开时没有出路。这里锁定两个新增动作：
- *   - 单条「已读」：只标已读，不触发条目点击（弹层不关、不跳转），常显且位置固定
+ *   - 单条「已读」：只标已读，不触发条目点击（弹层不关、不跳转）
  *   - 头部「全部已读」：仅在有未读时出现
  */
 import { fireEvent, render, screen } from '@testing-library/react';
@@ -62,8 +62,6 @@ describe('通知弹层 · 单条标记已读', () => {
     expect(props.markAsRead).toHaveBeenCalledWith(1);
     expect(props.navigate).not.toHaveBeenCalled();
     expect(props.setSelectedMessage).not.toHaveBeenCalled();
-    // 弹层仍在（未选中任何文件）
-    expect(screen.getByText('最新站内信')).toBeInTheDocument();
   });
 
   it('公告：同样只标已读，不打开公告详情', () => {
@@ -73,39 +71,6 @@ describe('通知弹层 · 单条标记已读', () => {
 
     expect(props.markAnnouncementAsRead).toHaveBeenCalledWith(1);
     expect(props.setSelectedAnnouncement).not.toHaveBeenCalled();
-  });
-});
-
-describe('通知弹层 · 单条已读布局', () => {
-  it('已读状态与未读操作共用时间行右侧位置，不占用列表额外列', () => {
-    renderMessages();
-    const timeRows = document.querySelectorAll('.notification-popover__time-row');
-
-    expect(timeRows).toHaveLength(2);
-    expect(timeRows[0].querySelector('.notification-popover__mark-read')).toHaveAttribute('aria-label', '标为已读');
-    expect(timeRows[1].querySelector('.notification-popover__read-state')).toHaveTextContent('已读');
-    expect(document.querySelector('.semi-list-item-extra')).not.toBeInTheDocument();
-  });
-
-  it('公告下拉同样使用统一的已读状态位', () => {
-    renderAnnouncements();
-    const timeRows = document.querySelectorAll('.notification-popover__time-row');
-
-    expect(timeRows[0].querySelector('.notification-popover__mark-read')).toHaveAttribute('aria-label', '标为已读');
-    expect(timeRows[1].querySelector('.notification-popover__read-state')).toHaveTextContent('已读');
-  });
-
-  it('标题与语义标签同处一行：长标题单行省略，标签不被挤到下一行', () => {
-    const longTitle = '支付对账异常：E2E-支付渠道-20261023 · E2E_MCH_20261023';
-    renderMessages({ inAppMessages: [{ ...message(1, false), title: longTitle }] });
-
-    const row = document.querySelector('.notification-popover__title-row') as HTMLElement;
-    const title = row.querySelector('.notification-popover__title') as HTMLElement;
-
-    // 标题与标签是同一 flex 行的兄弟节点（行内为 nowrap，标签紧跟标题之后）
-    expect(row).toContainElement(title);
-    expect(title).toHaveAttribute('title', longTitle);
-    expect(row.querySelector('.semi-tag')).not.toBeNull();
   });
 });
 

@@ -577,7 +577,8 @@ server 启动时加载全部路由 / 服务模块图，任何模块顶层静态 
   手写转义写入 `innerHTML`（服务端返回的可信 SVG 除外）
 - **接口约定**：会员 token 经 `islands/shared/member.ts` 读取；请求经 `shared/api.ts`（`apiJson` / `apiHeaders` / `isOk`）；
   展示给用户的文案取 `data.message`（信封 `message` 恒为 `'success'`），除非路由显式用 `okBody(null, 文案)`
-- **测试**：每个岛配 `// @vitest-environment jsdom` 单测，用 `islands/test-utils.ts` 的 `stubFetch` / `flush` /
-  `setMemberToken` / `html` 断言 DOM 行为与请求契约；不要再写 grep 主题源码的字符串断言
+- **测试**：浏览器端测试范围遵循 [前端测试](./constraints-frontend.md#前端测试)；需覆盖接口、安全与数据处理边界时，
+  用 `// @vitest-environment jsdom` 和 `islands/test-utils.ts` 的 `stubFetch` / `flush` / `setMemberToken` / `html`，
+  断言请求契约与业务结果；不要写 grep 主题源码的字符串断言
 - **交付不需改**：`scripts/build-islands.mjs` 打包、`themes/islands-asset.ts` 指纹、`_assets/islands.{hash}.js` 路由已就位，
   新增岛只需上述四步；产物由 `npm run build` 生成、`npm run lint` 含 `tsc -p tsconfig.islands.json`

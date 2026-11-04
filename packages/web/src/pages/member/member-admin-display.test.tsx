@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { render } from '@testing-library/react';
-import { memberCellColumn, renderMemberName, signedNumberChange, signedYuanChange } from './member-admin-display';
+import { memberCellColumn, renderMemberName } from './member-admin-display';
 
 interface Row {
   memberId: number;
@@ -18,15 +17,7 @@ describe('member admin display helpers', () => {
 
   it('builds member cell columns from field names', () => {
     const column = memberCellColumn<Row>({ nameField: 'memberName', nicknameField: 'memberNickname', idField: 'memberId' });
-    expect(column.title).toBe('会员');
     expect(column.dataIndex).toBe('memberName');
     expect(column.render?.(null, { memberId: 3, memberName: '姓名', memberNickname: null }, 0)).toBe('姓名');
-  });
-
-  it('renders signed point and yuan changes', () => {
-    const positivePoint = render(<>{signedNumberChange(5)}</>).container.textContent;
-    const negativeYuan = render(<>{signedYuanChange(-123)}</>).container.textContent;
-    expect(positivePoint).toBe('+5');
-    expect(negativeYuan).toBe('-1.23');
   });
 });

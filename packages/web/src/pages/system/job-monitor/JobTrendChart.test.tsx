@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { render } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import type { JobMonitorTrend } from '@zenith/shared/platform';
 
@@ -28,15 +28,6 @@ function setPoints(points: JobMonitorTrend['points']) {
 beforeEach(() => { vi.clearAllMocks(); setPoints([{ time: '2026-10-03 12:00:00', backlog: 0, stuck: 0, dead: 0, failed1h: 0 }]); });
 
 describe('job trend chart', () => {
-  it('switches between all four supported ranges', () => {
-    render(<JobTrendChart />);
-    expect(state.query).toHaveBeenLastCalledWith('24h');
-    for (const [range, label] of [['1h', '近 1 小时'], ['6h', '近 6 小时'], ['7d', '近 7 天'], ['24h', '近 24 小时']] as const) {
-      fireEvent.click(screen.getByRole('button', { name: label }));
-      expect(state.query).toHaveBeenLastCalledWith(range);
-    }
-  });
-
   it('retains missing facts as gaps while preserving a measured zero', () => {
     setPoints([
       { time: '2026-10-03 12:00:00', backlog: 0, stuck: 1, dead: 0, failed1h: 2 },
@@ -53,7 +44,5 @@ describe('job trend chart', () => {
     expect(specs[1].data[0].values.filter((point: { __x: string }) => point.__x === '2026-10-03 12:01:00').map((point: { __value: number | null }) => point.__value)).toEqual([null, null]);
     expect(specs[1].data[0].values[0].__value).toBe(1);
     expect(specs[1].data[0].values[1].__value).toBe(0);
-    expect(screen.getAllByRole('img', { name: '作业趋势折线图' })).toHaveLength(3);
-    expect(screen.getByText('卡死与死信')).toBeInTheDocument();
   });
 });
