@@ -6,8 +6,16 @@ const state = {
 };
 
 vi.mock('../../config', () => ({ config: { get multiTenantMode() { return state.multiTenantMode; } } }));
-// 会话列表在内存中分页，不触库；这里只为切断 lib/list-query → db → logger → config.log 的模块加载链
-vi.mock('../../db', () => ({ db: {} }));
+// 部门补充查询使用替身；这些用例聚焦会话的租户可见性与强制下线权限。
+vi.mock('../../db', () => ({
+  db: {
+    select: () => ({
+      from: () => ({
+        leftJoin: () => ({ where: async () => [] }),
+      }),
+    }),
+  },
+}));
 vi.mock('../../lib/context', () => ({ currentUser: () => state.user }));
 vi.mock('../../lib/ws-manager', () => ({
   sendToToken: vi.fn(), closeTokenConnection: vi.fn(), sendToUser: vi.fn(), closeUserConnections: vi.fn(),
