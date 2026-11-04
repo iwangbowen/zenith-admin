@@ -47,7 +47,7 @@ data-retention（每天 03:00）:
 - `packages/server/src/routes/tasks/async-tasks.ts`：任务中心管理 API。
 - `packages/server/src/services/tasks/async-tasks.service.ts`：列表、统计、权限、操作服务。
 - `packages/server/src/bootstrap/workers.ts`：任务类型与队列声明清单（所有角色执行；是否领取作业由 `lib/pg-boss-scheduler.ts` 按角色决定）。
-- `packages/server/src/lib/system-tasks.registry.ts`：`async-tasks-drain` 兜底扫描注册。
+- `packages/server/src/bootstrap/system-tasks.ts`：`async-tasks-drain` 兜底扫描注册。
 - 前端：`useAsyncTasks` / `TaskTray` / `/system/task-center` / `/biz/task-demo`。
 
 数据表：

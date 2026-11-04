@@ -3,9 +3,13 @@ import logger from '../logger';
 import { RETRY_BACKOFF_MAX_MS, type TaskHandlerRegistration, type TaskTypeRuntimePolicy } from './types';
 
 const handlers = new Map<string, TaskHandlerRegistration>();
+let sealed = false;
+
+export function sealTaskHandlerRegistry(): void { sealed = true; }
 
 /** 注册任务处理器（各业务模块在启动时调用；重复注册以最后一次为准） */
 export function registerTaskHandler(registration: TaskHandlerRegistration): void {
+  if (sealed) throw new Error('任务执行目录已经冻结');
   if (handlers.has(registration.taskType)) {
     logger.warn(`[task-center] 任务类型 "${registration.taskType}" 重复注册，已覆盖`);
   }

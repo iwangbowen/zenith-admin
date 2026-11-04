@@ -21,11 +21,13 @@ import '@hono/zod-openapi';
 // 在业务模块图加载前安装原生 console 采集；环境配置校验失败仍由原始 stderr 兜底。
 import logger from './lib/logger';
 import { validateSettingsRegistry } from '@zenith/shared/settings';
-import { startApiRole, type ApiRoleHandle } from './bootstrap/run-api';
+import type { ApiRoleHandle } from './bootstrap/run-api';
 import { activateWorkerJobs, startWorkerRole, type WorkerRoleHandle } from './bootstrap/run-worker';
 import { withTimeout } from './bootstrap/shutdown';
 import { registerEventSubscribers } from './bootstrap/subscribers';
 import { declareBackgroundJobs } from './bootstrap/workers';
+import { declareApplicationCatalogs } from './bootstrap/catalogs';
+import { sealTaskHandlerRegistry } from './lib/task-center/registry';
 import { assertRuntimeLogOptions, assertRuntimeRoles, assertRuntimeSecrets, config } from './config';
 import { closeDb } from './db';
 import { startErrorReporter, stopErrorReporter } from './lib/error-tracking/reporter';
@@ -83,6 +85,7 @@ registerErrorAlertListener();
 
 // Consumer receipts are materialized at publication time. Register and freeze the complete
 // catalog before either HTTP ingress or a ledger worker can observe business facts.
+declareApplicationCatalogs();
 registerEventSubscribers();
 sealEventConsumerRegistry();
 
@@ -91,6 +94,7 @@ let apiRole: ApiRoleHandle | null = null;
 let workerRole: WorkerRoleHandle | null = null;
 
 if (config.roles.api) {
+  const { startApiRole } = await import('./bootstrap/run-api');
   apiRole = await startApiRole();
 }
 if (config.roles.worker) {
@@ -148,6 +152,7 @@ process.on('SIGTERM', () => { if (shuttingDown || isFatalShutdownInProgress()) p
 
 // ─── 后台作业声明（所有角色）→ 执行期收尾（worker）────────────────────────────
 const declared = await declareBackgroundJobs();
+if (declared) sealTaskHandlerRegistry();
 if (declared && config.roles.worker) {
   await activateWorkerJobs().catch((err) => logger.error('Failed to activate worker jobs', err));
 }

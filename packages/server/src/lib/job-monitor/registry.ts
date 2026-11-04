@@ -11,7 +11,10 @@ export interface JobSourceRegistration {
   listStuck?(limit: number): Promise<JobStuckItem[]>;
 }
 const sources = new Map<JobSourceKey, JobSourceRegistration>();
+let sealed = false;
+export function sealJobSourceRegistry(): void { sealed = true; }
 export function registerJobSource(source: JobSourceRegistration) {
+  if (sealed) throw new Error('作业监控目录已经冻结');
   if (sources.has(source.key)) throw new Error(`重复作业源: ${source.key}`);
   sources.set(source.key, source);
 }

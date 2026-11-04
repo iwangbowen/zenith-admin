@@ -3,6 +3,9 @@ import type { AnyExportDefinition, ExportDefinition } from './types';
 import { DEFAULT_EXPORT_EXECUTION, DEFAULT_EXPORT_RETENTION } from './types';
 
 const registry = new Map<string, AnyExportDefinition>();
+let sealed = false;
+
+export function sealExportRegistry(): void { sealed = true; }
 
 export function defineExport<TQuery extends Record<string, unknown>, TRow extends Record<string, unknown>>(
   definition: ExportDefinition<TQuery, TRow>,
@@ -17,6 +20,7 @@ export function defineExport<TQuery extends Record<string, unknown>, TRow extend
 }
 
 export function registerExport(definition: AnyExportDefinition): void {
+  if (sealed) throw new Error('导出目录已经冻结');
   if (registry.has(definition.entity)) {
     throw new Error(`导出实体已注册: ${definition.entity}`);
   }

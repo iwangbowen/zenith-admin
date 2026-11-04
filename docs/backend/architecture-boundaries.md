@@ -17,8 +17,8 @@
 静态基准使用 `packages/server/scripts/architecture-benchmark.mjs`，分析 Server、Shared、Analytics SDK，不导入应用、不连接数据库：
 
 ```bash
-node packages/server/scripts/architecture-benchmark.mjs capture --label candidate --out docs/backend/perf/architecture-candidate.json
-node packages/server/scripts/architecture-benchmark.mjs compare --baseline docs/backend/perf/architecture-baseline.json --candidate docs/backend/perf/architecture-candidate.json --out docs/backend/perf/architecture-comparison.json
+node packages/server/scripts/architecture-benchmark.mjs capture --label candidate --moves docs/backend/perf/architecture-moves.json --out docs/backend/perf/architecture-candidate.json
+node packages/server/scripts/architecture-benchmark.mjs compare --baseline docs/backend/perf/architecture-baseline.json --candidate docs/backend/perf/architecture-candidate.json --moves docs/backend/perf/architecture-moves.json --out docs/backend/perf/architecture-comparison.json
 ```
 
 文件移动必须使用 `--moves <json>` 显式提供旧路径到新路径的映射，capture 与 compare 使用同一映射；样本消失或被偷偷替换会失败。基准记录 Node、锁文件指纹、HEAD、源码哈希、文件清单及选择器原因。`architecture-baseline.json` 来自改动前冻结的源码输入，捕获时工作区干净。

@@ -1,0 +1,38 @@
+import { desc } from 'drizzle-orm';
+import { db } from '../../../db/index';
+import { emailSendLogs } from '../../../db/schema';
+import { batchIterable } from '../../../lib/excel-export';
+import { buildListWhere, type EmailSendLogListFilter } from '../email-send-logs.service';
+import { defineExport } from '../../../lib/export-center/registry';
+import { RETENTION_7_DAYS } from '../../../lib/export-center/presets';
+import type { ExportColumn } from '../../../lib/export-center/types';
+
+const columns: ExportColumn[] = [
+  { key: 'id', header: 'ID', width: 8, type: 'number' },
+  { key: 'toEmail', header: '收件邮箱', width: 26, sensitive: true, maskKey: 'EmailSendLog.toEmail' },
+  { key: 'subject', header: '主题', width: 30 },
+  { key: 'status', header: '状态', width: 10 },
+  { key: 'errorMsg', header: '错误信息', width: 24 },
+  { key: 'source', header: '来源', width: 10 },
+  { key: 'sentAt', header: '发送时间', width: 20, type: 'datetime' },
+  { key: 'createdAt', header: '创建时间', width: 20, type: 'datetime' },
+];
+
+export const emailSendLogsExportDefinition = defineExport<EmailSendLogListFilter & Record<string, unknown>, Record<string, unknown>>({
+  entity: 'system.email-send-logs',
+  moduleName: '邮件发送记录',
+  filenamePrefix: '邮件发送记录',
+  sourcePath: '/system/email-send-logs',
+  sheetName: '邮件发送记录',
+  permissions: { export: 'system:email-send-log:export' },
+  execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
+  retention: RETENTION_7_DAYS,
+  columns,
+  countRows: async (query) => db.$count(emailSendLogs, buildListWhere(query)),
+  streamRows: async (query) => {
+    const where = buildListWhere(query);
+    return batchIterable((limit, offset) =>
+      db.select().from(emailSendLogs).where(where).orderBy(desc(emailSendLogs.id)).limit(limit).offset(offset),
+    );
+  },
+});

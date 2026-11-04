@@ -77,7 +77,7 @@
 
 ## 后端接入
 
-在 `packages/server/src/lib/export-center/definitions/` 新增实体定义，并在 `definitions/index.ts` 导入后加入注册数组。示例：
+在 `packages/server/src/services/{业务域}/exports/` 新增实体定义，并在 `bootstrap/export-definitions.ts` 导入后加入注册数组。示例：
 
 ```ts
 import { asc } from 'drizzle-orm';
@@ -123,7 +123,7 @@ export const positionsExportDefinition = defineExport({
 - `renderMode: 'custom'` 可配 `renderWorkbook()`（自定义 Excel）或 `renderFile()`（PDF / DOCX / 任意文件）。
 - 导出执行器会用 `runWithCurrentUser(创建者)` 还原身份，定义内部可使用 `currentUser()`、租户过滤和权限相关工具。
 
-`definitions/index.ts` 注册了系统、身份、文件、日志、会员、频道、埋点、支付、工作流、报表、CMS、监控告警等导出实体。以该注册数组作为导出实体清单来源。
+`bootstrap/export-definitions.ts` 注册了系统、身份、文件、日志、会员、频道、埋点、支付、工作流、报表、CMS、监控告警等导出实体。以该注册数组作为导出实体清单来源。
 
 ## 前端接入
 

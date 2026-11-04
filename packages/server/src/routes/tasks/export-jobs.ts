@@ -13,12 +13,9 @@ import {
   listExportJobs,
   retryExportJob,
 } from '../../services/tasks/export-jobs.service';
-import { registerExportDefinitions } from '../../lib/export-center/definitions';
 import { getClientIp } from '../../lib/request-helpers';
 import { attachmentDisposition } from '../../lib/content-disposition';
 import { mountCrud } from '../_crud';
-
-registerExportDefinitions();
 
 const exportJobsRoute = new OpenAPIHono({ defaultHook: validationHook });
 

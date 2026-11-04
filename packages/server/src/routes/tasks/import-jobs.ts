@@ -7,11 +7,8 @@ import { importJobContract } from '@zenith/shared/tasks';
 import { defineContractRoute } from '../../lib/contract-route';
 import { okBody, validationHook } from '../../lib/openapi-schemas';
 import { mapAsyncTask } from '../../lib/task-center/map';
-import { registerImportDefinitions } from '../../lib/import-center/definitions';
 import { getImportTemplate, listImportEntities, submitImportJob } from '../../services/tasks/import-jobs.service';
 import { attachmentDisposition } from '../../lib/content-disposition';
-
-registerImportDefinitions();
 
 const importJobsRoute = new OpenAPIHono({ defaultHook: validationHook });
 

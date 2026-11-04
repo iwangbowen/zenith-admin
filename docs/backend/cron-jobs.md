@@ -121,7 +121,7 @@
 
 | 类型 | 注册方式 | pg-boss 载体 | 说明 |
 | --- | --- | --- | --- |
-| 周期任务（recurring） | `registerSystemRecurringJob()`，入口 `packages/server/src/lib/system-tasks.registry.ts`，网盘 / 文件等模块在各自 service 内注册 | `system-recurring` 队列上 `key = 任务名` 的 schedule | 5 段 cron，`retryLimit: 0`，`stately` 不重叠；`timeoutMs` 是耗时告警阈值，不打断执行；`manualSingleton` 控制有运行中实例时是否接受手动触发 |
+| 周期任务（recurring） | `registerSystemRecurringJob()`，入口 `packages/server/src/bootstrap/system-tasks.ts`，网盘 / 文件等模块在各自 service 内注册 | `system-recurring` 队列上 `key = 任务名` 的 schedule | 5 段 cron，`retryLimit: 0`，`stately` 不重叠；`timeoutMs` 是耗时告警阈值，不打断执行；`manualSingleton` 控制有运行中实例时是否接受手动触发 |
 | 队列型 worker（queue） | `registerSystemQueueWorker()` | 以任务名命名的独立队列，参数由注册方 `queueOptions` 声明 | 由业务代码 `sendSystemJob()` 投递，例如导出任务、异步任务、审批单归档件生成 |
 | 账本执行池 | `registerSystemLedgerWorker()` | 以执行池名注册短保留、无重试的合并唤醒队列；系统调度中仍按 queue 类型展示 | 有空闲槽时直接领取业务账本，由账本管理租约、时限、重试与结果；pg-boss 消息只唤醒扫描，短轮询和执行完成后补位兜底 |
 

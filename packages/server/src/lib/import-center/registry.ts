@@ -8,9 +8,13 @@ import { DEFAULT_MAX_ROWS, type ImportDefinition } from './types';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const definitions = new Map<string, ImportDefinition<any, any>>();
+let sealed = false;
+
+export function sealImportRegistry(): void { sealed = true; }
 
 export function registerImport<TRow, TPrepared>(def: ImportDefinition<TRow, TPrepared>): void {
-  if (definitions.has(def.entity)) return; // 幂等：路由模块可能被重复加载
+  if (sealed) throw new Error('导入目录已经冻结');
+  if (definitions.has(def.entity)) throw new Error(`导入实体已注册: ${def.entity}`);
   definitions.set(def.entity, def);
 }
 

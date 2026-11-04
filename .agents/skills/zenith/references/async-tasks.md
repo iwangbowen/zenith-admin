@@ -136,7 +136,7 @@ const { tasks, loading, refresh } = useMyAsyncTasks({ taskTypes: ['xxx-batch-imp
 | --- | --- |
 | 用户在页面提交的长耗时业务操作（要进度/取消/续跑） | **任务中心**（本文档） |
 | 数据列表导出 Excel/CSV（脱敏/水印/下载审计） | 导出中心（`lib/export-center/`，见 [backend-patterns.md](./backend-patterns.md)） |
-| 系统级周期任务（清理/扫描/采集，cron 触发） | `registerSystemRecurringJob`（`lib/system-tasks.registry.ts`） |
+| 系统级周期任务（清理/扫描/采集，cron 触发） | `registerSystemRecurringJob`（`bootstrap/system-tasks.ts`） |
 | 用户可自定义 cron 的定时任务 | 定时任务模块（`cron_jobs`） |
 | 工作流节点的延迟/补偿/外呼作业 | `workflow_jobs`（`lib/workflow-jobs/`） |
 

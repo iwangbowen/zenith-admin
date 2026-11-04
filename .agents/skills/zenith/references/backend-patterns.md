@@ -282,7 +282,7 @@ const payload = { ...values, fileIds: attachments.map((a) => a.fileId) };
 
 ## 数据导出（导出中心）
 
-- 后端在 `lib/export-center/definitions/` 新增 `defineExport` 实体定义，并在 `definitions/index.ts` 注册
+- 后端在 `services/{业务域}/exports/` 新增 `defineExport` 实体定义，并在 `bootstrap/export-definitions.ts` 注册
 - 导出字段、Excel / CSV 格式、权限、同步 / 异步策略、文件留存、合并表头与自定义样式全部写在实体定义中
 - 前端统一用 `ExportButton`，`entity` 指定实体编码，`query` 传当前**已提交**的筛选条件
   （`submittedParams`，与列表查询保持一致）

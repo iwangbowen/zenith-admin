@@ -1,0 +1,86 @@
+import type { DriveShareAccessLog } from '@zenith/shared/drive';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import { driveAdminContract } from '@zenith/shared/drive';
+import { listShareAccessLogsForAdmin } from '../drive-share.service';
+import { asBoolean, asPositiveInt, asString } from '../../../lib/export-center/query-normalize';
+import { defineExport } from '../../../lib/export-center/registry';
+import { RETENTION_7_DAYS } from '../../../lib/export-center/presets';
+import type { ExportColumn } from '../../../lib/export-center/types';
+
+interface ShareAccessLogExportRow extends Record<string, unknown> {
+  id: number;
+  createdAt: string;
+  shareId: number;
+  nodeName: string;
+  spaceName: string;
+  action: string;
+  ok: string;
+  clientIp: string;
+}
+
+const ACTION_LABELS: Record<string, string> = {
+  access: '进入 / 校验', list: '浏览目录', preview: '预览', download: '下载', save: '转存', upload: '收集上传',
+};
+
+const columns: ExportColumn<ShareAccessLogExportRow>[] = [
+  { key: 'id', header: 'ID', width: 8, type: 'number' },
+  { key: 'createdAt', header: '时间', width: 22, type: 'datetime' },
+  { key: 'shareId', header: '外链 ID', width: 10, type: 'number' },
+  { key: 'nodeName', header: '对象', width: 40 },
+  { key: 'spaceName', header: '空间', width: 24 },
+  { key: 'action', header: '动作', width: 14, enumMap: ACTION_LABELS },
+  { key: 'ok', header: '结果', width: 10 },
+  { key: 'clientIp', header: 'IP', width: 18 },
+];
+
+/** 导出中心传入的 query 与治理页筛选同名：按管理端列表同一套过滤（含数据权限收窄） */
+type ShareAccessLogExportQuery = Omit<QueryOutputOf<typeof driveAdminContract.shareAccessLogs>, 'page' | 'pageSize'>;
+
+function normalizeQuery(query: Record<string, unknown>): ShareAccessLogExportQuery {
+  return {
+    shareId: asPositiveInt(query.shareId),
+    spaceId: asPositiveInt(query.spaceId),
+    action: asString(query.action),
+    ok: asBoolean(query.ok),
+    startTime: asString(query.startTime),
+    endTime: asString(query.endTime),
+  };
+}
+
+function toRow(item: DriveShareAccessLog): ShareAccessLogExportRow {
+  return {
+    id: item.id,
+    createdAt: item.createdAt,
+    shareId: item.shareId,
+    nodeName: item.nodeName ?? `#${item.nodeId}`,
+    spaceName: item.spaceName ?? '',
+    action: item.action,
+    ok: item.ok ? '通过' : '拒绝',
+    clientIp: item.clientIp ?? '',
+  };
+}
+
+const PAGE_SIZE = 500;
+
+export const driveShareAccessLogsExportDefinition = defineExport<Record<string, unknown>, ShareAccessLogExportRow>({
+  entity: 'drive.share_access_logs',
+  moduleName: '网盘外链访问日志',
+  filenamePrefix: '网盘外链访问日志',
+  sourcePath: '/drive/admin/governance',
+  sheetName: '外链访问日志',
+  permissions: { export: 'drive:admin:link:export' },
+  execution: { mode: 'auto', syncMaxRows: 5000 },
+  retention: RETENTION_7_DAYS,
+  columns,
+  countRows: async (query) => (await listShareAccessLogsForAdmin({ ...normalizeQuery(query), page: 1, pageSize: 1 })).total,
+  streamRows: (query) => {
+    const q = normalizeQuery(query);
+    return (async function* () {
+      for (let page = 1; ; page++) {
+        const { list } = await listShareAccessLogsForAdmin({ ...q, page, pageSize: PAGE_SIZE });
+        for (const item of list) yield toRow(item);
+        if (list.length < PAGE_SIZE) return;
+      }
+    })();
+  },
+});

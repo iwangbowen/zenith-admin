@@ -25,13 +25,13 @@
       ],
       "dependsOn": [
         "ai",
+        "drive",
         "files",
         "messaging",
         "mp",
         "platform",
         "tasks",
-        "workflow",
-        "drive"
+        "workflow"
       ]
     },
     "member": {
@@ -53,7 +53,8 @@
         "messaging",
         "ops",
         "payment",
-        "platform"
+        "platform",
+        "tasks"
       ]
     },
     "platform": {
@@ -102,6 +103,7 @@
       "dependsOn": [
         "cms",
         "platform",
+        "tasks",
         "wiki"
       ]
     },
@@ -121,21 +123,9 @@
         "platform"
       ],
       "dependsOn": [
-        "analytics",
-        "cms",
-        "drive",
         "files",
-        "identity",
-        "iot",
-        "member",
         "messaging",
-        "open-platform",
-        "ops",
-        "payment",
-        "platform",
-        "report",
-        "short-link",
-        "workflow"
+        "platform"
       ]
     },
     "analytics": {
@@ -241,7 +231,8 @@
         "messaging",
         "payment",
         "platform",
-        "short-link"
+        "short-link",
+        "tasks"
       ]
     },
     "workflow": {
@@ -275,7 +266,8 @@
       ],
       "dependsOn": [
         "messaging",
-        "platform"
+        "platform",
+        "tasks"
       ]
     },
     "mp": {
@@ -333,7 +325,8 @@
       ],
       "dependsOn": [
         "analytics",
-        "messaging"
+        "messaging",
+        "tasks"
       ]
     },
     "marketing": {
@@ -362,10 +355,10 @@
         "ai",
         "files",
         "messaging",
+        "open-platform",
         "platform",
         "tasks",
-        "workflow",
-        "open-platform"
+        "workflow"
       ]
     },
     "cms": {
@@ -382,12 +375,12 @@
         "files",
         "member",
         "messaging",
+        "open-platform",
         "platform",
         "report",
         "short-link",
         "tasks",
-        "workflow",
-        "open-platform"
+        "workflow"
       ]
     },
     "wiki": {
@@ -417,10 +410,10 @@
         "chat",
         "files",
         "messaging",
+        "open-platform",
         "platform",
         "short-link",
-        "tasks",
-        "open-platform"
+        "tasks"
       ]
     }
   },

@@ -27,7 +27,7 @@ Cron 使用任务自身 `monitorTimeout`，系统运行日志使用任务超时�
 1. 在所属域 service 导出 `getXxxHealth()`，返回注册表的 `JobSourceRawSummary`。
    将到期、卡死条件抽成同域函数，采集和明细复用；不要在聚合 service 查询其他域的表。
 2. 有可查询卡死记录时导出 `listStuckXxx(limit)`，只投影展示所需字段，并使用同一判定条件。
-3. 在 shared 的 `JOB_SOURCE_KEYS` 登记 key，在 `lib/job-monitor/sources.ts` 登记标题、排序、
+3. 在 shared 的 `JOB_SOURCE_KEYS` 登记 key，在 `bootstrap/job-monitor-sources.ts` 登记标题、排序、
    collect、可选 listStuck、下钻路径和阈值覆盖。各进程角色均声明，HTTP 接口由 api 承载。
 4. 补齐到期 / 心跳 / 租约 / 结束时间索引、相关域测试和 Demo 数据。
 5. 核对业务镜像与执行账本是否重复，不能重复累计同一业务作业。

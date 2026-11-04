@@ -5,7 +5,7 @@ describe('CMS Stage4 task/export/ACL wiring', () => {
   it('revalidates task permissions and registers all requested export entities', async () => {
     const [tasks, exports, publicRoutes] = await Promise.all([
       readFile(new URL('./cms-stage4-tasks.ts', import.meta.url), 'utf8'),
-      readFile(new URL('../../lib/export-center/definitions/index.ts', import.meta.url), 'utf8'),
+      readFile(new URL('../../bootstrap/export-definitions.ts', import.meta.url), 'utf8'),
       readFile(new URL('../../routes/cms/front-public.ts', import.meta.url), 'utf8'),
     ]);
     const { cmsInteractionContract } = await import('@zenith/shared/cms');

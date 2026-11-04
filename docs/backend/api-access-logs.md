@@ -73,5 +73,5 @@
 | 持久化 | `packages/server/src/db/schema/logs.ts` |
 | 采集与缓冲 | `packages/server/src/middleware/api-access-log.ts`、`packages/server/src/lib/api-access-log.ts` |
 | 查询服务与路由 | `packages/server/src/services/platform/api-access-logs.service.ts`、`packages/server/src/routes/platform/api-access-logs.ts` |
-| 导出与保留 | `packages/server/src/lib/export-center/definitions/api-access-logs.ts`、`packages/server/src/lib/retention/policies.ts` |
+| 导出与保留 | `packages/server/src/services/platform/exports/api-access-logs.ts`、`packages/server/src/lib/retention/policies.ts` |
 | 页面与数据访问 | `packages/web/src/pages/system/api-access-logs/`、`packages/web/src/hooks/queries/api-access-logs.ts` |

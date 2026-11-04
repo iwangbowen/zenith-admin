@@ -26,7 +26,7 @@ vi.mock('../../lib/session-manager', () => ({
 
 import { users } from '../../db/schema';
 import { buildUsersListWhere, listUsers, type UserWithRelations } from './users.service';
-import { usersExportDefinition } from '../../lib/export-center/definitions/users';
+import { usersExportDefinition } from './exports/users';
 
 const actor = { userId: 11, username: 'operator', roles: ['admin'], tenantId: 3 } as JwtPayload;
 const dialect = new PgDialect({ casing: 'snake_case' });

@@ -108,9 +108,9 @@ describe('CMS governed distribution policy', () => {
 
   it('registers scheduled dispatch in the system scheduler and execution in task center', async () => {
     const [registry, tasks, exports] = await Promise.all([
-      readFile(new URL('../../lib/system-tasks.registry.ts', import.meta.url), 'utf8'),
+      readFile(new URL('../../bootstrap/system-tasks.ts', import.meta.url), 'utf8'),
       readFile(new URL('./cms-tasks.ts', import.meta.url), 'utf8'),
-      readFile(new URL('../../lib/export-center/definitions/index.ts', import.meta.url), 'utf8'),
+      readFile(new URL('../../bootstrap/export-definitions.ts', import.meta.url), 'utf8'),
     ]);
     expect(registry).toContain("name: 'cms-distribution-schedule'");
     expect(registry).toContain('dispatchDueCmsDistributionRules');
