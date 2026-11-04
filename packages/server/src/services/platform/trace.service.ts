@@ -3,7 +3,7 @@
  *
  * traceId = hono requestId（见 middleware/request-trace.ts 的合并说明）。
  * 五类锚点纯读聚合，无独立存储：
- *   request      ← operation_logs.request_id
+ *   request      ← operation_logs.request_id（无操作日志时回退到 api_access_logs.request_id）
  *   job           ← workflow_jobs.trace_id
  *   notification ← notification_outbox.trace_id + notification_dispatches（渠道级投递结果）
  *   task         ← async_tasks.trace_id
@@ -14,7 +14,7 @@ import type { TraceFailureEntry, TraceListEntry, TraceNodeKind, TraceNodeStatus,
 import { traceContract } from '@zenith/shared/platform';
 import { db } from '../../db';
 import {
-  asyncTasks, notificationDispatches, notificationOutbox, operationLogs, workflowJobs,
+  apiAccessLogs, asyncTasks, notificationDispatches, notificationOutbox, operationLogs, workflowJobs,
 } from '../../db/schema';
 import { formatDateTime } from '../../lib/datetime';
 import { buildWhere } from '../../lib/where-helpers';
@@ -72,6 +72,26 @@ function requestNodes(rows: (typeof operationLogs.$inferSelect)[]): TraceTimelin
       ip: r.ip,
       requestBody: r.requestBody,
       hasDiff: Boolean(r.beforeData || r.afterData),
+    },
+  }));
+}
+
+function apiAccessRequestNodes(rows: (typeof apiAccessLogs.$inferSelect)[]): TraceTimelineNode[] {
+  return rows.map((r) => ({
+    kind: 'request' as const,
+    ts: formatDateTime(r.createdAt),
+    title: `${r.method} ${r.path}`,
+    status: (r.responseCode ?? 200) < 400 ? 'success' as const : 'failed' as const,
+    durationMs: r.durationMs ?? null,
+    refId: r.id,
+    detail: {
+      description: r.operationName,
+      module: r.module,
+      accessorName: r.accessorName,
+      responseCode: r.responseCode,
+      ip: r.ip,
+      requestBody: r.requestBody,
+      requestId: r.requestId,
     },
   }));
 }
@@ -174,10 +194,14 @@ async function notificationNodes(traceId: string): Promise<TraceTimelineNode[]> 
 /** 按 traceId 聚合时间线（五类锚点并行查询，按时间升序归并） */
 export async function getTraceTimeline(traceId: string): Promise<TraceTimeline> {
   const user = currentUser();
-  const [logRows, jobRows, taskRows, notifNodes] = await Promise.all([
+  const [logRows, apiAccessRows, jobRows, taskRows, notifNodes] = await Promise.all([
     db.select().from(operationLogs)
       .where(buildWhere(eq(operationLogs.requestId, traceId), tenantCondition(operationLogs, user)))
       .orderBy(desc(operationLogs.id))
+      .limit(NODE_LIMIT_PER_KIND),
+    db.select().from(apiAccessLogs)
+      .where(buildWhere(eq(apiAccessLogs.requestId, traceId), tenantCondition(apiAccessLogs, user)))
+      .orderBy(desc(apiAccessLogs.id))
       .limit(NODE_LIMIT_PER_KIND),
     db.select().from(workflowJobs)
       .where(buildWhere(eq(workflowJobs.traceId, traceId), tenantCondition(workflowJobs, user)))
@@ -190,8 +214,10 @@ export async function getTraceTimeline(traceId: string): Promise<TraceTimeline> 
     notificationNodes(traceId),
   ]);
 
+  const operationRequestIds = new Set(logRows.map((row) => row.requestId).filter((requestId): requestId is string => Boolean(requestId)));
   const nodes = [
     ...requestNodes(logRows),
+    ...apiAccessRequestNodes(apiAccessRows.filter((row) => !operationRequestIds.has(row.requestId ?? ''))),
     ...jobNodes(jobRows),
     ...taskNodes(taskRows),
     ...notifNodes,

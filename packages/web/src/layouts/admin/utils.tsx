@@ -8,6 +8,11 @@ export function getMenuIcon(iconName?: string): React.ReactNode {
   return <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{icon}</span>;
 }
 
+/** 菜单栏会对长标题省略；保留完整 title 供悬浮查看。 */
+function menuTitle(title: string): React.ReactNode {
+  return <span className="admin-nav-item-title" title={title}>{title}</span>;
+}
+
 // 提取为模块级函数，避免组件内嵌套函数超过 4 层
 export const updateMessageRead = (id: number) => (prev: InAppMessage[]) =>
   prev.map((m) => (m.id === id ? { ...m, isRead: true } : m));
@@ -126,13 +131,13 @@ export function menuToNavItem(menu: Menu): NavItem | null {
     const children = (menu.children ?? [])
       .map(menuToNavItem)
       .filter((item): item is NavItem => item !== null);
-    return { itemKey: menu.name ?? `dir-${menu.id}`, text: menu.title, icon, items: children };
+    return { itemKey: menu.name ?? `dir-${menu.id}`, text: menuTitle(menu.title), icon, items: children };
   }
   // 外链内嵌：转为内部路由 /embed/{id}，走正常导航（iframe 打开）；非内嵌外链保持新窗口
   if (menu.isExternal && menu.embed) {
-    return { itemKey: `/embed/${menu.id}`, text: menu.title, icon, isExternal: false };
+    return { itemKey: `/embed/${menu.id}`, text: menuTitle(menu.title), icon, isExternal: false };
   }
-  return { itemKey: menu.path ?? `menu-${menu.id}`, text: menu.title, icon, isExternal: menu.isExternal ?? false, query: menu.query ?? null };
+  return { itemKey: menu.path ?? `menu-${menu.id}`, text: menuTitle(menu.title), icon, isExternal: menu.isExternal ?? false, query: menu.query ?? null };
 }
 
 export function findNavItemAncestorKeys(items: NavItem[], targetKey: string): string[] | null {

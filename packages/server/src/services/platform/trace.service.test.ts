@@ -9,7 +9,7 @@ vi.mock('../../lib/context', () => ({ currentUser: () => ({ userId: 1, username:
 vi.mock('../../lib/tenant', () => ({ tenantCondition: () => undefined }));
 
 import { db } from '../../db';
-import { listRecentTraces } from './trace.service';
+import { getTraceTimeline, listRecentTraces } from './trace.service';
 
 const dbMock = vi.mocked(db);
 
@@ -119,5 +119,43 @@ describe('listRecentTraces', () => {
 
     await expect(listRecentTraces({})).resolves.toEqual([]);
     expect(dbMock.select).toHaveBeenCalledTimes(4);
+  });
+});
+
+describe('getTraceTimeline', () => {
+  it('uses an API access log as the request node when no operation log exists', async () => {
+    const traceId = 'request-api-access-001';
+    queueResults([
+      [],
+      [{
+        id: 437,
+        requestId: traceId,
+        createdAt: T('2026-11-04T00:52:33Z'),
+        method: 'GET',
+        path: '/api/analytics/config',
+        responseCode: 200,
+        durationMs: 10,
+        operationName: 'SDK 公开采集配置',
+        module: 'Analytics',
+        accessorName: 'admin',
+        ip: '127.0.0.1',
+        requestBody: null,
+      }],
+      [],
+      [],
+      [],
+    ]);
+
+    await expect(getTraceTimeline(traceId)).resolves.toMatchObject({
+      traceId,
+      nodes: [{
+        kind: 'request',
+        refId: 437,
+        title: 'GET /api/analytics/config',
+        status: 'success',
+        durationMs: 10,
+        detail: { module: 'Analytics', accessorName: 'admin', requestId: traceId },
+      }],
+    });
   });
 });
