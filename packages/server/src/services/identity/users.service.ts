@@ -413,7 +413,18 @@ export async function getUsersBeforeAudit(ids: number[]) {
 export async function getUser(id: number) {
   const cond = await manageableUsersCondition();
   const full = await findUserWithRelations({ where: cond ? and(eq(users.id, id), cond) : eq(users.id, id) });
-  return mapUser(requireRow(full, '用户不存在'));
+  const user = mapUser(requireRow(full, '用户不存在'));
+  const onlineSessions = await getOnlineSessions();
+  const userSessions = onlineSessions.filter((session) => session.userId === id);
+  const lastActive = userSessions.reduce<Date | null>(
+    (latest, session) => !latest || session.lastActiveAt.getTime() > latest.getTime() ? session.lastActiveAt : latest,
+    null,
+  );
+  return {
+    ...user,
+    isOnline: userSessions.length > 0,
+    lastActiveAt: lastActive ? formatDateTime(lastActive) : null,
+  };
 }
 
 // 按需查看明文：复用 getUser 的租户 / 数据范围口径，不可见即 404，不会成为越权读取通道

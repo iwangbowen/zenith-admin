@@ -46,22 +46,223 @@
   min-width: 0;
   padding: 0;
   border: 0;
-  background: transparent;
+  background: none;
   color: inherit;
   font: inherit;
   text-align: left;
   cursor: pointer;
 }
 
-.users-detail-trigger .table-cell-ellipsis {
-  color: var(--semi-color-link);
+.users-detail-trigger__text {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.users-detail-trigger:hover .table-cell-ellipsis {
-  text-decoration: underline;
+.users-detail-trigger:hover {
+  color: var(--semi-color-primary);
 }
 
 .users-detail-trigger:focus-visible {
+  border-radius: var(--semi-border-radius-small);
   outline: 2px solid var(--semi-color-primary);
   outline-offset: 2px;
+}
+
+.users-detail-modal {
+  min-height: 120px;
+  overflow: hidden;
+  color: var(--semi-color-text-0);
+}
+
+.users-detail-hero {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 4px 0 24px;
+  border-bottom: 1px solid var(--semi-color-border);
+}
+
+.users-detail-avatar {
+  box-shadow: 0 0 0 4px var(--semi-color-bg-2);
+}
+
+.users-detail-identity {
+  min-width: 0;
+  flex: 1;
+}
+
+.users-detail-name-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.users-detail-name-row h2 {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: 20px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.users-detail-username {
+  margin-top: 4px;
+  color: var(--semi-color-text-2);
+  font-size: 13px;
+}
+
+.users-detail-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+  color: var(--semi-color-text-2);
+  font-size: 12px;
+}
+
+.users-detail-meta-divider {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--semi-color-text-3);
+}
+
+.users-detail-presence {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.users-detail-presence > span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--semi-color-fill-2);
+}
+
+.users-detail-presence.is-online {
+  color: var(--semi-color-success);
+}
+
+.users-detail-presence.is-online > span {
+  background: var(--semi-color-success);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--semi-color-success) 16%, transparent);
+}
+
+.users-detail-id {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+  color: var(--semi-color-text-2);
+  font-size: 12px;
+}
+
+.users-detail-id strong,
+.users-detail-mono {
+  color: var(--semi-color-text-1);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+}
+
+.users-detail-body {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  margin-top: 24px;
+}
+
+.users-detail-section {
+  min-width: 0;
+}
+
+.users-detail-section-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 14px;
+  color: var(--semi-color-text-0);
+}
+
+.users-detail-section-title h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.users-detail-section-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--semi-color-primary);
+}
+
+.users-detail-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  column-gap: 28px;
+  row-gap: 18px;
+  margin: 0;
+}
+
+.users-detail-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.users-detail-field dt,
+.users-detail-field dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.users-detail-field dt {
+  color: var(--semi-color-text-2);
+  font-size: 12px;
+}
+
+.users-detail-field dd {
+  min-height: 20px;
+  color: var(--semi-color-text-0);
+  font-size: 13px;
+}
+
+.users-detail-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+@media (--sm-down) {
+  .users-detail-hero {
+    align-items: flex-start;
+    padding-bottom: 20px;
+  }
+
+  .users-detail-id {
+    display: none;
+  }
+
+  .users-detail-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 20px;
+  }
+}
+
+@media (--xs-down) {
+  .users-detail-fields {
+    grid-template-columns: 1fr;
+  }
 }

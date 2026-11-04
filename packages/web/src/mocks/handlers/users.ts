@@ -166,7 +166,12 @@ export const usersHandlers = [
 
   mock(userContract.detail, ({ params, ok }) => {
     const user = requireItem(mockUsers, params.id, '用户不存在', { status: 404 });
-    return ok(toUserResponse(user));
+    const sessions = mockOnlineSessions.filter((session) => session.userId === user.id);
+    const lastActive = sessions.reduce<string | null>(
+      (latest, session) => !latest || session.lastActiveAt > latest ? session.lastActiveAt : latest,
+      null,
+    );
+    return ok({ ...toUserResponse(user), isOnline: sessions.length > 0, lastActiveAt: lastActive });
   }),
 
   mock(userContract.update, ({ params, body, ok }) => {

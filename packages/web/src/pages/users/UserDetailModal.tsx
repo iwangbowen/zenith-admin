@@ -1,4 +1,6 @@
-import { Descriptions, Divider, Empty, Spin } from '@douyinfe/semi-ui';
+import type { ReactNode } from 'react';
+import { Empty, Spin, Tag } from '@douyinfe/semi-ui';
+import { BriefcaseBusiness, ShieldCheck, UserRound } from 'lucide-react';
 import { AppModal } from '@/components/AppModal';
 import DateTimeText from '@/components/DateTimeText';
 import DictTag from '@/components/DictTag';
@@ -6,8 +8,8 @@ import { SensitiveText } from '@/components/sensitive';
 import { RefreshButton } from '@/components/toolbar-controls';
 import { UserAvatar } from '@/components/UserAvatar';
 import { useUserDetail } from '@/hooks/queries/users';
-import { useIsMobile } from '@/hooks/useMediaQuery';
 import { EMPTY_PLACEHOLDER } from '@/utils/empty-placeholder';
+import './UsersPage.css';
 
 interface UserDetailModalProps {
   readonly userId: number;
@@ -15,47 +17,115 @@ interface UserDetailModalProps {
   readonly onClose: () => void;
 }
 
+interface DetailFieldProps {
+  readonly label: string;
+  readonly value: ReactNode;
+}
+
+function DetailField({ label, value }: DetailFieldProps) {
+  return (
+    <div className="users-detail-field">
+      <dt>{label}</dt>
+      <dd>{value}</dd>
+    </div>
+  );
+}
+
+function DetailSection({
+  icon,
+  title,
+  children,
+}: Readonly<{ icon: ReactNode; title: string; children: ReactNode }>) {
+  return (
+    <section className="users-detail-section">
+      <div className="users-detail-section-title">
+        <span className="users-detail-section-icon">{icon}</span>
+        <h3>{title}</h3>
+      </div>
+      <dl className="users-detail-fields">{children}</dl>
+    </section>
+  );
+}
+
 export function UserDetailModal({ userId, visible, onClose }: UserDetailModalProps) {
   const query = useUserDetail(userId, visible);
   const user = query.data?.id === userId ? query.data : undefined;
-  const column = useIsMobile() ? 1 : 2;
 
   return (
-    <AppModal title="用户详情" visible={visible} onCancel={onClose} footer={null} width={720}>
+    <AppModal title="用户详情" visible={visible} onCancel={onClose} footer={null} width={760}>
       <Spin spinning={visible && query.isFetching}>
-        <div style={{ minHeight: 120, wordBreak: 'break-word' }}>
+        <div className="users-detail-modal">
           {query.isError ? (
             <Empty title="用户详情加载失败" description={query.error.message}>
               <RefreshButton onClick={() => void query.refetch()} loading={query.isFetching}>重试</RefreshButton>
             </Empty>
           ) : user ? (
             <>
-              <Divider align="left">基本资料</Divider>
-              <Descriptions column={column} align="left" data={[
-                { key: '头像', value: <UserAvatar name={user.nickname || user.username} avatar={user.avatar} size={40} /> },
-                { key: '用户名', value: user.username },
-                { key: '昵称', value: user.nickname || EMPTY_PLACEHOLDER },
-                { key: '性别', value: <DictTag dictCode="user_gender" value={user.gender} /> },
-                { key: '手机号码', value: <SensitiveText entity="User" id={user.id} field="phone" value={user.phone} /> },
-                { key: '邮箱', value: <SensitiveText entity="User" id={user.id} field="email" value={user.email} /> },
-                { key: '出生日期', value: user.birthDate || EMPTY_PLACEHOLDER },
-              ]} />
+              <header className="users-detail-hero">
+                <UserAvatar
+                  name={user.nickname || user.username}
+                  avatar={user.avatar}
+                  size={64}
+                  semiSize="large"
+                  className="users-detail-avatar"
+                />
+                <div className="users-detail-identity">
+                  <div className="users-detail-name-row">
+                    <h2>{user.nickname || user.username}</h2>
+                    <DictTag dictCode="common_status" value={user.status} />
+                  </div>
+                  <div className="users-detail-username">@{user.username}</div>
+                  <div className="users-detail-meta">
+                    <span className={`users-detail-presence ${user.isOnline ? 'is-online' : ''}`}>
+                      <span aria-hidden="true" />{user.isOnline ? '在线' : '离线'}
+                    </span>
+                    <span className="users-detail-meta-divider" aria-hidden="true" />
+                    <span>{user.departmentName || '未分配部门'}</span>
+                  </div>
+                </div>
+                <div className="users-detail-id">
+                  <span>用户 ID</span>
+                  <strong>#{user.id}</strong>
+                </div>
+              </header>
 
-              <Divider align="left">组织与角色</Divider>
-              <Descriptions column={column} align="left" data={[
-                { key: '所属部门', value: user.departmentName || EMPTY_PLACEHOLDER, span: column },
-                { key: '岗位', value: user.positions?.map((position) => position.name).join('、') || EMPTY_PLACEHOLDER, span: column },
-                { key: '角色', value: user.roles.map((role) => role.name).join('、') || EMPTY_PLACEHOLDER, span: column },
-              ]} />
+              <div className="users-detail-body">
+                <DetailSection icon={<UserRound size={15} />} title="基本资料">
+                  <DetailField label="昵称" value={user.nickname || EMPTY_PLACEHOLDER} />
+                  <DetailField label="性别" value={<DictTag dictCode="user_gender" value={user.gender} />} />
+                  <DetailField label="手机号码" value={<SensitiveText entity="User" id={user.id} field="phone" value={user.phone} />} />
+                  <DetailField label="邮箱" value={<SensitiveText entity="User" id={user.id} field="email" value={user.email} />} />
+                  <DetailField label="出生日期" value={user.birthDate || EMPTY_PLACEHOLDER} />
+                </DetailSection>
 
-              <Divider align="left">账号信息</Divider>
-              <Descriptions column={column} align="left" data={[
-                { key: '用户 ID', value: user.id },
-                { key: '状态', value: <DictTag dictCode="common_status" value={user.status} /> },
-                { key: '最近登录', value: <DateTimeText value={user.lastLoginAt} mode="absolute" /> },
-                { key: '创建时间', value: <DateTimeText value={user.createdAt} mode="absolute" /> },
-                { key: '更新时间', value: <DateTimeText value={user.updatedAt} mode="absolute" /> },
-              ]} />
+                <DetailSection icon={<BriefcaseBusiness size={15} />} title="组织与角色">
+                  <DetailField label="所属部门" value={user.departmentName || EMPTY_PLACEHOLDER} />
+                  <DetailField
+                    label="岗位"
+                    value={user.positions?.length ? (
+                      <span className="users-detail-tags">
+                        {user.positions.map((position) => <Tag key={position.id} size="small" color="purple">{position.name}</Tag>)}
+                      </span>
+                    ) : EMPTY_PLACEHOLDER}
+                  />
+                  <DetailField
+                    label="角色"
+                    value={user.roles.length ? (
+                      <span className="users-detail-tags">
+                        {user.roles.map((role) => <Tag key={role.id} size="small" color="blue">{role.name}</Tag>)}
+                      </span>
+                    ) : EMPTY_PLACEHOLDER}
+                  />
+                </DetailSection>
+
+                <DetailSection icon={<ShieldCheck size={15} />} title="账号信息">
+                  <DetailField label="用户名" value={<span className="users-detail-mono">{user.username}</span>} />
+                  <DetailField label="账号状态" value={<DictTag dictCode="common_status" value={user.status} />} />
+                  <DetailField label="最近登录" value={<DateTimeText value={user.lastLoginAt} mode="absolute" />} />
+                  <DetailField label="创建时间" value={<DateTimeText value={user.createdAt} mode="absolute" />} />
+                  <DetailField label="更新时间" value={<DateTimeText value={user.updatedAt} mode="absolute" />} />
+                </DetailSection>
+              </div>
             </>
           ) : !query.isFetching ? <Empty description="暂无用户信息" /> : null}
         </div>

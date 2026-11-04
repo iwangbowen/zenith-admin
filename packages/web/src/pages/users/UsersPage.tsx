@@ -451,8 +451,8 @@ export default function UsersPage() {
             }}
           />
           <UserAvatar name={record.nickname || record.username} avatar={record.avatar} semiSize="extra-small" size={24} />
-          <span className="table-cell-ellipsis" title={`${record.nickname}（${record.username}）`}>
-            {record.nickname}（{record.username}）
+          <span className="users-detail-trigger__text" title={`${record.nickname || record.username}（${record.username}）`}>
+            {record.nickname || record.username}（{record.username}）
           </span>
           {record.loginChallengeRequired && (
             <Tag size="small" color="orange" style={{ flexShrink: 0 }}>需验证码</Tag>
