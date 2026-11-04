@@ -37,3 +37,31 @@
   flex-direction: column;
   gap: 12px;
 }
+
+.users-detail-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.users-detail-trigger .table-cell-ellipsis {
+  color: var(--semi-color-link);
+}
+
+.users-detail-trigger:hover .table-cell-ellipsis {
+  text-decoration: underline;
+}
+
+.users-detail-trigger:focus-visible {
+  outline: 2px solid var(--semi-color-primary);
+  outline-offset: 2px;
+}

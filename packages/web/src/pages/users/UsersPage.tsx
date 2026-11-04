@@ -1,5 +1,6 @@
 import { FormPasswordInput } from '@/components/PasswordInput';
 import { EntityContextSheet } from '@/components/entity-relations/EntityRelationButton';
+import { useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from 'react';
 import { Button, Select, Space, Form, Toast, Tag, Row, Col, Tree } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
@@ -29,6 +30,7 @@ import { UserDataScopeModal } from './UserDataScopeModal';
 import { UserAvatarModal } from './UserAvatarModal';
 import { UserPreferencesModal } from './UserPreferencesModal';
 import { UserLogsSheet } from './UserLogsSheet';
+import { UserDetailModal } from './UserDetailModal';
 import ExportButton from '@/components/ExportButton';
 import ImportButton from '@/components/ImportButton';
 import { useAllRoles } from '@/hooks/queries/roles';
@@ -120,6 +122,7 @@ function isPlatformSuperUser(user: Pick<User, 'roles' | 'tenantId'>) {
 }
 
 export default function UsersPage() {
+  const queryClient = useQueryClient();
   const { hasPermission } = usePermission();
   const { updateUser, user: currentUser, impersonation, startImpersonation } = useAuth();
   const {
@@ -144,6 +147,8 @@ export default function UsersPage() {
   const [preferencesVisible, setPreferencesVisible] = useState(false);
   const [logsUser, setLogsUser] = useState<User | null>(null);
   const [logsVisible, setLogsVisible] = useState(false);
+  const [detailUser, setDetailUser] = useState<User | null>(null);
+  const [detailVisible, setDetailVisible] = useState(false);
   const [relationUser, setRelationUser] = useState<User | null>(null);
   const [createPwdVal, setCreatePwdVal] = useState('');
   const [editPwdVal, setEditPwdVal] = useState('');
@@ -398,6 +403,12 @@ export default function UsersPage() {
   const openCreate = modal.openCreate;
   const openEdit = modal.openEdit;
   const openPassword = passwordModal.openEdit;
+  const openDetail = useCallback((user: User) => {
+    // 每次打开时刷新详情；列表行仅用于确定用户，不作为详情数据回填。
+    void queryClient.invalidateQueries({ queryKey: userKeys.detail(user.id), refetchType: 'none' });
+    setDetailUser(user);
+    setDetailVisible(true);
+  }, [queryClient]);
 
   const { mutateAsync: unlockUser } = unlockMutation;
   const handleUnlock = useCallback(async (id: number) => {
@@ -418,7 +429,15 @@ export default function UsersPage() {
       minWidth: 380,
       ellipsis: { showTitle: false },
       render: (_: unknown, record: User) => (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+        <button
+          type="button"
+          className="users-detail-trigger"
+          aria-label={`查看用户详情：${record.nickname}（${record.username}）`}
+          onClick={(event) => {
+            event.stopPropagation();
+            openDetail(record);
+          }}
+        >
           <span
             title={record.isOnline ? '在线' : '离线'}
             style={{
@@ -438,7 +457,7 @@ export default function UsersPage() {
           {record.loginChallengeRequired && (
             <Tag size="small" color="orange" style={{ flexShrink: 0 }}>需验证码</Tag>
           )}
-        </div>
+        </button>
       ),
     },
     {
@@ -620,7 +639,7 @@ export default function UsersPage() {
         ];
       },
     }),
-  ], [hasPermission, status, deleteMutation, handleUnlock, kickUserSessions, refetchUserList, openEdit, openPassword, canImpersonate, openImpersonate, canViewUserLogs]);
+  ], [hasPermission, status, deleteMutation, handleUnlock, kickUserSessions, refetchUserList, openEdit, openPassword, openDetail, canImpersonate, openImpersonate, canViewUserLogs]);
 
   const [showDeptTree, setShowDeptTree] = useState(false);
   const [isLayoutNarrow, setIsLayoutNarrow] = useState(false);
@@ -788,6 +807,10 @@ export default function UsersPage() {
         persistKey="users"
         style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}
       />
+
+      {detailUser && (
+        <UserDetailModal userId={detailUser.id} visible={detailVisible} onClose={() => setDetailVisible(false)} />
+      )}
 
       <EditFormModal modal={modal} okButtonProps={{ disabled: modal.detailLoading }} width={660}>
         {editingUser ? (
