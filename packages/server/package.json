@@ -35,7 +35,7 @@
     "@aws-sdk/s3-request-presigner": "^3.1156.0",
     "@azure/storage-blob": "^12.34.0",
     "@baiducloud/sdk": "^1.0.7",
-    "@hono/node-server": "^2.1.5",
+    "@hono/node-server": "^2.1.6",
     "@hono/otel": "^1.2.0",
     "@hono/prometheus": "^1.0.3",
     "@hono/swagger-ui": "^0.6.1",
