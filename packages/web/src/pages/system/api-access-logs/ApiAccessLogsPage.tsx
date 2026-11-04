@@ -33,10 +33,10 @@ export default function ApiAccessLogsPage() {
     { title: '访问端类型', dataIndex: 'accessorType', width: 120, render: (v: ApiAccessLogListItem['accessorType']) => API_ACCESS_ACCESSOR_TYPE_LABELS[v] },
     { title: '凭证方式', dataIndex: 'credentialType', width: 140, render: (v: ApiAccessLogListItem['credentialType']) => API_ACCESS_CREDENTIAL_LABELS[v] },
     { title: '方法', dataIndex: 'method', width: 90, render: (v: string) => <Tag size="small" color="blue">{v}</Tag> },
+    { title: 'HTTP 状态', dataIndex: 'responseCode', width: 110, render: (v: number | null) => <Tag size="small" color={v == null ? 'grey' : v >= 200 && v < 400 ? 'green' : 'red'}>{v ?? '未知'}</Tag> },
     { title: '请求路径', dataIndex: 'path', minWidth: 280, render: (v: string) => renderEllipsis(v) },
     { title: '模块', dataIndex: 'module', width: 150, render: (v: string | null) => renderEllipsis(v) },
     { title: '操作', dataIndex: 'operationName', width: 210, render: (v: string | null) => renderEllipsis(v) },
-    { title: 'HTTP 状态', dataIndex: 'responseCode', width: 110, render: (v: number | null) => <Tag size="small" color={v == null ? 'grey' : v >= 200 && v < 400 ? 'green' : 'red'}>{v ?? '未知'}</Tag> },
     { title: '耗时', dataIndex: 'durationMs', width: 100, align: 'right', render: (v: number | null) => v == null ? '—' : `${v} ms` },
     { title: 'IP 地址', dataIndex: 'ip', width: 145, render: (v: string | null) => v ?? '—' },
     copyableNoColumn<ApiAccessLogListItem>('请求 ID', 'requestId', { width: 300 }),
@@ -48,7 +48,7 @@ export default function ApiAccessLogsPage() {
     <div className="page-container">
       <ListSearchToolbar
         page={page}
-        filters={['accessorName', 'accessorId', 'userId', 'memberId', 'deviceId', 'accessorType', 'credentialType', 'clientId', 'method', 'path', 'routePath', 'module', 'operationKey', 'requestId', 'serviceName', 'ip', 'status', 'responseCode', 'content', ['startTime', 'endTime'], 'minDurationMs', 'maxDurationMs']}
+        filters={['accessorName', 'accessorId', 'userId', 'memberId', 'deviceId', 'accessorType', 'credentialType', 'status', 'responseCode', 'clientId', 'method', 'path', 'routePath', 'module', 'operationKey', 'requestId', 'serviceName', 'ip', 'content', ['startTime', 'endTime'], 'minDurationMs', 'maxDurationMs']}
         overrides={{
           userId: (p) => <NumberFilter placeholder="管理端用户 ID" min={1} {...p.bind('userId')} />,
           memberId: (p) => <NumberFilter placeholder="会员 ID" min={1} {...p.bind('memberId')} />,
