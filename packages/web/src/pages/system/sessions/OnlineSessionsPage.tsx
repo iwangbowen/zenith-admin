@@ -88,6 +88,7 @@ export default function OnlineSessionsPage() {
       },
     },
     { title: '昵称', dataIndex: 'nickname', minWidth: 180, render: renderEllipsis },
+    { title: '部门', dataIndex: 'departmentName', minWidth: 160, render: renderEllipsis },
     copyableNoColumn<OnlineSession>('Token', 'tokenId'),
     { title: '终端', dataIndex: 'client', width: 110, render: (v: OnlineSession['client']) => <SessionClientTag client={v} /> },
     { title: 'IP 地址', dataIndex: 'ip', width: 140 },

@@ -15,6 +15,9 @@ import { formatDateTime } from '../../lib/datetime';
 import { currentUser } from '../../lib/context';
 import { getTenantScopeId, isPlatformAdmin } from '../../lib/tenant';
 import { listPlatformSuperUserIds } from './role-grant';
+import { db } from '../../db';
+import { departments, users } from '../../db/schema';
+import { inArray, eq } from 'drizzle-orm';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import type { sessionContract } from '@zenith/shared/identity';
 
@@ -29,12 +32,13 @@ async function visibleSessions(): Promise<SessionInfo[]> {
   return inScope.filter((s) => !superUserIds.has(s.userId));
 }
 
-function toSessionDto(s: SessionInfo) {
+function toSessionDto(s: SessionInfo, departmentName: string | null) {
   return {
     tokenId: s.tokenId,
     userId: s.userId,
     username: s.username,
     nickname: s.nickname,
+    departmentName,
     client: s.client ?? 'web',
     ip: s.ip,
     location: s.location ?? null,
@@ -54,12 +58,22 @@ export async function listSessions(q: QueryOutputOf<typeof sessionContract.list>
     sessions = sessions.filter((s) => s.username.includes(keyword) || s.nickname.includes(keyword) || s.ip.includes(keyword));
   }
   if (client) sessions = sessions.filter((s) => (s.client ?? 'web') === client);
+  const departmentByUserId = new Map<number, string | null>();
+  const userIds = [...new Set(sessions.map((s) => s.userId))];
+  if (userIds.length > 0) {
+    const rows = await db
+      .select({ userId: users.id, departmentName: departments.name })
+      .from(users)
+      .leftJoin(departments, eq(departments.id, users.departmentId))
+      .where(inArray(users.id, userIds));
+    for (const row of rows) departmentByUserId.set(row.userId, row.departmentName ?? null);
+  }
   return buildListResult({
     page,
     pageSize,
     count: async () => sessions.length,
     rows: async () => sessions.slice(pageOffset(page, pageSize), page * pageSize),
-    map: toSessionDto,
+    map: (session) => toSessionDto(session, departmentByUserId.get(session.userId) ?? null),
   });
 }
 
@@ -95,9 +109,9 @@ export async function forceLogoutVisibleUserSessions(userId: number) {
 
 export async function getSessionBeforeAudit(tokenId: string) {
   const session = (await visibleSessions()).find((s) => s.tokenId === tokenId);
-  return session ? toSessionDto(session) : null;
+  return session ? toSessionDto(session, null) : null;
 }
 
 export async function getUserSessionsBeforeAudit(userId: number) {
-  return (await visibleSessions()).filter((s) => s.userId === userId).map(toSessionDto);
+  return (await visibleSessions()).filter((s) => s.userId === userId).map((session) => toSessionDto(session, null));
 }

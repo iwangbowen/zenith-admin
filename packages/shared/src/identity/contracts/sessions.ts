@@ -12,6 +12,7 @@ export const onlineSessionSchema = z.object({
   userId: z.int(),
   username: z.string(),
   nickname: z.string(),
+  departmentName: z.string().nullable(),
   client: z.enum(SESSION_CLIENT_KINDS).meta({ description: '登录终端：web 网页 / mobile 移动审批 / desktop 桌面端' }),
   ip: z.string(),
   location: z.string().nullable(),
