@@ -9,7 +9,7 @@
  * 业务 service 无需手动赋值。
  */
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { currentUserOrNull } from './context';
+import { currentUserOrNull } from './context/principal';
 
 const overrideStore = new AsyncLocalStorage<{ userId: number }>();
 

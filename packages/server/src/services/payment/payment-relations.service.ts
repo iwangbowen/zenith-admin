@@ -13,7 +13,7 @@ import { decodeRelationCursor } from '../platform/relations/cursor';
 import { relationPage } from '../platform/relations/page';
 import { relationSummaryQuery } from '../platform/relations/summary-query';
 import { paymentReconAdjustments, paymentReconCases, workflowInstances } from '../../db/schema';
-import { workflowInstanceAttention, workflowVisibility } from '../platform/relations/providers/workflow-file.provider';
+import { workflowInstanceAttention, workflowVisibility } from '../workflow/workflow-visibility';
 import { PAYMENT_RECON_ADJUSTMENT_BIZ_TYPE } from '@zenith/shared/payment';
 
 async function loadPaymentOrders(ids: number[], access: RelationAccessContext): Promise<VisibleEntityAnchor[]> {

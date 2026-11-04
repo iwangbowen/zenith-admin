@@ -47,7 +47,10 @@ vi.mock('./providers/member-fulfillment.provider', () => ({ memberFulfillmentAnc
 vi.mock('./providers/iot-ota.provider', () => ({ iotOtaAnchors: [], iotOtaProviders: [] }));
 vi.mock('./providers/business-file.provider', () => ({ businessFileAnchors: [], businessFileProviders: [] }));
 vi.mock('./providers/iot-content.provider', () => ({ iotContentAnchorResolvers: [], iotContentRelationProviders: [] }));
-vi.mock('./providers/workflow-file.provider', () => ({ workflowFileAnchorResolvers: [], workflowFileRelationProviders: [] }));
+vi.mock('../../workflow/workflow-relations.provider', () => ({ workflowAnchorResolvers: [], workflowRelationProviders: [] }));
+vi.mock('../../drive/drive-relations.provider', () => ({ driveAnchorResolvers: [], driveRelationProviders: [] }));
+vi.mock('../../wiki/wiki-relations.provider', () => ({ wikiAnchorResolvers: [], wikiRelationProviders: [] }));
+vi.mock('../../tasks/tasks-relations.provider', () => ({ taskAnchorResolvers: [] }));
 vi.mock('./providers/subjects.provider', () => ({ subjectAnchorResolvers: [], subjectProviders: () => [] }));
 vi.mock('../../payment/payment-financial-relations.service', () => ({ paymentFinancialAnchorResolvers: [], paymentFinancialRelationProviders: [] }));
 vi.mock('./providers/reverse-subjects.provider', () => ({ reverseSubjectProviders: () => [] }));

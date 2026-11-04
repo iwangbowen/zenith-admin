@@ -1,5 +1,5 @@
 import { getSchedulerRunHealth, listOverdueSchedulerRuns } from '../../services/tasks/system-scheduler.service';
-import { getAsyncTaskHealth, listStuckAsyncTasks } from '../../services/tasks/async-tasks.service';
+import { getAsyncTaskHealth, listStuckAsyncTasks } from '../../services/tasks/public/monitor';
 import { getExportJobHealth, listStuckExportJobs } from '../../services/tasks/export-jobs.service';
 import { getCronJobHealth, listStuckCronRuns } from '../../services/tasks/cron-jobs.service';
 import { getWorkflowJobHealth, listStuckWorkflowJobs } from '../../services/workflow/workflow-jobs.service';

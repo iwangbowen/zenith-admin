@@ -4,7 +4,7 @@ import type { RelationAccessContext } from '../platform/relations/types';
 const state = vi.hoisted(() => ({ allowed: true, redacted: vi.fn() }));
 vi.mock('../../lib/context', () => ({ hasPermission: async () => state.allowed, runWithCurrentUser: async (_user: unknown, fn: () => unknown) => fn() }));
 vi.mock('../platform/relations/runtime', () => ({ assertRelationBudget: () => undefined }));
-vi.mock('../platform/relations/providers/workflow-file.provider', () => ({ workflowVisibility: async () => undefined }));
+vi.mock('./workflow-visibility', () => ({ workflowVisibility: async () => undefined }));
 vi.mock('./workflow-print-access', () => ({ workflowArchiveNeedsRedaction: state.redacted, createWorkflowArchiveRedactionCheck: () => state.redacted }));
 import { workflowArchiveAnchorResolvers, workflowArchiveRelationProviders } from './workflow-archive-relations.service';
 

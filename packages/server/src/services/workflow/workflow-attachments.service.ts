@@ -12,7 +12,7 @@ import { buildWhere } from '../../lib/where-helpers';
 import { requireRow } from '../../lib/db-assert';
 import { getRestrictedFileForRead, uploadManagedFileFromBody } from '../files/files.service';
 import { releaseManagedFiles, retainManagedFiles } from '../files/file-gc.service';
-import { workflowVisibility } from '../platform/relations/providers/workflow-file.provider';
+import { workflowVisibility } from './workflow-visibility';
 import { hiddenWorkflowFieldKeys } from './workflow-form-access';
 import { pickEntity } from '../../lib/entity-map';
 import { anchorIdsWhere } from '../platform/relations/anchor-batch';

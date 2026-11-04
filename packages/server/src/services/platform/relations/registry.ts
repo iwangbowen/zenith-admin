@@ -8,7 +8,10 @@ import type { EntityAnchorResolver, RelationAccessContext, RelationProvider, Vis
 import { paymentAnchorResolvers, paymentRelationProviders } from './providers/payment-order.provider';
 import { identityAnchorResolvers, identityRelationProviders } from './providers/identity.provider';
 import { iotContentAnchorResolvers, iotContentRelationProviders } from './providers/iot-content.provider';
-import { workflowFileAnchorResolvers, workflowFileRelationProviders } from './providers/workflow-file.provider';
+import { workflowAnchorResolvers, workflowRelationProviders } from '../../workflow/workflow-relations.provider';
+import { driveAnchorResolvers, driveRelationProviders } from '../../drive/drive-relations.provider';
+import { wikiAnchorResolvers, wikiRelationProviders } from '../../wiki/wiki-relations.provider';
+import { taskAnchorResolvers } from '../../tasks/tasks-relations.provider';
 import { subjectAnchorResolvers, subjectProviders } from './providers/subjects.provider';
 import { readRelationCursor, signRelationCursor } from './cursor';
 import { isStatementTimeout, withRelationRead } from './runtime';
@@ -62,7 +65,10 @@ const manifests: EntityRelationManifest[] = [
   { anchors: paymentFinancialAnchorResolvers, relations: paymentFinancialRelationProviders },
   { anchors: identityAnchorResolvers, relations: identityRelationProviders.filter((item) => !item.key.endsWith('.audit')) },
   { anchors: iotContentAnchorResolvers, relations: iotContentRelationProviders },
-  { anchors: workflowFileAnchorResolvers, relations: workflowFileRelationProviders },
+  { anchors: workflowAnchorResolvers, relations: workflowRelationProviders },
+  { anchors: driveAnchorResolvers, relations: driveRelationProviders },
+  { anchors: wikiAnchorResolvers, relations: wikiRelationProviders },
+  { anchors: taskAnchorResolvers, relations: [] },
   { anchors: subjectAnchorResolvers, relations: [] },
   { anchors: workflowBusinessAnchorResolvers, relations: createWorkflowBusinessRelationProviders(resolveVisibleEntityAnchor) },
   { anchors: workflowArchiveAnchorResolvers, relations: workflowArchiveRelationProviders },

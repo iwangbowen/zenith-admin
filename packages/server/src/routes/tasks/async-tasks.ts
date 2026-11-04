@@ -12,13 +12,12 @@ import {
   getAsyncTask,
   getAsyncTaskStats,
   listAsyncTaskItems,
-  listAsyncTasks,
   listAsyncTaskTypes,
-  listMyAsyncTasks,
   restartTask,
   resumeTask,
   updateAsyncTaskTypePolicy,
 } from '../../services/tasks/async-tasks.service';
+import { listAsyncTasks, listMyAsyncTasks } from '../../services/tasks/public/queries';
 
 const asyncTasksRoute = new OpenAPIHono({ defaultHook: validationHook });
 

@@ -24,8 +24,10 @@ export function numericAnchorResolver(
   type: CanonicalEntityType,
   load: (ids: number[], access: RelationAccessContext) => Promise<VisibleEntityAnchor[]>,
 ): EntityAnchorResolver {
-  return defineAnchorResolver(type, (key) => {
-    const id = Number(key);
-    return /^[1-9]\d*$/.test(key) && Number.isSafeInteger(id) && id <= 2_147_483_647 ? id : undefined;
-  }, load);
+  return defineAnchorResolver(type, (key) => parseNumericAnchorId(key) ?? undefined, load);
+}
+
+export function parseNumericAnchorId(key: string): number | null {
+  const id = Number(key);
+  return /^[1-9]\d*$/.test(key) && Number.isSafeInteger(id) && id <= 2_147_483_647 ? id : null;
 }

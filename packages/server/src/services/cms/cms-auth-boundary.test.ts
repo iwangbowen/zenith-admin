@@ -25,7 +25,7 @@ describe('CMS admin/member route authentication boundary', () => {
   it('keeps open CMS writes on an app-scoped principal instead of super-admin impersonation', async () => {
     const [writeSource, contextSource, sitesSource, channelsSource] = await Promise.all([
       readFile(new URL('./cms-open-write.service.ts', import.meta.url), 'utf8'),
-      readFile(new URL('../../lib/context.ts', import.meta.url), 'utf8'),
+      readFile(new URL('../../lib/context/principal.ts', import.meta.url), 'utf8'),
       readFile(new URL('./cms-sites.service.ts', import.meta.url), 'utf8'),
       readFile(new URL('./cms-channels.service.ts', import.meta.url), 'utf8'),
     ]);

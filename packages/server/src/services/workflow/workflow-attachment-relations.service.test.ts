@@ -6,7 +6,7 @@ vi.mock('../../lib/context', () => ({ hasPermission: async () => state.allowed, 
 vi.mock('../../lib/tenant', async (original) => ({ ...await original<typeof import('../../lib/tenant')>(), tenantCondition: () => undefined }));
 vi.mock('../../config', () => ({ config: { multiTenantMode: true } }));
 vi.mock('../platform/relations/runtime', () => ({ assertRelationBudget: () => undefined }));
-vi.mock('../platform/relations/providers/workflow-file.provider', () => ({ workflowVisibility: async () => undefined }));
+vi.mock('./workflow-visibility', () => ({ workflowVisibility: async () => undefined }));
 vi.mock('./workflow-attachments.service', () => ({ getWorkflowAttachmentSummary: state.get, getWorkflowAttachmentSummariesByIds: state.get, listWorkflowAttachmentSummaries: state.list }));
 import { workflowAttachmentAnchorResolvers, workflowAttachmentRelationProviders } from './workflow-attachment-relations.service';
 const fixture = (id: number, instanceId: number) => ({ id, instanceId, tenantId: 7, name: `File ${id}`, source: 'task', createdAt: new Date(), taskId: 20 });

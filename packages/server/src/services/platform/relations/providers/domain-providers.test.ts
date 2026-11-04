@@ -46,7 +46,7 @@ vi.mock('../../../member/member-wallet.service', () => ({ WALLET_RECHARGE_BIZ_TY
 vi.mock('../../../../lib/licensing', () => ({ isFeatureEnabled: async () => true }));
 vi.mock('../../../cms/cms-sites.service', () => ({ getAccessibleSiteIds: async () => state.siteIds }));
 vi.mock('../../../cms/cms-channels.service', () => ({ getAccessibleChannelIds: async () => state.channelIds }));
-vi.mock('../../../tasks/async-tasks.service', () => ({
+vi.mock('../../../tasks/public/access', () => ({
   resolveAsyncTaskAccessScope: async () => ({ userId: state.user.userId, global: state.permissions.has('system:async-task:list') }),
 }));
 // Preserve the production ACL SQL. Only identity expansion is replaced: it
@@ -61,7 +61,13 @@ vi.mock('../../../drive/drive-access.service', async (importOriginal) => {
 
 import { identityAnchorResolvers, identityRelationProviders, identityUserPaymentsProvider, memberPaymentsProvider, identityUserAuditProvider } from './identity.provider';
 import { iotContentAnchorResolvers, iotContentRelationProviders, cmsContentRelatedProvider, iotDeviceAlarmsProvider } from './iot-content.provider';
-import { workflowFileAnchorResolvers, workflowFileRelationProviders, workflowInstanceChildrenProvider, workflowInstanceTasksProvider } from './workflow-file.provider';
+import { workflowAnchorResolvers, workflowRelationProviders, workflowInstanceChildrenProvider, workflowInstanceTasksProvider } from '../../../workflow/workflow-relations.provider';
+import { driveAnchorResolvers, driveRelationProviders } from '../../../drive/drive-relations.provider';
+import { wikiAnchorResolvers, wikiRelationProviders } from '../../../wiki/wiki-relations.provider';
+import { taskAnchorResolvers } from '../../../tasks/tasks-relations.provider';
+
+const domainAnchorResolvers = [...workflowAnchorResolvers, ...driveAnchorResolvers, ...wikiAnchorResolvers, ...taskAnchorResolvers];
+const domainRelationProviders = [...workflowRelationProviders, ...driveRelationProviders, ...wikiRelationProviders];
 import { paymentAnchorResolvers, paymentOrderRefundsProvider, paymentOrderDisputesProvider, paymentOrderRiskReviewsProvider } from '../../../payment/payment-relations.service';
 import { subjectProviders } from './subjects.provider';
 import { memberFulfillmentProviders } from './member-fulfillment.provider';
@@ -104,7 +110,7 @@ function expectBinding(statement: Statement, column: string, value: unknown, ope
 }
 
 function findProvider(key: string) {
-  const provider = workflowFileRelationProviders.find((item) => item.key === key);
+  const provider = domainRelationProviders.find((item) => item.key === key);
   if (!provider) throw new Error(`Provider missing: ${key}`);
   return provider;
 }
@@ -118,7 +124,7 @@ beforeEach(() => {
 });
 
 describe('domain anchor batch query cardinality', () => {
-  const resolvers = [...identityAnchorResolvers, ...iotContentAnchorResolvers, ...workflowFileAnchorResolvers, ...paymentAnchorResolvers];
+  const resolvers = [...identityAnchorResolvers, ...iotContentAnchorResolvers, ...domainAnchorResolvers, ...paymentAnchorResolvers];
   it.each(resolvers)('$type resolves 32 targets in one scoped SQL statement', async (resolver) => {
     state.permissions = new Set(['system:user:list', 'member:member:list', 'iot:device:list', 'iot:alarm:list', 'cms:content:list',
       'workflow:instance:monitor', 'wiki:doc:list', 'drive:node:list', 'system:async-task:list',
@@ -181,7 +187,7 @@ describe('whole-set relation attention SQL', () => {
 });
 
 describe('domain relation permission and pagination boundaries', () => {
-  const providers = [...identityRelationProviders, ...iotContentRelationProviders, ...workflowFileRelationProviders];
+  const providers = [...identityRelationProviders, ...iotContentRelationProviders, ...domainRelationProviders];
   it('keeps domain relation keys distinct from generic audit, notification and async-task groups', () => {
     const specialized = providers.filter((provider) => !provider.key.endsWith('.audit'));
     expect(new Set(specialized.map((provider) => provider.key)).size).toBe(specialized.length);
@@ -199,7 +205,7 @@ describe('domain relation permission and pagination boundaries', () => {
     expect(tx.select).not.toHaveBeenCalled();
   });
 
-  it.each([...identityAnchorResolvers, ...iotContentAnchorResolvers, ...workflowFileAnchorResolvers].filter((resolver) => resolver.type !== 'tasks.async'))('%s anchors deny missing domain permission before querying', async (resolver) => {
+  it.each([...identityAnchorResolvers, ...iotContentAnchorResolvers, ...domainAnchorResolvers].filter((resolver) => resolver.type !== 'tasks.async'))('%s anchors deny missing domain permission before querying', async (resolver) => {
     const { access, tx } = captureAccess();
     expect(await resolver.resolve({ type: resolver.type, key: '21' }, access)).toBeNull();
     expect(tx.select).not.toHaveBeenCalled();
@@ -294,7 +300,7 @@ describe('domain relation permission and pagination boundaries', () => {
   it('drive anchors and children preserve real per-node ACLs including broken inheritance', async () => {
     state.permissions.add('drive:node:list');
     const { access, statements } = captureAccess();
-    await workflowFileAnchorResolvers.find((entry) => entry.type === 'drive.file')!.resolve({ type: 'drive.file', key: '21' }, access);
+    await domainAnchorResolvers.find((entry) => entry.type === 'drive.file')!.resolve({ type: 'drive.file', key: '21' }, access);
     await findProvider('drive.file.children').list(anchor('drive.file', { spaceId: 4 }), { limit: 2, cursor: '80', access });
     for (const query of statements) {
       expect(query.sql).toContain('"drive_nodes"."acl_open"');
@@ -311,7 +317,7 @@ describe('domain relation permission and pagination boundaries', () => {
   it('Wiki relation SQL hides private spaces and drafts from nonmembers and noneditors', async () => {
     state.permissions.add('wiki:doc:list');
     const { access, statements } = captureAccess();
-    await workflowFileAnchorResolvers.find((entry) => entry.type === 'wiki.document')!.resolve({ type: 'wiki.document', key: '21' }, access);
+    await domainAnchorResolvers.find((entry) => entry.type === 'wiki.document')!.resolve({ type: 'wiki.document', key: '21' }, access);
     await findProvider('wiki.document.children').list(anchor('wiki.document', { spaceId: 4 }), { limit: 2, access });
     for (const query of statements) {
       expect(query.sql).toContain('"wiki_space_members"."user_id"');
@@ -338,7 +344,7 @@ describe('domain relation permission and pagination boundaries', () => {
   });
 
   it('async task anchors allow owners but never drop tenant isolation for task admins', async () => {
-    const resolver = workflowFileAnchorResolvers.find((entry) => entry.type === 'tasks.async')!;
+    const resolver = domainAnchorResolvers.find((entry) => entry.type === 'tasks.async')!;
     const { access, statements } = captureAccess();
     await resolver.resolve({ type: 'tasks.async', key: '21' }, access);
     expectBinding(statements[0], '"async_tasks"."created_by"', 9);

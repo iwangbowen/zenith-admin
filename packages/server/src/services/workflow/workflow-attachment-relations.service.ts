@@ -5,7 +5,7 @@ import { workflowInstances } from '../../db/schema';
 import { hasPermission, runWithCurrentUser } from '../../lib/context';
 import { exactTenantCondition, tenantCondition } from '../../lib/tenant';
 import { buildWhere } from '../../lib/where-helpers';
-import { workflowVisibility } from '../platform/relations/providers/workflow-file.provider';
+import { workflowVisibility } from './workflow-visibility';
 import { decodeRelationCursor } from '../platform/relations/cursor';
 import { relationPage } from '../platform/relations/page';
 import { matchesRelationKeyword } from '../platform/relations/filters';

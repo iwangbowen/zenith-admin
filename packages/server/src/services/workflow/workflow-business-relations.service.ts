@@ -8,7 +8,7 @@ import { exactTenantCondition, tenantCondition } from '../../lib/tenant';
 import { buildWhere } from '../../lib/where-helpers';
 import { decodeRelationCursor } from '../platform/relations/cursor';
 import { relationPage } from '../platform/relations/page';
-import { workflowInstanceAttention, workflowVisibility } from '../platform/relations/providers/workflow-file.provider';
+import { workflowInstanceAttention, workflowVisibility } from './workflow-visibility';
 import { relationSummaryQuery } from '../platform/relations/summary-query';
 import { relationFilterWhere, matchesRelationKeyword } from '../platform/relations/filters';
 import { formatDateTime } from '../../lib/datetime';

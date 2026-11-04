@@ -8,7 +8,7 @@ vi.mock('../../../lib/context', async (importOriginal) => ({
 }));
 
 import { hasPermission } from '../../../lib/context';
-import { resolveAsyncTaskAccessScope } from '../../../services/tasks/async-tasks.service';
+import { resolveAsyncTaskAccessScope } from '../../../services/tasks/public/access';
 
 describe('CMS governance export task access', () => {
   beforeEach(() => vi.clearAllMocks());

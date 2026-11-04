@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { jobSourceCountsSchema, jobStuckItemSchema } from '@zenith/shared/platform';
-import { getAsyncTaskHealth, listStuckAsyncTasks } from './async-tasks.service';
+import { getAsyncTaskHealth, listStuckAsyncTasks } from './public/monitor';
 import { getExportJobHealth, listStuckExportJobs } from './export-jobs.service';
 import { getSchedulerRunHealth, listOverdueSchedulerRuns } from './system-scheduler.service';
 import { getCronJobHealth, listStuckCronRuns } from './cron-jobs.service';

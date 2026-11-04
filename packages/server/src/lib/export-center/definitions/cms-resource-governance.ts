@@ -4,7 +4,7 @@ import { asyncTaskItems, asyncTasks } from '../../../db/schema';
 import { formatDateTime } from '../../datetime';
 import { buildWhere, dateRangeConditions } from '../../where-helpers';
 import { assertSiteAccess, ensureCmsSiteExists } from '../../../services/cms/cms-sites.service';
-import { resolveAsyncTaskAccessScope } from '../../../services/tasks/async-tasks.service';
+import { resolveAsyncTaskAccessScope } from '../../../services/tasks/public/access';
 import { defineExport } from '../registry';
 import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';

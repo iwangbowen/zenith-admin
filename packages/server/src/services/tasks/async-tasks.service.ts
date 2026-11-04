@@ -1,27 +1,20 @@
 import { percentOf } from '@zenith/shared/core';
 import type { QueryOutputOf } from '@zenith/shared/core';
-import { buildListResult, emptyListResult, listRows } from '../../lib/list-query';
+import { listRows } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
-import { and, desc, eq, gte, inArray, isNull, lt, lte, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import dayjs from 'dayjs';
 import { ASYNC_TASK_TERMINAL_STATUSES, asyncTaskContract, isAsyncTaskTerminal, type AsyncTaskStats } from '@zenith/shared/tasks';
-import type { JobStuckItem } from '@zenith/shared/platform';
-import { db, readSnapshot } from '../../db';
+import { db } from '../../db';
 import { asyncTaskItems, asyncTasks, users } from '../../db/schema';
-import { pageOffset } from '../../lib/pagination';
-import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
-import { APP_TIME_ZONE, formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { buildWhere, keywordCondition } from '../../lib/where-helpers';
+import { APP_TIME_ZONE } from '../../lib/datetime';
 import { localDate, localFormat } from '../../lib/datetime-sql';
-import { currentUser, hasPermission } from '../../lib/context';
-import type { JobSourceRawSummary } from '../../lib/job-monitor/registry';
 import {
   buildTaskTypeMeta,
   cleanupAsyncTasks,
-  asyncTaskStatusCondition,
   getTaskTypePolicy,
-  getTaskTypeMeta,
-  HEARTBEAT_STALE_MS,
   listTaskHandlers,
   listTaskTypeConfigs,
   mapAsyncTask,
@@ -33,151 +26,7 @@ import {
   updateTaskTypePolicy,
   type UpdateTaskTypePolicyInput,
 } from '../../lib/task-center';
-
-/** 超过正常心跳回收窗口后仍运行，才作为监控卡死上报。 */
-export function stuckAsyncTaskCondition(asOf = new Date()) {
-  const cutoff = new Date(asOf.getTime() - 2 * HEARTBEAT_STALE_MS);
-  return and(eq(asyncTasks.status, 'running'), or(
-    lt(asyncTasks.heartbeatAt, cutoff),
-    and(isNull(asyncTasks.heartbeatAt), lt(asyncTasks.updatedAt, cutoff)),
-  ));
-}
-
-/** 平台作业监控：仅统计已到期任务，重试退避期间不算积压。 */
-export async function getAsyncTaskHealth(): Promise<JobSourceRawSummary> {
-  return readSnapshot(async executor => {
-  const now = new Date();
-  const since = new Date(now.getTime() - 86_400_000);
-  const hour = new Date(now.getTime() - 3_600_000);
-  const due = and(eq(asyncTasks.status, 'pending'), or(isNull(asyncTasks.nextRunAt), lte(asyncTasks.nextRunAt, now)));
-  const scope = or(inArray(asyncTasks.status, ['pending', 'running']), and(inArray(asyncTasks.status, ['success', 'failed']), gte(asyncTasks.completedAt, since)));
-  const [row] = await executor.select({
-    pending: sql<number>`count(*) filter (where ${due})::int`,
-    running: sql<number>`count(*) filter (where ${asyncTasks.status} = 'running')::int`,
-    stuck: sql<number>`count(*) filter (where ${stuckAsyncTaskCondition(now)})::int`,
-    failed24h: sql<number>`count(*) filter (where ${asyncTasks.status} = 'failed' and ${asyncTasks.completedAt} >= ${sql.param(since, asyncTasks.createdAt)})::int`,
-    succeeded24h: sql<number>`count(*) filter (where ${asyncTasks.status} = 'success' and ${asyncTasks.completedAt} >= ${sql.param(since, asyncTasks.createdAt)})::int`,
-    failed1h: sql<number>`count(*) filter (where ${asyncTasks.status} = 'failed' and ${asyncTasks.completedAt} >= ${sql.param(hour, asyncTasks.createdAt)})::int`,
-    oldestPendingAgeSec: sql<number | null>`floor(extract(epoch from (${sql.param(now, asyncTasks.createdAt)}::timestamptz - min(coalesce(${asyncTasks.nextRunAt}, ${asyncTasks.createdAt})) filter (where ${due}))))::int`,
-  }).from(asyncTasks).where(scope);
-  const breakdown = await executor.select({
-    taskType: asyncTasks.taskType,
-    pending: sql<number>`count(*) filter (where ${due})::int`,
-    running: sql<number>`count(*) filter (where ${asyncTasks.status} = 'running')::int`,
-    stuck: sql<number>`count(*) filter (where ${stuckAsyncTaskCondition(now)})::int`,
-    failed24h: sql<number>`count(*) filter (where ${asyncTasks.status} = 'failed' and ${asyncTasks.completedAt} >= ${sql.param(since, asyncTasks.createdAt)})::int`,
-  }).from(asyncTasks).where(scope).groupBy(asyncTasks.taskType)
-    .orderBy(sql`count(*) filter (where ${stuckAsyncTaskCondition(now)}) desc`, sql`count(*) filter (where ${due} or ${asyncTasks.status} = 'running') desc`, asyncTasks.taskType).limit(10);
-  return {
-    counts: { pending: row?.pending ?? 0, running: row?.running ?? 0, stuck: row?.stuck ?? 0, dead: null, failed24h: row?.failed24h ?? 0, succeeded24h: row?.succeeded24h ?? 0 },
-    oldestPendingAgeSec: row?.oldestPendingAgeSec ?? null,
-    failed1h: row?.failed1h ?? 0,
-    issues: [],
-    breakdown: breakdown.map(item => {
-      const meta = getTaskTypeMeta(item.taskType);
-      return { key: item.taskType, label: meta ? `${meta.module} / ${meta.title}` : item.taskType,
-        pending: item.pending, running: item.running, stuck: item.stuck, failed24h: item.failed24h,
-        drillDown: { path: `/system/task-center?tab=tasks&taskType=${encodeURIComponent(item.taskType)}`, label: '查看任务类型' } };
-    }),
-  };
-  });
-}
-
-export async function listStuckAsyncTasks(limit: number): Promise<JobStuckItem[]> {
-  const now = new Date();
-  const rows = await db.select({
-    id: asyncTasks.id, title: asyncTasks.title, status: asyncTasks.status,
-    startedAt: asyncTasks.startedAt, createdAt: asyncTasks.createdAt,
-    heartbeatAt: asyncTasks.heartbeatAt, updatedAt: asyncTasks.updatedAt,
-    nodeId: asyncTasks.nodeId, errorMessage: asyncTasks.errorMessage, progressNote: asyncTasks.progressNote,
-  }).from(asyncTasks).where(stuckAsyncTaskCondition(now))
-    .orderBy(sql`coalesce(${asyncTasks.heartbeatAt}, ${asyncTasks.updatedAt})`, asyncTasks.id).limit(limit);
-  return rows.map((row) => ({
-    source: 'async-task', refId: String(row.id), title: row.title, status: row.status,
-    startedAt: formatNullableDateTime(row.startedAt), lastSeenAt: formatDateTime(row.heartbeatAt ?? row.updatedAt),
-    ageSec: Math.max(0, Math.floor((now.getTime() - (row.startedAt ?? row.createdAt).getTime()) / 1000)),
-    nodeId: row.nodeId, detail: row.errorMessage ?? row.progressNote,
-    drillDown: { path: `/system/task-center?tab=tasks&status=running&taskId=${row.id}`, label: '查看任务' },
-  }));
-}
-
-type AsyncTaskListFilter = Omit<QueryOutputOf<typeof asyncTaskContract.list>, 'page' | 'pageSize'>;
-
-function buildAsyncTaskWhere(query: AsyncTaskListFilter, extra?: SQL): SQL | undefined {
-  return buildWhere(
-    query.taskType ? eq(asyncTasks.taskType, query.taskType) : undefined,
-    query.taskTypes ? inArray(asyncTasks.taskType, query.taskTypes) : undefined,
-    asyncTaskStatusCondition(query.status),
-    keywordCondition(query.keyword, [asyncTasks.title, asyncTasks.taskType], 'ilike'),
-    keywordCondition(query.content, [sql`(${asyncTasks.payload} - 'configurationCapture' - 'configurationCaptures')::text`, sql`${asyncTasks.result}::text`], 'ilike'),
-    ...dateRangeConditions(asyncTasks.createdAt, query.startTime, query.endTime),
-    extra,
-  );
-}
-
-/** 提交人筛选：先按用户名/昵称匹配用户，再按 createdBy 过滤；无匹配返回 null（调用方直接返回空列表） */
-async function creatorCondition(createdBy: string): Promise<SQL | null> {
-  const matched = await db.select({ id: users.id }).from(users)
-    .where(keywordCondition(createdBy, [users.username, users.nickname], 'ilike'))
-    .limit(500);
-  if (matched.length === 0) return null;
-  return inArray(asyncTasks.createdBy, matched.map((row) => row.id));
-}
-
-async function queryTasks(where: SQL | undefined, page: number, pageSize: number) {
-  return buildListResult({
-    page,
-    pageSize,
-    count: () => db.$count(asyncTasks, where),
-    rows: () => db.query.asyncTasks.findMany({
-      where,
-      with: { createdByUser: { columns: { nickname: true, username: true } } },
-      orderBy: desc(asyncTasks.id),
-      limit: pageSize,
-      offset: pageOffset(page, pageSize),
-    }),
-    map: mapAsyncTask,
-  });
-}
-
-/** 管理端全局任务列表（任务中心页面） */
-export async function listAsyncTasks(query: QueryOutputOf<typeof asyncTaskContract.list>) {
-  const { page, pageSize } = query;
-  let extra: SQL | undefined;
-  if (query.createdBy) {
-    const cond = await creatorCondition(query.createdBy);
-    if (!cond) return emptyListResult(page, pageSize);
-    extra = cond;
-  }
-  return queryTasks(buildAsyncTaskWhere(query, extra), page, pageSize);
-}
-
-/** 当前用户自己的任务列表（业务页面进度展示） */
-export async function listMyAsyncTasks(query: QueryOutputOf<typeof asyncTaskContract.mine>) {
-  const user = currentUser();
-  const { page, pageSize } = query;
-  return queryTasks(buildAsyncTaskWhere(query, eq(asyncTasks.createdBy, user.userId)), page, pageSize);
-}
-
-/** 校验当前用户可访问/操作该任务（创建者本人，或持有指定权限的管理员） */
-export interface AsyncTaskAccessScope {
-  userId: number;
-  global: boolean;
-}
-
-export async function resolveAsyncTaskAccessScope(
-  permission: 'system:async-task:list' | 'system:async-task:manage' = 'system:async-task:list',
-): Promise<AsyncTaskAccessScope> {
-  const user = currentUser();
-  return { userId: user.userId, global: await hasPermission(permission) };
-}
-
-export function canAccessAsyncTaskForScope(
-  task: { createdBy: number | null },
-  scope: AsyncTaskAccessScope,
-): boolean {
-  return task.createdBy === scope.userId || scope.global;
-}
+import { canAccessAsyncTaskForScope, resolveAsyncTaskAccessScope } from './public/access';
 
 async function ensureTaskAccessible(id: number, permission: 'system:async-task:list' | 'system:async-task:manage') {
   const row = requireRow(await db.query.asyncTasks.findFirst({ where: eq(asyncTasks.id, id) }), '任务不存在');

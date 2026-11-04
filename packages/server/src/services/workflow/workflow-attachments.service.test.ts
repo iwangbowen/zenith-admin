@@ -11,7 +11,7 @@ vi.mock('../../lib/context', () => ({ currentUser: () => ({ userId: state.userId
 vi.mock('../../lib/tenant', () => ({ tenantCondition: () => undefined, exactTenantCondition: () => undefined, getCreateTenantId: () => 1 }));
 vi.mock('../files/file-gc.service', () => ({ retainManagedFiles: state.retain, releaseManagedFiles: state.release }));
 vi.mock('../files/files.service', () => ({ getRestrictedFileForRead: state.restricted, uploadManagedFileFromBody: state.upload }));
-vi.mock('../platform/relations/providers/workflow-file.provider', () => ({ workflowVisibility: async () => undefined }));
+vi.mock('./workflow-visibility', () => ({ workflowVisibility: async () => undefined }));
 
 import { bindWorkflowAttachments, bindWorkflowFormAttachments, getWorkflowAttachmentSummary, getWorkflowAttachmentSummariesByIds, listWorkflowAttachmentSummaries, uploadWorkflowAttachment } from './workflow-attachments.service';
 

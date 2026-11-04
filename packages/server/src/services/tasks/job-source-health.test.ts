@@ -9,7 +9,7 @@ vi.mock('../../lib/pg-boss-scheduler', async (importOriginal) => ({
   ...await importOriginal<Record<string, unknown>>(), getQueueDepths,
 }));
 
-import { getAsyncTaskHealth, listStuckAsyncTasks, stuckAsyncTaskCondition } from './async-tasks.service';
+import { getAsyncTaskHealth, listStuckAsyncTasks, stuckAsyncTaskCondition } from './public/monitor';
 import { getExportJobHealth, listStuckExportJobs, stuckExportJobCondition } from './export-jobs.service';
 import { getSchedulerRunHealth, listOverdueSchedulerRuns, overdueSchedulerRunCondition } from './system-scheduler.service';
 import { getCronJobHealth, listStuckCronRuns, stuckCronRunCondition } from './cron-jobs.service';
