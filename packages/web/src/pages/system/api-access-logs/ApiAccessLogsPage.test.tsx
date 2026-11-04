@@ -43,6 +43,7 @@ describe('API access log page', () => {
   it('默认不限制时间范围；草稿不查询，提交、导出与重置使用同一组条件', async () => {
     const { container } = renderPage();
     await screen.findByText('admin');
+    expect(screen.queryByText('数据保留策略')).not.toBeInTheDocument();
     expect(lastListQuery().has('startTime')).toBe(false);
     expect(lastListQuery().has('endTime')).toBe(false);
     const toolbar = desktopToolbar(container);

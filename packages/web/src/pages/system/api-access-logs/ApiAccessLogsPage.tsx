@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { Button, Tag } from '@douyinfe/semi-ui';
-import { useNavigate } from 'react-router-dom';
+import { Tag } from '@douyinfe/semi-ui';
 import {
   apiAccessLogContract, API_ACCESS_CREDENTIAL_LABELS, API_ACCESS_CREDENTIAL_OPTIONS,
   API_ACCESS_ACCESSOR_TYPE_LABELS, API_ACCESS_ACCESSOR_TYPE_OPTIONS, OPERATION_LOG_RESULT_OPTIONS,
@@ -13,7 +12,6 @@ import { ListSearchToolbar } from '@/components/list-page';
 import { FilterSelect, KeywordInput, NumberFilter } from '@/components/search-filters';
 import { useListPage } from '@/hooks/useListPage';
 import { useApiAccessLogList } from '@/hooks/queries/api-access-logs';
-import { usePermission } from '@/hooks/usePermission';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { copyableNoColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { ApiAccessLogDetailSheet } from './ApiAccessLogDetailSheet';
@@ -21,8 +19,6 @@ import { ApiAccessLogDetailSheet } from './ApiAccessLogDetailSheet';
 const METHOD_OPTIONS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'].map((value) => ({ value, label: value }));
 
 export default function ApiAccessLogsPage() {
-  const navigate = useNavigate();
-  const { hasPermission } = usePermission();
   const [detailId, setDetailId] = useState<number>();
   const page = useListPage({
     contract: apiAccessLogContract,
@@ -50,7 +46,6 @@ export default function ApiAccessLogsPage() {
 
   return (
     <div className="page-container">
-      {hasPermission('system:retention:view') && <Button size="small" theme="borderless" onClick={() => navigate('/system/retention')} style={{ marginBottom: 12 }}>数据保留策略</Button>}
       <ListSearchToolbar
         page={page}
         filters={['accessorName', 'accessorId', 'userId', 'memberId', 'deviceId', 'accessorType', 'credentialType', 'clientId', 'method', 'path', 'routePath', 'module', 'operationKey', 'requestId', 'serviceName', 'ip', 'status', 'responseCode', 'content', ['startTime', 'endTime'], 'minDurationMs', 'maxDurationMs']}
@@ -59,10 +54,10 @@ export default function ApiAccessLogsPage() {
           memberId: (p) => <NumberFilter placeholder="会员 ID" min={1} {...p.bind('memberId')} />,
           deviceId: (p) => <NumberFilter placeholder="设备 ID" min={1} {...p.bind('deviceId')} />,
           accessorId: (p) => <KeywordInput placeholder="访问人 / 调用方 ID" {...p.bindKeyword('accessorId')} />,
-          accessorType: (p) => <FilterSelect placeholder="全部访问端类型" items={API_ACCESS_ACCESSOR_TYPE_OPTIONS} {...p.bind('accessorType')} />,
-          credentialType: (p) => <FilterSelect placeholder="全部凭证方式" items={API_ACCESS_CREDENTIAL_OPTIONS} {...p.bind('credentialType')} />,
+          accessorType: (p) => <FilterSelect width={150} placeholder="全部访问端类型" items={API_ACCESS_ACCESSOR_TYPE_OPTIONS} {...p.bind('accessorType')} />,
+          credentialType: (p) => <FilterSelect width={160} placeholder="全部凭证方式" items={API_ACCESS_CREDENTIAL_OPTIONS} {...p.bind('credentialType')} />,
           clientId: (p) => <KeywordInput placeholder="开放应用 Client ID" {...p.bindKeyword('clientId')} />,
-          method: (p) => <FilterSelect placeholder="全部请求方法" items={METHOD_OPTIONS} {...p.bind('method')} />,
+          method: (p) => <FilterSelect width={140} placeholder="全部请求方法" items={METHOD_OPTIONS} {...p.bind('method')} />,
           path: (p) => <KeywordInput placeholder="请求路径" {...p.bindKeyword('path')} />,
           routePath: (p) => <KeywordInput placeholder="路由模板" {...p.bindKeyword('routePath')} />,
           module: (p) => <KeywordInput placeholder="模块" {...p.bindKeyword('module')} />,
@@ -70,7 +65,7 @@ export default function ApiAccessLogsPage() {
           requestId: (p) => <KeywordInput placeholder="请求 ID（前缀匹配）" {...p.bindKeyword('requestId')} />,
           serviceName: (p) => <KeywordInput placeholder="服务名" {...p.bindKeyword('serviceName')} />,
           ip: (p) => <KeywordInput placeholder="IP 地址" {...p.bindKeyword('ip')} />,
-          status: (p) => <FilterSelect placeholder="全部请求结果" items={OPERATION_LOG_RESULT_OPTIONS} {...p.bind('status')} />,
+          status: (p) => <FilterSelect width={140} placeholder="全部请求结果" items={OPERATION_LOG_RESULT_OPTIONS} {...p.bind('status')} />,
           responseCode: (p) => <NumberFilter placeholder="HTTP 状态码" min={100} max={599} {...p.bind('responseCode')} />,
           content: (p) => <KeywordInput placeholder="脱敏请求参数包含" {...p.bindKeyword('content')} />,
           minDurationMs: (p) => <NumberFilter placeholder="耗时 ≥ (ms)" min={0} {...p.bind('minDurationMs')} />,
