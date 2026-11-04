@@ -1,4 +1,5 @@
 import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
+import { USER_ONLINE_STATUSES } from '@zenith/shared/identity';
 import { db } from '../../../db';
 import { users } from '../../../db/schema';
 import type { JwtPayload } from '../../../middleware/auth';
@@ -25,7 +26,11 @@ function normalizeQuery(query: Record<string, unknown>): UsersListFilter {
   return {
     keyword: asString(query.keyword),
     phone: asString(query.phone),
+    email: asString(query.email),
     departmentId: asPositiveInt(query.departmentId),
+    positionId: asPositiveInt(query.positionId),
+    roleId: asPositiveInt(query.roleId),
+    onlineStatus: enumValueOf(USER_ONLINE_STATUSES, query.onlineStatus),
     status: enumValueOf(USER_STATUSES, query.status),
     startTime: asString(query.startTime),
     endTime: asString(query.endTime),

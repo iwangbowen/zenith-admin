@@ -64,6 +64,25 @@ beforeEach(() => {
     .on('DELETE', '/api/users/batch', null);
 });
 
+describe('useUserList filters', () => {
+  it('sends the role and online status and keeps differently filtered lists in separate caches', async () => {
+    const qc = createTestQueryClient();
+    const { result } = renderHook(() => ({
+      online: useUserList({ ...LIST_PARAMS, roleId: 2, onlineStatus: 'online' }),
+      offline: useUserList({ ...LIST_PARAMS, roleId: 2, onlineStatus: 'offline' }),
+    }), { wrapper: createWrapper(qc) });
+    await waitFor(() => {
+      expect(result.current.online.isSuccess).toBe(true);
+      expect(result.current.offline.isSuccess).toBe(true);
+    });
+
+    const queries = api.urls('GET').map((url) => new URL(url, 'http://localhost').searchParams);
+    expect(queries).toHaveLength(2);
+    expect(queries.every((query) => query.get('roleId') === '2')).toBe(true);
+    expect(queries.map((query) => query.get('onlineStatus')).sort()).toEqual(['offline', 'online']);
+  });
+});
+
 describe('useSaveUser', () => {
   it('refetches the masked detail instead of filling it from the unmasked save response', async () => {
     const qc = createTestQueryClient();

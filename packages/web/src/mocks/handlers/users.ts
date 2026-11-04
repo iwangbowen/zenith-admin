@@ -73,12 +73,16 @@ export const usersHandlers = [
 
   // 用户列表（分页）
   mock(userContract.list, ({ query, ok, paginate }) => {
-    const { keyword, phone, email, status, departmentId, positionId } = query;
+    const { keyword, phone, email, status, departmentId, positionId, roleId, onlineStatus } = query;
+    const onlineUserIds = new Set(mockOnlineSessions.map((session) => session.userId));
     const list = mockUsers.filter((u) => {
       if (keyword && !includesKeyword(keyword, u.username, u.nickname)) return false;
       if (phone && !(u.phone ?? '').includes(phone)) return false;
       if (email && !(u.email ?? '').includes(email)) return false;
       if (positionId && !(u.positionIds ?? []).includes(positionId)) return false;
+      if (roleId && !u.roles.some((role) => role.id === roleId)) return false;
+      if (onlineStatus === 'online' && !onlineUserIds.has(u.id)) return false;
+      if (onlineStatus === 'offline' && onlineUserIds.has(u.id)) return false;
       if (status && u.status !== status) return false;
       if (departmentId && u.departmentId !== departmentId) return false;
       return true;
@@ -90,7 +94,6 @@ export const usersHandlers = [
       const prev = lastActiveMap.get(s.userId);
       if (!prev || s.lastActiveAt > prev) lastActiveMap.set(s.userId, s.lastActiveAt);
     }
-    const onlineUserIds = new Set(mockOnlineSessions.map((s) => s.userId));
     return ok({ ...paged, list: paged.list.map((u) => ({ ...toUserResponse(u), isOnline: onlineUserIds.has(u.id), lastActiveAt: lastActiveMap.get(u.id) ?? null })) });
   }),
 

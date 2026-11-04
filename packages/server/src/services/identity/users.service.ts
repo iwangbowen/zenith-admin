@@ -1,10 +1,10 @@
 import { buildListResult } from '../../lib/list-query';
 import { requireFirstRow, requireRow } from '../../lib/db-assert';
-import { eq, and, ne, inArray, exists, type SQL } from 'drizzle-orm';
+import { eq, and, ne, inArray, notInArray, exists, type SQL } from 'drizzle-orm';
 import { hashPassword } from '../../lib/password';
 import { db } from '../../db';
 import type { DbExecutor } from '../../db/types';
-import { users, roles, departments, positions, userPositions, userMenus, userDeptScopes, userSignatures, menus, identityUserPermissions, identityAccessGrants } from '../../db/schema';
+import { users, roles, departments, positions, userRoles, userPositions, userMenus, userDeptScopes, userSignatures, menus, identityUserPermissions, identityAccessGrants } from '../../db/schema';
 import { HTTPException } from 'hono/http-exception';
 import { exactTenantCondition, tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { reserveTenantSeats } from '../../lib/tenant-quota';
@@ -242,8 +242,9 @@ export async function listAlertRecipientUsers(): Promise<AlertRecipientUser[]> {
 /** 列表筛选条件（不含分页）：导出中心与列表共用同一 WHERE 构造 */
 export type UsersListFilter = Omit<QueryOutputOf<typeof userContract.list>, 'page' | 'pageSize'>;
 
-export async function buildUsersListWhere(q: UsersListFilter, user: JwtPayload): Promise<SQL | undefined> {
-  const { keyword, phone, email, departmentId, positionId, status, startTime, endTime } = q;
+export async function buildUsersListWhere(q: UsersListFilter, user: JwtPayload, onlineUserIds?: number[]): Promise<SQL | undefined> {
+  const { keyword, phone, email, departmentId, positionId, roleId, onlineStatus, status, startTime, endTime } = q;
+  const onlineIds = onlineUserIds ?? (onlineStatus ? [...new Set((await getOnlineSessions()).map((session) => session.userId))] : []);
   const scopeCondition = await getDataScopeCondition({
     currentUserId: user.userId, deptColumn: users.departmentId, ownerColumn: users.id,
   });
@@ -253,6 +254,8 @@ export async function buildUsersListWhere(q: UsersListFilter, user: JwtPayload):
     keywordCondition(email, [users.email]),
     departmentId ? eq(users.departmentId, departmentId) : undefined,
     positionId ? exists(db.select({ userId: userPositions.userId }).from(userPositions).where(and(eq(userPositions.userId, users.id), eq(userPositions.positionId, positionId)))) : undefined,
+    roleId ? exists(db.select({ userId: userRoles.userId }).from(userRoles).where(and(eq(userRoles.userId, users.id), eq(userRoles.roleId, roleId)))) : undefined,
+    onlineStatus === 'online' ? inArray(users.id, onlineIds) : onlineStatus === 'offline' ? notInArray(users.id, onlineIds) : undefined,
     status ? eq(users.status, status) : undefined,
     ...dateRangeConditions(users.createdAt, startTime, endTime),
     scopeCondition,
@@ -263,7 +266,9 @@ export async function buildUsersListWhere(q: UsersListFilter, user: JwtPayload):
 export async function listUsers(q: QueryOutputOf<typeof userContract.list>) {
   const user = currentUser();
   const { page, pageSize } = q;
-  const where = await buildUsersListWhere(q, user);
+  const onlineSessions = await getOnlineSessions();
+  const onlineUserIds = new Set(onlineSessions.map((session) => session.userId));
+  const where = await buildUsersListWhere(q, user, [...onlineUserIds]);
   return buildListResult({
     page,
     pageSize,
@@ -271,8 +276,6 @@ export async function listUsers(q: QueryOutputOf<typeof userContract.list>) {
     rows: async () => {
       const rawList = await findUsersWithRelations({ where, limit: pageSize, offset: pageOffset(page, pageSize), orderBy: users.id });
       const challengeRequired = await batchLoginChallengeRequired(rawList.map((u) => u.username));
-      const onlineSessions = await getOnlineSessions();
-      const onlineUserIds = new Set(onlineSessions.map((s) => s.userId));
       // 同一用户多会话取最新活跃时间；离线用户为 null，前端显示占位符
       const lastActiveMap = new Map<number, Date>();
       for (const s of onlineSessions) {

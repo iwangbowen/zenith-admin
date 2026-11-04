@@ -1,8 +1,8 @@
 import * as z from 'zod';
-import { auditFieldsSchema, batchIdsBody, dateRangeQuery, entityStatusQuery, entityStatusSchema, idParam, keywordQuery, paginated, paginationQuery, idQuery } from '../../core/api-schemas';
+import { auditFieldsSchema, batchIdsBody, dateRangeQuery, entityStatusQuery, entityStatusSchema, idParam, keywordQuery, paginated, paginationQuery, idQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { sensitive } from '../../core/sensitive';
-import { DATA_SCOPES } from '../constants';
+import { DATA_SCOPES, USER_ONLINE_STATUSES, USER_ONLINE_STATUS_OPTIONS } from '../constants';
 import {
   assignUserMenusSchema,
   assignUserRolesSchema,
@@ -133,6 +133,8 @@ export const userListQuery = paginationQuery.extend({
   email: keywordQuery('邮箱'),
   departmentId: idQuery(),
   positionId: idQuery('岗位'),
+  roleId: idQuery('角色（直接分配）'),
+  onlineStatus: queryEnum(USER_ONLINE_STATUSES, { description: '在线状态', options: USER_ONLINE_STATUS_OPTIONS }),
   status: entityStatusQuery,
   ...dateRangeQuery('创建时间'),
 });

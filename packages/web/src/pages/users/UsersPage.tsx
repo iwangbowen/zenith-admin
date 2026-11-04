@@ -4,9 +4,9 @@ import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from 'rea
 import { Button, Select, Space, Form, Toast, Tag, Row, Col, Tree } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { ChevronsUpDown, ChevronsDownUp, Building2, KeyRound } from 'lucide-react';
-import type { CreateUserInput, User, Role, Department, Position } from '@zenith/shared/identity';
+import type { CreateUserInput, User, Role, Department, Position, UserOnlineStatus } from '@zenith/shared/identity';
 import { USER_STATUSES, enumValueOf, type BodyOf } from '@zenith/shared/core';
-import { userContract } from '@zenith/shared/identity';
+import { userContract, USER_ONLINE_STATUS_OPTIONS } from '@zenith/shared/identity';
 import { UserAvatar } from '@/components/UserAvatar';
 import { formatDateForApi, formatDateTimeRangeForApi } from '@/utils/date';
 import { formatPasswordPolicyHint, type PasswordRules as PasswordPolicy } from '@zenith/shared/settings';
@@ -77,6 +77,8 @@ interface SearchParams {
   departmentId?: number;
   /** 岗位筛选；undefined = 全部岗位 */
   positionId?: number;
+  roleId?: number;
+  onlineStatus?: UserOnlineStatus;
 }
 
 /** 用户表单值：记录里的 null 在提交时归一为未填 / null，与创建入参对齐 */
@@ -97,7 +99,7 @@ interface ResetPasswordFormValues {
   confirmPassword: string;
 }
 
-const defaultSearchParams: SearchParams = { keyword: '', phone: '', email: '', status: undefined, timeRange: null, departmentId: undefined, positionId: undefined };
+const defaultSearchParams: SearchParams = { keyword: '', phone: '', email: '', status: undefined, timeRange: null, departmentId: undefined, positionId: undefined, roleId: undefined, onlineStatus: undefined };
 const EMPTY_USERS: User[] = [];
 const EMPTY_ROLES: Role[] = [];
 const EMPTY_DEPARTMENTS: Department[] = [];
@@ -168,6 +170,8 @@ export default function UsersPage() {
     email: submittedParams.email,
     departmentId: submittedParams.departmentId,
     positionId: submittedParams.positionId,
+    roleId: submittedParams.roleId,
+    onlineStatus: submittedParams.onlineStatus,
     status: enumValueOf(USER_STATUSES, submittedParams.status),
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
   });
@@ -719,6 +723,20 @@ export default function UsersPage() {
             <StatusSelect
               items={statusItems}
               {...bind('status')}
+            />
+            <FilterSelect
+              placeholder="全部角色"
+              items={allRoles.map((role) => ({ value: role.id, label: role.name }))}
+              {...bind('roleId')}
+              width={160}
+              filter
+              loading={allRolesQuery.isFetching}
+            />
+            <FilterSelect
+              placeholder="在线状态"
+              items={USER_ONLINE_STATUS_OPTIONS}
+              {...bind('onlineStatus')}
+              width={140}
             />
             <DateRangeFilter placeholder={["开始时间", "结束时间"]} {...bind('timeRange')} />
           </>

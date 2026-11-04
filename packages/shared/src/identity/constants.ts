@@ -6,6 +6,17 @@ export const SUPER_ADMIN_CODE = 'super_admin';
 
 export const TENANT_ADMIN_CODE = 'tenant_admin';
 
+export const USER_ONLINE_STATUSES = ['online', 'offline'] as const;
+
+export type UserOnlineStatus = (typeof USER_ONLINE_STATUSES)[number];
+
+export const USER_ONLINE_STATUS_LABELS: Record<UserOnlineStatus, string> = {
+  online: '在线',
+  offline: '离线',
+};
+
+export const USER_ONLINE_STATUS_OPTIONS = createLabelOptions(USER_ONLINE_STATUSES, USER_ONLINE_STATUS_LABELS);
+
 export const OAUTH_PROVIDERS = ['github', 'dingtalk', 'wechat_work', 'feishu'] as const;
 
 export type OAuthProviderType = (typeof OAUTH_PROVIDERS)[number];

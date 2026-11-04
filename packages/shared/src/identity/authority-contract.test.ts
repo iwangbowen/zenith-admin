@@ -1,5 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { createUserSchema, updateUserSchema, updateUserOrganizationSchema, manageUserSchema } from './validation';
+import { userListQuery } from './contracts/users';
+
+describe('user list filters', () => {
+  it('parses role IDs and online/offline filters and treats cleared controls as absent', () => {
+    expect(userListQuery.parse({ roleId: '3', onlineStatus: 'offline' })).toMatchObject({ roleId: 3, onlineStatus: 'offline' });
+    expect(userListQuery.parse({ onlineStatus: 'online' }).onlineStatus).toBe('online');
+    expect(userListQuery.parse({ roleId: undefined, onlineStatus: '' })).toMatchObject({ roleId: undefined, onlineStatus: undefined });
+  });
+
+  it('rejects invalid role IDs and unsupported online states', () => {
+    for (const roleId of ['0', '-1', '1.5', 'invalid']) expect(userListQuery.safeParse({ roleId }).success).toBe(false);
+    expect(userListQuery.safeParse({ onlineStatus: 'unknown' }).success).toBe(false);
+  });
+});
 
 describe('identity profile authority boundary', () => {
   it.each([
