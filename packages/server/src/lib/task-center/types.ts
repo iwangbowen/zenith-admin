@@ -1,3 +1,6 @@
+import type { DbTransaction } from '../../db/types';
+import type { AsyncTaskRow } from '../../db/schema';
+
 /** 任务中心队列名（pg-boss） */
 export const ASYNC_TASK_QUEUE = 'async-tasks';
 
@@ -53,6 +56,8 @@ export interface TaskItemReport {
 
 export interface TaskRunContext {
   taskId: number;
+  /** Trusted tenant from the persisted task, never inferred from its payload. */
+  tenantId: number | null;
   /** 本次派发的持久化标识；业务提交点可用它拒绝旧 worker 的副作用。 */
   dispatchToken: string;
   payload: Record<string, unknown>;
@@ -66,6 +71,8 @@ export interface TaskRunContext {
   reportItems(items: TaskItemReport[]): Promise<void>;
   /** 单独查询是否已请求取消（progress 的返回值已包含该信息） */
   isCancelRequested(): Promise<boolean>;
+  /** Short business commits check the execution token and live lease before and after writing. */
+  transaction<T>(fn: (tx: DbTransaction) => Promise<T>): Promise<T>;
 }
 
 export interface TaskHandlerRegistration {
@@ -90,6 +97,10 @@ export interface TaskHandlerRegistration {
    * 提交进程在任何角色下都会消费自己的节点队列；进程下线后未完成的节点亲和任务由兜底扫描标记失败。
    */
   affinity?: 'any' | 'node';
+  /** Hard execution budget; heartbeats never extend this deadline. Default 10 minutes. */
+  executionTimeoutMs?: number;
+  /** Must only perform bounded local work; task state and domain state commit together. */
+  settleInTransaction?: (tx: DbTransaction, task: AsyncTaskRow) => Promise<void>;
   /** 任务执行体；返回值写入 result 字段。抛错 → 自动重试或 failed；期间应周期调用 ctx.progress() */
   run(ctx: TaskRunContext): Promise<Record<string, unknown> | void>;
 }

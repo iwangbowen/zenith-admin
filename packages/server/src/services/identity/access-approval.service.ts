@@ -3,7 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { ACCESS_REQUEST_BIZ_TYPE, ACCESS_APPROVAL_ORDER, type AccessApprovalPlan, type AccessApprovalPolicy } from '@zenith/shared/identity';
 import { db } from '../../db';
 import type { DbExecutor } from '../../db/types';
-import { departments, identityAccessRequests, roles, userGroupMembers, userGroupRoles, userGroups, userRoles, users, userMfaFactors, type WorkflowInstanceRow } from '../../db/schema';
+import { departments, identityAccessRequests, roles, userGroupMembers, userGroupRoles, userGroups, userRoles, users, userMfaFactors } from '../../db/schema';
 import { exactTenantCondition } from '../../lib/tenant';
 import { formatDateTime } from '../../lib/datetime';
 import { getUserPermissions, runWithFreshUserPermissions } from '../../lib/permissions';
@@ -12,7 +12,7 @@ import { config } from '../../config';
 import { assertAccessSnapshotDuration } from './access-policy.service';
 import { verifyUserTotp } from './identity-security.service';
 
-type InstanceRef = Pick<WorkflowInstanceRow, 'id' | 'tenantId' | 'bizType' | 'bizId'>;
+type InstanceRef = { id: number; tenantId: number | null; bizType: string | null; bizId: string | null };
 export type AccessMfaEvidence = { actorId: number; taskId: number; factorId: number; verifiedAt: Date };
 
 async function securityCandidates(tenantId: number | null, executor: DbExecutor) {

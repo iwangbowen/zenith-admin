@@ -40,18 +40,21 @@ import { normalizeAuditSubjects } from '../audit-subject';
 import { isCanonicalEntityType } from '@zenith/shared/platform';
 import { recordDomainEvent } from '../../services/platform/relations/events.service';
 import { completeAsyncTasks } from './terminal-events';
+import { taskTransaction, runWithTaskExecution, TaskExecutionLostError } from './execution';
+import { settleTaskState, transitionAsyncTasks } from './settlement';
+import { rememberTransactionEffect } from '../transaction-effects';
 
 const TASK_HEARTBEAT_INTERVAL_MS = Math.floor(HEARTBEAT_STALE_MS / 3);
 
 /** Keep a running lease alive while async handler work is in flight, even between progress reports. */
-function startAsyncTaskHeartbeat(taskId: number, dispatchToken: string): () => void {
+function startAsyncTaskHeartbeat(taskId: number, dispatchToken: string, deadline: Date): () => void {
   let inFlight = false;
   const timer = setInterval(() => {
     if (inFlight) return;
     inFlight = true;
     const heartbeat = withoutDbExecutor(() => db.update(asyncTasks)
       .set({ heartbeatAt: new Date() })
-      .where(and(eq(asyncTasks.id, taskId), eq(asyncTasks.status, 'running'), eq(asyncTasks.dispatchToken, dispatchToken)))
+      .where(and(eq(asyncTasks.id, taskId), eq(asyncTasks.status, 'running'), eq(asyncTasks.dispatchToken, dispatchToken), eq(asyncTasks.cancelRequested, false), gt(asyncTasks.heartbeatAt, sql`clock_timestamp() - ${HEARTBEAT_STALE_MS} * interval '1 millisecond'`), sql`clock_timestamp() < ${deadline}`))
       .returning({ id: asyncTasks.id }));
     void heartbeat.then(([row]) => {
       if (!row) clearInterval(timer);
@@ -121,7 +124,7 @@ async function persistTaskForPrincipal(
   if (idempotencyKey) {
     const [existing] = await executor.select().from(asyncTasks)
       .where(and(scope, eq(asyncTasks.idempotencyKey, idempotencyKey))).limit(1);
-    if (existing) return existing;
+    if (existing) { rememberTransactionEffect(executor, `task-pickup:${existing.id}`, () => enqueueCommittedTask(existing)); return existing; }
   }
   const policy = await getTaskTypePolicy(executor, input.taskType);
   if (!policy.enabled) {
@@ -170,7 +173,7 @@ async function persistTaskForPrincipal(
           exactTenantCondition(asyncTasks.tenantId, tenantId),
         ))
         .limit(1);
-      if (existing) return existing;
+      if (existing) { rememberTransactionEffect(executor, `task-pickup:${existing.id}`, () => enqueueCommittedTask(existing)); return existing; }
       throw new HTTPException(500, { message: '任务提交异常，请重试' });
     }
   } else {
@@ -195,6 +198,7 @@ async function persistTaskForPrincipal(
       dedupeKey: `async-task:${row.id}:created`,
     });
   }
+  rememberTransactionEffect(executor, `task-pickup:${row.id}`, () => enqueueCommittedTask(row));
   return row;
 }
 
@@ -274,7 +278,7 @@ async function getCreatorPayload(row: AsyncTaskRow): Promise<JwtPayload | null> 
   };
 }
 
-async function applyProgress(taskId: number, dispatchToken: string, update: TaskProgressUpdate): Promise<TaskProgressResult> {
+async function applyProgress(taskId: number, dispatchToken: string, deadline: Date, update: TaskProgressUpdate): Promise<TaskProgressResult> {
   const set: Partial<typeof asyncTasks.$inferInsert> = { heartbeatAt: new Date() };
   if (update.processed !== undefined) set.processedCount = Math.max(0, Math.trunc(update.processed));
   if (update.failed !== undefined) set.failedCount = Math.max(0, Math.trunc(update.failed));
@@ -282,7 +286,7 @@ async function applyProgress(taskId: number, dispatchToken: string, update: Task
   if (update.note !== undefined) set.progressNote = update.note?.slice(0, 256) ?? null;
   if (update.checkpoint !== undefined) set.checkpoint = update.checkpoint;
   const [row] = await db.update(asyncTasks).set(set)
-    .where(and(eq(asyncTasks.id, taskId), eq(asyncTasks.status, 'running'), eq(asyncTasks.dispatchToken, dispatchToken)))
+    .where(and(eq(asyncTasks.id, taskId), eq(asyncTasks.status, 'running'), eq(asyncTasks.dispatchToken, dispatchToken), eq(asyncTasks.cancelRequested, false), gt(asyncTasks.heartbeatAt, sql`clock_timestamp() - ${HEARTBEAT_STALE_MS} * interval '1 millisecond'`), sql`clock_timestamp() < ${deadline}`))
     .returning();
   // 行已不是 running（被取消/被兜底回收）→ 通知 handler 尽快退出
   if (!row) return { cancelRequested: true };
@@ -329,22 +333,19 @@ function retryDelayFor(attempts: number, baseMs: number): number {
 export async function runAsyncTask(taskId: number, dispatchToken?: string): Promise<string> {
   // 原子领取：仅 pending 且到达 nextRunAt（重试退避）可被领取，重复投递/并发消费天然无害
   const now = new Date();
-  const [claimed] = await db.update(asyncTasks)
-    .set({
+  const [claimed] = await transitionAsyncTasks({
       status: 'running',
       attempts: sql`${asyncTasks.attempts} + 1`,
       startedAt: sql`coalesce(${asyncTasks.startedAt}, now())`,
       heartbeatAt: now,
       nextRunAt: null,
       errorMessage: null,
-    })
-    .where(buildWhere(
+    }, buildWhere(
       eq(asyncTasks.id, taskId),
       eq(asyncTasks.status, 'pending'),
       dispatchToken ? eq(asyncTasks.dispatchToken, dispatchToken) : undefined,
       or(isNull(asyncTasks.nextRunAt), lte(asyncTasks.nextRunAt, now)),
-    ))
-    .returning();
+    )!);
   if (!claimed) return `任务 #${taskId} 无需执行（已被领取、已结束或未到重试时间）`;
   const ownedRun = and(eq(asyncTasks.id, taskId), eq(asyncTasks.status, 'running'), eq(asyncTasks.dispatchToken, claimed.dispatchToken));
   pushTaskProgress(claimed, { force: true });
@@ -356,13 +357,16 @@ export async function runAsyncTask(taskId: number, dispatchToken?: string): Prom
     return `任务 #${taskId} 失败：任务类型 "${claimed.taskType}" 未注册`;
   }
 
+  const execution = { taskId: claimed.id, dispatchToken: claimed.dispatchToken, deadline: new Date(Date.now() + (handler.executionTimeoutMs ?? 600_000)) };
   const ctx: TaskRunContext = {
+    transaction: fn => runWithTaskExecution(execution, () => taskTransaction(fn)),
+    tenantId: claimed.tenantId,
     taskId: claimed.id,
     dispatchToken: claimed.dispatchToken,
     payload: claimed.payload ?? {},
     checkpoint: claimed.checkpoint ?? null,
     attempt: claimed.attempts, // 领取时已 +1，returning 返回的是自增后的值
-    progress: (update) => applyProgress(claimed.id, claimed.dispatchToken, update),
+    progress: (update) => applyProgress(claimed.id, claimed.dispatchToken, execution.deadline, update),
     reportItems: (items) => applyItemReports(claimed.id, claimed.dispatchToken, claimed.attempts, items),
     isCancelRequested: async () => {
       const [row] = await db.select({ cancelRequested: asyncTasks.cancelRequested, status: asyncTasks.status })
@@ -371,14 +375,14 @@ export async function runAsyncTask(taskId: number, dispatchToken?: string): Prom
     },
   };
 
-  const stopHeartbeat = startAsyncTaskHeartbeat(claimed.id, claimed.dispatchToken);
+  const stopHeartbeat = startAsyncTaskHeartbeat(claimed.id, claimed.dispatchToken, execution.deadline);
   let creator: JwtPayload | null = null;
   try {
     creator = await getCreatorPayload(claimed);
     // 恢复提交时的链路作用域并登记因果父节点：handler 内的日志/作业/事件/通知继续同链且挂到本任务下
-    const runHandler = () => runWithParentRef(`task:${claimed.id}`, () => (creator
+    const runHandler = () => runWithTaskExecution(execution, () => runWithParentRef(`task:${claimed.id}`, () => (creator
       ? runWithCurrentUser(creator, () => handler.run(ctx))
-      : handler.run(ctx)));
+      : handler.run(ctx))));
     const result = claimed.traceId
       ? await runWithTraceId(claimed.traceId, runHandler)
       : await runHandler();
@@ -395,7 +399,13 @@ export async function runAsyncTask(taskId: number, dispatchToken?: string): Prom
       }, ownedRun);
     if (finalRow) pushTaskProgress(finalRow, { force: true });
     return finalStatus === 'cancelled' ? `任务 #${taskId}「${claimed.title}」已取消` : `任务 #${taskId}「${claimed.title}」执行成功`;
-  } catch (err) {
+  } catch (caught) {
+    let err = caught;
+    if (err instanceof TaskExecutionLostError) {
+      const [owner] = await db.select({ cancelRequested: asyncTasks.cancelRequested }).from(asyncTasks).where(ownedRun).limit(1);
+      if (!owner?.cancelRequested) return `任务 #${taskId} 执行权失效，等待恢复扫描`;
+      err = new TaskCancelledError(err.message);
+    }
     const message = (err instanceof Error ? err.message : '任务执行失败').slice(0, 2000);
     if (err instanceof TaskCancelledError) {
       const [cancelledRow] = await completeAsyncTasks({
@@ -427,17 +437,14 @@ export async function runAsyncTask(taskId: number, dispatchToken?: string): Prom
     if (canRetry) {
       const delayMs = retryDelayFor(claimed.attempts, claimed.retryDelayMs);
       const nextRunAt = new Date(Date.now() + delayMs);
-      const [retryRow] = await db.update(asyncTasks)
-        .set({
+      const [retryRow] = await transitionAsyncTasks({
           status: 'pending',
           errorMessage: message,
           progressNote: `执行失败，${Math.round(delayMs / 1000)} 秒后自动重试（第 ${claimed.attempts + 1}/${claimed.maxAttempts} 次）`,
           nextRunAt,
           heartbeatAt: null,
           dispatchToken: randomUUID(),
-        })
-        .where(ownedRun)
-        .returning();
+        }, ownedRun);
       if (retryRow) {
         pushTaskProgress(retryRow, { force: true });
         await enqueueCommittedTask(retryRow);
@@ -461,10 +468,7 @@ export async function requestCancelAsyncTask(taskId: number): Promise<AsyncTaskR
     pushTaskProgress(pendingRow, { force: true });
     return pendingRow;
   }
-  const [runningRow] = await db.update(asyncTasks)
-    .set({ cancelRequested: true })
-    .where(and(eq(asyncTasks.id, taskId), eq(asyncTasks.status, 'running')))
-    .returning();
+  const [runningRow] = await transitionAsyncTasks({ cancelRequested: true }, and(eq(asyncTasks.id, taskId), eq(asyncTasks.status, 'running')));
   if (runningRow) {
     pushTaskProgress(runningRow, { force: true });
     return runningRow;
@@ -474,10 +478,7 @@ export async function requestCancelAsyncTask(taskId: number): Promise<AsyncTaskR
 
 /** 断点恢复：保留进度与 checkpoint，从中断处继续（failed / cancelled 可用） */
 export async function resumeAsyncTask(taskId: number): Promise<AsyncTaskRow> {
-  const [maybeRow] = await db.update(asyncTasks)
-    .set({ status: 'pending', dispatchToken: randomUUID(), cancelRequested: false, errorMessage: null, completedAt: null, heartbeatAt: null, nextRunAt: null })
-    .where(and(eq(asyncTasks.id, taskId), inArray(asyncTasks.status, ['failed', 'cancelled'])))
-    .returning();
+  const [maybeRow] = await transitionAsyncTasks({ status: 'pending', dispatchToken: randomUUID(), cancelRequested: false, errorMessage: null, completedAt: null, heartbeatAt: null, nextRunAt: null }, and(eq(asyncTasks.id, taskId), inArray(asyncTasks.status, ['failed', 'cancelled'])));
   const row = requireRow(maybeRow, '仅失败或已取消的任务可以断点恢复', 400);
   await enqueueCommittedTask(row);
   return row;
@@ -528,6 +529,7 @@ export async function restartAsyncTaskInTransaction(executor: DbTransaction, tas
     .where(and(eq(asyncTasks.id, taskId), inArray(asyncTasks.status, TERMINAL_STATUSES)))
     .returning();
   const row = requireRow(maybeRow, '仅已结束的任务可以重新开始', 400);
+  await settleTaskState(executor, [row]);
   await executor.delete(asyncTaskItems).where(eq(asyncTaskItems.taskId, taskId));
   return row;
 }
@@ -548,11 +550,13 @@ export async function drainAsyncTasks(): Promise<{ recovered: number; redispatch
   const cancelledRows = await completeAsyncTasks({ status: 'cancelled', completedAt: new Date() }, and(staleRunning, eq(asyncTasks.cancelRequested, true)));
   for (const row of cancelledRows) pushTaskProgress(row, { force: true });
 
+  // Recovery must not give a crashed privilege-changing handler an unlimited attempt budget.
+  const exhaustedRows = await completeAsyncTasks({ status: 'failed', completedAt: new Date(), errorMessage: '任务执行心跳失效，已耗尽执行次数' },
+    and(staleRunning, eq(asyncTasks.cancelRequested, false), sql`${asyncTasks.attempts} >= ${asyncTasks.maxAttempts}`));
+  for (const row of exhaustedRows) pushTaskProgress(row, { force: true });
+
   // 卡死未取消 → 回收为 pending 从断点续跑
-  const recoveredRows = await db.update(asyncTasks)
-    .set({ status: 'pending', heartbeatAt: null, dispatchToken: sql`gen_random_uuid()` })
-    .where(and(staleRunning, eq(asyncTasks.cancelRequested, false)))
-    .returning({ id: asyncTasks.id, nodeId: asyncTasks.nodeId });
+  const recoveredRows = await transitionAsyncTasks({ status: 'pending', heartbeatAt: null, dispatchToken: sql`gen_random_uuid()` }, and(staleRunning, eq(asyncTasks.cancelRequested, false), sql`${asyncTasks.attempts} < ${asyncTasks.maxAttempts}`));
 
   // 长时间停留 pending 且已到执行时间 → 兜底重投（原子领取保证重复投递无害；退避中的重试任务不提前投）
   const pendingCutoff = new Date(Date.now() - PENDING_REDISPATCH_MS);
@@ -670,4 +674,23 @@ export async function registerAsyncTaskWorker(): Promise<void> {
       { retentionSeconds: 60 * 60 * 24 },
     );
   }
+}
+
+export interface SystemTaskKey { taskType: string; idempotencyKey: string; tenantId: number | null }
+/** Always locks the task before callers lock domain rows. */
+export async function lockSystemTask(executor: DbTransaction, key: SystemTaskKey): Promise<AsyncTaskRow> {
+  const [row] = await executor.select().from(asyncTasks).where(and(
+    eq(asyncTasks.taskType, key.taskType), eq(asyncTasks.idempotencyKey, key.idempotencyKey),
+    isNull(asyncTasks.createdBy), exactTenantCondition(asyncTasks.tenantId, key.tenantId),
+  )).for('update').limit(1);
+  return requireRow(row, '业务任务不存在');
+}
+export async function retrySystemTaskInTransaction(executor: DbTransaction, task: AsyncTaskRow): Promise<AsyncTaskRow> {
+  if (task.createdBy !== null) throw new Error('Only a system-owned task can be retried through this API');
+  const [row] = await executor.update(asyncTasks).set({ status: 'pending', attempts: 0, dispatchToken: randomUUID(), cancelRequested: false, errorMessage: null, completedAt: null, heartbeatAt: null, nextRunAt: null })
+    .where(and(eq(asyncTasks.id, task.id), eq(asyncTasks.dispatchToken, task.dispatchToken), inArray(asyncTasks.status, ['failed', 'cancelled']))).returning();
+  requireRow(row, '任务仍在自动重试或执行中，请稍后刷新', 409);
+  await settleTaskState(executor, [row]);
+  rememberTransactionEffect(executor, `task-pickup:${row.id}`, () => enqueueCommittedTask(row));
+  return row;
 }

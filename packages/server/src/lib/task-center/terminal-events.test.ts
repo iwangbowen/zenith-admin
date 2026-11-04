@@ -7,6 +7,7 @@ const state = vi.hoisted(() => ({ transaction: vi.fn(), event: vi.fn() }));
 vi.mock('../../db', () => ({ db: { transaction: state.transaction } }));
 vi.mock('../../services/platform/relations/events.service', () => ({ recordDomainEvent: state.event }));
 import { completeAsyncTasks } from './terminal-events';
+import { registerTaskHandler } from './registry';
 
 const at = new Date('2026-09-22T01:02:03Z');
 const task = { id: 41, taskType: 'safe-export', status: 'failed', attempts: 2, completedAt: at, tenantId: 7, traceId: 'trace', parentRef: 'request' } as AsyncTaskRow;
@@ -27,6 +28,16 @@ function install(rows: AsyncTaskRow[], subjects = [{ type: 'payment.order', key:
 
 beforeEach(() => { vi.resetAllMocks(); state.event.mockResolvedValue(1); });
 describe('task terminal business events', () => {
+  it('rolls the terminal transition back when its domain continuation fails', async () => {
+    const hook = vi.fn().mockRejectedValue(new Error('domain continuation unavailable'));
+    registerTaskHandler({ taskType: 'settlement-proof', title: 'Proof', module: 'test', run: async () => {}, settleInTransaction: hook });
+    const row = { ...task, taskType: 'settlement-proof' };
+    const f = install([row]);
+    await expect(completeAsyncTasks({ status: 'failed', completedAt: at }, eq(asyncTasks.id, task.id))).rejects.toThrow('domain continuation unavailable');
+    expect(hook).toHaveBeenCalledWith(f.tx, row);
+    expect(f.committed).toEqual([]);
+    expect(state.event).not.toHaveBeenCalled();
+  });
   it('commits the terminal fact with the same transaction and exact trusted subjects', async () => {
     const f = install([task]);
     await expect(completeAsyncTasks({ status: 'failed', completedAt: at }, eq(asyncTasks.id, task.id))).resolves.toEqual([task]);

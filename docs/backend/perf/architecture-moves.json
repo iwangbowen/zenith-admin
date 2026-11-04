@@ -69,5 +69,7 @@
   "packages/server/src/lib/export-center/definitions/workflow-approval-sheets.ts": "packages/server/src/services/workflow/exports/workflow-approval-sheets.ts",
   "packages/server/src/lib/export-center/definitions/workflow-instances.ts": "packages/server/src/services/workflow/exports/workflow-instances.ts",
   "packages/server/src/lib/job-monitor/sources.ts": "packages/server/src/bootstrap/job-monitor-sources.ts",
-  "packages/server/src/lib/system-tasks.registry.ts": "packages/server/src/bootstrap/system-tasks.ts"
+  "packages/server/src/lib/system-tasks.registry.ts": "packages/server/src/bootstrap/system-tasks.ts",
+  "packages/server/src/services/identity/access-workflow-adapter.ts": "packages/server/src/integrations/access-approval/adapter.ts",
+  "packages/server/src/services/identity/access-workflow.service.ts": "packages/server/src/services/identity/public/access-approval.ts"
 }

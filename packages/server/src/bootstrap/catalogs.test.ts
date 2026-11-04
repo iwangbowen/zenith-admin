@@ -12,6 +12,8 @@ describe('role-independent application catalogs', () => {
     expect(getExportDefinition('system.users').entity).toBe('system.users');
     expect(listExportDefinitions().length).toBeGreaterThan(50);
     expect(getTaskHandler('data-import')).toBeDefined();
+    expect(getTaskHandler('identity-access-grant-apply')).toBeDefined();
+    expect(getTaskHandler('identity-access-review-build')).toBeDefined();
     expect(getJobSource('async-task')).toBeDefined();
     expect(listJobSources().length).toBeGreaterThan(15);
   });

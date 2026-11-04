@@ -1,13 +1,15 @@
 import { HTTPException } from 'hono/http-exception';
 import type { WorkflowCustomFormConfig, WorkflowDefinitionSnapshot } from '@zenith/shared/workflow';
-import { WORKFLOW_BUSINESS_ADAPTERS } from '../bootstrap/workflow-business-adapters';
 import type { WorkflowBusinessAdapter, WorkflowBusinessInstance } from './workflow-business-types';
 
 const adapters = new Map<string, WorkflowBusinessAdapter>();
-for (const adapter of WORKFLOW_BUSINESS_ADAPTERS) {
+let sealed = false;
+export function registerWorkflowBusinessAdapter(adapter: WorkflowBusinessAdapter): void {
+  if (sealed) throw new Error('工作流业务目录已经冻结');
   if (adapters.has(adapter.businessType)) throw new Error(`工作流业务适配器重复注册：${adapter.businessType}`);
-  adapters.set(adapter.businessType, adapter);
+  adapters.set(adapter.businessType, Object.freeze({ ...adapter }));
 }
+export function sealWorkflowBusinessAdapters(): void { sealed = true; }
 
 export function getWorkflowBusinessAdapter(businessType: string | null | undefined): WorkflowBusinessAdapter | undefined {
   return businessType ? adapters.get(businessType) : undefined;

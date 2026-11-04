@@ -58,3 +58,12 @@ API 角色处理请求和 WebSocket，Worker 角色执行后台作业。工作�
 | 查询层与移动入口 | `packages/web/src/hooks/queries/workflow-*.ts`、`packages/web/src/approval/` |
 
 运行角色与系统配置见[引擎诊断、健康与运行配置](./engine-health.md)，业务域接入见[业务模块接入工作流](./business-integration.md)。
+
+
+## 权限审批集成与身份读取边界
+
+权限申请的跨域装配位于 `packages/server/src/integrations/access-approval/`，工作流引擎通过冻结的业务适配器注册表调用它；适配器和身份能力由 bootstrap 注册，核心不反向导入 bootstrap。权限申请及预约与流程创建同事务保存，关联 hook 返回业务引用，由工作流自己的生命周期代码写入实例。
+
+身份域通过 `services/workflow/public/access-approval.ts` 校验和锁定审批事实、取消失效实例，不查询或修改工作流内部表/作业。授权发放和复核构建分别运行在任务中心的 `identity-access-grant-apply`、`identity-access-review-build` 类型，业务事务执行权与领域状态结算见[任务中心](../backend/task-center.md#业务事务执行权与状态结算)。工作流作业类型不再含身份治理任务。
+
+签名、协作选人和批量用户名/头像通过 `WorkflowIdentityPort` 注入，由身份域提供最小投影。其余用于路由、编号、列表和统计的只读 JOIN 保留在工作流读模型内；具体文件、用途、表及字段列于 `services/workflow/public/identity-read-models.json`。边界测试核对清单并禁止对身份表写入（含SQL表别名），这份读取声明不授予跨域写权限。

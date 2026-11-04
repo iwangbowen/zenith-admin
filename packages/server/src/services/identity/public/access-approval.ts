@@ -1,22 +1,28 @@
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+/** Identity-owned application operations used by the access approval integration. */
+export { previewAccessWorkflowFormData, normalizeAccessWorkflowFormData, applyApprovedAccessRequest, listUnsettledAccessApprovals } from '../access-governance.service';
+export { verifyAccessApprovalMfa, assertAccessApprovalInTransaction, assertAccessTaskAssigneeInTransaction } from '../access-approval.service';
+export { lockIdentityAuthority } from '../authority-write.service';
+export { assertNoOverlappingAccessRequest } from '../access-reservations.service';
+
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { ACCESS_REQUEST_BIZ_TYPE } from '@zenith/shared/identity';
-import type { DbExecutor } from '../../db/types';
-import { identityAccessRequestItems, identityAccessRequests, workflowInstances, workflowTasks } from '../../db/schema';
-import { exactTenantCondition } from '../../lib/tenant';
-import { parseDateTimeInput } from '../../lib/datetime';
-import { enqueueJob } from '../../lib/workflow-jobs/engine';
-import { notifyWithin } from '../messaging/notification-outbox.service';
-import { resolveUserNames } from '../../lib/user-nicknames';
-import { normalizeAccessWorkflowFormData } from './access-governance.service';
-import { lockIdentityAuthority } from './authority-write.service';
-import { assertNoOverlappingAccessRequest } from './access-reservations.service';
+import type { DbTransaction } from '../../../db/types';
+import { identityAccessRequestItems, identityAccessRequests } from '../../../db/schema';
+import { exactTenantCondition } from '../../../lib/tenant';
+import { parseDateTimeInput } from '../../../lib/datetime';
+import { persistSystemAsyncTask } from '../../../lib/task-center';
+import { notifyWithin } from '../../messaging/notification-outbox.service';
+import { resolveUserNames } from '../../../lib/user-nicknames';
+import { normalizeAccessWorkflowFormData } from '../access-governance.service';
+import { lockIdentityAuthority } from '../authority-write.service';
+import { assertNoOverlappingAccessRequest } from '../access-reservations.service';
 
 type NormalizedAccessForm = Awaited<ReturnType<typeof normalizeAccessWorkflowFormData>>;
-type InstanceIdentity = Pick<typeof workflowInstances.$inferSelect, 'id' | 'tenantId' | 'initiatorId' | 'formData'>;
+type InstanceIdentity = { id: number; tenantId: number | null; initiatorId: number; formData: unknown };
 
 /** 仅接收已由权限域归一化的表单，与流程和权限预约共用提交事务。 */
-export async function attachAccessRequestToWorkflow(executor: DbExecutor, instance: InstanceIdentity): Promise<void> {
+export async function attachAccessRequestToWorkflow(executor: DbTransaction, instance: InstanceIdentity): Promise<{ bizType: string; bizId: string }> {
   const form = instance.formData as NormalizedAccessForm;
   if (!Array.isArray(form?.permissionItems) || form.permissionItems.length === 0 || form.targetUserId !== instance.initiatorId) {
     throw new HTTPException(409, { message: '权限申请缺少有效的服务端审批快照' });
@@ -48,17 +54,18 @@ export async function attachAccessRequestToWorkflow(executor: DbExecutor, instan
     workflowInstanceId: instance.id,
   }).returning({ id: identityAccessRequests.id });
   await executor.insert(identityAccessRequestItems).values(form.permissionItems.map((item) => ({ requestId: request.id, ...item })));
-  await executor.update(workflowInstances).set({ bizType: ACCESS_REQUEST_BIZ_TYPE, bizId: String(request.id) }).where(and(eq(workflowInstances.id, instance.id), exactTenantCondition(workflowInstances.tenantId, instance.tenantId)));
   await notifyWithin(executor, 'identity.access.requested', {
     recipients: [{ type: 'user', id: instance.initiatorId }], vars: { requestId: request.id, applicantName: form.targetUserName, targetName: form.targetUserName, riskLevel: form.riskLabel },
     tenantId: instance.tenantId, link: `/workflow/instance/${instance.id}`, dedupeKey: `identity-access-requested:${request.id}`,
   });
+  return { bizType: ACCESS_REQUEST_BIZ_TYPE, bizId: String(request.id) };
 }
 
-export async function bridgeAccessWorkflowOutcome(
-  executor: DbExecutor,
+export async function recordAccessWorkflowOutcome(
+  executor: DbTransaction,
   instance: { id: number; tenantId: number | null; bizType?: string | null; bizId?: string | null; status: string },
   actorId: number | null,
+  rejectionReason?: string | null,
 ): Promise<void> {
   if (instance.bizType !== ACCESS_REQUEST_BIZ_TYPE) return;
   const requestId = Number(instance.bizId);
@@ -68,14 +75,11 @@ export async function bridgeAccessWorkflowOutcome(
   if (!request) throw new Error('权限流程关联的申请不存在');
   if (instance.status === 'approved' && ['pending', 'approved'].includes(request.status) && !['succeeded', 'failed', 'terminated'].includes(request.provisionStatus)) {
     if (request.status === 'pending' || request.provisionStatus === 'not_started') await executor.update(identityAccessRequests).set({ status: 'approved', provisionStatus: 'pending', approvedAt: request.approvedAt ?? new Date(), failureReason: null }).where(where);
-    await enqueueJob({
-      jobType: 'access_grant_apply',
-      instanceId: instance.id,
-      tenantId: instance.tenantId,
-      payload: { requestId, approvedBy: actorId },
+    await persistSystemAsyncTask(executor, {
+      taskType: 'identity-access-grant-apply',
+      payload: { requestId, workflowInstanceId: instance.id, approvedBy: actorId },
       idempotencyKey: `identity-access-apply:${requestId}`,
-      maxAttempts: 5,
-    }, executor);
+    }, instance.tenantId);
   } else if (['rejected', 'withdrawn', 'cancelled'].includes(instance.status)) {
     await executor.update(identityAccessRequests).set({
       status: instance.status === 'rejected' ? 'rejected' : 'cancelled',
@@ -84,11 +88,12 @@ export async function bridgeAccessWorkflowOutcome(
     }).where(and(where, inArray(identityAccessRequests.status, ['pending'])));
     if (instance.status === 'rejected' && request.status === 'pending') {
       const detail = await executor.query.identityAccessRequests.findFirst({ where, columns: { targetUserId: true, applicantUserId: true } });
-      const rejected = await executor.query.workflowTasks.findFirst({ where: and(eq(workflowTasks.instanceId, instance.id), eq(workflowTasks.status, 'rejected')), columns: { comment: true }, orderBy: [desc(workflowTasks.actionAt)] });
       if (detail) {
         const names = await resolveUserNames([detail.targetUserId], executor);
-        await notifyWithin(executor, 'identity.access.rejected', { recipients: [{ type: 'user', id: detail.applicantUserId }], vars: { requestId, targetName: names.get(detail.targetUserId) ?? `用户 ${detail.targetUserId}`, reason: rejected?.comment ?? '审批未通过' }, tenantId: instance.tenantId, link: `/workflow/instance/${instance.id}`, dedupeKey: `identity-access-rejected:${requestId}` });
+        await notifyWithin(executor, 'identity.access.rejected', { recipients: [{ type: 'user', id: detail.applicantUserId }], vars: { requestId, targetName: names.get(detail.targetUserId) ?? `用户 ${detail.targetUserId}`, reason: rejectionReason ?? '审批未通过' }, tenantId: instance.tenantId, link: `/workflow/instance/${instance.id}`, dedupeKey: `identity-access-rejected:${requestId}` });
       }
     }
   }
 }
+
+export { reconcilePendingAccessRequests } from '../access-request-lifecycle.service';

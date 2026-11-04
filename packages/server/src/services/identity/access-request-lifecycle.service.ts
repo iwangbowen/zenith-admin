@@ -1,16 +1,15 @@
 import { and, asc, eq, gt } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
-import { identityAccessRequests, workflowInstances } from '../../db/schema';
+import { identityAccessRequests } from '../../db/schema';
 import { exactTenantCondition } from '../../lib/tenant';
-import { workflowTransaction } from '../../lib/workflow-jobs/lease';
+import { businessApprovalTransaction, lockBusinessApproval, cancelBusinessApproval } from '../workflow/public/access-approval';
 import { assertAccessSnapshotDuration } from './access-policy.service';
 import { resolveAccessApprovalPlan } from './access-approval.service';
 import { lockIdentityAuthority } from './authority-write.service';
 
 /** Invalid policy/organization snapshots end the request and release its reservation. */
 export async function reconcilePendingAccessRequests(): Promise<number> {
-  const { cancelWorkflowInstanceInTransaction } = await import('../workflow/instances/lifecycle');
   let cursor = 0;
   let cancelled = 0;
   while (true) {
@@ -20,8 +19,8 @@ export async function reconcilePendingAccessRequests(): Promise<number> {
     for (const row of rows) {
       cursor = row.id;
       if (!row.workflowInstanceId) continue;
-      await workflowTransaction(async tx => {
-        await tx.select({ id: workflowInstances.id }).from(workflowInstances).where(and(eq(workflowInstances.id, row.workflowInstanceId!), exactTenantCondition(workflowInstances.tenantId, row.tenantId))).for('update');
+      await businessApprovalTransaction(async tx => {
+        await lockBusinessApproval(tx, row.workflowInstanceId!, row.tenantId);
         const where = and(eq(identityAccessRequests.id, row.id), exactTenantCondition(identityAccessRequests.tenantId, row.tenantId));
         const [request] = await tx.select().from(identityAccessRequests).where(where).for('update').limit(1);
         if (!request || request.status !== 'pending') return;
@@ -35,7 +34,7 @@ export async function reconcilePendingAccessRequests(): Promise<number> {
         } catch (error) {
           if (!(error instanceof HTTPException) || error.status >= 500) throw error;
           const reason = `权限申请已失效：${error.message}`;
-          const ended = await cancelWorkflowInstanceInTransaction(tx, row.workflowInstanceId!, row.tenantId, undefined, reason);
+          const ended = await cancelBusinessApproval(tx, row.workflowInstanceId!, row.tenantId, reason);
           if (!ended) return;
           await tx.update(identityAccessRequests).set({ status: 'cancelled', provisionStatus: 'terminated', failureReason: reason.slice(0, 1000) }).where(where);
           cancelled++;

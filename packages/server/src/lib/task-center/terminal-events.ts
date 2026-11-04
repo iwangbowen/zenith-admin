@@ -1,8 +1,8 @@
 import { and, eq, type SQL } from 'drizzle-orm';
-import { db } from '../../db';
 import { asyncTasks, asyncTaskSubjects, type AsyncTaskRow } from '../../db/schema';
 import { exactTenantCondition } from '../tenant';
 import { recordDomainEvent } from '../../services/platform/relations/events.service';
+import { commitTaskStateTransaction, settleTaskState } from './settlement';
 
 const TERMINAL_EVENTS = {
   success: 'tasks.async-task.succeeded',
@@ -16,8 +16,9 @@ export async function completeAsyncTasks(
   where: SQL | undefined,
 ): Promise<AsyncTaskRow[]> {
   if (!where) throw new Error('Task completion requires a state transition condition');
-  return db.transaction(async (tx) => {
+  return commitTaskStateTransaction(async (tx) => {
     const rows = await tx.update(asyncTasks).set(values).where(where).returning();
+    await settleTaskState(tx, rows);
     for (const row of rows) {
       const subjects = await tx.select({ type: asyncTaskSubjects.entityType, key: asyncTaskSubjects.entityKey, role: asyncTaskSubjects.role })
         .from(asyncTaskSubjects).where(and(eq(asyncTaskSubjects.taskId, row.id), exactTenantCondition(asyncTaskSubjects.tenantId, row.tenantId)));

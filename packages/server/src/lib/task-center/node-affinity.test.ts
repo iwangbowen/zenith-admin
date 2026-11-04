@@ -56,6 +56,7 @@ function tx(): { tx: DbTransaction; inserted: () => Record<string, unknown> | un
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.send.mockResolvedValue('job');
+  mocks.transaction.mockImplementation((fn: (tx: unknown) => unknown) => fn({ update: mocks.update, select: mocks.select }));
 });
 
 describe('提交', () => {
@@ -110,6 +111,7 @@ describe('兜底扫描', () => {
       set: (input: Record<string, unknown>) => ({
         where: () => ({
           returning: async () => {
+            if (String(input.errorMessage).includes('已耗尽执行次数')) return [];
             if (input.status === 'failed') { failed.push(1); return [{ id: 99, status: 'failed', createdBy: 7 }]; }
             return [];
           },

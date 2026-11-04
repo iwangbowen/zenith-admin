@@ -5,7 +5,7 @@ import { higherAccessRisk, accessGovernanceContract, type AccessPolicySnapshot, 
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { db } from '../../db';
 import type { DbExecutor } from '../../db/types';
-import { departments, identityAccessGrantItems, identityAccessGrants, identityAccessReviewCampaigns, identityAccessReviewItems, roles, userGroupMembers, userGroupRoles, userGroups, identityUserPermissions, userRoles, users, userMfaFactors, workflowJobs, type IdentityAccessReviewCampaignRow } from '../../db/schema';
+import { departments, identityAccessGrantItems, identityAccessGrants, identityAccessReviewCampaigns, identityAccessReviewItems, roles, userGroupMembers, userGroupRoles, userGroups, identityUserPermissions, userRoles, users, userMfaFactors, type IdentityAccessReviewCampaignRow } from '../../db/schema';
 import { currentUser, setAuditBefore } from '../../lib/context';
 import { randomUUID } from 'node:crypto';
 import { exactTenantCondition, getCreateTenantId, tenantCondition } from '../../lib/tenant';
@@ -17,8 +17,7 @@ import { pageOffset } from '../../lib/pagination';
 import { getUserPermissions, isSuperAdmin, notifyUserPermissionsChanged, runWithFreshUserPermissions } from '../../lib/permissions';
 import { forceLogoutAllByUsers } from '../../lib/session-manager';
 import { requireTenantUser, resolveUserNames } from '../../lib/user-nicknames';
-import { enqueueJob, retryJob } from '../../lib/workflow-jobs/engine';
-import { workflowTransaction } from '../../lib/workflow-jobs/lease';
+import { persistSystemAsyncTask, taskTransaction, lockSystemTask, retrySystemTaskInTransaction } from '../../lib/task-center';
 import { notifyWithin } from '../messaging/notification-outbox.service';
 import { assertAccessSnapshotDuration, loadEffectiveAccessPolicies } from './access-policy.service';
 import { verifyAccessMfa } from './access-approval.service';
@@ -82,9 +81,9 @@ async function readReviewCampaign(id: number) {
 
 async function createCampaignRecord(input: CreateAccessReviewCampaignInput, tenantId: number | null, dueOnly = false) {
   const dueAt = futureDate(input.dueAt, '复核截止时间');
-  return workflowTransaction(async tx => {
+  return taskTransaction(async tx => {
     const [campaign] = await tx.insert(identityAccessReviewCampaigns).values({ tenantId, name: input.name, scopeType: input.scopeType, scopeIds: [...new Set(input.scopeIds)], reviewerId: input.reviewerId, dueAt, status: 'preparing', dueOnly }).returning();
-    await enqueueJob({ jobType: 'access_review_build', payload: { campaignId: campaign.id }, tenantId, idempotencyKey: `identity-access-review-build:${campaign.id}`, maxAttempts: 5 }, tx);
+    await persistSystemAsyncTask(tx, { taskType: 'identity-access-review-build', payload: { campaignId: campaign.id }, idempotencyKey: `identity-access-review-build:${campaign.id}` }, tenantId);
     return campaign;
   });
 }
@@ -109,7 +108,7 @@ export async function buildAccessReviewCampaign(campaignId: number, tenantId: nu
   const departmentIds = campaign.scopeType === 'department' ? await expandReviewDepartmentIds(campaign.scopeIds, tenantId) : [];
   while (true) {
     const batch = await collectAccessReviewSourceBatch(campaign, campaign.buildCursorUserId, policies, departmentIds);
-    campaign = await workflowTransaction(async tx => {
+    campaign = await taskTransaction(async tx => {
       const [locked] = await tx.select().from(identityAccessReviewCampaigns).where(and(eq(identityAccessReviewCampaigns.id, campaignId), exactTenantCondition(identityAccessReviewCampaigns.tenantId, tenantId))).for('update').limit(1);
       if (!locked || !['preparing', 'failed'].includes(locked.status)) throw new Error('复核批次准备状态已变化');
       const sources = batch.sources.map(({ previousReviewItemId: _previous, ...source }) => ({ ...source, campaignId, reviewerId: locked.reviewerId, dueAt: locked.dueAt }));
@@ -169,11 +168,12 @@ export async function assignAccessReviewCampaign(id: number, input: AssignAccess
 
 export async function retryAccessReviewCampaign(id: number) {
   const where = and(eq(identityAccessReviewCampaigns.id, id), tenantCondition(identityAccessReviewCampaigns, currentUser()));
-  await workflowTransaction(async tx => {
+  const visible = requireRow(await db.query.identityAccessReviewCampaigns.findFirst({ where, columns: { tenantId: true } }), '复核批次不存在');
+  await taskTransaction(async tx => {
+    const task = await lockSystemTask(tx, { taskType: 'identity-access-review-build', idempotencyKey: `identity-access-review-build:${id}`, tenantId: visible.tenantId });
     const [campaign] = await tx.select().from(identityAccessReviewCampaigns).where(where).for('update').limit(1);
     if (!campaign || campaign.status !== 'failed') throw new HTTPException(409, { message: '仅准备失败的复核批次可以重试' });
-    const job = requireRow(await tx.query.workflowJobs.findFirst({ where: and(eq(workflowJobs.idempotencyKey, `identity-access-review-build:${id}`), exactTenantCondition(workflowJobs.tenantId, campaign.tenantId)) }), '复核准备作业不存在');
-    requireRow(await retryJob(job.id, undefined, tx), '作业正在自动重试，请稍后刷新', 409);
+    await retrySystemTaskInTransaction(tx, task);
     await tx.update(identityAccessReviewCampaigns).set({ status: 'preparing', failureReason: null }).where(where);
   });
   return readReviewCampaign(id);

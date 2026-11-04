@@ -169,7 +169,8 @@ export async function createInstance(data: { definitionId: number; title: string
       const serialNo = await allocateWorkflowInstanceNumber(tx, { instanceId: createdInstance.id, definitionId: def.id, tenantId: createdInstance.tenantId, initiatorId: user.userId, flowData, formData, formSnapshot });
       formData = await bindWorkflowFormAttachments(tx, createdInstance, formSnapshot, formData, user.userId, copyAttachmentSourceIds);
       await tx.update(workflowInstances).set({ formData, serialNo }).where(eq(workflowInstances.id, createdInstance.id));
-      await businessAdapter?.attachInTransaction?.(tx, { ...createdInstance, formData });
+      const businessRef = await businessAdapter?.attachInTransaction?.(tx, { ...createdInstance, formData });
+      if (businessRef) await tx.update(workflowInstances).set(businessRef).where(eq(workflowInstances.id, createdInstance.id));
       const materialized = await advanceAndMaterialize({ kind: 'seed' }, {
         instanceId: createdInstance.id,
         initiatorId: user.userId,
@@ -453,7 +454,8 @@ export async function submitDraftInstance(id: number, input: { selectedInitiator
       status: 'running',
       currentNodeKey: null,
     }).where(eq(workflowInstances.id, id));
-    await businessAdapter?.attachInTransaction?.(tx, { ...inst, formData });
+    const businessRef = await businessAdapter?.attachInTransaction?.(tx, { ...inst, formData });
+    if (businessRef) await tx.update(workflowInstances).set(businessRef).where(eq(workflowInstances.id, inst.id));
     // 防御性清场：退回重提复用同一实例；若上一轮仍残留活动任务 / token / 推进作业（历史缺陷或并发产物），
     // 先作废再重新物化，保证新一轮任务是唯一活动轮次，杜绝新旧任务并存与 token 缺口
     if (isResubmitAfterReturn) {

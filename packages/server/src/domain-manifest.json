@@ -21,7 +21,8 @@
       ],
       "paths": [
         "src/routes/identity/**",
-        "src/services/identity/**"
+        "src/services/identity/**",
+        "src/integrations/access-approval/**"
       ],
       "dependsOn": [
         "ai",
@@ -426,7 +427,12 @@
       "tests": [
         "src/services/identity/access-governance-overlap.test.ts",
         "src/lib/workflow-business.test.ts",
-        "src/services/workflow/workflow-business-context.service.test.ts"
+        "src/services/workflow/workflow-business-context.service.test.ts",
+        "src/services/identity/access-workflow.service.test.ts",
+        "src/lib/workflow-jobs/handlers/access-grant-apply.test.ts",
+        "src/lib/task-center/execution.test.ts",
+        "src/lib/task-center/execution.integration.test.ts",
+        "src/services/workflow/domain-boundary.test.ts"
       ]
     },
     "payment-member": {

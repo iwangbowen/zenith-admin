@@ -4,14 +4,17 @@ import type { DbExecutor } from '../../db/types';
 const mocks = vi.hoisted(() => ({ overlap: vi.fn(), enqueue: vi.fn() }));
 vi.mock('./access-governance.service', () => ({ normalizeAccessWorkflowFormData: vi.fn().mockResolvedValue({}) }));
 vi.mock('./authority-write.service', () => ({ lockIdentityAuthority: vi.fn().mockResolvedValue(undefined) }));
-vi.mock('../../db', () => ({ db: {} }));
 vi.mock('./access-reservations.service', () => ({ assertNoOverlappingAccessRequest: mocks.overlap }));
+
+vi.mock('../../db', () => ({ db: {} }));
+
 vi.mock('../messaging/notification-outbox.service', () => ({ notifyWithin: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('../../lib/user-nicknames', () => ({ resolveUserNames: vi.fn().mockResolvedValue(new Map([[9, '申请人']])) }));
-vi.mock('../../lib/workflow-jobs/engine', () => ({ enqueueJob: mocks.enqueue }));
+vi.mock('../../lib/task-center', () => ({ persistSystemAsyncTask: mocks.enqueue }));
+vi.mock('../workflow/public/access-approval', () => ({ lastBusinessDecision: vi.fn().mockResolvedValue({ comment: '审批拒绝' }) }));
 
 import { identityAccessRequests, identityAccessRequestItems, workflowInstances } from '../../db/schema';
-import { attachAccessRequestToWorkflow, bridgeAccessWorkflowOutcome } from './access-workflow.service';
+import { attachAccessRequestToWorkflow, bridgeAccessWorkflowOutcome } from '../../integrations/access-approval/bridge';
 
 function executor(options: { existing?: { id: number }; status?: string; provisionStatus?: string } = {}) {
   const updateWhere = vi.fn().mockResolvedValue(undefined);
@@ -48,14 +51,14 @@ beforeEach(() => { vi.clearAllMocks(); mocks.overlap.mockResolvedValue(undefined
 describe('atomic access request workflow attachment', () => {
   it('reserves permissions and persists the request, items and stable workflow key using the caller transaction', async () => {
     const e = executor();
-    await attachAccessRequestToWorkflow(e.tx, instance);
+    const reference = await attachAccessRequestToWorkflow(e.tx, instance);
     expect(mocks.overlap).toHaveBeenCalledWith(expect.objectContaining({ targetUserId: 9, tenantId: 3 }), e.tx);
     expect(e.raw.execute.mock.invocationCallOrder[0]).toBeLessThan(mocks.overlap.mock.invocationCallOrder[0]);
     expect(e.requestValues).toHaveBeenCalledWith(expect.objectContaining({ applicantUserId: 9, targetUserId: 9, workflowInstanceId: 41, status: 'pending' }));
     expect(e.raw.insert).toHaveBeenCalledWith(identityAccessRequestItems);
     expect(e.itemValues).toHaveBeenCalledWith([expect.objectContaining({ requestId: 77, scopeKey: 'self:', sourceRefs: [], dataScope: 'self' })]);
-    expect(e.raw.update).toHaveBeenCalledWith(workflowInstances);
-    expect(e.set).toHaveBeenCalledWith({ bizType: 'identity.access_request', bizId: '77' });
+    expect(e.raw.update).not.toHaveBeenCalledWith(workflowInstances);
+    expect(reference).toEqual({ bizType: 'identity.access_request', bizId: '77' });
   });
 
   it('rejects conflicting permission reservations before inserting business data', async () => {
@@ -85,7 +88,7 @@ describe('transactional access workflow outcome', () => {
     await bridgeAccessWorkflowOutcome(e.tx, outcome, 12);
     expect(e.lock).toHaveBeenCalledWith('update');
     expect(e.set).toHaveBeenCalledWith(expect.objectContaining({ status: 'approved', failureReason: null }));
-    expect(mocks.enqueue).toHaveBeenCalledWith(expect.objectContaining({ jobType: 'access_grant_apply', instanceId: 41, tenantId: 3, payload: { requestId: 77, approvedBy: 12 }, idempotencyKey: 'identity-access-apply:77', maxAttempts: 5 }), e.tx);
+    expect(mocks.enqueue).toHaveBeenCalledWith(e.tx, expect.objectContaining({ taskType: 'identity-access-grant-apply', payload: { requestId: 77, workflowInstanceId: 41, approvedBy: 12 }, idempotencyKey: 'identity-access-apply:77' }), 3);
   });
 
   it.each(['rejected', 'withdrawn', 'cancelled'])('writes %s to the business request without issuing privileges', async (status) => {

@@ -1,0 +1,228 @@
+{
+  "lib/workflow-jobs/handlers/schedule-launch.ts": {
+    "purpose": "Workflow commands verify actor existence and resolve routing or display labels; identity writes are forbidden.",
+    "tables": {
+      "users": [
+        "id",
+        "status",
+        "tenantId",
+        "username"
+      ]
+    }
+  },
+  "services/workflow/instances/admin-ops.ts": {
+    "purpose": "Workflow commands verify actor existence and resolve routing or display labels; identity writes are forbidden.",
+    "tables": {
+      "users": [
+        "id"
+      ]
+    }
+  },
+  "services/workflow/instances/diagnostics.ts": {
+    "purpose": "Read-only workflow lists and diagnostics join actor labels.",
+    "tables": {
+      "users": [
+        "departmentId"
+      ]
+    }
+  },
+  "services/workflow/instances/lifecycle.ts": {
+    "purpose": "Workflow commands verify actor existence and resolve routing or display labels; identity writes are forbidden.",
+    "tables": {
+      "users": [
+        "id",
+        "status",
+        "tenantId"
+      ]
+    }
+  },
+  "services/workflow/instances/queries.ts": {
+    "purpose": "Read-only workflow lists and diagnostics join actor labels.",
+    "tables": {
+      "users": [
+        "avatar",
+        "departmentId",
+        "id",
+        "nickname",
+        "username"
+      ]
+    }
+  },
+  "services/workflow/instances/subprocess.ts": {
+    "purpose": "Workflow commands verify actor existence and resolve routing or display labels; identity writes are forbidden.",
+    "tables": {
+      "users": [
+        "id"
+      ]
+    }
+  },
+  "services/workflow/instances/task-actions.ts": {
+    "purpose": "Workflow commands verify actor existence and resolve routing or display labels; identity writes are forbidden.",
+    "tables": {
+      "users": [
+        "id",
+        "nickname",
+        "username"
+      ]
+    }
+  },
+  "services/workflow/instances/task-routing.ts": {
+    "purpose": "Workflow commands verify actor existence and resolve routing or display labels; identity writes are forbidden.",
+    "tables": {
+      "users": [
+        "id",
+        "nickname"
+      ]
+    }
+  },
+  "services/workflow/workflow-analytics.service.ts": {
+    "purpose": "Read-only workflow aggregate labels.",
+    "tables": {
+      "users": [
+        "id",
+        "nickname",
+        "username"
+      ]
+    }
+  },
+  "services/workflow/workflow-assignee-resolver.service.ts": {
+    "purpose": "Approval routing uses organization, roles and department scope; workflow cannot mutate these records.",
+    "tables": {
+      "departments": [
+        "id",
+        "leaderId",
+        "parentId"
+      ],
+      "roleDeptScopes": [
+        "deptId",
+        "roleId"
+      ],
+      "userPositions": [
+        "positionId",
+        "userId"
+      ],
+      "userRoles": [
+        "roleId",
+        "userId"
+      ],
+      "users": [
+        "departmentId",
+        "id",
+        "nickname",
+        "status",
+        "username"
+      ]
+    }
+  },
+  "services/workflow/workflow-automation-runtime.ts": {
+    "purpose": "Workflow commands verify actor existence and resolve routing or display labels; identity writes are forbidden.",
+    "tables": {
+      "users": [
+        "id",
+        "nickname",
+        "username"
+      ]
+    }
+  },
+  "services/workflow/workflow-compensations.service.ts": {
+    "purpose": "Workflow commands verify actor existence and resolve routing or display labels; identity writes are forbidden.",
+    "tables": {
+      "users": [
+        "id",
+        "nickname"
+      ]
+    }
+  },
+  "services/workflow/workflow-definitions.service.ts": {
+    "purpose": "Published workflow launch scope checks against actor organization membership.",
+    "tables": {
+      "userRoles": [
+        "roleId",
+        "userId"
+      ],
+      "users": [
+        "departmentId",
+        "id",
+        "nickname",
+        "username"
+      ]
+    }
+  },
+  "services/workflow/workflow-engine-introspection.service.ts": {
+    "purpose": "Read-only workflow lists and diagnostics join actor labels.",
+    "tables": {
+      "users": [
+        "avatar",
+        "departmentId",
+        "id",
+        "nickname"
+      ]
+    }
+  },
+  "services/workflow/workflow-launch-access.ts": {
+    "purpose": "Published workflow launch scope checks against actor organization membership.",
+    "tables": {
+      "userRoles": [
+        "roleId",
+        "userId"
+      ],
+      "users": [
+        "departmentId",
+        "id"
+      ]
+    }
+  },
+  "services/workflow/workflow-numbering.service.ts": {
+    "purpose": "Business number labels use tenant, actor and department display data.",
+    "tables": {
+      "departments": [
+        "code",
+        "id",
+        "name"
+      ],
+      "tenants": [
+        "code",
+        "id"
+      ],
+      "users": [
+        "departmentId",
+        "id",
+        "nickname",
+        "tenantId",
+        "username"
+      ]
+    }
+  },
+  "services/workflow/workflow-print.service.ts": {
+    "purpose": "Authorized print rendering resolves actor and department labels.",
+    "tables": {
+      "departments": [
+        "id",
+        "name"
+      ],
+      "users": [
+        "id"
+      ]
+    }
+  },
+  "services/workflow/workflow-schedules.service.ts": {
+    "purpose": "Workflow commands verify actor existence and resolve routing or display labels; identity writes are forbidden.",
+    "tables": {
+      "users": [
+        "id",
+        "nickname"
+      ]
+    }
+  },
+  "services/workflow/workflow-simulation.service.ts": {
+    "purpose": "Workflow commands verify actor existence and resolve routing or display labels; identity writes are forbidden.",
+    "tables": {
+      "users": [
+        "id",
+        "nickname",
+        "status",
+        "username"
+      ]
+    }
+  }
+}

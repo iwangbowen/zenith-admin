@@ -156,7 +156,8 @@ export async function registerSystemTasks(): Promise<void> {
     run: scanDueDirectorySyncSources,
   });
 
-  const { runAccessGrantLifecycle, reconcileAccessGovernance } = await import('../services/identity/access-governance.service');
+  const { runAccessGrantLifecycle } = await import('../services/identity/access-governance.service');
+  const { reconcileAccessGovernance } = await import('../integrations/access-approval/reconcile');
   await registerSystemRecurringJob({
     name: 'identity-access-lifecycle',
     title: '权限临时授权生命周期扫描',

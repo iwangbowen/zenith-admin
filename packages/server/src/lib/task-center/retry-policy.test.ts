@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { asyncTaskTypeConfigs } from '../../db/schema';
 
 const mocks = vi.hoisted(() => ({ update: vi.fn(), select: vi.fn(), sendAfter: vi.fn(), run: vi.fn() }));
-vi.mock('../../db', () => ({ db: { update: mocks.update, select: mocks.select } }));
+vi.mock('../../db', () => ({ db: { update: mocks.update, select: mocks.select, transaction: (fn: (tx: unknown) => unknown) => fn({ update: mocks.update, select: mocks.select }) } }));
 vi.mock('../pg-boss-scheduler', () => ({ getSystemJobState: vi.fn(async () => null), registerSystemQueueWorker: vi.fn(), sendSystemJob: vi.fn(), sendSystemJobAfter: mocks.sendAfter }));
 vi.mock('./map', () => ({ pushTaskProgress: vi.fn() }));
 vi.mock('./registry', () => ({ getTaskHandler: () => ({ run: mocks.run }) }));

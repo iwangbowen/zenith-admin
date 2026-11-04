@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "scope": "same benchmark command, identity suite, 3 repetitions",
+  "baselineLabel": "boundary-before",
+  "candidateLabel": "boundary-after",
+  "comparability": {
+    "node": true,
+    "platform": true,
+    "arch": true,
+    "lockHash": true,
+    "maxWorkers": true,
+    "pool": true
+  },
+  "coverage": {
+    "before": {
+      "files": 23,
+      "tests": 229,
+      "skipped": 0
+    },
+    "after": {
+      "files": 24,
+      "tests": 231,
+      "skipped": 0
+    },
+    "sameTestSet": false,
+    "reason": "after includes new boundary and identity tests; fewer or faster tests are not treated as identical-work gain"
+  },
+  "median": {
+    "wallSeconds": {
+      "before": 17.894005900000003,
+      "after": 17.0522445,
+      "delta": -0.8417614000000029
+    },
+    "cpuSeconds": {
+      "before": 92.292,
+      "after": 87.872,
+      "delta": -4.420000000000002
+    },
+    "peakRssMiB": {
+      "before": 461.8125,
+      "after": 440.3828125,
+      "delta": -21.4296875
+    }
+  },
+  "notes": [
+    "Static architecture comparison is the primary boundary result. Runtime samples are test-run measurements, not product latency measurements.",
+    "The candidate has one additional test file and two additional passing tests; runtime medians are reported descriptively and are not a same-work performance claim.",
+    "The full Server run had 545 files and 4172 tests pass, 30 files and 98 tests skipped, plus one Windows Vitest worker startup timeout for cms/islands/ads.test.ts."
+  ]
+}

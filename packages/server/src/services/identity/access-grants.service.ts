@@ -3,14 +3,14 @@ import { HTTPException } from 'hono/http-exception';
 import type { RevokeAccessGrantInput } from '@zenith/shared/identity';
 import { db } from '../../db';
 import type { DbExecutor } from '../../db/types';
-import { identityAccessGrantItems, identityAccessGrants, identityAccessRequests, identityAccessRequestItems, workflowInstances, workflowJobs } from '../../db/schema';
+import { identityAccessGrantItems, identityAccessGrants, identityAccessRequests, identityAccessRequestItems } from '../../db/schema';
 import { currentUser, setAuditBefore } from '../../lib/context';
 import { exactTenantCondition, tenantCondition } from '../../lib/tenant';
 import { requireRow } from '../../lib/db-assert';
 import { formatDateTime } from '../../lib/datetime';
 import { notifyUserPermissionsChanged } from '../../lib/permissions';
-import { workflowTransaction } from '../../lib/workflow-jobs/lease';
-import { retryJob } from '../../lib/workflow-jobs/engine';
+import { taskTransaction, lockSystemTask, retrySystemTaskInTransaction } from '../../lib/task-center';
+import { lockBusinessApproval } from '../workflow/public/access-approval';
 import { assertAccessSnapshotDuration } from './access-policy.service';
 import { assertNoOverlappingAccessRequest } from './access-reservations.service';
 import { formatAccessGrant, formatAccessRequest } from './access-formatters';
@@ -89,8 +89,9 @@ export async function retryAccessRequestProvision(id: number) {
   const caller = currentUser();
   const visible = requireRow(await db.query.identityAccessRequests.findFirst({ where: and(eq(identityAccessRequests.id, id), tenantCondition(identityAccessRequests, caller)), columns: { workflowInstanceId: true, tenantId: true } }), '权限申请不存在');
   if (!visible.workflowInstanceId) throw new HTTPException(409, { message: '权限申请缺少关联流程' });
-  await workflowTransaction(async tx => {
-    await tx.select({ id: workflowInstances.id }).from(workflowInstances).where(and(eq(workflowInstances.id, visible.workflowInstanceId!), exactTenantCondition(workflowInstances.tenantId, visible.tenantId))).for('update');
+  await taskTransaction(async tx => {
+    const task = await lockSystemTask(tx, { taskType: 'identity-access-grant-apply', idempotencyKey: `identity-access-apply:${id}`, tenantId: visible.tenantId });
+    await lockBusinessApproval(tx, visible.workflowInstanceId!, visible.tenantId);
     const where = and(eq(identityAccessRequests.id, id), exactTenantCondition(identityAccessRequests.tenantId, visible.tenantId));
     const [request] = await tx.select().from(identityAccessRequests).where(where).for('update').limit(1);
     if (!request || request.status !== 'approved' || request.provisionStatus !== 'failed') throw new HTTPException(409, { message: '仅已批准但发放失败的申请可以重试' });
@@ -98,8 +99,7 @@ export async function retryAccessRequestProvision(id: number) {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`identity-access:${request.tenantId ?? 'platform'}:${request.targetUserId}`}, 0))`);
     const items = await tx.query.identityAccessRequestItems.findMany({ where: eq(identityAccessRequestItems.requestId, id) });
     await assertNoOverlappingAccessRequest({ targetUserId: request.targetUserId, tenantId: request.tenantId, startsAt: request.startsAt, expiresAt: request.expiresAt, items, excludeRequestId: request.id }, tx);
-    const job = requireRow(await tx.query.workflowJobs.findFirst({ where: and(eq(workflowJobs.idempotencyKey, `identity-access-apply:${id}`), eq(workflowJobs.instanceId, visible.workflowInstanceId!), exactTenantCondition(workflowJobs.tenantId, visible.tenantId)) }), '授权发放作业不存在');
-    requireRow(await retryJob(job.id, undefined, tx), '作业仍在自动重试或执行中，请稍后刷新', 409);
+    await retrySystemTaskInTransaction(tx, task);
     await tx.update(identityAccessRequests).set({ provisionStatus: 'pending', failureReason: null }).where(where);
   });
   return formatAccessRequest(requireRow(await db.query.identityAccessRequests.findFirst({ where: and(eq(identityAccessRequests.id, id), tenantCondition(identityAccessRequests, caller)), with: { applicant: true, target: true, items: true } }), '权限申请不存在'));

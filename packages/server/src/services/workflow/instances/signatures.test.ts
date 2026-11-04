@@ -4,7 +4,7 @@ import type { WorkflowFormField, WorkflowInstanceFormSnapshot, WorkflowNodeConfi
 import { approveWorkflowTaskSchema, batchApproveWorkflowTaskSchema, workflowNodeConfigSchema } from '@zenith/shared/workflow';
 
 const { resolveSignature } = vi.hoisted(() => ({ resolveSignature: vi.fn() }));
-vi.mock('../../identity/user-signatures.service', () => ({ resolveUserSignature: resolveSignature }));
+vi.mock('../../../lib/workflow-identity', () => ({ workflowIdentity: () => ({ resolveSignature }) }));
 import { clearWorkflowFormSignatures, resolveWorkflowFormSignatures, resolveWorkflowTaskSignature, signatureTaskValues } from './signatures';
 
 const dataUrl = 'data:image/png;base64,AAAA';
