@@ -253,6 +253,7 @@ export default function CronJobsPage() {
   });
 
   const columns: ColumnProps<CronJob>[] = [
+    { title: 'ID', dataIndex: 'id', width: 70 },
     { title: '任务名称', dataIndex: 'name', width: 180, render: renderEllipsis },
     {
       title: 'Cron 表达式', dataIndex: 'cronExpression', width: 200,
