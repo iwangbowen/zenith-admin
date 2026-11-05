@@ -29,7 +29,7 @@ export interface WorkerRoleHandle {
 }
 
 /**
- * 纯 worker 进程的探针应用：只有 /health、/ready、/metrics，没有任何业务路由与鉴权面。
+ * 纯 worker 进程的探针应用：只有 health/liveness/readiness/startup/metrics，没有业务路由与鉴权面。
  * 与 api 共进程时不启动（探针走 /api/health）。
  */
 export function createWorkerApp(): Hono {
@@ -43,7 +43,19 @@ export function createWorkerApp(): Hono {
     checks.scheduler = getSchedulerIntrospection().initialized ? 'ok' : 'error';
     return c.json(okBody({ status: overallHealthStatus(checks), roles: config.roles.list, checks }), 200);
   });
+  app.get('/livez', (c) => c.json(okBody({ status: 'ok', ready: true, roles: config.roles.list }, 'success'), 200));
+  app.get('/startupz', (c) => {
+    const ready = getSchedulerIntrospection().initialized;
+    return c.json(okBody({ status: ready ? 'ok' : 'unavailable', ready, roles: config.roles.list, checks: { scheduler: ready ? 'ok' : 'error' } }, 'success'), ready ? 200 : 503);
+  });
   // 就绪 = pg-boss 已启动并完成声明；未就绪返回 503 让编排器暂缓把它计入可用副本
+  app.get('/readyz', async (c) => {
+    const checks: Record<string, HealthCheckResult> = await checkInfraHealth();
+    checks.scheduler = getSchedulerIntrospection().initialized ? 'ok' : 'error';
+    const ready = Object.values(checks).every((value) => value === 'ok');
+    const status = ready ? 'ok' : Object.values(checks).some((value) => value === 'error') ? 'unavailable' : 'degraded';
+    return c.json(okBody({ status, ready, roles: config.roles.list, checks }, 'success'), ready ? 200 : 503);
+  });
   app.get('/ready', (c) => {
     const ready = getSchedulerIntrospection().initialized;
     return c.json(okBody({ ready, roles: config.roles.list }), ready ? 200 : 503);

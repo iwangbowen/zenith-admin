@@ -85,6 +85,9 @@ describe('createWorkerApp', () => {
 
     const ready = await app.request('/ready');
     expect(ready.status).toBe(200);
+    expect((await app.request('/livez')).status).toBe(200);
+    expect((await app.request('/startupz')).status).toBe(200);
+    expect((await app.request('/readyz')).status).toBe(200);
 
     const metrics = await app.request('/metrics');
     expect(metrics.status).toBe(200);
@@ -102,6 +105,8 @@ describe('createWorkerApp', () => {
     mocks.initialized = false;
     const app = (await load({ api: false, worker: true })).createWorkerApp();
     expect((await app.request('/ready')).status).toBe(503);
+    expect((await app.request('/startupz')).status).toBe(503);
+    expect((await app.request('/readyz')).status).toBe(503);
     const health = await (await app.request('/health')).json() as { data: { status: string; checks: Record<string, string> } };
     expect(health.data.checks.scheduler).toBe('error');
     expect(health.data.status).toBe('degraded');
