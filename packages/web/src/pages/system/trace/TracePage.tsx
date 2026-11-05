@@ -22,6 +22,7 @@ import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { FilterSelect } from '@/components/search-filters';
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { TextBlock } from '@/components/TextBlock';
+import ObservabilityLink from '@/components/observability/ObservabilityLink';
 
 const { Text } = Typography;
 
@@ -132,12 +133,7 @@ function RecentTracesPanel({ onView }: { onView: (traceId: string) => void }) {
   const columns: ColumnProps<TraceListEntry>[] = [
     dateTimeColumn('最近活动', 'ts'),
     { title: '入口摘要', dataIndex: 'title', minWidth: 220, render: (v: string) => renderEllipsis(v) },
-    {
-      title: '链路 ID', dataIndex: 'traceId', width: 340, ellipsis: { showTitle: false },
-      render: (v: string) => (
-        <Text size="small" ellipsis={{ showTooltip: true }} style={{ fontFamily: 'monospace', maxWidth: '100%' }}>{v}</Text>
-      ),
-    },
+    { title: '链路 ID', dataIndex: 'traceId', width: 390, render: (v: string) => <ObservabilityLink traceId={v} compact /> },
     {
       title: '状态', dataIndex: 'status', width: 90,
       render: (v: TraceNodeStatus) => <Tag size="small" color={STATUS_META[v].color}>{TRACE_NODE_STATUS_LABELS[v]}</Tag>,
@@ -342,6 +338,7 @@ export default function TracePage() {
                 <>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16, alignItems: 'center' }}>
                     <Text type="tertiary" size="small">共 {nodes.length} 个节点：</Text>
+                    <ObservabilityLink traceId={traceId} compact />
                     {[...kindCounts.entries()].map(([kind, count]) => (
                       <Tag key={kind} size="small" color={KIND_COLORS[kind as TraceTimelineNode['kind']]}>
                         {TRACE_NODE_KIND_LABELS[kind as TraceTimelineNode['kind']]} × {count}
