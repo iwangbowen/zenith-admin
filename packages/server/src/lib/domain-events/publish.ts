@@ -7,6 +7,7 @@ import { exactTenantCondition } from '../tenant';
 import { currentTraceId, currentParentRef } from '../context';
 import { matchingEventConsumers } from './registry';
 import { rememberEventPickup } from './publication';
+import { currentPersistedOtelContext } from '../telemetry-context';
 
 export interface PublishEventInput {
   domain: string; eventType: string; tenantId: number | null;
@@ -29,6 +30,7 @@ export async function publishEventInTx(tx: DbTransaction, input: PublishEventInp
   const matched = matchingEventConsumers(input);
   const [inserted] = await tx.insert(eventOutbox).values({ ...input, scope: input.scope ?? {},
     eventId: input.eventId ?? randomUUID(), payloadHash, traceId: currentTraceId(), parentRef: currentParentRef(),
+    ...currentPersistedOtelContext(),
   }).onConflictDoNothing().returning();
   if (!inserted) {
     const [existing] = await tx.select().from(eventOutbox).where(and(

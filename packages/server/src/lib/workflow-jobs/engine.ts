@@ -17,6 +17,7 @@ import { isIndeterminateExternalStatus } from './external-effects';
 import { currentWorkflowJobContext, ownedJobCondition, runWithWorkflowJobContext } from './lease';
 import { flushWorkflowJobEffects } from './execution-context';
 import { publishWorkflowJobPickup, rememberWorkflowJobPickup, scheduleJobPickup } from './publication';
+import { currentPersistedOtelContext, runWithPersistedOtelContext } from '../telemetry-context';
 export { scheduleJobPickup, flushWorkflowJobPickups } from './publication';
 export { WORKFLOW_ADVANCING_JOB_TYPES } from '@zenith/shared/workflow';
 
@@ -45,7 +46,7 @@ export async function enqueueJob(input: EnqueueJobInput, executor: DbExecutor = 
     jobType: input.jobType, status: 'pending', payload: input.payload ?? {},
     instanceId: input.instanceId ?? null, taskId: input.taskId ?? null, nodeKey: input.nodeKey ?? null,
     idempotencyKey: input.idempotencyKey ?? null, traceId: input.traceId ?? currentTraceId() ?? null,
-    parentRef: currentParentRef() ?? null, priority: input.priority ?? 100,
+    parentRef: currentParentRef() ?? null, ...currentPersistedOtelContext(), priority: input.priority ?? 100,
     maxAttempts: input.maxAttempts ?? 1, runAt: input.runAt ?? new Date(), tenantId: input.tenantId ?? null,
     executionTimeoutMs: Math.max(1, Math.min(input.executionTimeoutMs ?? WORKFLOW_JOB_EXECUTION_TIMEOUT_MS, 3_600_000)),
   };
@@ -276,8 +277,8 @@ async function executeClaimedJob({ job, executionId }: ClaimedJob): Promise<void
   try {
     const handler = getJobHandler(job.jobType);
     if (!handler) throw new WorkflowJobPermanentError(`Unregistered workflow handler: ${job.jobType}`);
-    const work = runWithWorkflowJobContext(context, () => runWithTraceId(job.traceId ?? randomUUID(),
-      () => runWithParentRef(`job:${job.id}`, () => handler(context))));
+    const work = runWithPersistedOtelContext(job, () => runWithWorkflowJobContext(context, () => runWithTraceId(job.traceId ?? randomUUID(),
+      () => runWithParentRef(`job:${job.id}`, () => handler(context)))));
     const result = (await Promise.race([work, aborted])) ?? {};
     await flushWorkflowJobEffects(context);
     await finishJob(context, null, result);

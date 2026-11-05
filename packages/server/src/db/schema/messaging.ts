@@ -439,6 +439,9 @@ export const notificationOutbox = pgTable('notification_outbox', {
   traceId: varchar({ length: 64 }),
   /** 因果父引用（`kind:refId` 或 `request`），链路时间线树形展示的触发源 */
   parentRef: varchar({ length: 32 }),
+  /** W3C remote parent captured when the notification was persisted. */
+  traceParent: varchar({ length: 128 }),
+  traceState: varchar({ length: 1024 }),
   tenantId: tenantIdColumn(),
   createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [

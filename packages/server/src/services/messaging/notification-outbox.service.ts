@@ -21,6 +21,7 @@ import type { NotificationOutboxRow } from '../../db/schema';
 import type { DbExecutor, DbTransaction } from '../../db/types';
 import { mapWithConcurrency } from '../../lib/concurrency';
 import { currentTraceId, currentParentRef } from '../../lib/context';
+import { currentPersistedOtelContext } from '../../lib/telemetry-context';
 import { formatDateTime } from '../../lib/datetime';
 import { escapeHtml } from '@zenith/shared/core';
 import { deliverOutboxRow, type DeliverSummary } from '../../lib/notification/dispatch';
@@ -126,6 +127,7 @@ function buildValues<K extends NotificationEventKey>(eventKey: K, input: NotifyI
     scheduledAt: input.scheduledAt ?? null,
     traceId: currentTraceId() ?? null,
     parentRef: currentParentRef() ?? null,
+    ...currentPersistedOtelContext(),
     tenantId: input.tenantId ?? null,
   };
 }

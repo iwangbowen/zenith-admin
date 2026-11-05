@@ -113,6 +113,13 @@
       "when": 1793802434907,
       "tag": "0015_dry_lady_deathstrike",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1793854518770,
+      "tag": "0016_outgoing_mastermind",
+      "breakpoints": true
     }
   ]
 }

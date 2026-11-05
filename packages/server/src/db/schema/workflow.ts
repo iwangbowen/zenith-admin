@@ -685,6 +685,9 @@ export const workflowJobs = pgTable('workflow_jobs', {
   traceId: varchar({ length: 64 }),
   /** 因果父引用（`kind:refId` 或 `request`），链路时间线树形展示的触发源 */
   parentRef: varchar({ length: 32 }),
+  /** W3C remote parent captured when the workflow job was enqueued. */
+  traceParent: varchar({ length: 128 }),
+  traceState: varchar({ length: 1024 }),
   /** 执行所需的上下文（事件 payload / 触发器配置 / 子流程参数等） */
   payload: jsonb().notNull().default(sql`'{}'::jsonb`),
   /** 优先级（复用实例 priority：low/normal/high/urgent，数值越小越先） */

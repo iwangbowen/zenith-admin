@@ -21,6 +21,9 @@ export const eventOutbox = pgTable('event_outbox', {
   occurredAt: timestamptz().notNull().defaultNow(),
   traceId: varchar({ length: 128 }),
   parentRef: varchar({ length: 256 }),
+  /** W3C remote parent captured when the event fact was published. */
+  traceParent: varchar({ length: 128 }),
+  traceState: varchar({ length: 1024 }),
 }, (t) => [
   uniqueIndex('event_outbox_tenant_business_unique').on(t.tenantId, t.eventType, t.businessKey).where(sql`${t.tenantId} is not null`),
   uniqueIndex('event_outbox_platform_business_unique').on(t.eventType, t.businessKey).where(sql`${t.tenantId} is null`),

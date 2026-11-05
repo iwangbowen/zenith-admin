@@ -107,6 +107,9 @@ export const asyncTasks = pgTable('async_tasks', {
   heartbeatAt: timestamptz(),
   /** 链路关联 ID（= 提交请求的 requestId），串起任务与其触发源/后续副作用 */
   traceId: varchar({ length: 64 }),
+  /** W3C remote parent captured when the task was submitted. */
+  traceParent: varchar({ length: 128 }),
+  traceState: varchar({ length: 1024 }),
   /** 因果父引用（`kind:refId` 或 `request`），链路时间线树形展示的触发源 */
   parentRef: varchar({ length: 32 }),
   /** 节点亲和任务（handler.affinity = 'node'）的目标进程（hostname:pid）；普通任务为 null，任何 worker 可领取 */

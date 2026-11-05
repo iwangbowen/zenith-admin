@@ -43,6 +43,7 @@ import { completeAsyncTasks } from './terminal-events';
 import { taskTransaction, runWithTaskExecution, TaskExecutionLostError } from './execution';
 import { settleTaskState, transitionAsyncTasks } from './settlement';
 import { rememberTransactionEffect } from '../transaction-effects';
+import { currentPersistedOtelContext, runWithPersistedOtelContext } from '../telemetry-context';
 
 const TASK_HEARTBEAT_INTERVAL_MS = Math.floor(HEARTBEAT_STALE_MS / 3);
 
@@ -150,6 +151,7 @@ async function persistTaskForPrincipal(
     // 链路关联：任务与其提交请求同链，worker 执行时恢复该 trace 作用域
     traceId: currentTraceId() ?? null,
     parentRef: currentParentRef() ?? null,
+    ...currentPersistedOtelContext(),
     // 显式写入而非依赖 db Proxy 的审计注入：createdBy 是幂等作用域的一部分，
     // 下面的冲突回查要按它过滤，作用域不能取决于别处的副作用。
     createdBy: userId,
@@ -384,7 +386,7 @@ export async function runAsyncTask(taskId: number, dispatchToken?: string): Prom
       ? runWithCurrentUser(creator, () => handler.run(ctx))
       : handler.run(ctx))));
     const result = claimed.traceId
-      ? await runWithTraceId(claimed.traceId, runHandler)
+      ? await runWithPersistedOtelContext(claimed, () => runWithTraceId(claimed.traceId!, runHandler))
       : await runHandler();
 
     const [current] = await db.select().from(asyncTasks).where(eq(asyncTasks.id, taskId)).limit(1);
