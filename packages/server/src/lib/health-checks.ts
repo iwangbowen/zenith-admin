@@ -29,7 +29,7 @@ export async function checkInfraHealth(): Promise<InfraHealthChecks> {
   return checks as InfraHealthChecks;
 }
 
-/** 任一项 error 即整体 degraded；degraded 项不拉低整体状态 */
+/** 任一项非 ok 即整体 degraded，避免关键降级（如无 Worker）被报告为健康。 */
 export function overallHealthStatus(checks: Record<string, HealthCheckResult>): HealthStatus {
-  return Object.values(checks).some((v) => v === 'error') ? 'degraded' : 'ok';
+  return Object.values(checks).some((v) => v !== 'ok') ? 'degraded' : 'ok';
 }

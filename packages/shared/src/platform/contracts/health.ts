@@ -8,7 +8,7 @@ export const HEALTH_STATUSES = ['ok', 'degraded'] as const;
 
 export type HealthStatus = (typeof HEALTH_STATUSES)[number];
 
-/** 单项检查：`degraded` = 功能可用但处于降级（如失效广播未建立、缓存退回 TTL 兜底），不影响整体 `status` */
+/** 单项检查：`degraded` = 功能可用但处于降级；任一关键项降级时整体 status 也会降级。 */
 export const HEALTH_CHECK_RESULTS = ['ok', 'degraded', 'error'] as const;
 
 export type HealthCheckResult = (typeof HEALTH_CHECK_RESULTS)[number];

@@ -67,13 +67,13 @@ describe('GET /api/health 按角色输出', () => {
     expect(body.data.status).toBe('ok');
   });
 
-  it('api 角色近期无 worker 心跳 → workers 降级（作业会排队但无人执行），整体仍为 ok', async () => {
+  it('api 角色近期无 worker 心跳 → workers 降级（作业会排队但无人执行），整体同步降级', async () => {
     mocks.workerNodes = 0;
     mocks.fanout = 'degraded';
     const { body } = await check(await loadHealth({ api: true, worker: false, list: ['api'] }));
     expect(body.data.checks.workers).toBe('degraded');
     expect(body.data.checks.wsFanout).toBe('degraded');
-    expect(body.data.status).toBe('ok');
+    expect(body.data.status).toBe('degraded');
   });
 
   it('自身承担 worker 角色时 workers 天然为 ok；数据库故障整体降级', async () => {
