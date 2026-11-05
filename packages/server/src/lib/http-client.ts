@@ -1,10 +1,10 @@
 import { Agent, ProxyAgent, type Dispatcher } from 'undici';
-import { randomBytes } from 'node:crypto';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { formatDateTime } from './datetime';
 import { config } from '../config';
 import logger from './logger';
 import { currentTraceId } from './trace-context';
+import { injectOtelHeaders } from './telemetry-context';
 import { assertOutsideEventConsumer } from './domain-events/context';
 import { assertSafeOutboundUrl, createSafeOutboundLookup } from './outbound-url';
 import {
@@ -270,17 +270,13 @@ export async function httpRequest(
   const headers = new Headers(headersInit);
   const reqBody = normalizeBody(body, headers);
 
-  // 链路传播：全部外呼自动携带链路 ID（webhook/触发器/外部审批等第三方侧可对账回查）。
-  // traceId 为标准 UUID 时同时发 W3C traceparent（32hex trace-id + 随机 span-id），
-  // 供对端 APM（Jaeger/Tempo 等）原生接续；调用方显式设置过的头不覆盖。
+  // 链路传播：X-Request-Id 保留业务排障关联；W3C traceparent 由 OTel 当前
+  // context 注入，避免用业务 ID 手工伪造 trace/span 父子关系。
   const traceId = currentTraceId();
   if (traceId && !headers.has('X-Request-Id')) {
     headers.set('X-Request-Id', traceId);
-    const hex = traceId.replaceAll('-', '');
-    if (/^[0-9a-f]{32}$/i.test(hex) && !headers.has('traceparent')) {
-      headers.set('traceparent', `00-${hex.toLowerCase()}-${randomBytes(8).toString('hex')}-01`);
-    }
   }
+  if (!headers.has('traceparent')) injectOtelHeaders(headers);
 
   if (ssrfProtection && proxy) {
     throw new HttpClientError('SSRF-protected requests cannot use a proxy', { status: 0, url: safeUrl });

@@ -1,5 +1,6 @@
 import type { MiddlewareHandler } from 'hono';
 import { runWithTraceId, runWithParentRef } from '../lib/context';
+import { currentOtelTraceId } from '../lib/telemetry-context';
 
 /**
  * 为每个请求建立链路关联 traceId（贯穿其触发的全部作业/事件/通知/任务 fan-out）。
@@ -15,5 +16,8 @@ import { runWithTraceId, runWithParentRef } from '../lib/context';
  * 必须挂在 `requestId()` 之后。
  */
 export const requestTraceMiddleware: MiddlewareHandler = async (c, next) => {
-  await runWithTraceId(c.get('requestId'), () => runWithParentRef('request', () => next()));
+  // OTel's HTTP span is installed before this middleware by app-core. When it is
+  // active, persist the real W3C trace id into downstream business records; when
+  // tracing is disabled, retain the request-id fallback for local diagnostics.
+  await runWithTraceId(currentOtelTraceId() ?? c.get('requestId'), () => runWithParentRef('request', () => next()));
 };
