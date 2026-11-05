@@ -72,7 +72,9 @@ const readyRoute = defineContractRoute(healthContract.readyz, {
       checks.workers = await checkWorkers();
     }
     const body = probeBody(checks, Object.values(checks).every((value) => value === 'ok'));
-    return c.json(okBody(body, 'success'), body.ready ? 200 : 503);
+    // Contract routes currently describe the success payload as 200; readiness
+    // still deliberately emits HTTP 503 so orchestrators remove an unready node.
+    return c.json(okBody(body, 'success'), (body.ready ? 200 : 503) as 200);
   },
 });
 
