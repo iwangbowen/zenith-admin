@@ -12,6 +12,7 @@ import {
   ipAccessLogContract,
   monitorAlertContract,
   monitorContract,
+  observabilityContract,
   sqlMonitorContract,
   operationLogContract,
   rateLimitContract,
@@ -45,6 +46,7 @@ import jobMonitorRoutes from './job-monitor';
 import ipAccessLogsRoutes from './ip-access-logs';
 import monitorAlertsRoutes from './monitor-alerts';
 import monitorRoutes from './monitor';
+import observabilityRoutes from './observability';
 import sqlMonitorRoutes from './sql-monitor';
 import operationLogsRoutes from './operation-logs';
 import rateLimitRoutes from './rate-limit';
@@ -75,6 +77,7 @@ export default defineRouteDomain({
     [numberingDefaultContract.basePath, numberingDefaultsRouter],
     [numberingAllocationContract.basePath, numberingAllocationsRouter],
     [monitorContract.basePath, monitorRoutes],
+    [observabilityContract.basePath, observabilityRoutes],
     [sqlMonitorContract.basePath, sqlMonitorRoutes],
     [monitorAlertContract.basePath, monitorAlertsRoutes],
     [operationLogContract.basePath, operationLogsRoutes],

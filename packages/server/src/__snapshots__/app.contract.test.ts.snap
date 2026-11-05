@@ -1001,6 +1001,7 @@ exports[`路由表快照 > 完整路由表保持不变 1`] = `
   "GET /api/oauth2/clients/options",
   "GET /api/oauth2/clients/tokens",
   "GET /api/oauth2/userinfo",
+  "GET /api/observability/summary",
   "GET /api/open-api-stats/by-app",
   "GET /api/open-api-stats/by-endpoint",
   "GET /api/open-api-stats/logs",

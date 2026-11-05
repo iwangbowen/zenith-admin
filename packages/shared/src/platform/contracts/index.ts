@@ -13,6 +13,7 @@ export * from './health';
 export * from './global-search';
 export * from './ip-access-logs';
 export * from './monitor';
+export * from './observability';
 export * from './monitor-alerts';
 export * from './sql-monitor';
 export * from './operation-logs';
