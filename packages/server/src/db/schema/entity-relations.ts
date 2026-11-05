@@ -70,7 +70,7 @@ export type NewEntityRelationEdge = typeof entityRelationEdges.$inferInsert;
 
 /**
  * Append-only domain event envelope. Subject rows below provide the typed
- * entity references used for object timelines; traceId / parentRef describe
+ * entity references used for object timelines; correlationId / parentRef describe
  * causality and must not be used as a business relationship by themselves.
  */
 export const domainEvents = pgTable('domain_events', {
@@ -85,7 +85,7 @@ export const domainEvents = pgTable('domain_events', {
   /** Optional causal source object that emitted the event. */
   sourceType: varchar({ length: 96 }),
   sourceKey: varchar({ length: 512 }),
-  traceId: varchar({ length: 128 }),
+  correlationId: varchar({ length: 128 }),
   parentRef: varchar({ length: 256 }),
   dedupeKey: varchar({ length: 192 }),
   occurredAt: timestamptz().notNull().defaultNow(),
@@ -102,7 +102,7 @@ export const domainEvents = pgTable('domain_events', {
     .where(sql`${t.tenantId} is null and ${t.dedupeKey} is not null`),
   index('domain_events_tenant_occurred_idx').on(t.tenantId, t.occurredAt),
   index('domain_events_type_occurred_idx').on(t.eventType, t.occurredAt),
-  index('domain_events_trace_idx').on(t.traceId),
+  index('domain_events_correlation_idx').on(t.correlationId),
 ]);
 
 export type DomainEventRow = typeof domainEvents.$inferSelect;

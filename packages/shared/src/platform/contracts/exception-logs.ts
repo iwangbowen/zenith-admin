@@ -87,7 +87,7 @@ export const exceptionEventListQuery = paginationQuery.extend({
   groupId: idQuery('分组'),
   errorType: queryEnum(SERVER_ERROR_TYPES, { description: '异常类型', options: SERVER_ERROR_TYPE_OPTIONS }),
   level: queryEnum(ERROR_LEVELS, { description: '级别', options: ERROR_LEVEL_OPTIONS }),
-  traceId: keywordQuery('链路 ID', { max: 64 }),
+  correlationId: keywordQuery('链路 ID', { max: 64 }),
   route: keywordQuery('路由模板', { max: 256 }),
   jobType: keywordQuery('任务 / 作业 / 事件类型', { max: 64 }),
   hostname: keywordQuery('主机名', { max: 128 }),

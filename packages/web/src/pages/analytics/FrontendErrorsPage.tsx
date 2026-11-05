@@ -177,30 +177,26 @@ function BreadcrumbTimeline({ breadcrumbs }: { readonly breadcrumbs: ErrorBreadc
   );
 }
 
-/** 从事件提取服务端链路 ID：一等字段 traceId（新 SDK）优先，回退 context.requestId（旧 SDK 上报） */
-function extractRequestId(event: Pick<ErrorEvent, 'traceId' | 'context'>): string | null {
-  if (event.traceId && event.traceId.length >= 8) return event.traceId;
-  const context = event.context;
-  if (!context || typeof context !== 'object') return null;
-  const rid = (context as Record<string, unknown>).requestId;
-  return typeof rid === 'string' && rid.length >= 8 ? rid : null;
+/** 从事件提取服务端业务关联 ID。 */
+function extractCorrelationId(event: Pick<ErrorEvent, 'correlationId'>): string | null {
+  return event.correlationId && event.correlationId.length >= 8 ? event.correlationId : null;
 }
 
-/** 「查看服务端链路 / 服务端异常」跳转按钮（事件携带链路 ID 时展示；两边各按权限门控） */
-function TraceJumpButton({ event }: Readonly<{ event: Pick<ErrorEvent, 'traceId' | 'context'> }>) {
+/** 「查看服务端链路 / 服务端异常」跳转按钮（事件携带业务关联 ID 时展示；两边各按权限门控） */
+function TraceJumpButton({ event }: Readonly<{ event: Pick<ErrorEvent, 'correlationId'> }>) {
   const navigate = useNavigate();
   const { hasPermission } = usePermission();
-  const requestId = extractRequestId(event);
-  if (!requestId) return null;
+  const correlationId = extractCorrelationId(event);
+  if (!correlationId) return null;
   return (
     <>
       {hasPermission('system:trace:view') && (
-        <Button size="small" theme="borderless" type="primary" onClick={() => navigate(`/system/trace?traceId=${encodeURIComponent(requestId)}`)}>
+        <Button size="small" theme="borderless" type="primary" onClick={() => navigate(`/system/trace?correlationId=${encodeURIComponent(correlationId)}`)}>
           查看服务端链路
         </Button>
       )}
       {hasPermission('system:exception-log:list') && (
-        <Button size="small" theme="borderless" type="primary" onClick={() => navigate(`/system/exception-logs?tab=events&traceId=${encodeURIComponent(requestId)}`)}>
+        <Button size="small" theme="borderless" type="primary" onClick={() => navigate(`/system/exception-logs?tab=events&correlationId=${encodeURIComponent(correlationId)}`)}>
           查看服务端异常
         </Button>
       )}
@@ -254,10 +250,10 @@ export default function FrontendErrorsPage() {
     setPage: setEventPage,
     buildPagination: buildEventPagination,
   } = usePagination(20);
-  // 事件按链路 ID 定位（服务端异常日志「查看前端现场」跳过来时通过 ?traceId= 带入，消费即焚）
-  const [eventTraceId, setEventTraceId] = useState<string | undefined>(undefined);
-  useListDeepLink(['traceId'], ({ traceId }) => {
-    setEventTraceId(traceId);
+  // 事件按业务关联 ID 定位（服务端异常日志「查看前端现场」跳过来时通过 ?correlationId= 带入，消费即焚）
+  const [eventCorrelationId, setEventCorrelationId] = useState<string | undefined>(undefined);
+  useListDeepLink(['correlationId'], ({ correlationId }) => {
+    setEventCorrelationId(correlationId);
     setEventPage(1);
     setActiveTab('events');
   });
@@ -307,7 +303,7 @@ export default function FrontendErrorsPage() {
   const detail = detailQuery.data ?? null;
   const adminUsersQuery = useFrontendAdminUsers(detailVisible);
   const adminUsers = adminUsersQuery.data?.list ?? EMPTY_ADMIN_USERS;
-  const eventFilterQuery = useFilterQuery({ traceId: eventTraceId });
+  const eventFilterQuery = useFilterQuery({ correlationId: eventCorrelationId });
   const eventsQuery = useFrontendErrorEvents({ page: eventPage, pageSize: eventPageSize, ...eventFilterQuery }, activeTab === 'events');
   // 已提交筛选 → 契约查询参数：只映射一次
   const sourceMapFilterQuery = useFilterQuery({ release: submittedSourceRelease.trim() });
@@ -861,13 +857,13 @@ export default function FrontendErrorsPage() {
         </TabPane>
 
         <TabPane tab="错误事件" itemKey="events">
-          {eventTraceId && (
+          {eventCorrelationId && (
             <Banner
               fullMode={false}
               type="info"
               bordered
               closeIcon={null}
-              description={<Space spacing={8}><span>正在按链路 ID <Text code>{eventTraceId}</Text> 定位事件</span><Button size="small" theme="borderless" onClick={() => { setEventTraceId(undefined); setEventPage(1); }}>清除</Button></Space>}
+              description={<Space spacing={8}><span>正在按业务关联 ID <Text code>{eventCorrelationId}</Text> 定位事件</span><Button size="small" theme="borderless" onClick={() => { setEventCorrelationId(undefined); setEventPage(1); }}>清除</Button></Space>}
             />
           )}
           <ConfigurableTable<ErrorEvent>

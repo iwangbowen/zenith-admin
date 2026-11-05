@@ -219,7 +219,7 @@ export const openApiCallLogs = pgTable('open_api_call_logs', {
   /** 用户授权令牌对应的用户；client_credentials 与签名通道为空 */
   userId: integer(),
   errorMessage: varchar({ length: 512 }),
-  requestId: varchar({ length: 64 }),
+  correlationId: varchar({ length: 64 }),
   environment: openAppEnvironmentEnum().notNull().default('production'),
   createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [

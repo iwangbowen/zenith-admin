@@ -18,12 +18,12 @@ describe('控制台日志 Demo', () => {
   it('角色、近期日志与精确链路定位由同一契约提供', async () => {
     const sources = await (await call('')).json() as { data: OutputOf<typeof consoleLogContract.sources> };
     expect(sources.data.sources.map((item) => item.role)).toEqual(['all', 'api', 'worker']);
-    const content = await (await call('/content?role=worker&traceId=demo-console-4')).json() as { data: { lines: string[] } };
+    const content = await (await call('/content?role=worker&correlationId=demo-console-4')).json() as { data: { lines: string[] } };
     expect(content.data.lines).toHaveLength(1);
-    expect(JSON.parse(content.data.lines[0])).toMatchObject({ role: 'worker', reqId: 'demo-console-4' });
-    const located = await (await call('/content?role=worker&locateTraceId=demo-console-4&lines=5')).json() as { data: { lines: string[] } };
+    expect(JSON.parse(content.data.lines[0])).toMatchObject({ role: 'worker', correlationId: 'demo-console-4' });
+    const located = await (await call('/content?role=worker&locateCorrelationId=demo-console-4&lines=5')).json() as { data: { lines: string[] } };
     expect(located.data.lines).toHaveLength(5);
-    expect(located.data.lines.some((line) => JSON.parse(line).reqId === 'demo-console-4')).toBe(true);
+    expect(located.data.lines.some((line) => JSON.parse(line).correlationId === 'demo-console-4')).toBe(true);
   });
 
   it('SSE 支持续传与后续实时帧，取消读取释放定时器', async () => {

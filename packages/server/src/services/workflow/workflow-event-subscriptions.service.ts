@@ -409,7 +409,7 @@ async function enqueueDeliveryReplay(job: typeof workflowJobs.$inferSelect) {
   return enqueueJob({
     jobType: job.jobType, payload: (job.payload ?? {}) as Record<string, unknown>,
     instanceId: job.instanceId, taskId: job.taskId, nodeKey: job.nodeKey,
-    idempotencyKey: `replay:${job.id}:${randomUUID()}`, traceId: job.traceId,
+    idempotencyKey: `replay:${job.id}:${randomUUID()}`, correlationId: job.correlationId,
     priority: job.priority, maxAttempts: job.maxAttempts, executionTimeoutMs: job.executionTimeoutMs,
     tenantId: job.tenantId,
   });

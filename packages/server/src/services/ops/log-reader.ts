@@ -11,7 +11,7 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import readline from 'node:readline';
 import zlib from 'node:zlib';
-import { matchesLogTraceId } from '@zenith/shared/ops';
+import { matchesLogCorrelationId } from '@zenith/shared/ops';
 
 /** 固定容量环形缓冲：流式读取时只保留最后 N 行，避免整文件驻留内存 */
 export class TailRingBuffer {
@@ -39,10 +39,10 @@ export class TailRingBuffer {
 export interface TailReadOptions {
   /** 大小写不敏感的子串过滤；空串 / 纯空格视为不过滤 */
   keyword?: string;
-  /** 精确匹配 JSON 日志顶层 reqId，与 keyword 同时存在时取交集 */
-  traceId?: string;
-  /** 定位首条 reqId 匹配记录并保留连续上下文；优先于 keyword / traceId 过滤 */
-  locateTraceId?: string;
+  /** 精确匹配 JSON 日志顶层 correlationId，与 keyword 同时存在时取交集 */
+  correlationId?: string;
+  /** 定位首条 correlationId 匹配记录并保留连续上下文；优先于 keyword / correlationId 过滤 */
+  locateCorrelationId?: string;
   /** 命中行前后额外保留的上下文行数（0-10，仅存在过滤条件时生效） */
   context?: number;
 }
@@ -62,12 +62,12 @@ export async function collectTailLines(
   opts: TailReadOptions = {},
 ): Promise<string[]> {
   const keyword = opts.keyword?.trim().toLowerCase();
-  const filtering = Boolean(keyword || opts.traceId);
+  const filtering = Boolean(keyword || opts.correlationId);
   const context = filtering ? Math.max(0, Math.min(opts.context ?? 0, 10)) : 0;
 
   const ring = new TailRingBuffer(n);
   const beforeLimit = Math.floor(n / 2);
-  const locateBefore = opts.locateTraceId && beforeLimit > 0 ? new TailRingBuffer(beforeLimit) : undefined;
+  const locateBefore = opts.locateCorrelationId && beforeLimit > 0 ? new TailRingBuffer(beforeLimit) : undefined;
   let located: string[] | undefined;
   // 上下文窗口：before 保留匹配前的候选行，afterRemaining 统计匹配后还需保留的行数
   const before: string[] = [];
@@ -75,12 +75,12 @@ export async function collectTailLines(
 
   for await (const line of source) {
     if (isBlank(line)) continue;
-    if (opts.locateTraceId) {
+    if (opts.locateCorrelationId) {
       // 未命中时仍保留普通末尾窗口，保证找不到目标也能查看文件内容。
       ring.push(line);
       if (located) {
         located.push(line);
-      } else if (matchesLogTraceId(line, opts.locateTraceId)) {
+      } else if (matchesLogCorrelationId(line, opts.locateCorrelationId)) {
         located = [...(locateBefore?.toArray() ?? []), line];
       } else {
         locateBefore?.push(line);
@@ -92,7 +92,7 @@ export async function collectTailLines(
       ring.push(line);
       continue;
     }
-    if ((!keyword || line.toLowerCase().includes(keyword)) && (!opts.traceId || matchesLogTraceId(line, opts.traceId))) {
+    if ((!keyword || line.toLowerCase().includes(keyword)) && (!opts.correlationId || matchesLogCorrelationId(line, opts.correlationId))) {
       for (const b of before) ring.push(b);
       before.length = 0;
       ring.push(line);

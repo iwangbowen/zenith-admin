@@ -18,7 +18,7 @@ export const apiAccessLogsHandlers = [
       if (!includesKeyword(query.path?.trim(), row.path)) return false;
       if (!includesKeyword(query.routePath?.trim(), row.routePath)) return false;
       if (!includesKeyword(query.serviceName?.trim(), row.serviceName) || !includesKeyword(query.ip?.trim(), row.ip)) return false;
-      if (query.requestId && !(row.requestId ?? '').startsWith(query.requestId.trim())) return false;
+      if (query.correlationId && !(row.correlationId ?? '').startsWith(query.correlationId.trim())) return false;
       if (!matchesFilter(row.responseCode, query.responseCode)) return false;
       if (query.status === 'success' && (row.responseCode == null || row.responseCode < 200 || row.responseCode >= 400)) return false;
       if (query.status === 'fail' && (row.responseCode == null || row.responseCode < 400)) return false;

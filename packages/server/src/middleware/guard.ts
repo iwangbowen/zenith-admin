@@ -84,7 +84,7 @@ async function writeOperationLog(
       description: options.description,
       method: c.req.method,
       path: truncateVarchar(c.req.path, 256) ?? '',
-      requestId: (c.get('requestId') as string | undefined) ?? null,
+      correlationId: (c.get('requestId') as string | undefined) ?? null,
       requestBody: bodyStr ?? null,
       beforeData: beforeData ?? null,
       afterData: afterData ?? null,
@@ -113,7 +113,7 @@ async function writeOperationLog(
       })));
     });
   } catch (err) {
-    logger.error('[audit] operation and subjects were not persisted', { err, requestId: c.get('requestId'), path: c.req.path });
+    logger.error('[audit] operation and subjects were not persisted', { err, correlationId: c.get('requestId'), path: c.req.path });
   }
 }
 

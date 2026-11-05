@@ -143,7 +143,7 @@ export const ErrorResponse = z.object({
   code: z.number(),
   message: z.string(),
   data: z.null().optional().nullable(),
-  requestId: z.string().optional().meta({ description: '服务端内部错误（500）时回传的请求 ID，可凭它在异常日志 / 日志查看器中定位' }),
+  correlationId: z.string().optional().meta({ description: '服务端内部错误（500）时回传的业务关联 ID，可凭它在异常日志 / 日志查看器中定位' }),
   reason: z.string().optional().meta({ description: '会话已吊销（401）时的原因：concurrent-login / password-changed / force-logout / logout / rotated，登录页据此给出精确提示' }),
 });
 
@@ -254,8 +254,8 @@ export const errBody = <const T extends number = 400>(
   code: T = 400 as T,
 ) => ({ code, message, data: null });
 
-/** 服务端内部错误（500）响应体：附带请求 ID，用户可凭它报障，运维可在异常日志 / 日志查看器按 ID 定位 */
-export const internalErrorBody = (requestId: string | undefined, message = '服务器内部错误') => ({
+/** 服务端内部错误（500）响应体：附带业务关联 ID，用户可凭它报障，运维可在异常日志 / 日志查看器按 ID 定位 */
+export const internalErrorBody = (correlationId: string | undefined, message = '服务器内部错误') => ({
   ...errBody(message, 500),
-  ...(requestId ? { requestId } : {}),
+  ...(correlationId ? { correlationId } : {}),
 });

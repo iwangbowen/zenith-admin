@@ -84,7 +84,7 @@ export interface CaptureContext {
   readonly job?: JobContext;
   readonly extra?: Record<string, unknown>;
   /** 覆盖 ALS 里的链路 / 身份（崩溃哨兵补录等没有请求上下文的场景） */
-  readonly traceId?: string | null;
+  readonly correlationId?: string | null;
   readonly userId?: number | null;
   readonly username?: string | null;
   readonly tenantId?: number | null;

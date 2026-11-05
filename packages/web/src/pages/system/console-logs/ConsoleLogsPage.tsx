@@ -16,13 +16,13 @@ function parseLevel(value: string | null): LogLevel | undefined {
 export default function ConsoleLogsPage() {
   const roleLabelId = useId();
   const sourcesQuery = useConsoleLogSources();
-  const [selection, setSelection] = useUrlSelectionParams(['role', 'level', 'keyword', 'traceId'], { replaceOnNavigate: true });
+  const [selection, setSelection] = useUrlSelectionParams(['role', 'level', 'keyword', 'correlationId'], { replaceOnNavigate: true });
   const data = sourcesQuery.data;
   const roles = data?.sources ?? [];
   // 无选择时直接派生当前角色，不把异步默认值写入 URL。
   const role = roles.find((item) => item.role === selection.role)?.role ?? data?.currentRole;
   const source: LogSource | undefined = role ? { kind: 'console', role } : undefined;
-  const initialTraceId = selection.traceId && /^[\w-]{8,64}$/.test(selection.traceId) ? selection.traceId : undefined;
+  const initialCorrelationId = selection.correlationId && /^[\w-]{8,64}$/.test(selection.correlationId) ? selection.correlationId : undefined;
   const initialKeyword = selection.keyword?.trim().slice(0, 200) || undefined;
 
   return (
@@ -38,7 +38,7 @@ export default function ConsoleLogsPage() {
               size="small"
               value={role}
               optionList={CONSOLE_LOG_ROLE_OPTIONS.filter((option) => roles.some((item) => item.role === option.value))}
-              onChange={(value) => setSelection({ role: value as ConsoleLogRole, level: null, keyword: null, traceId: null })}
+              onChange={(value) => setSelection({ role: value as ConsoleLogRole, level: null, keyword: null, correlationId: null })}
               style={{ width: 170 }}
             />
             <Typography.Text type="tertiary" className="console-logs-page__instance">
@@ -60,14 +60,14 @@ export default function ConsoleLogsPage() {
           </div>
         ) : source ? (
           <LogWorkbench
-            key={`${logSourceKey(source)}|${initialTraceId ?? ''}|${selection.level ?? ''}|${initialKeyword ?? ''}`}
+            key={`${logSourceKey(source)}|${initialCorrelationId ?? ''}|${selection.level ?? ''}|${initialKeyword ?? ''}`}
             source={source}
             // 链路深链先显示历史定位窗口，用户可手动切换到实时追踪。
-            autoTail={!initialTraceId}
+            autoTail={!initialCorrelationId}
             initialLevel={parseLevel(selection.level)}
             initialKeyword={initialKeyword}
-            initialTraceId={initialTraceId}
-            onTraceIdChange={(traceId) => setSelection((prev) => ({ ...prev, traceId: traceId ?? null }))}
+            initialCorrelationId={initialCorrelationId}
+            onCorrelationIdChange={(correlationId) => setSelection((prev) => ({ ...prev, correlationId: correlationId ?? null }))}
           />
         ) : (
           <div className="console-logs-page__placeholder"><Typography.Text type="tertiary">暂无可用的后端日志来源</Typography.Text></div>

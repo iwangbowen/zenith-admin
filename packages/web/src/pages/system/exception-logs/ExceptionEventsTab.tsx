@@ -16,7 +16,7 @@ import { EMPTY_PLACEHOLDER, copyableNoColumn, dateTimeColumn, renderCodeEllipsis
 import { ExceptionEventDetailSheet } from './ExceptionEventDetailSheet';
 
 interface EventFilters {
-  traceId: string;
+  correlationId: string;
   route: string;
   jobType: string;
   hostname: string;
@@ -25,15 +25,15 @@ interface EventFilters {
   range: [Date, Date] | null;
 }
 
-const DEFAULT_FILTERS: EventFilters = { traceId: '', route: '', jobType: '', hostname: '', errorType: undefined, level: undefined, range: null };
+const DEFAULT_FILTERS: EventFilters = { correlationId: '', route: '', jobType: '', hostname: '', errorType: undefined, level: undefined, range: null };
 
 export function ExceptionEventsTab({ active }: Readonly<{ active: boolean }>) {
   const search = useListSearch<EventFilters>({ defaults: DEFAULT_FILTERS, listKey: exceptionLogKeys.eventsLists, pageSize: 20 });
   const { bind, bindKeyword, submittedParams, page, pageSize, buildPagination, handleSearch, handleReset, applySearch } = search;
-  // ?traceId= 深链：前端错误监控 / 链路追踪跳过来时按链路 ID 定位（消费即焚）
-  useListDeepLink(['traceId'], ({ traceId }) => applySearch({ ...DEFAULT_FILTERS, traceId }));
+  // ?correlationId= 深链：前端错误监控 / 链路追踪跳过来时按链路 ID 定位（消费即焚）
+  useListDeepLink(['correlationId'], ({ correlationId }) => applySearch({ ...DEFAULT_FILTERS, correlationId }));
   const filterQuery = useFilterQuery({
-    traceId: submittedParams.traceId.trim(),
+    correlationId: submittedParams.correlationId.trim(),
     route: submittedParams.route.trim(),
     jobType: submittedParams.jobType.trim(),
     hostname: submittedParams.hostname.trim(),
@@ -65,7 +65,7 @@ export function ExceptionEventsTab({ active }: Readonly<{ active: boolean }>) {
       },
     },
     { title: 'HTTP', dataIndex: 'httpStatus', width: 90, align: 'right', render: (v: number | null) => v ?? EMPTY_PLACEHOLDER },
-    copyableNoColumn<ErrorEvent>('链路 ID', 'traceId', { width: 320 }),
+    copyableNoColumn<ErrorEvent>('链路 ID', 'correlationId', { width: 320 }),
     { title: '主机', dataIndex: 'hostname', width: 200, render: (v: string | null, record) => renderEllipsis(v ? `${v}${record.processRole ? ` · ${record.processRole}` : ''}` : null) },
     { title: '用户', dataIndex: 'username', width: 120, render: (v: string | null, record) => renderEllipsis(v ?? (record.userId ? `#${record.userId}` : null)) },
     createOperationColumn<ErrorEvent>({
@@ -78,7 +78,7 @@ export function ExceptionEventsTab({ active }: Readonly<{ active: boolean }>) {
   return (
     <>
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="链路 ID（前缀匹配）" {...bindKeyword('traceId')} width={260} />}
+        keyword={<KeywordInput placeholder="链路 ID（前缀匹配）" {...bindKeyword('correlationId')} width={260} />}
         filters={(
           <>
             <KeywordInput placeholder="路由模板" {...bindKeyword('route')} width={180} />

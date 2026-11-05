@@ -19,7 +19,7 @@ export const eventOutbox = pgTable('event_outbox', {
   payload: jsonb().$type<Record<string, unknown>>().notNull(),
   payloadHash: varchar({ length: 64 }).notNull(),
   occurredAt: timestamptz().notNull().defaultNow(),
-  traceId: varchar({ length: 128 }),
+  correlationId: varchar({ length: 128 }),
   parentRef: varchar({ length: 256 }),
   /** W3C remote parent captured when the event fact was published. */
   traceParent: varchar({ length: 128 }),
@@ -29,7 +29,7 @@ export const eventOutbox = pgTable('event_outbox', {
   uniqueIndex('event_outbox_platform_business_unique').on(t.eventType, t.businessKey).where(sql`${t.tenantId} is null`),
   index('event_outbox_ordering_idx').on(t.orderingKey, t.id),
   index('event_outbox_tenant_occurred_idx').on(t.tenantId, t.occurredAt),
-  index('event_outbox_trace_idx').on(t.traceId),
+  index('event_outbox_correlation_idx').on(t.correlationId),
   check('event_outbox_version_check', sql`${t.schemaVersion} = 1`),
 ]);
 

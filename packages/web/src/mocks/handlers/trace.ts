@@ -42,27 +42,27 @@ function buildDemoNodes(): TraceTimelineNode[] {
 function buildDemoRecent(): TraceListEntry[] {
   return [
     {
-      traceId: 'demo-trace-failed-0001', ts: mockDateTime(),
+      correlationId: 'demo-trace-failed-0001', ts: mockDateTime(),
       title: `POST ${urlOf(analyticsCampaignContract.executeCampaign, { params: { id: 1 } })}`,
       status: 'failed', nodeCount: 5, failedCount: 1,
     },
-    { traceId: 'demo-trace-0002', ts: mockDateTime(), title: 'PUT /api/cms/contents/101', status: 'success', nodeCount: 3, failedCount: 0 },
-    { traceId: 'demo-trace-0003', ts: mockDateTime(), title: '触达活动执行', status: 'running', nodeCount: 2, failedCount: 0 },
-    { traceId: 'demo-trace-failed-0002', ts: mockDateTime(), title: '数据导入', status: 'failed', nodeCount: 2, failedCount: 1 },
-    { traceId: 'demo-trace-failed-0003', ts: mockDateTime(), title: 'POST /api/payment/refunds', status: 'failed', nodeCount: 1, failedCount: 1 },
+    { correlationId: 'demo-trace-0002', ts: mockDateTime(), title: 'PUT /api/cms/contents/101', status: 'success', nodeCount: 3, failedCount: 0 },
+    { correlationId: 'demo-trace-0003', ts: mockDateTime(), title: '触达活动执行', status: 'running', nodeCount: 2, failedCount: 0 },
+    { correlationId: 'demo-trace-failed-0002', ts: mockDateTime(), title: '数据导入', status: 'failed', nodeCount: 2, failedCount: 1 },
+    { correlationId: 'demo-trace-failed-0003', ts: mockDateTime(), title: 'POST /api/payment/refunds', status: 'failed', nodeCount: 1, failedCount: 1 },
   ];
 }
 
 function buildDemoFailures(): TraceFailureEntry[] {
   return [
-    { kind: 'job', refId: 601, traceId: 'demo-trace-failed-0001', title: 'webhook_delivery', error: '死信：目标地址连接超时', ts: mockDateTime() },
-    { kind: 'task', refId: 89, traceId: 'demo-trace-failed-0002', title: '数据导入', error: '第 12 行手机号格式不合法', ts: mockDateTime() },
-    { kind: 'request', refId: 1002, traceId: 'demo-trace-failed-0003', title: 'POST /api/payment/refunds', error: '发起退款（HTTP 500）', ts: mockDateTime() },
+    { kind: 'job', refId: 601, correlationId: 'demo-trace-failed-0001', title: 'webhook_delivery', error: '死信：目标地址连接超时', ts: mockDateTime() },
+    { kind: 'task', refId: 89, correlationId: 'demo-trace-failed-0002', title: '数据导入', error: '第 12 行手机号格式不合法', ts: mockDateTime() },
+    { kind: 'request', refId: 1002, correlationId: 'demo-trace-failed-0003', title: 'POST /api/payment/refunds', error: '发起退款（HTTP 500）', ts: mockDateTime() },
   ];
 }
 
 export const traceHandlers = [
   mock(traceContract.recent, ({ ok }) => ok(buildDemoRecent())),
   mock(traceContract.recentFailures, ({ ok }) => ok(buildDemoFailures())),
-  mock(traceContract.timeline, ({ params, ok }) => ok({ traceId: params.traceId, nodes: buildDemoNodes() })),
+  mock(traceContract.timeline, ({ params, ok }) => ok({ correlationId: params.correlationId, nodes: buildDemoNodes() })),
 ];

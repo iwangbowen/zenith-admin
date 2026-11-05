@@ -9,7 +9,7 @@ vi.mock('../../db', () => ({ db: { select: mocks.select, transaction: mocks.tran
 vi.mock('../context', () => ({
   currentUser: () => ({ userId: 7, username: 'editor', roles: [], tenantId: null }),
   currentUserOrNull: () => ({ userId: 7, username: 'editor', roles: [], tenantId: null }),
-  currentTraceId: () => undefined, currentParentRef: () => undefined,
+  currentCorrelationId: () => undefined, currentParentRef: () => undefined,
 }));
 vi.mock('../pg-boss-scheduler', () => ({
   getSystemJobState: vi.fn(async () => null), registerSystemQueueWorker: vi.fn(), sendSystemJob: mocks.send, sendSystemJobAfter: vi.fn(),

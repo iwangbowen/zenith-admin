@@ -12,7 +12,7 @@ describe('notification terminal business events', () => {
     const subjects = [{ type: 'payment.order', key: '7', role: 'related' }];
     const tx = { select: () => ({ from: () => ({ where: async () => subjects }) }) } as unknown as DbTransaction;
     const row = { id: 3, tenantId: 9, eventKey: 'payment.order_paid', attempts: 1, claimedAt: new Date('2026-09-22T00:00:00Z'),
-      traceId: null, parentRef: null, recipients: [{ address: 'private@example.com' }], vars: { secret: 'private' } } as unknown as NotificationOutboxRow;
+      correlationId: null, parentRef: null, recipients: [{ address: 'private@example.com' }], vars: { secret: 'private' } } as unknown as NotificationOutboxRow;
     await recordNotificationOutcome(tx, row, 'done', { sent: 1, failed: 1, deferred: 2, suppressed: 3 });
     expect(record).toHaveBeenCalledWith(tx, expect.objectContaining({ eventType: 'messaging.notification.dispatched', tenantId: 9, subjects,
       payload: { eventKey: 'payment.order_paid', status: 'done', sent: 1, failed: 1, deferred: 2, suppressed: 3 } }));

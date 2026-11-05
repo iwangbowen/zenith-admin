@@ -1130,13 +1130,13 @@ function toInstanceListItem(inst: WorkflowInstance): WorkflowInstanceListItem {
   return rest;
 }
 
-/** 作业链路：同 traceId 的作业按创建时间升序 + 各自执行记录 + 状态统计 */
-function buildJobChain(traceId: string) {
+/** 作业链路：同 correlationId 的作业按创建时间升序 + 各自执行记录 + 状态统计 */
+function buildJobChain(correlationId: string) {
   const jobs = mockWorkflowJobs
-    .filter((j) => j.traceId === traceId)
+    .filter((j) => j.correlationId === correlationId)
     .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() || a.id - b.id)
     .map((j) => ({ ...j, executions: mockWorkflowJobExecutions.filter((e) => e.jobId === j.id).sort((a, b) => a.id - b.id) }));
-  return { traceId, jobs, stats: summarizeWorkflowJobChain(jobs) };
+  return { correlationId, jobs, stats: summarizeWorkflowJobChain(jobs) };
 }
 
 const pausedJobRemainingMs = new Map<number, number>();
@@ -1285,27 +1285,27 @@ function buildMockTrace(id: number): WorkflowInstanceTrace {
   const t2 = mockDateTimeOffset(-1000 * 60 * 60);
   const trace: WorkflowInstanceTrace['trace'] = [
     {
-      key: 'task-new-1', kind: 'task', at: t0, traceId: null,
+      key: 'task-new-1', kind: 'task', at: t0, correlationId: null,
       title: '创建审批任务：李四', status: 'approved', nodeName: '部门主管', assigneeName: '李四', comment: null,
       jobId: null, jobType: null, attempts: null, maxAttempts: null, runAt: null, nextRetryAt: null, lastError: null, executions: [],
     },
     {
-      key: 'job-101', kind: 'job', at: t0, traceId: 'trace-mock-aa01',
+      key: 'job-101', kind: 'job', at: t0, correlationId: 'trace-mock-aa01',
       title: '领域事件消费者已确认 · node.entered', status: 'succeeded', nodeName: '部门主管', assigneeName: null, comment: null,
       jobId: 101, jobType: 'automation_action', attempts: 1, maxAttempts: 3, runAt: t0, nextRetryAt: null, lastError: null, executions: [],
     },
     {
-      key: 'task-act-1', kind: 'task', at: t1, traceId: null,
+      key: 'task-act-1', kind: 'task', at: t1, correlationId: null,
       title: '李四 通过', status: 'approved', nodeName: '部门主管', assigneeName: '李四', comment: '同意，按流程办理',
       jobId: null, jobType: null, attempts: null, maxAttempts: null, runAt: null, nextRetryAt: null, lastError: null, executions: [],
     },
     {
-      key: 'task-new-2', kind: 'task', at: t1, traceId: null,
+      key: 'task-new-2', kind: 'task', at: t1, correlationId: null,
       title: '创建审批任务：王五', status: 'pending', nodeName: '分管领导', assigneeName: '王五', comment: null,
       jobId: null, jobType: null, attempts: null, maxAttempts: null, runAt: null, nextRetryAt: null, lastError: null, executions: [],
     },
     {
-      key: 'job-102', kind: 'job', at: t1, traceId: 'trace-mock-bb02',
+      key: 'job-102', kind: 'job', at: t1, correlationId: 'trace-mock-bb02',
       title: 'Webhook 投递 · instance.node_changed', status: 'dead', nodeName: '分管领导', assigneeName: null, comment: null,
       jobId: 102, jobType: 'webhook_delivery', attempts: 5, maxAttempts: 5, runAt: t2,
       nextRetryAt: null, lastError: 'POST https://erp.example.com/hooks/wf 503 Service Unavailable',
@@ -1315,7 +1315,7 @@ function buildMockTrace(id: number): WorkflowInstanceTrace {
       ],
     },
     {
-      key: 'job-103', kind: 'job', at: t2, traceId: 'trace-mock-bb02',
+      key: 'job-103', kind: 'job', at: t2, correlationId: 'trace-mock-bb02',
       title: '任务超时', status: 'pending', nodeName: '分管领导', assigneeName: null, comment: null,
       jobId: 103, jobType: 'task_timeout', attempts: 0, maxAttempts: 10, runAt: mockDateTimeOffset(1000 * 60 * 120),
       nextRetryAt: mockDateTimeOffset(1000 * 60 * 120), lastError: null, executions: [],
@@ -1907,7 +1907,7 @@ export const workflowHandlers = [
       jobType: j.jobType,
       status: j.status,
       instanceId: j.instanceId ?? null,
-      traceId: j.traceId ?? null,
+      correlationId: j.correlationId ?? null,
       attempts: j.attempts,
       runAt: j.runAt,
       createdAt: j.createdAt,
@@ -1959,7 +1959,7 @@ export const workflowHandlers = [
     if (query.jobType) list = list.filter((j) => j.jobType === query.jobType);
     if (query.status) list = list.filter((j) => j.status === query.status);
     if (keyword) {
-      list = filterByKeyword(list, keyword, [(j) => j.idempotencyKey, (j) => j.traceId, (j) => j.nodeKey], { caseInsensitive: true });
+      list = filterByKeyword(list, keyword, [(j) => j.idempotencyKey, (j) => j.correlationId, (j) => j.nodeKey], { caseInsensitive: true });
     }
     return ok(paginate(list));
   }),
@@ -1973,11 +1973,11 @@ export const workflowHandlers = [
   }),
 
   mock(workflowEngineContract.jobChainBundle, ({ params, ok }) => {
-    return ok({ traceId: params.traceId, generatedAt: mockDateTime(), chain: buildJobChain(params.traceId), instances: [] });
+    return ok({ correlationId: params.correlationId, generatedAt: mockDateTime(), chain: buildJobChain(params.correlationId), instances: [] });
   }),
 
   mock(workflowEngineContract.jobChain, ({ params, ok }) => {
-    return ok(buildJobChain(params.traceId));
+    return ok(buildJobChain(params.correlationId));
   }),
 
   mock(workflowEngineContract.batchRetryJobs, ({ body, ok }) => {
@@ -2016,7 +2016,7 @@ export const workflowHandlers = [
     const match = (j: WorkflowJob) => j.status === status
       && (!b.jobType || j.jobType === b.jobType)
       && (b.instanceId == null || j.instanceId === b.instanceId)
-      && (!b.traceId || j.traceId === b.traceId)
+      && (!b.correlationId || j.correlationId === b.correlationId)
       && (!kw || (j.lastError ?? '').toLowerCase().includes(kw))
       && (b.olderThanMinutes == null || b.olderThanMinutes <= 0 || (Date.now() - new Date(j.createdAt).getTime()) >= b.olderThanMinutes * 60000);
     const matchedList = mockWorkflowJobs.filter(match);
@@ -2032,7 +2032,7 @@ export const workflowHandlers = [
     const matched = mockWorkflowJobs.filter((j) => j.status === status
       && (!b.jobType || j.jobType === b.jobType)
       && (b.instanceId == null || j.instanceId === b.instanceId)
-      && (!b.traceId || j.traceId === b.traceId)
+      && (!b.correlationId || j.correlationId === b.correlationId)
       && (!kw || (j.lastError ?? '').toLowerCase().includes(kw))
       && (b.olderThanMinutes == null || b.olderThanMinutes <= 0 || (Date.now() - new Date(j.createdAt).getTime()) >= b.olderThanMinutes * 60000)).length;
     return ok({ matched });
@@ -2044,7 +2044,7 @@ export const workflowHandlers = [
     const rows = mockWorkflowJobs
       .filter((j) => j.status === 'dead' || j.status === 'failed')
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-    type ClusterBase = Pick<WorkflowJobFailureCluster, 'dimension' | 'key' | 'label' | 'instanceId' | 'traceId' | 'reasonKeyword'>;
+    type ClusterBase = Pick<WorkflowJobFailureCluster, 'dimension' | 'key' | 'label' | 'instanceId' | 'correlationId' | 'reasonKeyword'>;
     type ClusterAcc = ClusterBase & Pick<WorkflowJobFailureCluster, 'count' | 'firstAt' | 'lastAt'> & { jobs: WorkflowJobFailureClusterMember[]; _types: Set<string>; _instances: Set<number> };
     const map = new Map<string, ClusterAcc>();
     const bump = (key: string, base: ClusterBase, j: WorkflowJob) => {
@@ -2058,26 +2058,26 @@ export const workflowHandlers = [
         e.jobs.push({
           id: j.id, jobType: j.jobType, status: j.status, instanceId: j.instanceId, instanceTitle: j.instanceTitle,
           definitionName: j.definitionName, nodeKey: j.nodeKey, attempts: j.attempts, maxAttempts: j.maxAttempts,
-          lockedBy: j.lockedBy, traceId: j.traceId, lastError: j.lastError, failedAt: j.updatedAt, createdAt: j.createdAt,
+          lockedBy: j.lockedBy, correlationId: j.correlationId, lastError: j.lastError, failedAt: j.updatedAt, createdAt: j.createdAt,
         });
       }
       map.set(key, e);
     };
     for (const j of rows) {
       if (dim === 'jobType') {
-        bump(j.jobType, { dimension: dim, key: j.jobType, label: j.jobType, instanceId: null, traceId: null, reasonKeyword: null }, j);
+        bump(j.jobType, { dimension: dim, key: j.jobType, label: j.jobType, instanceId: null, correlationId: null, reasonKeyword: null }, j);
       } else if (dim === 'instance') {
         if (j.instanceId == null) continue;
         const k = String(j.instanceId);
-        bump(k, { dimension: dim, key: k, label: j.instanceTitle ? `${j.instanceTitle} (#${j.instanceId})` : `实例 #${j.instanceId}`, instanceId: j.instanceId, traceId: null, reasonKeyword: null }, j);
+        bump(k, { dimension: dim, key: k, label: j.instanceTitle ? `${j.instanceTitle} (#${j.instanceId})` : `实例 #${j.instanceId}`, instanceId: j.instanceId, correlationId: null, reasonKeyword: null }, j);
       } else if (dim === 'trace') {
-        if (!j.traceId) continue;
-        bump(j.traceId, { dimension: dim, key: j.traceId, label: j.traceId, instanceId: null, traceId: j.traceId, reasonKeyword: null }, j);
+        if (!j.correlationId) continue;
+        bump(j.correlationId, { dimension: dim, key: j.correlationId, label: j.correlationId, instanceId: null, correlationId: j.correlationId, reasonKeyword: null }, j);
       } else {
         const reason = (j.lastError ?? '未知错误').replace(/\d+/g, 'N').slice(0, 60);
         const lead = (j.lastError ?? '').trim().split(/\d/)[0]?.trim() ?? '';
         const kwRaw = (lead.length >= 4 ? lead : (j.lastError ?? '').trim()).slice(0, 40).trim();
-        bump(reason, { dimension: dim, key: reason, label: reason, instanceId: null, traceId: null, reasonKeyword: kwRaw.length >= 2 ? kwRaw : null }, j);
+        bump(reason, { dimension: dim, key: reason, label: reason, instanceId: null, correlationId: null, reasonKeyword: kwRaw.length >= 2 ? kwRaw : null }, j);
       }
     }
     const clusters: WorkflowJobFailureCluster[] = [...map.values()]

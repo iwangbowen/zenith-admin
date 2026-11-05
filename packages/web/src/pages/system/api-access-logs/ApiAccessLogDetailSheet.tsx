@@ -65,7 +65,7 @@ export function ApiAccessLogDetailSheet({ id, onClose }: Readonly<{ id: number |
     { key: '操作标识', value: log.operationKey ? <Text code>{log.operationKey}</Text> : EMPTY_PLACEHOLDER },
     { key: '操作类型', value: log.operationType ?? EMPTY_PLACEHOLDER },
     { key: '路由模板', value: log.routePath ? <Text code style={{ wordBreak: 'break-all' }}>{log.routePath}</Text> : EMPTY_PLACEHOLDER },
-    { key: '请求 ID', value: copyableText(log.requestId) },
+    { key: '关联 ID', value: copyableText(log.correlationId) },
     { key: 'HTTP 状态', value: log.responseCode ?? EMPTY_PLACEHOLDER },
     { key: '耗时', value: log.durationMs == null ? EMPTY_PLACEHOLDER : `${log.durationMs} ms` },
     { key: '请求时间', value: formatDateTime(log.createdAt) },
@@ -102,10 +102,10 @@ export function ApiAccessLogDetailSheet({ id, onClose }: Readonly<{ id: number |
                 <InfoSection title="访问方" data={identityInfo} />
                 <InfoSection title="请求" data={requestInfo} />
                 <InfoSection title="运行环境" data={runtimeInfo} />
-                {log.requestId && (
+                {log.correlationId && (
                   <Space spacing={4} wrap>
-                    {hasPermission('system:trace:view') && <Button size="small" theme="borderless" onClick={() => navigate(`/system/trace?traceId=${encodeURIComponent(log.requestId!)}`)}>查看链路</Button>}
-                    {hasPermission('system:exception-log:list') && <Button size="small" theme="borderless" onClick={() => navigate(`/system/exception-logs?tab=events&traceId=${encodeURIComponent(log.requestId!)}`)}>查看关联异常</Button>}
+                    {hasPermission('system:trace:view') && <Button size="small" theme="borderless" onClick={() => navigate(`/system/trace?correlationId=${encodeURIComponent(log.correlationId!)}`)}>查看链路</Button>}
+                    {hasPermission('system:exception-log:list') && <Button size="small" theme="borderless" onClick={() => navigate(`/system/exception-logs?tab=events&correlationId=${encodeURIComponent(log.correlationId!)}`)}>查看关联异常</Button>}
                   </Space>
                 )}
               </Space>

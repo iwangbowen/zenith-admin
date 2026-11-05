@@ -1,7 +1,7 @@
 /**
  * 日志源：把「应用日志目录内的文件」、「白名单目录 / 远端主机上的绝对路径」与后端控制台
  * 收敛成同一组读取入口，供共享的日志工作台组件消费。各契约共用 `logTailQuery` /
- * `logLinesSchema` / SSE `event: log`；应用日志额外支持按 reqId 精确筛选链路。
+ * `logLinesSchema` / SSE `event: log`；应用日志额外支持按 correlationId 精确筛选链路。
  */
 import { CONSOLE_LOG_ROLE_LABELS, type ConsoleLogRole } from '@zenith/shared/ops';
 import { consoleLogTailUrl, useConsoleLogContent } from './console-logs';
@@ -39,7 +39,7 @@ export function logSourceName(source: LogSource): string {
  */
 export function useLogSourceContent(source: LogSource, params: LogTailParams, enabled = true) {
   // 精确链路筛选只属于应用日志契约，远程/任意路径查看器继续使用通用读取参数。
-  const { traceId: _traceId, locateTraceId: _locateTraceId, ...pathParams } = params;
+  const { correlationId: _correlationId, locateCorrelationId: _locateCorrelationId, ...pathParams } = params;
   const fileQuery = useLogFileContent(
     source.kind === 'file' ? source.filename : undefined,
     params,

@@ -141,7 +141,7 @@ export const reportFrontendErrorSchema = z.object({
   /** 报错时刻活跃的回放会话 ID（SDK 注入） */
   replayId: z.uuid().optional(),
   /** 接口错误对应的失败响应 `X-Request-Id`，与服务端异常事件按同一列互查 */
-  traceId: z.string().min(1).max(64).optional(),
+  correlationId: z.string().min(1).max(64).optional(),
 });
 
 export type ReportFrontendErrorInput = z.infer<typeof reportFrontendErrorSchema>;

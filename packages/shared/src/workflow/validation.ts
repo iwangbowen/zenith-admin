@@ -900,12 +900,12 @@ export const workflowJobBatchRetrySchema = z.object({
   ratePerSecond: z.number().int().min(1).max(200).optional(),
 });
 
-/** 死信条件重放过滤条件（多维：类型/实例/traceId/错误原因/入库时长） */
+/** 死信条件重放过滤条件（多维：类型/实例/correlationId/错误原因/入库时长） */
 export const workflowJobReplayFilterSchema = z.object({
   status: z.enum(['dead', 'failed']).optional(),
   jobType: z.enum(WORKFLOW_JOB_TYPES).optional(),
   instanceId: z.number().int().positive().optional(),
-  traceId: z.string().trim().min(1).max(128).optional(),
+  correlationId: z.string().trim().min(1).max(128).optional(),
   reasonKeyword: z.string().trim().min(1).max(200).optional(),
   olderThanMinutes: z.number().int().min(0).max(60 * 24 * 30).optional(),
 });

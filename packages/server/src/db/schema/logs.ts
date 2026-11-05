@@ -53,7 +53,7 @@ export const operationLogs = pgTable('operation_logs', {
   description: varchar({ length: 256 }).notNull(),
   method: varchar({ length: 16 }).notNull(),
   path: varchar({ length: 256 }).notNull(),
-  requestId: varchar({ length: 36 }),
+  correlationId: varchar({ length: 36 }),
   requestBody: varchar({ length: 4096 }),
   beforeData: text(),
   afterData: text(),
@@ -74,8 +74,8 @@ export const operationLogs = pgTable('operation_logs', {
   index('operation_logs_user_idx').on(t.userId),
   index('operation_logs_impersonator_idx').on(t.impersonatorId),
   index('operation_logs_module_idx').on(t.module),
-  // 链路追踪查看器按 request_id（= traceId）定位请求锚点
-  index('operation_logs_request_idx').on(t.requestId),
+  // 链路追踪查看器按 correlation_id（= correlationId）定位请求锚点
+  index('operation_logs_correlation_idx').on(t.correlationId),
   // pg_trgm：加速「变更内容包含」ILIKE 模糊检索（扩展在 0000_baseline.sql 顶部创建）
   index('operation_logs_before_trgm_idx').using('gin', t.beforeData.op('gin_trgm_ops')),
   index('operation_logs_after_trgm_idx').using('gin', t.afterData.op('gin_trgm_ops')),
@@ -128,7 +128,7 @@ export const apiAccessLogs = pgTable('api_access_logs', {
   method: varchar({ length: 16 }).notNull(),
   path: varchar({ length: 512 }).notNull(),
   routePath: varchar({ length: 512 }),
-  requestId: varchar({ length: 64 }),
+  correlationId: varchar({ length: 64 }),
   queryParams: jsonb().$type<Record<string, string> | null>(),
   requestBody: jsonb().$type<unknown>(),
   module: varchar({ length: 128 }),
@@ -156,7 +156,7 @@ export const apiAccessLogs = pgTable('api_access_logs', {
   index('api_access_logs_member_idx').on(t.memberId),
   index('api_access_logs_device_idx').on(t.deviceId),
   index('api_access_logs_accessor_idx').on(t.accessorId),
-  index('api_access_logs_request_idx').on(t.requestId),
+  index('api_access_logs_correlation_idx').on(t.correlationId),
   index('api_access_logs_path_idx').on(t.path),
   index('api_access_logs_route_idx').on(t.routePath),
   index('api_access_logs_status_idx').on(t.responseCode),

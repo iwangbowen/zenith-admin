@@ -20,24 +20,24 @@ function contextOf(event: ErrorEvent): EventContext {
   return (event.context ?? {}) as EventContext;
 }
 
-/** 链路跳转：日志查看器按 reqId 检索、链路追踪按 traceId 聚合、前端错误现场按同一 traceId 定位（权限各自门控） */
-export function TraceActions({ traceId }: Readonly<{ traceId: string | null }>) {
+/** 链路跳转：日志查看器按 reqId 检索、链路追踪按 correlationId 聚合、前端错误现场按同一 correlationId 定位（权限各自门控） */
+export function TraceActions({ correlationId }: Readonly<{ correlationId: string | null }>) {
   const navigate = useNavigate();
   const { hasPermission } = usePermission();
-  if (!traceId) return null;
+  if (!correlationId) return null;
   return (
     <Space spacing={4} wrap>
       {hasPermission('system:trace:view') && (
-        <Button size="small" theme="borderless" type="primary" onClick={() => navigate(`/system/trace?traceId=${encodeURIComponent(traceId)}`)}>
+        <Button size="small" theme="borderless" type="primary" onClick={() => navigate(`/system/trace?correlationId=${encodeURIComponent(correlationId)}`)}>
           查看链路
         </Button>
       )}
       {hasPermission('monitor:error:list') && (
-        <Button size="small" theme="borderless" type="primary" onClick={() => navigate(`/analytics/errors?tab=events&traceId=${encodeURIComponent(traceId)}`)}>
+        <Button size="small" theme="borderless" type="primary" onClick={() => navigate(`/analytics/errors?tab=events&correlationId=${encodeURIComponent(correlationId)}`)}>
           查看前端现场
         </Button>
       )}
-      <Text copyable={{ content: traceId }} size="small" type="tertiary">{traceId}</Text>
+      <Text copyable={{ content: correlationId }} size="small" type="tertiary">{correlationId}</Text>
     </Space>
   );
 }
@@ -71,7 +71,7 @@ export function ExceptionEventDetailSheet({ event, onClose }: ExceptionEventDeta
             size="small"
             data={[
               { key: '发生时间', value: formatDateTime(event.createdAt) },
-              { key: '链路 ID', value: <TraceActions traceId={event.traceId} /> },
+              { key: '链路 ID', value: <TraceActions correlationId={event.correlationId} /> },
               { key: '路由', value: event.route ? <Text code>{event.httpMethod ? `${event.httpMethod} ` : ''}{event.route}</Text> : EMPTY_PLACEHOLDER },
               { key: 'HTTP 状态', value: event.httpStatus ?? EMPTY_PLACEHOLDER },
               { key: '请求地址', value: event.httpUrl ? <Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{event.httpUrl}</Text> : EMPTY_PLACEHOLDER },

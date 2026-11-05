@@ -27,7 +27,7 @@ export async function completeAsyncTasks(
         eventType: TERMINAL_EVENTS[values.status],
         payload: { taskType: row.taskType, status: values.status, attempt: row.attempts },
         subjects: subjects.length ? subjects : [{ ...source, role: 'primary' }],
-        source, tenantId: row.tenantId, traceId: row.traceId, parentRef: row.parentRef,
+        source, tenantId: row.tenantId, correlationId: row.correlationId, parentRef: row.parentRef,
         // A manual restart resets attempts; the persisted completion time separates execution rounds.
         dedupeKey: `async-task:${row.id}:${values.status}:${row.attempts}:${row.completedAt!.getTime()}`,
       });

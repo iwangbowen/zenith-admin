@@ -9,7 +9,7 @@ export type TimelineEventVisibility = z.infer<typeof timelineEventVisibilitySche
 /**
  * 跨域时间线的稳定事件协议。
  *
- * `subjectRefs` 是事件与业务对象的唯一结构化关联依据；traceId / parentRef
+ * `subjectRefs` 是事件与业务对象的唯一结构化关联依据；correlationId / parentRef
  * 只描述因果链，不能单独推断对象关系。payload 由具体 eventType 解释，展示层
  * 只能消费经过领域权限过滤后的摘要。
  */
@@ -20,7 +20,7 @@ export const timelineEventSchema = z.object({
   actorRef: entityRefSchema.nullable().optional(),
   sourceRef: entityRefSchema.nullable().optional(),
   subjectRefs: z.array(subjectRefSchema).min(1),
-  traceId: z.string().min(1).max(128).nullable().optional(),
+  correlationId: z.string().min(1).max(128).nullable().optional(),
   parentRef: z.string().min(1).max(256).nullable().optional(),
   visibility: timelineEventVisibilitySchema,
   payload: z.record(z.string(), z.unknown()).default({}),

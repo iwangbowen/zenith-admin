@@ -20,7 +20,7 @@ import { notificationOutbox, notificationOutboxSubjects } from '../../db/schema'
 import type { NotificationOutboxRow } from '../../db/schema';
 import type { DbExecutor, DbTransaction } from '../../db/types';
 import { mapWithConcurrency } from '../../lib/concurrency';
-import { currentTraceId, currentParentRef } from '../../lib/context';
+import { currentCorrelationId, currentParentRef } from '../../lib/context';
 import { currentPersistedOtelContext } from '../../lib/telemetry-context';
 import { formatDateTime } from '../../lib/datetime';
 import { escapeHtml } from '@zenith/shared/core';
@@ -125,7 +125,7 @@ function buildValues<K extends NotificationEventKey>(eventKey: K, input: NotifyI
     link: input.link ?? null,
     dedupeKey: input.dedupeKey ?? null,
     scheduledAt: input.scheduledAt ?? null,
-    traceId: currentTraceId() ?? null,
+    correlationId: currentCorrelationId() ?? null,
     parentRef: currentParentRef() ?? null,
     ...currentPersistedOtelContext(),
     tenantId: input.tenantId ?? null,
@@ -183,7 +183,7 @@ async function persistNotification<K extends NotificationEventKey>(
       subjects,
       tenantId: input.tenantId ?? null,
       source: { type: 'notification.outbox', key: String(row.id) },
-      traceId: currentTraceId(),
+      correlationId: currentCorrelationId(),
       parentRef: currentParentRef(),
       dedupeKey: `notification-outbox:${row.id}`,
     });

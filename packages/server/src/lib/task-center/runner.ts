@@ -15,7 +15,7 @@ import { ensureLocalNodeQueue, getSystemJobState, isQueueNotFoundError, register
 import { asyncTaskDispatchOptions, dispatchNeedsReplacement } from './dispatch-policy';
 import { PROCESS_ID } from '../process-identity';
 import { captureException } from '../error-tracking/reporter';
-import { currentUser, runWithCurrentUser, currentTraceId, runWithTraceId, currentParentRef, runWithParentRef } from '../context';
+import { currentUser, runWithCurrentUser, currentCorrelationId, runWithCorrelationId, currentParentRef, runWithParentRef } from '../context';
 import { exactTenantCondition, getCreateTenantId } from '../tenant';
 import { buildWhere, nullableEq } from '../where-helpers';
 import type { JwtPayload } from '../../middleware/auth';
@@ -149,7 +149,7 @@ async function persistTaskForPrincipal(
     idempotencyKey,
     tenantId,
     // 链路关联：任务与其提交请求同链，worker 执行时恢复该 trace 作用域
-    traceId: currentTraceId() ?? null,
+    correlationId: currentCorrelationId() ?? null,
     parentRef: currentParentRef() ?? null,
     ...currentPersistedOtelContext(),
     // 显式写入而非依赖 db Proxy 的审计注入：createdBy 是幂等作用域的一部分，
@@ -195,7 +195,7 @@ async function persistTaskForPrincipal(
       subjects,
       tenantId,
       source: { type: 'tasks.async', key: String(row.id) },
-      traceId: currentTraceId(),
+      correlationId: currentCorrelationId(),
       parentRef: currentParentRef(),
       dedupeKey: `async-task:${row.id}:created`,
     });
@@ -385,8 +385,8 @@ export async function runAsyncTask(taskId: number, dispatchToken?: string): Prom
     const runHandler = () => runWithTaskExecution(execution, () => runWithParentRef(`task:${claimed.id}`, () => (creator
       ? runWithCurrentUser(creator, () => handler.run(ctx))
       : handler.run(ctx))));
-    const result = claimed.traceId
-      ? await runWithPersistedOtelContext(claimed, () => runWithTraceId(claimed.traceId!, runHandler))
+    const result = claimed.correlationId
+      ? await runWithPersistedOtelContext(claimed, () => runWithCorrelationId(claimed.correlationId!, runHandler))
       : await runHandler();
 
     const [current] = await db.select().from(asyncTasks).where(eq(asyncTasks.id, taskId)).limit(1);
@@ -430,7 +430,7 @@ export async function runAsyncTask(taskId: number, dispatchToken?: string): Prom
     captureException(err, {
       kind: 'job_failure',
       job: { type: claimed.taskType, id: taskId, attempt: claimed.attempts, maxAttempts: claimed.maxAttempts, final: !canRetry },
-      traceId: claimed.traceId ?? null,
+      correlationId: claimed.correlationId ?? null,
       userId: creator?.userId ?? claimed.createdBy ?? null,
       username: creator?.username ?? null,
       tenantId: creator?.tenantId ?? claimed.tenantId ?? null,

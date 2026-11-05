@@ -8,7 +8,7 @@
  *   npx tsx scripts/bench-notification-outbox.ts --rows 200 --fanout 1 --latency 300 --out ../../docs/backend/perf/notification-outbox.json
  *   npx tsx scripts/bench-notification-outbox.ts --rows 40 --fanout 25 --latency 300     # 大扇出：每行 25 个收件人
  *
- * 基准行带独立 traceId，结束后连同派发留痕一起清理，不影响真实通知。
+ * 基准行带独立 correlationId，结束后连同派发留痕一起清理，不影响真实通知。
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -17,7 +17,7 @@ import { eq, inArray } from 'drizzle-orm';
 import { db } from '../src/db';
 import { notificationDispatches, notificationOutbox } from '../src/db/schema';
 import { registerNotificationAdapter } from '../src/lib/notification/registry';
-import { runWithTraceId } from '../src/lib/context';
+import { runWithCorrelationId } from '../src/lib/context';
 import { dispatchPendingNotifications, notifyWithin } from '../src/services/messaging/notification-outbox.service';
 import { arg } from './lib/cli-args';
 
@@ -48,7 +48,7 @@ registerNotificationAdapter({
 
 async function seed(): Promise<number[]> {
   const ids: number[] = [];
-  await runWithTraceId(TRACE_ID, async () => {
+  await runWithCorrelationId(TRACE_ID, async () => {
     for (let i = 0; i < ROWS; i++) {
       const recipients = Array.from({ length: FANOUT }, (_, k) => ({
         type: 'external' as const,
@@ -72,7 +72,7 @@ async function seed(): Promise<number[]> {
 async function cleanup(ids: number[]): Promise<void> {
   if (ids.length === 0) return;
   await db.delete(notificationDispatches).where(inArray(notificationDispatches.outboxId, ids));
-  await db.delete(notificationOutbox).where(eq(notificationOutbox.traceId, TRACE_ID));
+  await db.delete(notificationOutbox).where(eq(notificationOutbox.correlationId, TRACE_ID));
 }
 
 async function pendingCount(ids: number[]): Promise<number> {

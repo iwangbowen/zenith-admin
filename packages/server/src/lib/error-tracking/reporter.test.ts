@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
   bumpErrorGroupCounts: vi.fn(async () => undefined),
   getSettings: vi.fn(async () => { throw new Error('settings unavailable'); }),
   currentUser: undefined as { userId: number; username: string; tenantId: number | null } | undefined,
-  traceId: 'req-1' as string | undefined,
+  correlationId: 'req-1' as string | undefined,
   fatalShutdown: false,
   warn: vi.fn(),
 }));
@@ -22,7 +22,7 @@ vi.mock('./store', () => ({
 vi.mock('../settings', () => ({ getSettings: mocks.getSettings }));
 vi.mock('../context', () => ({ currentUserOrNull: () => mocks.currentUser }));
 vi.mock('../member-context', () => ({ currentMemberOrNull: () => undefined }));
-vi.mock('../trace-context', () => ({ currentTraceId: () => mocks.traceId }));
+vi.mock('../trace-context', () => ({ currentCorrelationId: () => mocks.correlationId }));
 vi.mock('../fatal-handlers', () => ({ isFatalShutdownInProgress: () => mocks.fatalShutdown }));
 vi.mock('../process-identity', () => ({ PROCESS_HOSTNAME: 'host-a', PROCESS_PID: 4242 }));
 vi.mock('../../config', () => ({
@@ -63,7 +63,7 @@ describe('captureException', () => {
     mocks.recordErrorEventBatch.mockImplementation(defaultRecordImpl);
     mocks.bumpErrorGroupCounts.mockClear();
     mocks.currentUser = undefined;
-    mocks.traceId = 'req-1';
+    mocks.correlationId = 'req-1';
     mocks.fatalShutdown = false;
     __resetErrorReporterForTests();
   });
@@ -73,7 +73,7 @@ describe('captureException', () => {
     vi.useRealTimers();
   });
 
-  it('归一化 + 上下文注入 → flush 后成批落库，事件带 traceId / 主机 / 角色 / 版本', async () => {
+  it('归一化 + 上下文注入 → flush 后成批落库，事件带 correlationId / 主机 / 角色 / 版本', async () => {
     mocks.currentUser = { userId: 7, username: 'alice', tenantId: 3 };
     const err = Object.assign(new Error('relation "x" does not exist'), { name: 'PostgresError', code: '42P01' });
     captureException(err, {
@@ -97,7 +97,7 @@ describe('captureException', () => {
       identity: 'u:7',
     });
     expect(input.event).toMatchObject({
-      traceId: 'req-1',
+      correlationId: 'req-1',
       route: '/api/users/{id}',
       httpStatus: 500,
       httpMethod: 'GET',

@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ publish: vi.fn(), timeline: vi.fn() }));
 vi.mock('../../lib/domain-events', () => ({ publishEventInTx: mocks.publish }));
 vi.mock('../platform/relations/events.service', () => ({ recordDomainEvent: mocks.timeline }));
-vi.mock('../../lib/context', () => ({ currentTraceId: vi.fn(), currentParentRef: vi.fn() }));
+vi.mock('../../lib/context', () => ({ currentCorrelationId: vi.fn(), currentParentRef: vi.fn() }));
 
 import { recordEvent } from './payment-outbox.service';
 

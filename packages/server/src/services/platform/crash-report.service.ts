@@ -82,7 +82,7 @@ export async function replayCrashSentinelsOnStartup(): Promise<void> {
       captureException(crashError, {
         kind: 'process_crash',
         fingerprint: ['process_crash', record.kind ?? 'unknown', (record.message ?? '').slice(0, 200)],
-        traceId: null,
+        correlationId: null,
         userId: null,
         tenantId: null,
         occurredAt: record.crashedAt ? new Date(record.crashedAt) : undefined,

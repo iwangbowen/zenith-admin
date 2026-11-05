@@ -21,7 +21,7 @@ export const openApiCallLogSchema = z.object({
   authChannel: z.enum(OPEN_AUTH_CHANNELS).nullable(),
   userId: z.int().nullable().meta({ description: '用户授权令牌对应的用户；client_credentials 与签名通道为 null' }),
   errorMessage: z.string().nullable(),
-  requestId: z.string().nullable(),
+  correlationId: z.string().nullable(),
   environment: z.enum(OPEN_APP_ENVIRONMENTS),
   createdAt: z.string(),
 }).meta({ id: 'OpenApiCallLog' });

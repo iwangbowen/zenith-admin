@@ -137,7 +137,7 @@ export const workflowEngineTraceEntrySchema = z.object({
   key: z.string(),
   kind: z.enum(['task', 'job', 'token']),
   at: z.string().meta({ description: '主时间戳（YYYY-MM-DD HH:mm:ss）' }),
-  traceId: z.string().nullable(),
+  correlationId: z.string().nullable(),
   title: z.string(),
   status: z.string(),
   nodeName: z.string().nullable(),

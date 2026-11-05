@@ -46,11 +46,11 @@ const jobsSummaryRoute = defineContractRoute(workflowEngineContract.jobsSummary,
 });
 
 const jobChainRoute = defineContractRoute(workflowEngineContract.jobChain, {
-  handler: async (c) => c.json(okBody(await getWorkflowJobChain(c.req.valid('param').traceId)), 200),
+  handler: async (c) => c.json(okBody(await getWorkflowJobChain(c.req.valid('param').correlationId)), 200),
 });
 
 const jobChainBundleRoute = defineContractRoute(workflowEngineContract.jobChainBundle, {
-  handler: async (c) => c.json(okBody(await exportTraceDiagnosticBundle(c.req.valid('param').traceId)), 200),
+  handler: async (c) => c.json(okBody(await exportTraceDiagnosticBundle(c.req.valid('param').correlationId)), 200),
 });
 
 const jobDetailRoute = defineContractRoute(workflowEngineContract.jobDetail, {

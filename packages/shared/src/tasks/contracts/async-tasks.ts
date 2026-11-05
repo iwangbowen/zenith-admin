@@ -27,7 +27,7 @@ export const asyncTaskSchema = z.object({
   createdBy: z.int().nullable(),
   createdByName: z.string().nullable(),
   tenantId: z.int().nullable(),
-  traceId: z.string().nullable().meta({ description: '链路 ID（= 提交请求的 X-Request-Id），可跳转链路追踪' }),
+  correlationId: z.string().nullable().meta({ description: '链路 ID（= 提交请求的 X-Request-Id），可跳转链路追踪' }),
   startedAt: z.string().nullable(),
   completedAt: z.string().nullable(),
   createdAt: z.string(),

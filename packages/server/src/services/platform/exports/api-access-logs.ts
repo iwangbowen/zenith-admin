@@ -22,7 +22,7 @@ const columns: ExportColumn[] = [
   { key: 'responseCode', header: '状态码', width: 10, type: 'number' },
   { key: 'durationMs', header: '耗时(ms)', width: 12, type: 'number' },
   { key: 'ip', header: 'IP', width: 18 },
-  { key: 'requestId', header: '请求 ID', width: 38 },
+  { key: 'correlationId', header: '请求 ID', width: 38 },
   { key: 'createdAt', header: '请求时间', width: 22, type: 'datetime' },
 ];
 

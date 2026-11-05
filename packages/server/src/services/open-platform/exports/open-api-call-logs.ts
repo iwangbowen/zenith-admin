@@ -20,7 +20,7 @@ const columns: ExportColumn[] = [
   { key: 'success', header: '是否成功', width: 10, enumMap: { true: '成功', false: '失败' } },
   { key: 'durationMs', header: '耗时(ms)', width: 12, type: 'number' },
   { key: 'ip', header: 'IP', width: 18 },
-  { key: 'requestId', header: '请求 ID', width: 24 },
+  { key: 'correlationId', header: '关联 ID', width: 24 },
   { key: 'errorMessage', header: '错误信息', width: 36 },
   { key: 'createdAt', header: '调用时间', width: 22, type: 'datetime' },
 ];

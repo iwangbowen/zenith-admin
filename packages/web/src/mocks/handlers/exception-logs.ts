@@ -90,7 +90,7 @@ function buildEvents(group: ErrorGroup, n: number): ErrorEvent[] {
       environment: 'production' as const,
       memberId: null,
       replayId: null,
-      traceId: `req-${group.id}-${i}`,
+      correlationId: `req-${group.id}-${i}`,
       route: sample.route ?? null,
       errorName: sample.name,
       errorCode: sample.name === 'PostgresError' ? '42P01' : null,
@@ -204,7 +204,7 @@ export const exceptionLogHandlers = [
   mock(exceptionLogContract.events, ({ query, ok, paginate }) => {
     const list = mockEvents
       .filter((e) => matchesFilter(e.groupId, query.groupId) && matchesFilter(e.errorType, query.errorType) && matchesFilter(e.level, query.level))
-      .filter((e) => !query.traceId || (e.traceId ?? '').startsWith(query.traceId))
+      .filter((e) => !query.correlationId || (e.correlationId ?? '').startsWith(query.correlationId))
       .filter((e) => withinDateRange(e.createdAt, query.startTime, query.endTime));
     return ok(paginate(filterByKeyword(filterByKeyword(filterByKeyword(list, query.route, [(e) => e.route]), query.jobType, [(e) => e.jobType]), query.hostname, [(e) => e.hostname])));
   }),

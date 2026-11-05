@@ -18,8 +18,8 @@ vi.mock('./LogContentView', () => ({
 
 const TARGET = 'request-target-123';
 const RAW_LINES = [
-  JSON.stringify({ level: 30, reqId: TARGET, msg: '业务请求完成', role: 'api', pid: 123, hostname: 'server' }),
-  JSON.stringify({ level: 50, reqId: 'other-request', msg: `定位 API ${TARGET}`, err: { stack: 'Error: failed\n    at run (job.ts:42)' } }),
+  JSON.stringify({ level: 30, correlationId: TARGET, msg: '业务请求完成', role: 'api', pid: 123, hostname: 'server' }),
+  JSON.stringify({ level: 50, correlationId: 'other-request', msg: `定位 API ${TARGET}`, err: { stack: 'Error: failed\n    at run (job.ts:42)' } }),
 ];
 
 beforeEach(() => {
@@ -77,8 +77,8 @@ describe('控制台展示格式', () => {
     expect(stop).not.toHaveBeenCalled();
   });
 
-  it('格式化后的精确链路搜索仍按原始顶层 reqId 归属，并保留级别过滤', async () => {
-    renderConsole({ initialTraceId: TARGET });
+  it('格式化后的精确链路搜索仍按原始顶层 correlationId 归属，并保留级别过滤', async () => {
+    renderConsole({ initialCorrelationId: TARGET });
     expect(await screen.findByText('1/1')).toBeInTheDocument();
     expect(screen.getByTestId('log-output').children).toHaveLength(2);
     fireEvent.click(screen.getByText('原始JSON'));

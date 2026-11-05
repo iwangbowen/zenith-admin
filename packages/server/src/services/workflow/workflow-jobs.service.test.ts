@@ -91,10 +91,10 @@ describe('clusterFailureRows', () => {
   };
   // 按 failedAt 倒序排列（与 getJobFailureClusters 的 orderBy 一致）
   const rows: ClusterInputRow[] = [
-    { ...base, id: 4, jobType: 'webhook_delivery', lastError: 'timeout after 5000ms', instanceId: 1, instanceTitle: '请假单', traceId: 't-a', failedAt: at('2026-08-21T12:00:00'), createdAt: at('2026-08-21T11:00:00') },
-    { ...base, id: 3, jobType: 'webhook_delivery', lastError: 'timeout after 3000ms', instanceId: 1, instanceTitle: '请假单', traceId: 't-a', failedAt: at('2026-08-21T10:00:00'), createdAt: at('2026-08-21T09:00:00') },
-    { ...base, id: 2, jobType: 'trigger_dispatch', lastError: 'connection refused', instanceId: 2, instanceTitle: null, traceId: 't-b', failedAt: at('2026-08-21T09:00:00'), createdAt: at('2026-08-21T08:00:00') },
-    { ...base, id: 1, jobType: 'trigger_dispatch', lastError: null, instanceId: null, instanceTitle: null, traceId: null, failedAt: at('2026-08-21T08:00:00'), createdAt: at('2026-08-21T07:00:00') },
+    { ...base, id: 4, jobType: 'webhook_delivery', lastError: 'timeout after 5000ms', instanceId: 1, instanceTitle: '请假单', correlationId: 't-a', failedAt: at('2026-08-21T12:00:00'), createdAt: at('2026-08-21T11:00:00') },
+    { ...base, id: 3, jobType: 'webhook_delivery', lastError: 'timeout after 3000ms', instanceId: 1, instanceTitle: '请假单', correlationId: 't-a', failedAt: at('2026-08-21T10:00:00'), createdAt: at('2026-08-21T09:00:00') },
+    { ...base, id: 2, jobType: 'trigger_dispatch', lastError: 'connection refused', instanceId: 2, instanceTitle: null, correlationId: 't-b', failedAt: at('2026-08-21T09:00:00'), createdAt: at('2026-08-21T08:00:00') },
+    { ...base, id: 1, jobType: 'trigger_dispatch', lastError: null, instanceId: null, instanceTitle: null, correlationId: null, failedAt: at('2026-08-21T08:00:00'), createdAt: at('2026-08-21T07:00:00') },
   ];
 
   it('reason 维度：数字归一后合并相似错误并按数量倒序', () => {
@@ -136,7 +136,7 @@ describe('clusterFailureRows', () => {
       lastError: 'fetch failed',
       instanceId: i,
       instanceTitle: null,
-      traceId: null,
+      correlationId: null,
       failedAt: at('2026-08-21T12:00:00'),
       createdAt: at('2026-08-21T11:00:00'),
     }));
@@ -164,9 +164,9 @@ describe('clusterFailureRows', () => {
     expect(inst2?.label).toBe('实例 #2');
   });
 
-  it('trace 维度：跳过空 traceId', () => {
+  it('trace 维度：跳过空 correlationId', () => {
     const clusters = clusterFailureRows(rows, 'trace');
-    expect(clusters.every((c) => c.traceId != null)).toBe(true);
-    expect(clusters.find((c) => c.traceId === 't-a')?.count).toBe(2);
+    expect(clusters.every((c) => c.correlationId != null)).toBe(true);
+    expect(clusters.find((c) => c.correlationId === 't-a')?.count).toBe(2);
   });
 });

@@ -6,9 +6,9 @@ describe('formatConsoleLogLine', () => {
     const localTime = new Date(2026, 9, 23, 16, 8, 5);
     const entry = {
       level: 30, time: localTime.toISOString(), pid: 123, hostname: 'server-01',
-      role: 'api', reqId: 'request-123', msg: '启动成功', count: 0, enabled: false, details: { keys: ['中文'] },
+      role: 'api', correlationId: 'request-123', msg: '启动成功', count: 0, enabled: false, details: { keys: ['中文'] },
     };
-    expect(formatConsoleLogLine(JSON.stringify(entry))).toBe('[2026-10-23 16:08:05] INFO: 启动成功 {"role":"api","reqId":"request-123","count":0,"enabled":false,"details":{"keys":["中文"]}}');
+    expect(formatConsoleLogLine(JSON.stringify(entry))).toBe('[2026-10-23 16:08:05] INFO: 启动成功 {"role":"api","correlationId":"request-123","count":0,"enabled":false,"details":{"keys":["中文"]}}');
     expect(formatConsoleLogLine(JSON.stringify({ level: 20, time: localTime.getTime(), msg: 'epoch' }))).toBe('[2026-10-23 16:08:05] DEBUG: epoch');
   });
 

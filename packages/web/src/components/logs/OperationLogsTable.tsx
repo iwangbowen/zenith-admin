@@ -240,16 +240,16 @@ export function OperationLogsTable({
                     {
                       key: '链路 ID',
                       span: 2,
-                      value: detailLog.requestId
+                      value: detailLog.correlationId
                         ? (
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                              <Typography.Text copyable size="small">{detailLog.requestId}</Typography.Text>
+                              <Typography.Text copyable size="small">{detailLog.correlationId}</Typography.Text>
                               {hasPermission('system:trace:view') && (
                                 <Button
                                   size="small"
                                   theme="borderless"
                                   type="primary"
-                                  onClick={() => navigate(`/system/trace?traceId=${encodeURIComponent(detailLog.requestId!)}`)}
+                                  onClick={() => navigate(`/system/trace?correlationId=${encodeURIComponent(detailLog.correlationId!)}`)}
                                 >
                                   查看链路
                                 </Button>

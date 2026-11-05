@@ -152,7 +152,7 @@ export async function listExceptionEvents(q: QueryOutputOf<typeof exceptionLogCo
     q.groupId ? eq(errorEvents.groupId, q.groupId) : undefined,
     q.errorType ? eq(errorEvents.errorType, q.errorType) : undefined,
     q.level ? eq(errorEvents.level, q.level) : undefined,
-    keywordCondition(q.traceId, [errorEvents.traceId], 'like', 'prefix'),
+    keywordCondition(q.correlationId, [errorEvents.correlationId], 'like', 'prefix'),
     keywordCondition(q.route, [errorEvents.route], 'ilike'),
     keywordCondition(q.jobType, [errorEvents.jobType], 'ilike'),
     keywordCondition(q.hostname, [errorEvents.hostname], 'ilike'),

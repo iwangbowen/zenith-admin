@@ -9,7 +9,7 @@ import { getTraceTimeline, listRecentTraces, listRecentTraceFailures } from '../
 
 const traceRouter = new OpenAPIHono({ defaultHook: validationHook });
 
-// 静态路由须早于 /{traceId}
+// 静态路由须早于 /{correlationId}
 const recentRoute = defineContractRoute(traceContract.recent, {
   handler: async (c) => c.json(okBody(await listRecentTraces(c.req.valid('query'))), 200),
 });
@@ -20,8 +20,8 @@ const recentFailuresRoute = defineContractRoute(traceContract.recentFailures, {
 
 const timelineRoute = defineContractRoute(traceContract.timeline, {
   handler: async (c) => {
-    const { traceId } = c.req.valid('param');
-    return c.json(okBody(await getTraceTimeline(traceId)), 200);
+    const { correlationId } = c.req.valid('param');
+    return c.json(okBody(await getTraceTimeline(correlationId)), 200);
   },
 });
 

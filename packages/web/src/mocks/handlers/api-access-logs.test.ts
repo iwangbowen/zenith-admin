@@ -7,7 +7,7 @@ import { apiAccessLogsHandlers } from './api-access-logs';
 async function call(path: string) {
   const request = new Request(`${window.location.origin}${apiAccessLogContract.basePath}${path}`);
   for (const handler of apiAccessLogsHandlers) {
-    const result = await (handler as unknown as { run(args: unknown): Promise<{ response?: Response } | null> }).run({ request, requestId: `access-${path}` });
+    const result = await (handler as unknown as { run(args: unknown): Promise<{ response?: Response } | null> }).run({ request, correlationId: `access-${path}` });
     if (result?.response) return result.response;
   }
   throw new Error(`No handler matched ${path}`);
@@ -30,7 +30,7 @@ describe('API 访问日志 Demo', () => {
   });
 
   it('访问端、凭证、精确状态、参数与耗时组合筛选返回同一批记录', async () => {
-    const params = new URLSearchParams({ userId: '1', accessorName: 'admin', accessorType: 'admin_user', credentialType: 'admin_session', method: 'post', module: '用户', operationKey: 'users.create', routePath: '/api/users', path: '/api/users', requestId: 'mock-request-002', serviceName: 'zenith', ip: '127.0.', responseCode: '400', status: 'fail', content: 'DEMO', minDurationMs: '40', maxDurationMs: '50' });
+    const params = new URLSearchParams({ userId: '1', accessorName: 'admin', accessorType: 'admin_user', credentialType: 'admin_session', method: 'post', module: '用户', operationKey: 'users.create', routePath: '/api/users', path: '/api/users', correlationId: 'mock-request-002', serviceName: 'zenith', ip: '127.0.', responseCode: '400', status: 'fail', content: 'DEMO', minDurationMs: '40', maxDurationMs: '50' });
     expect((await list(`?${params}`)).list.map((row) => row.id)).toEqual([2]);
     expect((await list('?memberId=18&accessorType=member_user&credentialType=member_session')).list.map((row) => row.id)).toEqual([3]);
     expect((await list('?clientId=missing-client')).list).toEqual([]);

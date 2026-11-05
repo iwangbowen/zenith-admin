@@ -85,7 +85,7 @@ export function mapEvent(row: ErrorEventRow) {
     environment: row.environment,
     memberId: row.memberId,
     replayId: row.replayId,
-    traceId: row.traceId,
+    correlationId: row.correlationId,
     route: row.route,
     errorName: row.errorName,
     errorCode: row.errorCode,
@@ -144,7 +144,7 @@ export async function reportError(input: {
   appId?: string;
   environment?: AnalyticsEnvironment;
   replayId?: string;
-  traceId?: string;
+  correlationId?: string;
 }, reqCtx: ErrorReqCtx): Promise<void> {
   const user = currentUserOrNull();
   // 管理员 / 会员身份互斥：单次请求只会经过其中一种认证中间件
@@ -213,7 +213,7 @@ export async function reportError(input: {
       memberId: member?.memberId ?? null,
       replayId: input.replayId ?? null,
       // 前端接口错误在能读到响应头 X-Request-Id 时带上，与服务端异常事件按同一列互查
-      traceId: input.traceId ?? null,
+      correlationId: input.correlationId ?? null,
     },
   });
 
@@ -443,7 +443,7 @@ export async function listErrorEvents(q: QueryOutputOf<typeof frontendErrorContr
   const { page, pageSize } = q;
   const where = buildWhere(
     q.groupId ? eq(errorEvents.groupId, q.groupId) : undefined,
-    q.traceId ? eq(errorEvents.traceId, q.traceId.trim()) : undefined,
+    q.correlationId ? eq(errorEvents.correlationId, q.correlationId.trim()) : undefined,
     browserEvents(),
     tenantScope(errorEvents),
   );

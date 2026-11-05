@@ -11,7 +11,7 @@
  *  - pino 原生：`logger.info({ userId }, '登录成功')`，优先用这种
  *  - 消息在前：`logger.info('登录成功', meta)` —— meta 为 Error 记入 `err`（带堆栈），
  *    普通对象作为结构化字段合并，其余类型记入 `meta` 字段
- *  - 请求级子 logger：`logger.child({ requestId })` 原生可用
+ *  - 请求级子 logger：`logger.child({ correlationId })` 原生可用
  *
  * warn / error / fatal 在 logMethod hook 写入点计入 log-metrics 计数器
  * （监控告警的 logErrorPerMin / logWarnPerMin；hook 仅在级别启用时触发）；
@@ -25,7 +25,7 @@ import {
 } from 'pino';
 import type { PrettyOptions } from 'pino-pretty';
 import { trace, isSpanContextValid } from '@opentelemetry/api';
-import { currentTraceId } from './trace-context';
+import { currentCorrelationId } from './trace-context';
 import { config } from '../config';
 import { recordLogLevel } from './log-metrics';
 import { PROCESS_HOSTNAME } from './process-identity';
@@ -185,14 +185,12 @@ const options = {
   // 级别保持 pino 默认的数字形式（10-60，行首第一个键），日志查看器与采集端按数字映射
   serializers: { err: stdSerializers.err, error: stdSerializers.err },
   hooks: { logMethod },
-  // 链路关联：所有日志行自动带 reqId（= hono requestId = traceId），
-  // 与 pino-http 请求级子 logger 的 reqId 字段同名同值（请求内 child bindings 优先，值相同）；
-  // worker / 作业 / 任务等请求作用域之外的日志由此补齐链路键。
-  // OTel 启用时追加 trace_id / span_id（W3C 十六进制格式），使外部 APM（Grafana / Datadog 等）
-  // 能从日志行直接跳转到对应 trace；@opentelemetry/api 是纯 API 包，无 SDK 依赖，静态导入无负担
+  // 链路关联：所有日志行自动带 correlationId（= hono requestId），
+  // 与 pino-http 请求级子 logger 的 correlationId 字段同值；worker / 作业 / 任务等
+  // 请求作用域之外的日志也由此补齐业务关联键。OTel trace_id/span_id 始终独立输出。
   mixin: () => {
-    const reqId = currentTraceId();
-    const fields: Record<string, string> = reqId ? { reqId } : {};
+    const correlationId = currentCorrelationId();
+    const fields: Record<string, string> = correlationId ? { correlationId } : {};
     if (config.otel.enabled) {
       const spanContext = trace.getActiveSpan()?.spanContext();
       if (spanContext && isSpanContextValid(spanContext)) {

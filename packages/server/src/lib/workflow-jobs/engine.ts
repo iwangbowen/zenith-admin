@@ -7,7 +7,7 @@ import { workflowJobs, workflowJobExecutions, type WorkflowJobRow, type NewWorkf
 import type { DbExecutor, DbTransaction } from '../../db/types';
 import { registerSystemLedgerWorker } from '../pg-boss-scheduler';
 import logger from '../logger';
-import { currentTraceId, currentParentRef, runWithTraceId, runWithParentRef } from '../context';
+import { currentCorrelationId, currentParentRef, runWithCorrelationId, runWithParentRef } from '../context';
 import { formatDateTime } from '../datetime';
 import { WORKFLOW_JOB_QUEUE, WORKFLOW_OUTBOUND_JOB_QUEUE, WORKFLOW_JOB_LEASE_MS, WORKFLOW_JOB_HEARTBEAT_MS, WORKFLOW_JOB_EXECUTION_TIMEOUT_MS, type WorkflowJobContext, type WorkflowJobResult } from './types';
 import { WorkflowJobSkip, WorkflowJobPermanentError, WorkflowJobError, WorkflowJobLeaseLostError, WorkflowJobDeadlineError } from './errors';
@@ -32,7 +32,7 @@ export interface EnqueueJobInput {
   taskId?: number | null;
   nodeKey?: string | null;
   idempotencyKey?: string | null;
-  traceId?: string | null;
+  correlationId?: string | null;
   priority?: number;
   maxAttempts?: number;
   executionTimeoutMs?: number;
@@ -45,7 +45,7 @@ export async function enqueueJob(input: EnqueueJobInput, executor: DbExecutor = 
   const values: NewWorkflowJob = {
     jobType: input.jobType, status: 'pending', payload: input.payload ?? {},
     instanceId: input.instanceId ?? null, taskId: input.taskId ?? null, nodeKey: input.nodeKey ?? null,
-    idempotencyKey: input.idempotencyKey ?? null, traceId: input.traceId ?? currentTraceId() ?? null,
+    idempotencyKey: input.idempotencyKey ?? null, correlationId: input.correlationId ?? currentCorrelationId() ?? null,
     parentRef: currentParentRef() ?? null, ...currentPersistedOtelContext(), priority: input.priority ?? 100,
     maxAttempts: input.maxAttempts ?? 1, runAt: input.runAt ?? new Date(), tenantId: input.tenantId ?? null,
     executionTimeoutMs: Math.max(1, Math.min(input.executionTimeoutMs ?? WORKFLOW_JOB_EXECUTION_TIMEOUT_MS, 3_600_000)),
@@ -277,7 +277,7 @@ async function executeClaimedJob({ job, executionId }: ClaimedJob): Promise<void
   try {
     const handler = getJobHandler(job.jobType);
     if (!handler) throw new WorkflowJobPermanentError(`Unregistered workflow handler: ${job.jobType}`);
-    const work = runWithPersistedOtelContext(job, () => runWithWorkflowJobContext(context, () => runWithTraceId(job.traceId ?? randomUUID(),
+    const work = runWithPersistedOtelContext(job, () => runWithWorkflowJobContext(context, () => runWithCorrelationId(job.correlationId ?? randomUUID(),
       () => runWithParentRef(`job:${job.id}`, () => handler(context)))));
     const result = (await Promise.race([work, aborted])) ?? {};
     await flushWorkflowJobEffects(context);
@@ -375,7 +375,7 @@ export async function previewDrainableJobs(filter: DrainableFilter & { sampleLim
   const [duePending, stuckRunning, scheduledLater, rows] = await Promise.all([
     db.$count(workflowJobs, due), db.$count(workflowJobs, expired), db.$count(workflowJobs, later),
     db.select({ id: workflowJobs.id, jobType: workflowJobs.jobType, status: workflowJobs.status,
-      instanceId: workflowJobs.instanceId, traceId: workflowJobs.traceId, attempts: workflowJobs.attempts,
+      instanceId: workflowJobs.instanceId, correlationId: workflowJobs.correlationId, attempts: workflowJobs.attempts,
       runAt: workflowJobs.runAt, createdAt: workflowJobs.createdAt, lastError: workflowJobs.lastError,
     }).from(workflowJobs).where(or(due, expired)).orderBy(asc(workflowJobs.runAt)).limit(filter.sampleLimit ?? 10),
   ]);

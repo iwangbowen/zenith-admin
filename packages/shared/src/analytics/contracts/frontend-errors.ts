@@ -80,8 +80,8 @@ export const errorEventSchema = z.object({
   environment: z.enum(ANALYTICS_ENVIRONMENTS),
   memberId: z.int().nullable().meta({ description: '会员身份（前台错误上报），与 userId（后台管理员）互斥' }),
   replayId: z.string().nullable().meta({ description: '报错时刻活跃的回放会话 ID（SDK 注入）' }),
-  // ─── 链路与服务端上下文（前端事件除 traceId 外为 null）───
-  traceId: z.string().nullable().meta({ description: '请求 / 链路 ID（= X-Request-Id）；服务端异常必带，前端接口错误在能读到响应头时带上，用于两侧互查' }),
+  // ─── 链路与服务端上下文（前端事件除 correlationId 外为 null）───
+  correlationId: z.string().nullable().meta({ description: '请求 / 链路 ID（= X-Request-Id）；服务端异常必带，前端接口错误在能读到响应头时带上，用于两侧互查' }),
   route: z.string().nullable().meta({ description: '匹配到的路由模板，如 /api/users/{id}' }),
   errorName: z.string().nullable().meta({ description: '异常类名：TypeError / PostgresError / ZodError…' }),
   errorCode: z.string().nullable().meta({ description: '异常代码：PG SQLSTATE（23505）、Node 系统错误码（ECONNREFUSED）等' }),
@@ -185,7 +185,7 @@ export const errorGroupBatchStatusQuery = z.object({
 
 export const errorEventListQuery = paginationQuery.extend({
   groupId: idQuery(),
-  traceId: keywordQuery('链路 ID', { max: 64, description: '按失败响应的 X-Request-Id 精确匹配，与服务端异常日志互查' }),
+  correlationId: keywordQuery('链路 ID', { max: 64, description: '按失败响应的 X-Request-Id 精确匹配，与服务端异常日志互查' }),
 });
 
 export const errorCleanQuery = z.object({

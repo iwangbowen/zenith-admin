@@ -101,7 +101,7 @@ function completedBatchTask(taskType: string, title: string, deviceCount: number
     id: Date.now(), taskType, title, module: 'IoT 设备', status: 'success', payload: {},
     totalCount: deviceCount, processedCount: deviceCount, failedCount: 0, progressNote: null, result: null,
     errorMessage: null, cancelRequested: false, attempts: 1, maxAttempts: 1, retryDelayMs: 5000, nextRunAt: null,
-    createdBy: 1, createdByName: 'admin', tenantId: null, traceId: null,
+    createdBy: 1, createdByName: 'admin', tenantId: null, correlationId: null,
     startedAt: now, completedAt: now, createdAt: now, updatedAt: now,
   };
 }

@@ -10,7 +10,7 @@ import { completeAsyncTasks } from './terminal-events';
 import { registerTaskHandler } from './registry';
 
 const at = new Date('2026-09-22T01:02:03Z');
-const task = { id: 41, taskType: 'safe-export', status: 'failed', attempts: 2, completedAt: at, tenantId: 7, traceId: 'trace', parentRef: 'request' } as AsyncTaskRow;
+const task = { id: 41, taskType: 'safe-export', status: 'failed', attempts: 2, completedAt: at, tenantId: 7, correlationId: 'trace', parentRef: 'request' } as AsyncTaskRow;
 
 function install(rows: AsyncTaskRow[], subjects = [{ type: 'payment.order', key: '9', role: 'related' as const }]) {
   const committed: AsyncTaskRow[] = [];

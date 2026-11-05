@@ -85,7 +85,7 @@ function mapJob(row: WorkflowJobRow, extra?: { instanceTitle?: string | null; de
     taskId: row.taskId ?? null,
     nodeKey: row.nodeKey ?? null,
     idempotencyKey: row.idempotencyKey ?? null,
-    traceId: row.traceId ?? null,
+    correlationId: row.correlationId ?? null,
     payload: (row.payload ?? {}) as Record<string, unknown>,
     priority: row.priority,
     attempts: row.attempts,
@@ -131,7 +131,7 @@ export async function listWorkflowJobs(query: QueryOutputOf<typeof workflowEngin
     query.jobType ? eq(workflowJobs.jobType, query.jobType) : undefined,
     query.status ? eq(workflowJobs.status, query.status) : undefined,
     query.instanceId != null ? eq(workflowJobs.instanceId, query.instanceId) : undefined,
-    keywordCondition(query.keyword, [workflowJobs.idempotencyKey, workflowJobs.traceId, workflowJobs.nodeKey], 'ilike'),
+    keywordCondition(query.keyword, [workflowJobs.idempotencyKey, workflowJobs.correlationId, workflowJobs.nodeKey], 'ilike'),
   );
 
   return buildListResult({
@@ -163,15 +163,15 @@ export async function getWorkflowJobDetail(id: number) {
 }
 
 /**
- * 链路视图：返回同一 traceId 关联的全部作业（按创建时间升序，即一次操作触发的完整异步 fan-out，
+ * 链路视图：返回同一 correlationId 关联的全部作业（按创建时间升序，即一次操作触发的完整异步 fan-out，
  * 含跨实例/子流程串联）+ 每个作业的执行明细 + 状态统计。
  */
-export async function getWorkflowJobChain(traceId: string) {
+export async function getWorkflowJobChain(correlationId: string) {
   const rows = await db.select({ job: workflowJobs, instanceTitle: workflowInstances.title, definitionName: workflowDefinitions.name })
     .from(workflowJobs)
     .leftJoin(workflowInstances, eq(workflowJobs.instanceId, workflowInstances.id))
     .leftJoin(workflowDefinitions, eq(workflowInstances.definitionId, workflowDefinitions.id))
-    .where(eq(workflowJobs.traceId, traceId))
+    .where(eq(workflowJobs.correlationId, correlationId))
     .orderBy(asc(workflowJobs.createdAt), asc(workflowJobs.id));
   const jobIds = rows.map((r) => r.job.id);
   const execs = jobIds.length > 0
@@ -187,7 +187,7 @@ export async function getWorkflowJobChain(traceId: string) {
     ...mapJob(r.job, { instanceTitle: r.instanceTitle, definitionName: r.definitionName }),
     executions: (execByJob.get(r.job.id) ?? []).map(mapExecution),
   }));
-  return { traceId, jobs, stats: summarizeWorkflowJobChain(jobs) };
+  return { correlationId, jobs, stats: summarizeWorkflowJobChain(jobs) };
 }
 
 export async function retryWorkflowJob(id: number, payload?: Record<string, unknown>) {
@@ -292,13 +292,13 @@ export async function getWorkflowJobsSummary(): Promise<WorkflowJobSummaryItem[]
   return WORKFLOW_JOB_TYPES.map((t) => map.get(t)!);
 }
 
-/** 死信重放过滤条件：多维（jobType/实例/traceId/错误原因/入库时长）精准圈定要重放的作业。 */
+/** 死信重放过滤条件：多维（jobType/实例/correlationId/错误原因/入库时长）精准圈定要重放的作业。 */
 export interface WorkflowJobReplayFilter {
   /** 目标状态，默认 dead（死信），也可重放 failed */
   status?: 'dead' | 'failed';
   jobType?: WorkflowJobRow['jobType'];
   instanceId?: number;
-  traceId?: string;
+  correlationId?: string;
   /** 错误原因关键字，对 lastError 模糊匹配（用于对某聚类簇重放） */
   reasonKeyword?: string;
   /** 仅重放入库超过 N 分钟的作业，避免把刚失败还在退避窗内的一并冲入 */
@@ -311,7 +311,7 @@ function replayJobsWhere(filter: WorkflowJobReplayFilter) {
     eq(workflowJobs.status, filter.status ?? 'dead'),
     filter.jobType ? eq(workflowJobs.jobType, filter.jobType) : undefined,
     filter.instanceId != null ? eq(workflowJobs.instanceId, filter.instanceId) : undefined,
-    filter.traceId ? eq(workflowJobs.traceId, filter.traceId) : undefined,
+    filter.correlationId ? eq(workflowJobs.correlationId, filter.correlationId) : undefined,
     keywordCondition(filter.reasonKeyword, [workflowJobs.lastError], 'ilike'),
     filter.olderThanMinutes != null && filter.olderThanMinutes > 0
       ? lte(workflowJobs.createdAt, new Date(Date.now() - filter.olderThanMinutes * 60_000))
@@ -370,7 +370,7 @@ export interface JobFailureClusterMember {
   maxAttempts: number;
   /** 最后领取该作业的 worker 节点（hostname:pid），失败后保留 */
   lockedBy: string | null;
-  traceId: string | null;
+  correlationId: string | null;
   /** 完整原始错误（未归一） */
   lastError: string | null;
   /** 最近一次失败时间（最后一次尝试写入 lastError 的时刻） */
@@ -380,15 +380,15 @@ export interface JobFailureClusterMember {
 
 export interface JobFailureCluster {
   dimension: JobClusterDimension;
-  /** 归一后的聚类键（reason 归一前缀 / jobType / 实例 id / traceId） */
+  /** 归一后的聚类键（reason 归一前缀 / jobType / 实例 id / correlationId） */
   key: string;
   label: string;
   count: number;
   jobTypes: string[];
   /** instance 维度下的实例 id，供"重放该簇" */
   instanceId: number | null;
-  /** trace 维度下的 traceId，供"重放该簇" */
-  traceId: string | null;
+  /** trace 维度下的 correlationId，供"重放该簇" */
+  correlationId: string | null;
   /** reason 维度下的错误关键字，供"重放该簇"（模糊匹配） */
   reasonKeyword: string | null;
   firstAt: string | null;
@@ -419,7 +419,7 @@ export interface ClusterInputRow {
   attempts: number;
   maxAttempts: number;
   lockedBy: string | null;
-  traceId: string | null;
+  correlationId: string | null;
   /** 最近失败时间（updatedAt：失败收口时写入 lastError 的时刻） */
   failedAt: Date;
   createdAt: Date;
@@ -429,7 +429,7 @@ export interface ClusterInputRow {
 export function clusterFailureRows(rows: ClusterInputRow[], dimension: JobClusterDimension): JobFailureCluster[] {
   type Acc = JobFailureCluster & { _types: Set<string>; _instances: Set<number>; _first: number; _last: number };
   const map = new Map<string, Acc>();
-  const bump = (key: string, base: Pick<JobFailureCluster, 'dimension' | 'key' | 'label' | 'instanceId' | 'traceId' | 'reasonKeyword'>, row: ClusterInputRow) => {
+  const bump = (key: string, base: Pick<JobFailureCluster, 'dimension' | 'key' | 'label' | 'instanceId' | 'correlationId' | 'reasonKeyword'>, row: ClusterInputRow) => {
     let e = map.get(key);
     if (!e) {
       e = {
@@ -456,7 +456,7 @@ export function clusterFailureRows(rows: ClusterInputRow[], dimension: JobCluste
         attempts: row.attempts,
         maxAttempts: row.maxAttempts,
         lockedBy: row.lockedBy,
-        traceId: row.traceId,
+        correlationId: row.correlationId,
         lastError: row.lastError,
         failedAt: formatDateTime(row.failedAt),
         createdAt: formatDateTime(row.createdAt),
@@ -466,17 +466,17 @@ export function clusterFailureRows(rows: ClusterInputRow[], dimension: JobCluste
 
   for (const r of rows) {
     if (dimension === 'jobType') {
-      bump(r.jobType, { dimension, key: r.jobType, label: r.jobType, instanceId: null, traceId: null, reasonKeyword: null }, r);
+      bump(r.jobType, { dimension, key: r.jobType, label: r.jobType, instanceId: null, correlationId: null, reasonKeyword: null }, r);
     } else if (dimension === 'instance') {
       if (r.instanceId == null) continue;
       const key = String(r.instanceId);
-      bump(key, { dimension, key, label: r.instanceTitle ? `${r.instanceTitle} (#${r.instanceId})` : `实例 #${r.instanceId}`, instanceId: r.instanceId, traceId: null, reasonKeyword: null }, r);
+      bump(key, { dimension, key, label: r.instanceTitle ? `${r.instanceTitle} (#${r.instanceId})` : `实例 #${r.instanceId}`, instanceId: r.instanceId, correlationId: null, reasonKeyword: null }, r);
     } else if (dimension === 'trace') {
-      if (!r.traceId) continue;
-      bump(r.traceId, { dimension, key: r.traceId, label: r.traceId, instanceId: null, traceId: r.traceId, reasonKeyword: null }, r);
+      if (!r.correlationId) continue;
+      bump(r.correlationId, { dimension, key: r.correlationId, label: r.correlationId, instanceId: null, correlationId: r.correlationId, reasonKeyword: null }, r);
     } else {
       const reason = (r.lastError ?? '未知错误').replace(/\d+/g, 'N').slice(0, 60);
-      bump(reason, { dimension, key: reason, label: reason, instanceId: null, traceId: null, reasonKeyword: reasonKeywordOf(r.lastError) }, r);
+      bump(reason, { dimension, key: reason, label: reason, instanceId: null, correlationId: null, reasonKeyword: reasonKeywordOf(r.lastError) }, r);
     }
   }
 
@@ -497,7 +497,7 @@ export function clusterFailureRows(rows: ClusterInputRow[], dimension: JobCluste
  * - reason：按 lastError 归一前缀（数字→N，截断 60 字）
  * - jobType：按作业类型
  * - instance：按流程实例
- * - trace：按 traceId
+ * - trace：按 correlationId
  * 每簇附带首次/最近失败时间、涉及实例数与成员作业明细（哪个作业、哪个进程、完整错误）。
  */
 export async function getJobFailureClusters(dimension: JobClusterDimension = 'reason'): Promise<JobFailureCluster[]> {
@@ -514,7 +514,7 @@ export async function getJobFailureClusters(dimension: JobClusterDimension = 're
       attempts: workflowJobs.attempts,
       maxAttempts: workflowJobs.maxAttempts,
       lockedBy: workflowJobs.lockedBy,
-      traceId: workflowJobs.traceId,
+      correlationId: workflowJobs.correlationId,
       failedAt: workflowJobs.updatedAt,
       createdAt: workflowJobs.createdAt,
     })

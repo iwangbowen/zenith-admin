@@ -16,7 +16,7 @@ export const operationLogSchema = z.object({
   description: z.string(),
   method: z.string(),
   path: z.string(),
-  requestId: z.string().nullable().optional().meta({ description: '链路 ID（= 请求的 X-Request-Id），可跳转链路追踪' }),
+  correlationId: z.string().nullable().optional().meta({ description: '链路 ID（= 请求的 X-Request-Id），可跳转链路追踪' }),
   requestBody: z.string().nullable(),
   beforeData: z.string().nullable(),
   afterData: z.string().nullable(),

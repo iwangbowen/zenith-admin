@@ -1,6 +1,6 @@
 /**
  * HTTP 采集入口：全局 onError 里 ≥500 的异常进入异常日志（含脱敏请求快照、路由模板、状态码），
- * 4xx 业务失败不记；500 响应体回传 requestId；显式采集先于 logger.error 兜底网打标，不会重复记录。
+ * 4xx 业务失败不记；500 响应体回传 correlationId；显式采集先于 logger.error 兜底网打标，不会重复记录。
  * 用与 app.ts 相同的 onError 逻辑搭一个最小 hono 应用，store 与设置 mock。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -17,7 +17,7 @@ vi.mock('./store', () => ({ recordErrorEventBatch: mocks.recordErrorEventBatch, 
 vi.mock('../settings', () => ({ getSettings: async () => { throw new Error('unavailable'); } }));
 vi.mock('../context', () => ({ currentUserOrNull: () => ({ userId: 9, username: 'ops', tenantId: 2 }) }));
 vi.mock('../member-context', () => ({ currentMemberOrNull: () => undefined }));
-vi.mock('../trace-context', () => ({ currentTraceId: () => 'trace-from-als' }));
+vi.mock('../trace-context', () => ({ currentCorrelationId: () => 'trace-from-als' }));
 vi.mock('../fatal-handlers', () => ({ isFatalShutdownInProgress: () => false }));
 vi.mock('../process-identity', () => ({ PROCESS_HOSTNAME: 'host-a', PROCESS_PID: 1 }));
 vi.mock('../../config', () => ({
@@ -62,14 +62,14 @@ describe('HTTP 异常采集', () => {
   });
   afterEach(async () => { await stopErrorReporter(10); });
 
-  it('未捕获异常 → 500 带 requestId；事件含路由模板 / 状态 / 脱敏请求体，且不被 logger 兜底网重复记录', async () => {
+  it('未捕获异常 → 500 带 correlationId；事件含路由模板 / 状态 / 脱敏请求体，且不被 logger 兜底网重复记录', async () => {
     const res = await buildApp().request('http://localhost/api/probe/42?token=abc&page=1', {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: 'Bearer secret', 'x-request-id': 'req-abc' },
       body: JSON.stringify({ username: 'alice', password: 'p@ss', nested: { apiKey: 'k' } }),
     });
     expect(res.status).toBe(500);
-    expect(await res.json()).toEqual({ code: 500, message: '服务器内部错误', data: null, requestId: 'req-abc' });
+    expect(await res.json()).toEqual({ code: 500, message: '服务器内部错误', data: null, correlationId: 'req-abc' });
 
     await new Promise((resolve) => setTimeout(resolve, 20));
     await flushErrorReporter();
@@ -77,7 +77,7 @@ describe('HTTP 异常采集', () => {
     expect(inputs).toHaveLength(1);
     const [input] = inputs;
     expect(input).toMatchObject({ errorType: 'server_exception', level: 'error', message: 'Cannot read properties of undefined', identity: 'u:9' });
-    expect(input.event).toMatchObject({ route: '/api/probe/:id', httpStatus: 500, httpMethod: 'POST', errorName: 'TypeError', traceId: 'trace-from-als', affectedTenantId: 2 });
+    expect(input.event).toMatchObject({ route: '/api/probe/:id', httpStatus: 500, httpMethod: 'POST', errorName: 'TypeError', correlationId: 'trace-from-als', affectedTenantId: 2 });
     const request = (input.event.context as { request: Record<string, unknown> }).request;
     expect(request.headers).toEqual({ 'content-type': 'application/json', 'x-request-id': 'req-abc' });
     expect(request.query).toEqual({ token: '***', page: '1' });

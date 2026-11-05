@@ -16,7 +16,7 @@ describe('automatic retry policy snapshots', () => {
   it('schedules retry from the saved snapshot without reading the policy table', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-09-08T00:00:00Z'));
-    const claimed = { dispatchToken: '00000000-0000-4000-8000-000000000042', id: 42, taskType: 'probe', title: 'Probe', attempts: 2, maxAttempts: 5, retryDelayMs: 7300, createdBy: null, traceId: null };
+    const claimed = { dispatchToken: '00000000-0000-4000-8000-000000000042', id: 42, taskType: 'probe', title: 'Probe', attempts: 2, maxAttempts: 5, retryDelayMs: 7300, createdBy: null, correlationId: null };
     const updates: Record<string, unknown>[] = [];
     mocks.update.mockImplementation(() => ({ set: (patch: Record<string, unknown>) => {
       updates.push(patch);

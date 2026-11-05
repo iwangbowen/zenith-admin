@@ -6,32 +6,29 @@ import { copyTextWithToast } from '@/utils/clipboard';
 const { Text } = Typography;
 
 export default function ObservabilityLink({
-  traceId,
   correlationId,
   compact = false,
 }: Readonly<{
-  traceId: string;
-  correlationId?: string | null;
+  correlationId: string;
   compact?: boolean;
 }>) {
   const navigate = useNavigate();
   return (
     <Space spacing={compact ? 4 : 8} align="center">
-      <Text code ellipsis={{ showTooltip: true }} style={{ maxWidth: compact ? 220 : 360 }}>{traceId}</Text>
+      <Text code ellipsis={{ showTooltip: true }} style={{ maxWidth: compact ? 220 : 360 }}>{correlationId}</Text>
       <Button
         theme="borderless"
         size="small"
         icon={<Copy size={14} />}
-        aria-label="复制 trace_id"
-        onClick={() => void copyTextWithToast(traceId, { success: 'trace_id 已复制' })}
+        aria-label="复制 correlationId"
+        onClick={() => void copyTextWithToast(correlationId, { success: 'correlationId 已复制' })}
       />
-      {correlationId && correlationId !== traceId && <Text type="tertiary" size="small">业务 {correlationId}</Text>}
       <Button
         theme="borderless"
         size="small"
         icon={<ExternalLink size={14} />}
         aria-label="查看链路日志"
-        onClick={() => navigate(`/system/log-files?traceId=${encodeURIComponent(traceId)}`)}
+        onClick={() => navigate(`/system/log-files?correlationId=${encodeURIComponent(correlationId)}`)}
       />
     </Space>
   );

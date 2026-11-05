@@ -279,10 +279,10 @@ export async function getConsoleLogSources() {
 export async function readConsoleLogLines(query: QueryOutputOf<typeof consoleLogContract.content>): Promise<string[]> {
   const role = query.role ?? currentRole();
   const files = (await discoverFiles()).filter((file) => file.role === role);
-  if (!query.keyword?.trim() && !query.traceId && !query.locateTraceId) {
+  if (!query.keyword?.trim() && !query.correlationId && !query.locateCorrelationId) {
     return (await readRecentRecords(files, query.lines ?? 500)).records.map((record) => record.line);
   }
-  // 复用日志工作台的过滤、上下文与 reqId 定位语义；跨轮转文件视为连续行序列。
+  // 复用日志工作台的过滤、上下文与 correlationId 定位语义；跨轮转文件视为连续行序列。
   async function* lines() {
     for (const file of files) {
       const opened = await openLogFile(file);

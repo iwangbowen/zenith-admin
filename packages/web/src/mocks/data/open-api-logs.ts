@@ -50,7 +50,7 @@ function gen(): OpenApiCallLog[] {
         authChannel: bearer ? 'bearer' : 'signature',
         userId: bearer ? 1 : null,
         errorMessage: success ? null : '调用失败',
-        requestId: null,
+        correlationId: null,
         environment: app.environment,
         createdAt: t.format('YYYY-MM-DD HH:mm:ss'),
       });

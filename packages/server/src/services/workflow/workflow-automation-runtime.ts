@@ -63,7 +63,7 @@ function enqueueAction(tx: DbTransaction, eventId: string, position: number, act
   return enqueueJob({
     jobType: 'automation_action', instanceId: context.instance.id, tenantId: context.instance.tenantId,
     payload: { ...action, eventId, position, context, remainingActions }, maxAttempts: MAX_ATTEMPTS,
-    idempotencyKey: `automation:${eventId}:${position}`, traceId: eventId,
+    idempotencyKey: `automation:${eventId}:${position}`, correlationId: eventId,
   }, tx);
 }
 

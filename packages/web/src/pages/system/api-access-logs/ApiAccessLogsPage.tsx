@@ -39,7 +39,7 @@ export default function ApiAccessLogsPage() {
     { title: '操作', dataIndex: 'operationName', width: 210, render: (v: string | null) => renderEllipsis(v) },
     { title: '耗时', dataIndex: 'durationMs', width: 100, align: 'right', render: (v: number | null) => v == null ? '—' : `${v} ms` },
     { title: 'IP 地址', dataIndex: 'ip', width: 145, render: (v: string | null) => v ?? '—' },
-    copyableNoColumn<ApiAccessLogListItem>('请求 ID', 'requestId', { width: 300 }),
+    copyableNoColumn<ApiAccessLogListItem>('关联 ID', 'correlationId', { width: 300 }),
     dateTimeColumn('请求时间', 'createdAt'),
     createOperationColumn<ApiAccessLogListItem>({ width: 90, desktopInlineKeys: ['detail'], actions: (row) => [{ key: 'detail', label: '详情', onClick: () => setDetailId(row.id) }] }),
   ], []);
@@ -48,7 +48,7 @@ export default function ApiAccessLogsPage() {
     <div className="page-container">
       <ListSearchToolbar
         page={page}
-        filters={['accessorName', 'accessorId', 'userId', 'memberId', 'deviceId', 'accessorType', 'credentialType', 'status', 'responseCode', 'clientId', 'method', 'path', 'routePath', 'module', 'operationKey', 'requestId', 'serviceName', 'ip', 'content', ['startTime', 'endTime'], 'minDurationMs', 'maxDurationMs']}
+        filters={['accessorName', 'accessorId', 'userId', 'memberId', 'deviceId', 'accessorType', 'credentialType', 'status', 'responseCode', 'clientId', 'method', 'path', 'routePath', 'module', 'operationKey', 'correlationId', 'serviceName', 'ip', 'content', ['startTime', 'endTime'], 'minDurationMs', 'maxDurationMs']}
         overrides={{
           userId: (p) => <NumberFilter placeholder="管理端用户 ID" min={1} {...p.bind('userId')} />,
           memberId: (p) => <NumberFilter placeholder="会员 ID" min={1} {...p.bind('memberId')} />,
@@ -62,7 +62,7 @@ export default function ApiAccessLogsPage() {
           routePath: (p) => <KeywordInput placeholder="路由模板" {...p.bindKeyword('routePath')} />,
           module: (p) => <KeywordInput placeholder="模块" {...p.bindKeyword('module')} />,
           operationKey: (p) => <KeywordInput placeholder="操作标识" {...p.bindKeyword('operationKey')} />,
-          requestId: (p) => <KeywordInput placeholder="请求 ID（前缀匹配）" {...p.bindKeyword('requestId')} />,
+          correlationId: (p) => <KeywordInput placeholder="关联 ID（前缀匹配）" {...p.bindKeyword('correlationId')} />,
           serviceName: (p) => <KeywordInput placeholder="服务名" {...p.bindKeyword('serviceName')} />,
           ip: (p) => <KeywordInput placeholder="IP 地址" {...p.bindKeyword('ip')} />,
           status: (p) => <FilterSelect width={140} placeholder="全部请求结果" items={OPERATION_LOG_RESULT_OPTIONS} {...p.bind('status')} />,

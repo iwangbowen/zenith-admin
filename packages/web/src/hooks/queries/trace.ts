@@ -4,7 +4,7 @@ import { contractKey, useApiQuery } from '@/lib/contract-query';
 
 export const traceKeys = {
   all: [resourceKeyOf(traceContract.basePath)] as const,
-  of: (traceId: string) => contractKey(traceContract.timeline, { params: { traceId } }),
+  of: (correlationId: string) => contractKey(traceContract.timeline, { params: { correlationId } }),
   recent: (days: number) => contractKey(traceContract.recent, { query: { days } }),
   failures: (params: { days: number; kind: TraceNodeKind | undefined }) => contractKey(traceContract.recentFailures, { query: params }),
 };
@@ -14,9 +14,9 @@ export function useRecentTraces(days: number) {
   return useApiQuery(traceContract.recent, { query: { days } });
 }
 
-/** 链路时间线（纯读；traceId 为空时不请求） */
-export function useTraceTimeline(traceId: string | null) {
-  return useApiQuery(traceContract.timeline, { params: { traceId: traceId ?? '' } }, { enabled: Boolean(traceId) });
+/** 链路时间线（纯读；correlationId 为空时不请求） */
+export function useTraceTimeline(correlationId: string | null) {
+  return useApiQuery(traceContract.timeline, { params: { correlationId: correlationId ?? '' } }, { enabled: Boolean(correlationId) });
 }
 
 /** 最近失败链路（排障入口） */

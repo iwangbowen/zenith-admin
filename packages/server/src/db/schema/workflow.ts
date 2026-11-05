@@ -682,7 +682,7 @@ export const workflowJobs = pgTable('workflow_jobs', {
   /** 幂等键（如 delay:{taskId} / trigger:{taskId}:{attempt} / event:{eventId}），唯一去重 */
   idempotencyKey: varchar({ length: 160 }).unique('workflow_jobs_idempotency_key_unique'),
   /** 贯穿一次推进的所有异步动作，串起任务/事件/触发器/Webhook/子流程 */
-  traceId: varchar({ length: 64 }),
+  correlationId: varchar({ length: 64 }),
   /** 因果父引用（`kind:refId` 或 `request`），链路时间线树形展示的触发源 */
   parentRef: varchar({ length: 32 }),
   /** W3C remote parent captured when the workflow job was enqueued. */
@@ -720,7 +720,7 @@ export const workflowJobs = pgTable('workflow_jobs', {
   index('workflow_jobs_lease_idx').on(t.status, t.leaseUntil),
   index('workflow_jobs_deadline_idx').on(t.status, t.executionDeadline),
   index('workflow_jobs_type_status_idx').on(t.jobType, t.status),
-  index('workflow_jobs_trace_idx').on(t.traceId),
+  index('workflow_jobs_correlation_idx').on(t.correlationId),
   index('workflow_jobs_instance_idx').on(t.instanceId),
 ]);
 

@@ -675,14 +675,14 @@ export default function TaskCenterPage() {
                 { key: '完成时间', value: detailTask.completedAt ? formatDateTime(detailTask.completedAt) : EMPTY_PLACEHOLDER },
                 {
                   key: '链路 ID',
-                  value: detailTask.traceId
+                  value: detailTask.correlationId
                     ? (
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                          <Typography.Text copyable size="small">{detailTask.traceId}</Typography.Text>
+                          <Typography.Text copyable size="small">{detailTask.correlationId}</Typography.Text>
                           {hasPermission('system:trace:view') && (
                             <Button
                               size="small" theme="borderless" type="primary"
-                              onClick={() => navigate(`/system/trace?traceId=${encodeURIComponent(detailTask.traceId!)}`)}
+                              onClick={() => navigate(`/system/trace?correlationId=${encodeURIComponent(detailTask.correlationId!)}`)}
                             >
                               查看链路
                             </Button>

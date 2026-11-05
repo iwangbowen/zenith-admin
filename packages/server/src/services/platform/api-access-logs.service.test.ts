@@ -81,7 +81,7 @@ describe('API access log filtering and projection', () => {
   });
 
   it('escapes LIKE wildcards for path/content and prefixes request IDs', () => {
-    const compiled = render(buildApiAccessLogsWhere({ path: '/api/100%_x', requestId: 'req_7', content: '50%_\\' }));
+    const compiled = render(buildApiAccessLogsWhere({ path: '/api/100%_x', correlationId: 'req_7', content: '50%_\\' }));
     expect(compiled.sql).toContain('"query_params"::text ilike');
     expect(compiled.sql).toContain('"request_body"::text ilike');
     expect(compiled.params).toEqual(['%/api/100\\%\\_x%', 'req\\_7%', '%50\\%\\_\\\\%', '%50\\%\\_\\\\%']);
@@ -108,7 +108,7 @@ describe('API access log filtering and projection', () => {
     expect(render(state.count.mock.calls[0][1])).toEqual(render(chain.where.mock.calls[0][0]));
     const generated = queryBuilder.select(apiAccessLogSummaryColumns).from(apiAccessLogs).toSQL().sql;
     for (const column of ['query_params', 'request_body', 'user_agent', 'error_message']) expect(generated).not.toContain(`"${column}"`);
-    expect(generated).toContain('"request_id"');
+    expect(generated).toContain('"correlation_id"');
     expect(generated).toContain('"response_code"');
   });
 
@@ -120,9 +120,9 @@ describe('API access log filtering and projection', () => {
   });
 
   it('projects detail through the contract and formats its timestamp', async () => {
-    selection([{ id: 42, tenantId: null, accessorId: 'user:1', userId: 1, memberId: null, deviceId: null, clientId: null, accessorName: 'admin', accessorType: 'admin_user', credentialType: 'admin_session', method: 'POST', path: '/api/orders', routePath: '/api/orders', requestId: 'req-42', responseCode: 400, durationMs: 12, requestBody: { password: '***', title: '采购' }, queryParams: {}, createdAt: new Date('2026-11-03T08:00:00Z'), internalCredential: 'must-not-leak' }]);
+    selection([{ id: 42, tenantId: null, accessorId: 'user:1', userId: 1, memberId: null, deviceId: null, clientId: null, accessorName: 'admin', accessorType: 'admin_user', credentialType: 'admin_session', method: 'POST', path: '/api/orders', routePath: '/api/orders', correlationId: 'req-42', responseCode: 400, durationMs: 12, requestBody: { password: '***', title: '采购' }, queryParams: {}, createdAt: new Date('2026-11-03T08:00:00Z'), internalCredential: 'must-not-leak' }]);
     const detail = await getApiAccessLog(42);
-    expect(detail).toMatchObject({ id: 42, requestId: 'req-42', requestBody: { password: '***', title: '采购' }, queryParams: {}, responseCode: 400 });
+    expect(detail).toMatchObject({ id: 42, correlationId: 'req-42', requestBody: { password: '***', title: '采购' }, queryParams: {}, responseCode: 400 });
     expect(detail.createdAt).toMatch(/^2026-11-03 \d{2}:00:00$/);
     expect(detail).not.toHaveProperty('internalCredential');
     expect(detail.impersonatorId).toBeNull();

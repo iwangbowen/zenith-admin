@@ -42,8 +42,8 @@ export const logFileBatchDownloadResultSchema = z.object({
 export type LogFileBatchDownloadResult = z.infer<typeof logFileBatchDownloadResultSchema>;
 
 export const logFileContentQuery = logTailQuery.extend({
-  traceId: z.string().min(8).max(64).optional().meta({ description: '精确匹配日志顶层 reqId，不匹配正文中出现的链路 ID' }),
-  locateTraceId: z.string().min(8).max(64).optional().meta({ description: '定位首条顶层 reqId 匹配的日志，返回其周围最多 N 条连续记录；未找到时返回末尾 N 行，优先于过滤条件' }),
+  correlationId: z.string().min(8).max(64).optional().meta({ description: '精确匹配日志顶层 correlationId，不匹配正文中出现的链路 ID' }),
+  locateCorrelationId: z.string().min(8).max(64).optional().meta({ description: '定位首条顶层 correlationId 匹配的日志，返回其周围最多 N 条连续记录；未找到时返回末尾 N 行，优先于过滤条件' }),
 });
 
 // ─── 契约 ────────────────────────────────────────────────────────────────────

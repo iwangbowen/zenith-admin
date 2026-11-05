@@ -6,7 +6,7 @@ import { getDomainEventDefinition, type DomainEventType } from '@zenith/shared/p
 import type { SubjectRef } from '@zenith/shared/core';
 import type { DbTransaction } from '../db/types';
 import { workflowInstances } from '../db/schema';
-import { currentTraceId } from './context';
+import { currentCorrelationId } from './context';
 import { encryptField } from './encryption';
 import { formatDateTime, parseDateTimeInput } from './datetime';
 import { publishEventInTx } from './domain-events';
@@ -42,7 +42,7 @@ async function emitInTx(event: WorkflowEventInput, tx: DbTransaction): Promise<W
     payload: 'task' in full ? { action: full.type, status: full.task.status } : { instanceId: full.instanceId, status: 'instance' in full ? full.instance.status : '' },
     subjects, tenantId: full.tenantId ?? null, source,
     actor: full.actor ? { type: 'identity.user', key: String(full.actor.userId) } : undefined,
-    traceId: currentTraceId() ?? stored.eventId, dedupeKey: `workflow:${stored.eventId}`,
+    correlationId: currentCorrelationId() ?? stored.eventId, dedupeKey: `workflow:${stored.eventId}`,
   });
   return { ...full, eventId: stored.eventId, occurredAt: formatDateTime(stored.occurredAt) };
 }

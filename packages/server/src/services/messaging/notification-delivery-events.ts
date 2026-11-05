@@ -16,7 +16,7 @@ export async function recordNotificationOutcome(
     eventType: status === 'done' ? 'messaging.notification.dispatched' : 'messaging.notification.failed',
     payload: { eventKey: row.eventKey, status, ...summary },
     subjects: subjects.length ? subjects : [{ ...source, role: 'primary' }], source,
-    tenantId: row.tenantId, traceId: row.traceId, parentRef: row.parentRef,
+    tenantId: row.tenantId, correlationId: row.correlationId, parentRef: row.parentRef,
     dedupeKey: `notification-outbox:${row.id}:${status}:${row.attempts}:${(row.claimedAt ?? row.createdAt).getTime()}`,
   });
 }

@@ -4,7 +4,7 @@ import { stableStringify, type SubjectRef } from '@zenith/shared/core';
 import type { DbTransaction } from '../../db/types';
 import { eventOutbox, eventConsumerDeliveries } from '../../db/schema/event-outbox';
 import { exactTenantCondition } from '../tenant';
-import { currentTraceId, currentParentRef } from '../context';
+import { currentCorrelationId, currentParentRef } from '../context';
 import { matchingEventConsumers } from './registry';
 import { rememberEventPickup } from './publication';
 import { currentPersistedOtelContext } from '../telemetry-context';
@@ -29,7 +29,7 @@ export async function publishEventInTx(tx: DbTransaction, input: PublishEventInp
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${streamKey}, 0))`);
   const matched = matchingEventConsumers(input);
   const [inserted] = await tx.insert(eventOutbox).values({ ...input, scope: input.scope ?? {},
-    eventId: input.eventId ?? randomUUID(), payloadHash, traceId: currentTraceId(), parentRef: currentParentRef(),
+    eventId: input.eventId ?? randomUUID(), payloadHash, correlationId: currentCorrelationId(), parentRef: currentParentRef(),
     ...currentPersistedOtelContext(),
   }).onConflictDoNothing().returning();
   if (!inserted) {

@@ -20,7 +20,7 @@ import logger, { setLoggedErrorSink } from '../logger';
 import { currentMemberOrNull } from '../member-context';
 import { PROCESS_HOSTNAME, PROCESS_PID } from '../process-identity';
 import { getSettings } from '../settings';
-import { currentTraceId } from '../trace-context';
+import { currentCorrelationId } from '../trace-context';
 import { computeServerFingerprint } from './fingerprint';
 import { normalizeThrown } from './normalize';
 import { snapshotRequest } from './scrub';
@@ -218,7 +218,7 @@ function buildInput(cause: unknown, ctx: CaptureContext): ErrorEventInput {
   const username = ctx.username !== undefined ? ctx.username : user?.username ?? member?.identifier ?? null;
   const affectedTenantId = ctx.tenantId !== undefined ? ctx.tenantId : user?.tenantId ?? member?.tenantId ?? null;
   const identity = userId != null ? `u:${userId}` : member?.memberId != null ? `m:${member.memberId}` : null;
-  const traceId = (ctx.traceId !== undefined ? ctx.traceId : currentTraceId()) ?? null;
+  const correlationId = (ctx.correlationId !== undefined ? ctx.correlationId : currentCorrelationId()) ?? null;
   const request = ctx.request;
 
   const context: Record<string, unknown> = {};
@@ -248,7 +248,7 @@ function buildInput(cause: unknown, ctx: CaptureContext): ErrorEventInput {
       userId,
       username: username?.slice(0, 64) ?? null,
       memberId: member?.memberId ?? null,
-      traceId: traceId?.slice(0, 64) ?? null,
+      correlationId: correlationId?.slice(0, 64) ?? null,
       route: request?.route?.slice(0, 256) ?? null,
       errorName: normalized.name,
       errorCode: normalized.code,

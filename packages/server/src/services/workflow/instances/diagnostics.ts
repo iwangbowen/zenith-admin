@@ -455,7 +455,7 @@ export async function getInstanceTrace(id: number): Promise<WorkflowInstanceTrac
     buf.push({
       ts: t.createdAt.getTime(),
       entry: {
-        key: `task-new-${t.id}`, kind: 'task', at: formatDateTime(t.createdAt), traceId: null,
+        key: `task-new-${t.id}`, kind: 'task', at: formatDateTime(t.createdAt), correlationId: null,
         title: `创建${nodeActionWord(t.nodeType)}任务${assigneeName ? `：${assigneeName}` : ''}`,
         status: t.status, nodeName: t.nodeName, assigneeName, comment: null,
         jobId: null, jobType: null, attempts: null, maxAttempts: null, runAt: null, nextRetryAt: null, lastError: null, executions: [],
@@ -465,7 +465,7 @@ export async function getInstanceTrace(id: number): Promise<WorkflowInstanceTrac
       buf.push({
         ts: t.actionAt.getTime(),
         entry: {
-          key: `task-act-${t.id}`, kind: 'task', at: formatDateTime(t.actionAt), traceId: null,
+          key: `task-act-${t.id}`, kind: 'task', at: formatDateTime(t.actionAt), correlationId: null,
           title: `${assigneeName ?? '处理人'} ${ACTION_LABEL[t.status] ?? t.status}`,
           status: t.status, nodeName: t.nodeName, assigneeName, comment: t.comment ?? null,
           jobId: null, jobType: null, attempts: null, maxAttempts: null, runAt: null, nextRetryAt: null, lastError: null, executions: [],
@@ -483,7 +483,7 @@ export async function getInstanceTrace(id: number): Promise<WorkflowInstanceTrac
     buf.push({
       ts: j.createdAt.getTime(),
       entry: {
-        key: `job-${j.id}`, kind: 'job', at: formatDateTime(j.createdAt), traceId: j.traceId,
+        key: `job-${j.id}`, kind: 'job', at: formatDateTime(j.createdAt), correlationId: j.correlationId,
         title: `${JOB_TYPE_LABELS[j.jobType]}${jobPayloadSuffix(j.jobType, j.payload)}`,
         status: j.status, nodeName: jobNodeName(j), assigneeName: null, comment: null,
         jobId: j.id, jobType: j.jobType, attempts: j.attempts, maxAttempts: j.maxAttempts,
@@ -504,7 +504,7 @@ export async function getInstanceTrace(id: number): Promise<WorkflowInstanceTrac
     buf.push({
       ts: tk.createdAt.getTime(),
       entry: {
-        key: `token-new-${tk.id}`, kind: 'token', at: formatDateTime(tk.createdAt), traceId: null,
+        key: `token-new-${tk.id}`, kind: 'token', at: formatDateTime(tk.createdAt), correlationId: null,
         title: `执行 Token #${tk.id} 进入「${nodeName}」`,
         status: tk.status, nodeName, assigneeName: null, comment: branchLabel,
         jobId: null, jobType: null, attempts: null, maxAttempts: null, runAt: null, nextRetryAt: null, lastError: null, executions: [],
@@ -514,7 +514,7 @@ export async function getInstanceTrace(id: number): Promise<WorkflowInstanceTrac
       buf.push({
         ts: tk.consumedAt.getTime(),
         entry: {
-          key: `token-end-${tk.id}`, kind: 'token', at: formatDateTime(tk.consumedAt), traceId: null,
+          key: `token-end-${tk.id}`, kind: 'token', at: formatDateTime(tk.consumedAt), correlationId: null,
           title: `执行 Token #${tk.id} ${tk.status === 'consumed' ? '消费（推进/汇聚）' : '终止'}：「${nodeName}」`,
           status: tk.status, nodeName, assigneeName: null, comment: branchLabel,
           jobId: null, jobType: null, attempts: null, maxAttempts: null, runAt: null, nextRetryAt: null, lastError: null, executions: [],

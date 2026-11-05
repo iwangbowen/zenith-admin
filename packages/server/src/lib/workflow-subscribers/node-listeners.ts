@@ -12,7 +12,7 @@ export function registerNodeListenersSubscriber(): void {
       if (!isPlainObject(listener) || !Array.isArray(listener.events) || !listener.events.includes(listenerEvent)) continue;
       const job = await enqueueJob({ jobType: 'node_listener_delivery', instanceId: event.instanceId, taskId: event.task.id,
         nodeKey: event.task.nodeKey, tenantId: event.tenantId, maxAttempts: 3, executionTimeoutMs: 15_000,
-        idempotencyKey: `node-listener:${event.eventId}:${position}`, traceId: event.eventId,
+        idempotencyKey: `node-listener:${event.eventId}:${position}`, correlationId: event.eventId,
         payload: { event, listener, listenerEvent },
       }, tx);
       if (job) jobIds.push(job.id);

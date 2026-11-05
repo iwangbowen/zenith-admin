@@ -76,7 +76,7 @@ export function createAppWithDomains(routeDomains: readonly RouteDomain[], docCa
   app.use('*', requestId());
   // AsyncLocalStorage 上下文（允许 currentUser()/getCtx() 在辅助函数中零参取值）
   app.use('*', contextStorage());
-  // 链路关联 traceId：贯穿请求触发的工作流作业/事件 fan-out（跨异步/跨实例）
+  // 链路关联 correlationId：贯穿请求触发的工作流作业/事件 fan-out（跨异步/跨实例）
   app.use('*', requestTraceMiddleware);
   // 全量 API 请求访问事实（与业务操作审计 operation_logs 分离）；采集器异步批量落库。
   app.use('/api/*', apiAccessLogMiddleware);
@@ -126,12 +126,13 @@ export function createAppWithDomains(routeDomains: readonly RouteDomain[], docCa
     customSuccessMessage: (req, res, responseTime) =>
       `${req.method} ${req.url} ${res.statusCode} ${responseTime}ms`,
     customErrorMessage: (req, res) => `${req.method} ${req.url} ${res.statusCode}`,
-    // 精简序列化：访问行只留 reqId（quietReqLogger 绑定）+ 方法/路径/状态码/耗时，
+    // 精简序列化：访问行只留 correlationId（quietReqLogger 绑定）+ 方法/路径/状态码/耗时，
     // 不倾倒 req/res 对象与 headers（敏感且冗长）
     serializers: {
       req: () => undefined,
       res: () => undefined,
     },
+    customAttributeKeys: { reqId: 'correlationId' },
     quietReqLogger: true,
   });
   app.use('*', async (c, next) => {
@@ -281,7 +282,7 @@ export function createAppWithDomains(routeDomains: readonly RouteDomain[], docCa
 
   app.notFound((c) => c.json(errBody('接口不存在', 404), 404));
 
-  // 全局未捕获异常处理—统一返回标准错误格式；≥500 进异常日志（含脱敏请求快照），响应体回传 requestId 便于凭号定位
+  // 全局未捕获异常处理—统一返回标准错误格式；≥500 进异常日志（含脱敏请求快照），响应体回传 correlationId 便于凭号定位
   app.onError((err, c) => {
     // OAuth2 协议端点必须返回 RFC 6749 格式，标准客户端库才能正确解析错误语义
     if (err instanceof OAuth2Error) {

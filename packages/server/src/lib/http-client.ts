@@ -3,7 +3,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { formatDateTime } from './datetime';
 import { config } from '../config';
 import logger from './logger';
-import { currentTraceId } from './trace-context';
+import { currentCorrelationId } from './trace-context';
 import { injectOtelHeaders } from './telemetry-context';
 import { assertOutsideEventConsumer } from './domain-events/context';
 import { assertSafeOutboundUrl, createSafeOutboundLookup } from './outbound-url';
@@ -272,9 +272,9 @@ export async function httpRequest(
 
   // 链路传播：X-Request-Id 保留业务排障关联；W3C traceparent 由 OTel 当前
   // context 注入，避免用业务 ID 手工伪造 trace/span 父子关系。
-  const traceId = currentTraceId();
-  if (traceId && !headers.has('X-Request-Id')) {
-    headers.set('X-Request-Id', traceId);
+  const correlationId = currentCorrelationId();
+  if (correlationId && !headers.has('X-Request-Id')) {
+    headers.set('X-Request-Id', correlationId);
   }
   if (!headers.has('traceparent')) injectOtelHeaders(headers);
 

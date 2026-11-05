@@ -184,7 +184,7 @@
   "GET /api/tags",
   "GET /api/tags/:id",
   "GET /api/tags/groups",
-  "GET /api/trace/:traceId",
+  "GET /api/trace/:correlationId",
   "GET /api/trace/recent",
   "GET /api/trace/recent-failures",
   "GET /api/ws",

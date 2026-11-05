@@ -19,7 +19,7 @@ export const mockCmsDistributionRuns: CmsDistributionRun[] =
       createdBy: 1,
       createdByName: '管理员',
       tenantId: null,
-      traceId: null,
+      correlationId: null,
       ruleId: Number(task.payload.ruleId),
       ruleName: SEED_CMS_DISTRIBUTION_RULES.find((rule) => rule.id === Number(task.payload.ruleId))?.name ?? null,
       sourceSiteId: Number(task.payload.sourceSiteId),

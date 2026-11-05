@@ -323,7 +323,7 @@ export const openApiMetering: MiddlewareHandler = async (c, next) => {
     scope: c.get('openScope') ?? null,
     authChannel: principal?.channel ?? null,
     userId: principal?.userId ?? null,
-    requestId: c.res.headers.get('x-request-id'),
+    correlationId: c.res.headers.get('x-request-id'),
     environment: app?.environment ?? 'production',
   }).catch(() => undefined);
 

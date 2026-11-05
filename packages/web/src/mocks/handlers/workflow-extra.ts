@@ -218,7 +218,7 @@ function createScheduleRun(schedule: WorkflowSchedule): WorkflowScheduleRunDetai
   const title = (schedule.titleTemplate || schedule.name).replace(/\{\{\s*date\s*\}\}/g, now.slice(0, 10)).replace(/\{\{\s*datetime\s*\}\}/g, now);
   const run: WorkflowScheduleRunDetail = {
     id: nextScheduleRunId++, jobType: 'schedule_launch', status: 'pending', instanceId: null, instanceTitle: null,
-    definitionName: schedule.definitionName ?? null, taskId: null, nodeKey: null, idempotencyKey: null, traceId: null,
+    definitionName: schedule.definitionName ?? null, taskId: null, nodeKey: null, idempotencyKey: null, correlationId: null,
     payload: { scheduleId: schedule.id, definitionId: schedule.definitionId, initiatorId: schedule.initiatorId, title,
       formData: structuredClone(schedule.formData ?? {}), scheduledAt: now, trigger: 'manual' },
     priority: 100, attempts: 0, maxAttempts: 5, generation: 0, executionTimeoutMs: 600000, runAt: now,

@@ -19,8 +19,8 @@ vi.mock('../../db', () => ({
   },
 }));
 vi.mock('../context', () => ({
-  currentUser: () => null, currentTraceId: () => undefined, currentParentRef: () => undefined,
-  runWithCurrentUser: (_u: unknown, fn: () => unknown) => fn(), runWithTraceId: (_t: unknown, fn: () => unknown) => fn(), runWithParentRef: (_r: unknown, fn: () => unknown) => fn(),
+  currentUser: () => null, currentCorrelationId: () => undefined, currentParentRef: () => undefined,
+  runWithCurrentUser: (_u: unknown, fn: () => unknown) => fn(), runWithCorrelationId: (_t: unknown, fn: () => unknown) => fn(), runWithParentRef: (_r: unknown, fn: () => unknown) => fn(),
 }));
 vi.mock('../process-identity', () => ({ PROCESS_HOSTNAME: 'node-a', PROCESS_PID: 11, PROCESS_ID: 'node-a:11' }));
 vi.mock('../pg-boss-scheduler', () => ({

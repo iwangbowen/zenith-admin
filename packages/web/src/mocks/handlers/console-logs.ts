@@ -1,5 +1,5 @@
 import { HttpResponse } from 'msw';
-import { CONSOLE_LOG_ROLE_OPTIONS, consoleLogContract, matchesLogTraceId, type ConsoleLogRole } from '@zenith/shared/ops';
+import { CONSOLE_LOG_ROLE_OPTIONS, consoleLogContract, matchesLogCorrelationId, type ConsoleLogRole } from '@zenith/shared/ops';
 import { mockOperationLogs } from '@/mocks/data/logs';
 import { mockCronJobLogs } from '@/mocks/data/cron-job-logs';
 import { mock } from '@/mocks/utils/contract';
@@ -10,7 +10,7 @@ function demoLine(role: ConsoleLogRole, sequence: number) {
     const job = mockCronJobLogs[sequence % mockCronJobLogs.length];
     return JSON.stringify({
       level: job.status === 'fail' || job.status === 'timeout' ? 50 : 30, time: Date.now(), hostname: 'zenith-demo', pid: role === 'worker' ? 4201 : 4200,
-      role, reqId: `demo-console-${sequence}`, msg: `[cron] ${job.jobName} · ${job.output ?? job.status}`,
+      role, correlationId: `demo-console-${sequence}`, msg: `[cron] ${job.jobName} · ${job.output ?? job.status}`,
     });
   }
   const item = mockOperationLogs[sequence % mockOperationLogs.length];
@@ -18,7 +18,7 @@ function demoLine(role: ConsoleLogRole, sequence: number) {
   return JSON.stringify({
     level: status >= 500 ? 50 : status >= 400 ? 40 : 30,
     time: Date.now(), hostname: 'zenith-demo', pid: 4200,
-    role, reqId: `demo-console-${sequence}`,
+    role, correlationId: `demo-console-${sequence}`,
     msg: `${item.method} ${item.path} ${status} ${item.durationMs ?? 0}ms · ${item.description}`,
   });
 }
@@ -41,15 +41,15 @@ export const consoleLogsHandlers = [
   mock(consoleLogContract.content, ({ query, ok }) => {
     const lines = history(query.role ?? 'all');
     const limit = query.lines ?? 500;
-    if (query.locateTraceId) {
-      const index = lines.findIndex((line) => matchesLogTraceId(line, query.locateTraceId!));
+    if (query.locateCorrelationId) {
+      const index = lines.findIndex((line) => matchesLogCorrelationId(line, query.locateCorrelationId!));
       const start = Math.max(0, index - Math.floor(limit / 2));
       return ok({ lines: index < 0 ? lines.slice(-limit) : lines.slice(start, start + limit) });
     }
-    if (query.traceId || query.keyword) {
+    if (query.correlationId || query.keyword) {
       const indexes = new Set<number>();
       lines.forEach((line, index) => {
-        if (query.traceId && !matchesLogTraceId(line, query.traceId)) return;
+        if (query.correlationId && !matchesLogCorrelationId(line, query.correlationId)) return;
         if (query.keyword && !line.toLowerCase().includes(query.keyword.toLowerCase())) return;
         for (let i = Math.max(0, index - (query.context ?? 0)); i <= Math.min(lines.length - 1, index + (query.context ?? 0)); i += 1) indexes.add(i);
       });

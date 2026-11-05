@@ -12,7 +12,7 @@ export const mockCmsPublishingTasks: CmsPublishingTask[] = SEED_CMS_PUBLISH_TASK
   createdBy: 1,
   createdByName: '管理员',
   tenantId: null,
-  traceId: null,
+  correlationId: null,
   siteId: Number(item.payload.siteId),
   siteName: 'Zenith 官方网站',
   siteIds: [Number(item.payload.siteId)],

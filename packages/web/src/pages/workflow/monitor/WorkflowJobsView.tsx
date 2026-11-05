@@ -62,7 +62,7 @@ interface ReplayFilterState {
   status: 'dead' | 'failed';
   jobType?: WorkflowJobType;
   instanceId?: number;
-  traceId?: string;
+  correlationId?: string;
   reasonKeyword?: string;
   olderThanMinutes?: number;
   ratePerSecond: number;
@@ -267,10 +267,10 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal, initialStat
 
   const replayCluster = (c: FailureCluster) => {
     const prefill: Partial<ReplayFilterState> =
-      c.dimension === 'jobType' ? { jobType: c.key as WorkflowJobType, reasonKeyword: undefined, instanceId: undefined, traceId: undefined }
-        : c.dimension === 'instance' ? { instanceId: c.instanceId ?? undefined, jobType: undefined, reasonKeyword: undefined, traceId: undefined }
-          : c.dimension === 'trace' ? { traceId: c.traceId ?? undefined, jobType: undefined, reasonKeyword: undefined, instanceId: undefined }
-            : { reasonKeyword: c.reasonKeyword ?? undefined, jobType: undefined, instanceId: undefined, traceId: undefined };
+      c.dimension === 'jobType' ? { jobType: c.key as WorkflowJobType, reasonKeyword: undefined, instanceId: undefined, correlationId: undefined }
+        : c.dimension === 'instance' ? { instanceId: c.instanceId ?? undefined, jobType: undefined, reasonKeyword: undefined, correlationId: undefined }
+          : c.dimension === 'trace' ? { correlationId: c.correlationId ?? undefined, jobType: undefined, reasonKeyword: undefined, instanceId: undefined }
+            : { reasonKeyword: c.reasonKeyword ?? undefined, jobType: undefined, instanceId: undefined, correlationId: undefined };
     setClustersOpen(false);
     openReplay(prefill);
   };
@@ -281,7 +281,7 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal, initialStat
     ...compactParams({
       jobType: f.jobType,
       instanceId: f.instanceId,
-      traceId: f.traceId?.trim(),
+      correlationId: f.correlationId?.trim(),
       reasonKeyword: f.reasonKeyword?.trim(),
       olderThanMinutes: f.olderThanMinutes,
     }),
@@ -323,19 +323,19 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal, initialStat
     setDetailId(id);
   }, []);
 
-  const openChain = useCallback((traceId: string) => {
+  const openChain = useCallback((correlationId: string) => {
     setChainVisible(true);
-    setChainTraceId(traceId);
+    setChainTraceId(correlationId);
   }, []);
 
-  // 4A traceId 诊断包：聚合该链路涉及实例的诊断/轨迹/Token，导出 JSON 供工单留档/离线分析
+  // 4A correlationId 诊断包：聚合该链路涉及实例的诊断/轨迹/Token，导出 JSON 供工单留档/离线分析
   const [bundleLoading, setBundleLoading] = useState(false);
-  const downloadTraceBundle = useCallback(async (traceId: string) => {
+  const downloadTraceBundle = useCallback(async (correlationId: string) => {
     setBundleLoading(true);
     try {
-      const bundle = await api(workflowEngineContract.jobChainBundle, { params: { traceId } }, { silent: true });
+      const bundle = await api(workflowEngineContract.jobChainBundle, { params: { correlationId } }, { silent: true });
       const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
-      downloadBlob(blob, `workflow-trace-${traceId}.json`);
+      downloadBlob(blob, `workflow-trace-${correlationId}.json`);
     } catch {
       Toast.error('导出失败');
     } finally {
@@ -670,11 +670,11 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal, initialStat
                 { key: '优先级', value: detail.priority },
                 { key: '计划执行', value: formatDateTime(detail.runAt) },
                 { key: '幂等键', value: detail.idempotencyKey ?? EMPTY_PLACEHOLDER },
-                { key: 'TraceId', value: detail.traceId
+                { key: 'TraceId', value: detail.correlationId
                   ? (
                       <Space spacing={4} wrap>
-                        <Typography.Text copyable style={{ minWidth: 0, overflowWrap: 'anywhere' }}>{detail.traceId}</Typography.Text>
-                        <Button theme="borderless" size="small" style={{ padding: 0, height: 'auto' }} onClick={() => detail.traceId && void openChain(detail.traceId)}>查看链路</Button>
+                        <Typography.Text copyable style={{ minWidth: 0, overflowWrap: 'anywhere' }}>{detail.correlationId}</Typography.Text>
+                        <Button theme="borderless" size="small" style={{ padding: 0, height: 'auto' }} onClick={() => detail.correlationId && void openChain(detail.correlationId)}>查看链路</Button>
                       </Space>
                     )
                   : EMPTY_PLACEHOLDER },
@@ -750,8 +750,8 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal, initialStat
         {!chainLoading && chain && (
           <Space vertical align="start" style={{ width: '100%' }} spacing={12}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: 8 }}>
-              <Typography.Text size="small" type="tertiary" style={{ wordBreak: 'break-all' }}>traceId：{chain.traceId}</Typography.Text>
-              <Button size="small" theme="borderless" icon={<Download size={14} />} loading={bundleLoading} onClick={() => void downloadTraceBundle(chain.traceId)}>
+              <Typography.Text size="small" type="tertiary" style={{ wordBreak: 'break-all' }}>correlationId：{chain.correlationId}</Typography.Text>
+              <Button size="small" theme="borderless" icon={<Download size={14} />} loading={bundleLoading} onClick={() => void downloadTraceBundle(chain.correlationId)}>
                 导出诊断包
               </Button>
             </div>
@@ -842,7 +842,7 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal, initialStat
               <Form.InputNumber field="instanceId" label="实例 ID" placeholder="不限" min={1} style={{ width: '100%' }} />
             </Col>
             <Col span={12}>
-              <Form.Input field="traceId" label="TraceId" placeholder="不限" showClear />
+              <Form.Input field="correlationId" label="TraceId" placeholder="不限" showClear />
             </Col>
             <Col span={12}>
               <Form.Input field="reasonKeyword" label="错误关键字" placeholder="按 lastError 模糊匹配" showClear />

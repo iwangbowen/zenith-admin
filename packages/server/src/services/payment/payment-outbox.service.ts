@@ -2,7 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import type { DbTransaction } from '../../db/types';
 import type { PaymentEvent, PaymentEventType } from '../../lib/payment-event';
-import { currentParentRef, currentTraceId } from '../../lib/context';
+import { currentParentRef, currentCorrelationId } from '../../lib/context';
 import { publishEventInTx } from '../../lib/domain-events';
 import { recordDomainEvent } from '../platform/relations/events.service';
 
@@ -20,7 +20,7 @@ export async function recordEvent(tx: DbTransaction, input: OutboxEventInput): P
   await recordDomainEvent(tx, {
     eventType: input.type, payload: input.payload, subjects: input.payload.subjectRefs, tenantId: input.tenantId,
     source: input.payload.subjectRefs.find((subject) => subject.role === 'primary') ?? input.payload.subjectRefs[0],
-    traceId: currentTraceId(), parentRef: currentParentRef(), dedupeKey: `payment:${eventId}`,
+    correlationId: currentCorrelationId(), parentRef: currentParentRef(), dedupeKey: `payment:${eventId}`,
   });
   await publishEventInTx(tx, {
     domain: 'payment', eventType: input.type, tenantId: input.tenantId,

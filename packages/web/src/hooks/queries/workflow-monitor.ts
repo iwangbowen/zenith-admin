@@ -61,7 +61,7 @@ export const workflowMonitorKeys = {
   jobDetails: contractKey(workflowEngineContract.jobDetail),
   jobDetail: (id: number) => contractKey(workflowEngineContract.jobDetail, { params: { id } }),
   jobChains: contractKey(workflowEngineContract.jobChain),
-  jobChain: (traceId: string) => contractKey(workflowEngineContract.jobChain, { params: { traceId } }),
+  jobChain: (correlationId: string) => contractKey(workflowEngineContract.jobChain, { params: { correlationId } }),
   jobRuntimeStatus: contractKey(workflowEngineContract.jobRuntimeStatus),
   jobSummary: contractKey(workflowEngineContract.jobsSummary),
   jobFailureClusterLists: contractKey(workflowEngineContract.failureClusters),
@@ -123,9 +123,9 @@ export function fetchWorkflowDiagnosticBundle(instanceId: number) {
   return api(workflowInstanceOpsContract.diagnosticBundle, { params: { id: instanceId } });
 }
 
-/** traceId 诊断包（作业链路 + 涉及实例诊断聚合） */
-export function fetchWorkflowTraceDiagnosticBundle(traceId: string) {
-  return api(workflowEngineContract.jobChainBundle, { params: { traceId } });
+/** correlationId 诊断包（作业链路 + 涉及实例诊断聚合） */
+export function fetchWorkflowTraceDiagnosticBundle(correlationId: string) {
+  return api(workflowEngineContract.jobChainBundle, { params: { correlationId } });
 }
 
 export function useWorkflowAnalytics(definitionId: number | undefined) {
@@ -144,8 +144,8 @@ export function useWorkflowJobDetail(id: number | undefined, enabled = true) {
   return useApiQuery(workflowEngineContract.jobDetail, { params: { id: id ?? 0 } }, { enabled: enabled && id !== undefined });
 }
 
-export function useWorkflowJobChain(traceId: string | undefined, enabled = true) {
-  return useApiQuery(workflowEngineContract.jobChain, { params: { traceId: traceId ?? '' } }, { enabled: enabled && !!traceId });
+export function useWorkflowJobChain(correlationId: string | undefined, enabled = true) {
+  return useApiQuery(workflowEngineContract.jobChain, { params: { correlationId: correlationId ?? '' } }, { enabled: enabled && !!correlationId });
 }
 
 export function useWorkflowJobRuntimeStatus() {

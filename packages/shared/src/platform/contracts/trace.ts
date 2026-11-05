@@ -20,7 +20,7 @@ export const traceTimelineNodeSchema = z.object({
 export type TraceTimelineNode = z.infer<typeof traceTimelineNodeSchema>;
 
 export const traceTimelineSchema = z.object({
-  traceId: z.string(),
+  correlationId: z.string(),
   nodes: z.array(traceTimelineNodeSchema),
 }).meta({ id: 'TraceTimeline' });
 
@@ -28,7 +28,7 @@ export type TraceTimeline = z.infer<typeof traceTimelineSchema>;
 
 /** 最近链路条目（无 ID 时的浏览入口） */
 export const traceListEntrySchema = z.object({
-  traceId: z.string(),
+  correlationId: z.string(),
   ts: z.string().meta({ description: '最近活动时间', example: '2026-08-28 12:00:00' }),
   title: z.string().meta({ description: '入口摘要（首个请求的方法路径 / 触发作业 / 任务标题）' }),
   status: z.enum(TRACE_NODE_STATUSES).meta({ description: '汇总状态：任一节点失败为 failed，否则有在途节点为 running / pending，全成功为 success' }),
@@ -42,7 +42,7 @@ export type TraceListEntry = z.infer<typeof traceListEntrySchema>;
 export const traceFailureEntrySchema = z.object({
   kind: z.enum(TRACE_NODE_KINDS),
   refId: z.int(),
-  traceId: z.string(),
+  correlationId: z.string(),
   title: z.string(),
   error: z.string(),
   ts: z.string().meta({ example: '2026-08-28 12:00:00' }),
@@ -52,8 +52,8 @@ export type TraceFailureEntry = z.infer<typeof traceFailureEntrySchema>;
 
 // ─── 入参 ────────────────────────────────────────────────────────────────────
 
-export const traceIdParam = z.object({
-  traceId: z.string().min(8).max(64).meta({ description: '链路 ID（= 请求的 X-Request-Id）' }),
+export const correlationIdParam = z.object({
+  correlationId: z.string().min(8).max(64).meta({ description: '链路 ID（= 请求的 X-Request-Id）' }),
 });
 
 export const traceFailureListQuery = z.object({
@@ -70,5 +70,5 @@ export const traceListQuery = z.object({
 export const traceContract = defineContract('/api/trace', {
   recent: op.get('/recent', { access: { permission: 'system:trace:view' }, query: traceListQuery, response: z.array(traceListEntrySchema), summary: '最近链路（按最近活动时间倒序，含节点 / 失败计数与汇总状态）' }),
   recentFailures: op.get('/recent-failures', { access: { permission: 'system:trace:view' }, query: traceFailureListQuery, response: z.array(traceFailureEntrySchema), summary: '最近失败链路（请求 5xx / 作业失败 / 任务失败 / 通知派发失败）' }),
-  timeline: op.get('/{traceId}', { access: { permission: 'system:trace:view' }, params: traceIdParam, response: traceTimelineSchema, summary: '按 traceId 聚合一次操作的时间线（请求/作业/事件/通知/任务）' }),
+  timeline: op.get('/{correlationId}', { access: { permission: 'system:trace:view' }, params: correlationIdParam, response: traceTimelineSchema, summary: '按 correlationId 聚合一次操作的时间线（请求/作业/事件/通知/任务）' }),
 }, { tags: ['链路追踪'] });

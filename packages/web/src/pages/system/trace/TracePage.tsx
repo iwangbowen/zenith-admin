@@ -46,7 +46,7 @@ const KIND_COLORS = {
 const TRACE_ID_RE = /^[\w-]{8,64}$/;
 
 /** 按日志的链路标识检索，历史链路优先打开节点发生日期的日志。 */
-function TraceLogsPanel({ traceId, nodes }: { traceId: string; nodes: TraceTimelineNode[] }) {
+function TraceLogsPanel({ correlationId, nodes }: { correlationId: string; nodes: TraceTimelineNode[] }) {
   const navigate = useNavigate();
   const filesQuery = useLogFiles();
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
@@ -68,7 +68,7 @@ function TraceLogsPanel({ traceId, nodes }: { traceId: string; nodes: TraceTimel
   const activeFile = selectedFile && appFiles.some((f) => f.name === selectedFile)
     ? selectedFile
     : appFiles[0]?.name;
-  const contentQuery = useLogFileContent(activeFile, { lines: 5000, traceId }, Boolean(activeFile));
+  const contentQuery = useLogFileContent(activeFile, { lines: 5000, correlationId }, Boolean(activeFile));
   const lines = useMemo(() => contentQuery.data?.lines ?? [], [contentQuery.data]);
   // 与日志文件页同一套行配色：语法分词 + 行级别底色 + 用户所选调色板。
   const palette = useLogPalette();
@@ -77,7 +77,7 @@ function TraceLogsPanel({ traceId, nodes }: { traceId: string; nodes: TraceTimel
   /** 日志文件页按链路精确定位并保留周围日志，避免把查询 URL 当作匹配目标。 */
   const handleViewInLogFiles = () => {
     if (!activeFile) return;
-    const params = new URLSearchParams({ file: activeFile, traceId });
+    const params = new URLSearchParams({ file: activeFile, correlationId });
     navigate(`/system/log-files?${params.toString()}`);
   };
 
@@ -127,13 +127,13 @@ function TraceLogsPanel({ traceId, nodes }: { traceId: string; nodes: TraceTimel
 }
 
 /** 最近链路列表（无 ID 时的默认浏览入口） */
-function RecentTracesPanel({ onView }: { onView: (traceId: string) => void }) {
+function RecentTracesPanel({ onView }: { onView: (correlationId: string) => void }) {
   const [days, setDays] = useState(7);
   const tracesQuery = useRecentTraces(days);
   const columns: ColumnProps<TraceListEntry>[] = [
     dateTimeColumn('最近活动', 'ts'),
     { title: '入口摘要', dataIndex: 'title', minWidth: 220, render: (v: string) => renderEllipsis(v) },
-    { title: '链路 ID', dataIndex: 'traceId', width: 390, render: (v: string) => <ObservabilityLink traceId={v} compact /> },
+    { title: '链路 ID', dataIndex: 'correlationId', width: 390, render: (v: string) => <ObservabilityLink correlationId={v} compact /> },
     {
       title: '状态', dataIndex: 'status', width: 90,
       render: (v: TraceNodeStatus) => <Tag size="small" color={STATUS_META[v].color}>{TRACE_NODE_STATUS_LABELS[v]}</Tag>,
@@ -145,7 +145,7 @@ function RecentTracesPanel({ onView }: { onView: (traceId: string) => void }) {
     },
     createOperationColumn<TraceListEntry>({
       width: 120,
-      actions: (r) => [{ key: 'view', label: '查看链路', onClick: () => onView(r.traceId) }],
+      actions: (r) => [{ key: 'view', label: '查看链路', onClick: () => onView(r.correlationId) }],
     }),
   ];
 
@@ -163,7 +163,7 @@ function RecentTracesPanel({ onView }: { onView: (traceId: string) => void }) {
         columnSettings={false}
         columns={columns}
         {...listTableProps(tracesQuery, {
-          rowKey: (r?: TraceListEntry) => r?.traceId ?? '',
+          rowKey: (r?: TraceListEntry) => r?.correlationId ?? '',
           empty: '时间窗内没有链路记录',
         })}
         pagination={false}
@@ -176,7 +176,7 @@ function RecentTracesPanel({ onView }: { onView: (traceId: string) => void }) {
 }
 
 /** 最近失败链路列表（排障入口：不知道 ID 时从这里进） */
-function RecentFailuresPanel({ onView }: { onView: (traceId: string) => void }) {
+function RecentFailuresPanel({ onView }: { onView: (correlationId: string) => void }) {
   const [days, setDays] = useState(7);
   const [kind, setKind] = useState<TraceNodeKind | undefined>();
   const failuresQuery = useRecentTraceFailures(days, kind);
@@ -190,7 +190,7 @@ function RecentFailuresPanel({ onView }: { onView: (traceId: string) => void }) 
     dateTimeColumn('发生时间', 'ts'),
     createOperationColumn<TraceFailureEntry>({
       width: 120,
-      actions: (r) => [{ key: 'view', label: '查看链路', onClick: () => onView(r.traceId) }],
+      actions: (r) => [{ key: 'view', label: '查看链路', onClick: () => onView(r.correlationId) }],
     }),
   ];
 
@@ -230,23 +230,23 @@ function RecentFailuresPanel({ onView }: { onView: (traceId: string) => void }) 
 export default function TracePage() {
   const { hasPermission } = usePermission();
   const [searchParams, setSearchParams] = useSearchParams();
-  const traceId = searchParams.get('traceId');
+  const correlationId = searchParams.get('correlationId');
   const [activeTab, setActiveTab] = useUrlTabState(['query', 'failures'] as const, 'query');
-  const [draft, setDraft] = useState(traceId ?? '');
+  const [draft, setDraft] = useState(correlationId ?? '');
   const [detailNode, setDetailNode] = useState<TraceTimelineNode | null>(null);
 
-  const timelineQuery = useTraceTimeline(traceId);
+  const timelineQuery = useTraceTimeline(correlationId);
   const nodes = useMemo(() => timelineQuery.data?.nodes ?? [], [timelineQuery.data]);
 
   /**
-   * 只改写自己的 traceId 参数（写新值 / 传 null 删除）。
+   * 只改写自己的 correlationId 参数（写新值 / 传 null 删除）。
    * 基础是 router 给的 searchParams 而非整份替换，页签等其它查询参数原样保留——
    * 与 `useUrlTabState` 的「各写各的参数」一致；参数无变化时不写 URL，不污染历史记录。
    */
   function applyTraceId(next: string | null) {
     const params = new URLSearchParams(searchParams);
-    if (next) params.set('traceId', next);
-    else params.delete('traceId');
+    if (next) params.set('correlationId', next);
+    else params.delete('correlationId');
     if (params.toString() !== searchParams.toString()) setSearchParams(params);
   }
 
@@ -258,12 +258,12 @@ export default function TracePage() {
 
   /**
    * 清空查询：输入框叉号与「重置」共用。
-   * 叉号只把受控值置空，若不摘掉 URL 上的 traceId，已查出的时间线会留在页面上（且「查询」按钮此时已禁用，无路可退）。
+   * 叉号只把受控值置空，若不摘掉 URL 上的 correlationId，已查出的时间线会留在页面上（且「查询」按钮此时已禁用，无路可退）。
    */
   function handleReset() {
     setDraft('');
     setDetailNode(null);
-    if (traceId) applyTraceId(null);
+    if (correlationId) applyTraceId(null);
   }
 
   /** 失败 / 最近链路列表行点击：回填 ID、切到查询 Tab 并触发查询 */
@@ -325,10 +325,10 @@ export default function TracePage() {
               showClear
             />
             <SearchButton onClick={handleSearch} disabled={!TRACE_ID_RE.test(draft.trim())} />
-            <ResetButton onClick={handleReset} disabled={!traceId && draft === ''} />
+            <ResetButton onClick={handleReset} disabled={!correlationId && draft === ''} />
           </div>
 
-          {!traceId ? (
+          {!correlationId ? (
             <RecentTracesPanel onView={handleViewTrace} />
           ) : (
             <Spin spinning={timelineQuery.isFetching}>
@@ -338,7 +338,7 @@ export default function TracePage() {
                 <>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16, alignItems: 'center' }}>
                     <Text type="tertiary" size="small">共 {nodes.length} 个节点：</Text>
-                    <ObservabilityLink traceId={traceId} compact />
+                    <ObservabilityLink correlationId={correlationId} compact />
                     {[...kindCounts.entries()].map(([kind, count]) => (
                       <Tag key={kind} size="small" color={KIND_COLORS[kind as TraceTimelineNode['kind']]}>
                         {TRACE_NODE_KIND_LABELS[kind as TraceTimelineNode['kind']]} × {count}
@@ -368,7 +368,7 @@ export default function TracePage() {
                   {!timelineQuery.isPending && !timelineQuery.isError && hasPermission('system:log:files') && (
                     <Collapse style={{ marginTop: 16 }} defaultActiveKey={['logs']}>
                       <Collapse.Panel header="应用日志（按链路 ID 过滤）" itemKey="logs">
-                        <TraceLogsPanel key={traceId} traceId={traceId} nodes={nodes} />
+                        <TraceLogsPanel key={correlationId} correlationId={correlationId} nodes={nodes} />
                       </Collapse.Panel>
                     </Collapse>
                   )}

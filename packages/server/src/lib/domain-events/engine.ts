@@ -6,7 +6,7 @@ import type { DbTransaction } from '../../db/types';
 import { registerSystemLedgerWorker } from '../pg-boss-scheduler';
 import { flushTransactionEffects } from '../transaction-effects';
 import logger from '../logger';
-import { runWithTraceId, runWithParentRef } from '../context';
+import { runWithCorrelationId, runWithParentRef } from '../context';
 import { runWithPersistedOtelContext } from '../telemetry-context';
 import { EventLeaseLostError, getEventConsumer, PermanentEventError } from './registry';
 import { captureException } from '../error-tracking/reporter';
@@ -67,7 +67,7 @@ export async function executeEventConsumer(delivery: ConsumerDeliveryRow): Promi
       if (!event) throw new PermanentEventError('Event fact is missing');
       const consumer = getEventConsumer(current.consumerKey);
       const parentRef = `event:${event.eventId.replaceAll('-', '').slice(0, 25)}`;
-      const result = await runWithPersistedOtelContext(event, () => runWithTraceId(event.traceId ?? event.eventId, () =>
+      const result = await runWithPersistedOtelContext(event, () => runWithCorrelationId(event.correlationId ?? event.eventId, () =>
         runWithParentRef(parentRef, () => runInEventConsumer(current.consumerKey, () => consumer.handle(tx, event, current)))));
       const status = result.outcome === 'skipped' ? 'skipped' : 'succeeded';
       const confirmed = await tx.update(deliveries).set({ status, result: { ...result }, finishedAt: now, lastError: null, ...clearLease })

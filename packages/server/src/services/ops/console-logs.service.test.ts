@@ -87,15 +87,15 @@ describe('应用日志来源和历史窗口', () => {
     await expect(getConsoleLogSources()).rejects.toMatchObject({ code: 'ENOTDIR' });
   });
 
-  it('按日期与数字序号跨文件读取最后 N 行，并复用关键词上下文和 reqId 定位', async () => {
-    const original = JSON.stringify({ reqId: 'request-one', msg: 'business error' });
+  it('按日期与数字序号跨文件读取最后 N 行，并复用关键词上下文和 correlationId 定位', async () => {
+    const original = JSON.stringify({ correlationId: 'request-one', msg: 'business error' });
     await write('app-api.2026-10-22.9.log', `old\n${original}\n`);
     await write('app-api.2026-10-22.10.log', 'after\n');
     await write(fileB, 'latest\npartial');
     await expect(readConsoleLogLines({ lines: 3 })).resolves.toEqual([original, 'after', 'latest']);
     await expect(readConsoleLogLines({ lines: 5, keyword: 'ERROR', context: 1 })).resolves.toEqual(['old', original, 'after']);
-    await expect(readConsoleLogLines({ lines: 3, locateTraceId: 'request-one' })).resolves.toEqual(['old', original, 'after']);
-    await expect(readConsoleLogLines({ lines: 5, traceId: 'request-one' })).resolves.toEqual([original]);
+    await expect(readConsoleLogLines({ lines: 3, locateCorrelationId: 'request-one' })).resolves.toEqual(['old', original, 'after']);
+    await expect(readConsoleLogLines({ lines: 5, correlationId: 'request-one' })).resolves.toEqual([original]);
   });
 
   it('文件打开失败向调用者报告，不能伪装成没有日志', async () => {

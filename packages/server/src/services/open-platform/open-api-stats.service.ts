@@ -317,7 +317,7 @@ export async function listOpenApiCallLogs(opts: OpenApiCallLogQuery) {
       authChannel: (r.authChannel ?? null) as 'bearer' | 'signature' | null,
       userId: r.userId ?? null,
       errorMessage: r.errorMessage ?? null,
-      requestId: r.requestId ?? null,
+      correlationId: r.correlationId ?? null,
       environment: r.environment as 'production' | 'sandbox',
       createdAt: formatDateTime(r.createdAt),
     }),

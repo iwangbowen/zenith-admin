@@ -25,7 +25,7 @@ export function registerWorkflowEventConsumers(): void {
     for (const sub of subscriptions) {
       const job = await enqueueJob({ jobType: 'webhook_delivery', instanceId: event.instanceId,
         taskId: 'task' in event ? event.task.id : null, tenantId: event.tenantId, maxAttempts: 5,
-        idempotencyKey: `webhook:${event.eventId}:${sub.id}`, traceId: event.eventId,
+        idempotencyKey: `webhook:${event.eventId}:${sub.id}`, correlationId: event.eventId,
         payload: { subscriptionId: sub.id, event, subscriptionSnapshot: { url: sub.url, headers: sub.headers, signMode: sub.signMode, connectorId: sub.connectorId } },
       }, tx);
       if (job) jobIds.push(job.id);

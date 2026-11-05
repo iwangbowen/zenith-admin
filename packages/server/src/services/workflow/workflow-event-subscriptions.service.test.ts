@@ -18,7 +18,7 @@ const row: Parameters<typeof mapDelivery>[0] = {
     requestBody: '{}', responseStatus: null, responseBody: null, errorMessage: 'connection failed', durationMs: 100,
     scheduledAt: at, startedAt: at, finishedAt: at, tenantId: null, createdAt: at },
   job: { id: 1, jobType: 'webhook_delivery', status: 'pending', instanceId: 46, taskId: null, nodeKey: null,
-    idempotencyKey: 'webhook:event-1:1', traceId: 'event-1', parentRef: null,
+    idempotencyKey: 'webhook:event-1:1', correlationId: 'event-1', parentRef: null,
     payload: { subscriptionId: 1, event: { eventId: 'event-1', type: 'instance.approved' } },
     priority: 100, attempts: 1, maxAttempts: 5, generation: 0, operationKey: 'operation-1', executionTimeoutMs: 10000,
     runAt: at, lockedAt: null, lockedBy: null, leaseToken: null, leaseUntil: null, executionDeadline: null,

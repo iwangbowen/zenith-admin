@@ -110,7 +110,7 @@ async function enqueueDeferred(
         ? `entity-watch-deferred:${String(row.vars.eventId)}:${item.recipient.id}:${item.channel}:${Math.floor(item.deferUntil.getTime() / 60_000)}` : null,
       scheduledAt: item.deferUntil,
       digestKey: row.eventKey === 'platform.entity.changed' ? null : item.digestKey,
-      traceId: row.traceId,
+      correlationId: row.correlationId,
       parentRef: row.parentRef,
       tenantId: row.tenantId,
     }))).onConflictDoNothing({ target: notificationOutbox.dedupeKey, where: sql`${notificationOutbox.dedupeKey} is not null` }).returning({ id: notificationOutbox.id });

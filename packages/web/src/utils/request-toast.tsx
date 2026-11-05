@@ -7,8 +7,8 @@ const REQUEST_TOAST_DURATION = 4;
 let activeToastId: string | null = null;
 let lastToastKey = '';
 
-function showRequestToast(type: RequestToastType, content: string, reqId?: string | null): void {
-  const key = `${type}:${content}:${reqId ?? ''}`;
+function showRequestToast(type: RequestToastType, content: string, correlationId?: string | null): void {
+  const key = `${type}:${content}:${correlationId ?? ''}`;
 
   // 同内容且 toast 仍可见：直接丢弃，避免高频同错误下反复关旧开新造成闪烁
   if (activeToastId && key === lastToastKey) {
@@ -25,17 +25,17 @@ function showRequestToast(type: RequestToastType, content: string, reqId?: strin
   let toastId = '';
   const options = {
     // 服务端错误附链路 ID（可复制），用户报障时一键提供给管理员按链路排查
-    content: reqId
+    content: correlationId
       ? (
           <span>
             {content}
             <Typography.Text
               size="small"
               type="tertiary"
-              copyable={{ content: reqId }}
+              copyable={{ content: correlationId }}
               style={{ display: 'block', marginTop: 2 }}
             >
-              链路ID: {reqId.slice(0, 8)}…
+              关联 ID: {correlationId.slice(0, 8)}…
             </Typography.Text>
           </span>
         )
@@ -52,8 +52,8 @@ function showRequestToast(type: RequestToastType, content: string, reqId?: strin
   activeToastId = toastId;
 }
 
-export function showRequestErrorToast(content: string, reqId?: string | null): void {
-  showRequestToast('error', content, reqId);
+export function showRequestErrorToast(content: string, correlationId?: string | null): void {
+  showRequestToast('error', content, correlationId);
 }
 
 export function showRequestWarningToast(content: string): void {

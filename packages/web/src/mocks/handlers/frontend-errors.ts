@@ -79,7 +79,7 @@ function buildEvents(groupId: number, n: number): ErrorEvent[] {
     environment: 'production' as const,
     memberId: null,
     replayId: i === 0 ? '11111111-1111-4111-8111-111111111111' : null,
-    traceId: g.errorType === 'http_error' ? `req-${groupId}-${i}` : null,
+    correlationId: g.errorType === 'http_error' ? `req-${groupId}-${i}` : null,
     route: null,
     errorName: null,
     errorCode: null,

@@ -131,7 +131,7 @@ export function buildApiAccessLogEntry(c: Context, snapshot: Awaited<ReturnType<
     method: c.req.method.slice(0, 16),
     path: loggedPath(c).slice(0, 512),
     routePath: truncateVarchar(c.req.routePath === '/*' ? undefined : c.req.routePath, 512),
-    requestId: truncateVarchar(c.get('requestId'), 64),
+    correlationId: truncateVarchar(c.get('requestId'), 64),
     queryParams: snapshot.query,
     requestBody: snapshot.body,
     module: truncateVarchar(operation?.module, 128),
@@ -142,7 +142,7 @@ export function buildApiAccessLogEntry(c: Context, snapshot: Awaited<ReturnType<
     durationMs: Math.min(2_147_483_647, Math.max(0, Math.round(performance.now() - startedTick))),
     errorName: truncateVarchar(error?.name, 128),
     // Raw exception messages can embed URL credentials or SQL parameters. Look up the
-    // scrubbed error event by requestId instead of duplicating that unstructured text.
+    // scrubbed error event by correlationId instead of duplicating that unstructured text.
     errorMessage: error ? `HTTP ${c.res.status}` : null,
     serviceName: truncateVarchar(config.otel.serviceName, 128),
     processRole: config.roles.label,

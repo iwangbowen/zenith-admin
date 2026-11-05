@@ -71,7 +71,7 @@ describe('API access logging with real Hono requests and a database sink substit
     app.get('/api/probe/:id', (c) => c.json({ ok: true }));
     await app.request('/api/probe/7?token=secret&password=hidden&sign=signature&page=2', { headers: { 'x-request-id': 'access-123', 'x-forwarded-for': '8.8.8.8' } });
     const log = await onlyRecord();
-    expect(log).toMatchObject({ path: '/api/probe/7', routePath: '/api/probe/:id', requestId: 'access-123', ip: '127.0.0.1', accessorType: 'anonymous', credentialType: 'none', queryParams: { token: '***', password: '***', sign: '***', page: '2' } });
+    expect(log).toMatchObject({ path: '/api/probe/7', routePath: '/api/probe/:id', correlationId: 'access-123', ip: '127.0.0.1', accessorType: 'anonymous', credentialType: 'none', queryParams: { token: '***', password: '***', sign: '***', page: '2' } });
     expect(log.createdAt).toBeInstanceOf(Date);
   });
 

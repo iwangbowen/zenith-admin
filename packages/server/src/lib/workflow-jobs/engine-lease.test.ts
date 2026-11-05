@@ -104,8 +104,8 @@ const model = vi.hoisted(() => {
 vi.mock('drizzle-orm', () => model.operations);
 vi.mock('../../db', () => ({ db: model.db }));
 vi.mock('../../db/schema', () => model.tables);
-vi.mock('../context', () => ({ currentTraceId: () => null, currentParentRef: () => null,
-  runWithTraceId: (_id: string, fn: () => unknown) => fn(), runWithParentRef: (_id: string, fn: () => unknown) => fn() }));
+vi.mock('../context', () => ({ currentCorrelationId: () => null, currentParentRef: () => null,
+  runWithCorrelationId: (_id: string, fn: () => unknown) => fn(), runWithParentRef: (_id: string, fn: () => unknown) => fn() }));
 vi.mock('../pg-boss-scheduler', () => ({ registerSystemLedgerWorker: vi.fn(), sendSystemJob: model.send }));
 vi.mock('../logger', () => ({ default: { warn: vi.fn(), error: vi.fn() } }));
 vi.mock('../datetime', () => ({ formatDateTime: (date: Date) => date.toISOString() }));

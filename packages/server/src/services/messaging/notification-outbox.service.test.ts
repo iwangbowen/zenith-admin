@@ -66,7 +66,7 @@ function makeRow(id: number, overrides: Partial<NotificationOutboxRow> = {}): No
     finishedAt: null,
     scheduledAt: null,
     digestKey: null,
-    traceId: null,
+    correlationId: null,
     parentRef: null,
     tenantId: null,
     createdAt: new Date('2026-09-06T00:00:00Z'),

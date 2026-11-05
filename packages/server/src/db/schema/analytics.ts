@@ -328,9 +328,9 @@ export const errorEvents = pgTable('error_events', {
   memberId: integer().references((): AnyPgColumn => members.id, { onDelete: 'set null' }),
   // 报错时刻活跃的回放会话 ID（SDK 注入）：精确关联回放现场，无需时间窗模糊匹配
   replayId: varchar({ length: 36 }),
-  // ─── 链路与服务端上下文（lib/error-tracking 采集；前端事件除 traceId 外为 null）───
+  // ─── 链路与服务端上下文（lib/error-tracking 采集；前端事件除 correlationId 外为 null）───
   // 请求 / 链路 ID（= X-Request-Id）：服务端异常必带，前端接口错误读到响应头时带上，两侧按它互查
-  traceId: varchar({ length: 64 }),
+  correlationId: varchar({ length: 64 }),
   // 匹配到的路由模板（/api/users/{id}），原始 URL 仍在 httpUrl；作业类异常为 null
   route: varchar({ length: 256 }),
   errorName: varchar({ length: 128 }),
@@ -355,7 +355,7 @@ export const errorEvents = pgTable('error_events', {
   // 回放详情反查关联错误
   index('error_events_replay_idx').on(t.replayId),
   // 按链路 ID 互查（异常日志 ↔ 前端接口错误 ↔ 链路追踪）；只索引带值的行
-  index('error_events_trace_idx').on(t.traceId).where(sql`${t.traceId} IS NOT NULL`),
+  index('error_events_correlation_idx').on(t.correlationId).where(sql`${t.correlationId} IS NOT NULL`),
 ]);
 
 export type ErrorEventRow = typeof errorEvents.$inferSelect;

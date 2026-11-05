@@ -16,7 +16,7 @@ function row(status: string) {
     lastError: status === 'dead' ? 'failed' : null, finishedAt: status === 'dead' ? new Date() : null },
   event: { id: 1, eventId: '00000000-0000-4000-8000-000000000009', domain: 'payment', eventType: 'payment.succeeded', schemaVersion: 1,
     tenantId: null, businessKey: 'event-9', orderingKey: 'payment:PO-9', subjectRefs: [], scope: {}, payload: { orderNo: 'PO-9' },
-    payloadHash: 'x', occurredAt: new Date(), traceId: null, parentRef: null } };
+    payloadHash: 'x', occurredAt: new Date(), correlationId: null, parentRef: null } };
 }
 
 function selectChain(rows: unknown[]) {

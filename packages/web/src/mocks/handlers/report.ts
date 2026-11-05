@@ -243,7 +243,7 @@ export const reportHandlers = [
       createdBy: 1,
       createdByName: '管理员',
       tenantId: null,
-      traceId: null,
+      correlationId: null,
       startedAt: null,
       completedAt: null,
       createdAt: mockDateTime(),

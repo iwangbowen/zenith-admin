@@ -13,7 +13,7 @@ export interface RecordDomainEventInput<K extends DomainEventType = DomainEventT
   readonly subjects: readonly AuditSubjectRef[];
   readonly actor?: EntityRef;
   readonly source: EntityRef;
-  readonly traceId?: string | null;
+  readonly correlationId?: string | null;
   readonly parentRef?: string | null;
   readonly dedupeKey?: string | null;
   /** Exact business ownership, including explicit null for a platform object. */
@@ -40,7 +40,7 @@ export async function recordDomainEvent<K extends DomainEventType>(tx: DbTransac
     actorKey: actor?.key ?? null,
     sourceType: source.type,
     sourceKey: source.key,
-    traceId: input.traceId ?? null,
+    correlationId: input.correlationId ?? null,
     parentRef: input.parentRef ?? null,
     dedupeKey: input.dedupeKey ?? null,
   }).onConflictDoNothing().returning({ id: domainEvents.id });

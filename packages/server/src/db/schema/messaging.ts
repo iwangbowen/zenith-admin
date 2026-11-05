@@ -436,7 +436,7 @@ export const notificationOutbox = pgTable('notification_outbox', {
    */
   digestKey: varchar({ length: 128 }),
   /** 链路关联 ID，串起一次业务操作触发的全部异步副作用 */
-  traceId: varchar({ length: 64 }),
+  correlationId: varchar({ length: 64 }),
   /** 因果父引用（`kind:refId` 或 `request`），链路时间线树形展示的触发源 */
   parentRef: varchar({ length: 32 }),
   /** W3C remote parent captured when the notification was persisted. */
@@ -452,8 +452,8 @@ export const notificationOutbox = pgTable('notification_outbox', {
   index('notification_outbox_claimed_idx').on(t.status, t.claimedAt),
   index('notification_outbox_finished_idx').on(t.status, t.finishedAt),
   index('notification_outbox_tenant_idx').on(t.tenantId),
-  // 链路追踪查看器按 trace_id 定位通知锚点
-  index('notification_outbox_trace_idx').on(t.traceId),
+  // 链路追踪查看器按 correlation_id 定位通知锚点
+  index('notification_outbox_correlation_idx').on(t.correlationId),
 ]);
 
 export type NotificationOutboxRow = typeof notificationOutbox.$inferSelect;

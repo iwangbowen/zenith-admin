@@ -41,7 +41,7 @@ export const workflowJobSchema = z.object({
   taskId: z.int().nullable(),
   nodeKey: z.string().nullable(),
   idempotencyKey: z.string().nullable(),
-  traceId: z.string().nullable(),
+  correlationId: z.string().nullable(),
   payload: z.record(z.string(), z.unknown()),
   priority: z.int(),
   attempts: z.int(),
@@ -83,9 +83,9 @@ export const workflowJobDetailSchema = workflowJobSchema.extend({
 
 export type WorkflowJobDetail = z.infer<typeof workflowJobDetailSchema>;
 
-/** 链路视图：同一 traceId 关联的全部作业（一次操作的完整异步 fan-out）+ 执行明细 + 状态统计 */
+/** 链路视图：同一 correlationId 关联的全部作业（一次操作的完整异步 fan-out）+ 执行明细 + 状态统计 */
 export const workflowJobChainSchema = z.object({
-  traceId: z.string(),
+  correlationId: z.string(),
   jobs: z.array(workflowJobDetailSchema),
   stats: z.object({
     total: z.int(),
@@ -102,9 +102,9 @@ export const workflowJobChainSchema = z.object({
 
 export type WorkflowJobChain = z.infer<typeof workflowJobChainSchema>;
 
-/** traceId 诊断包：作业链路 + 该 traceId 涉及的各实例诊断包 */
+/** correlationId 诊断包：作业链路 + 该 correlationId 涉及的各实例诊断包 */
 export const workflowTraceDiagnosticBundleSchema = z.object({
-  traceId: z.string(),
+  correlationId: z.string(),
   generatedAt: z.string(),
   chain: workflowJobChainSchema,
   instances: z.array(workflowDiagnosticBundleSchema),
@@ -166,7 +166,7 @@ export const workflowJobFailureClusterMemberSchema = z.object({
   attempts: z.int(),
   maxAttempts: z.int(),
   lockedBy: z.string().nullable().meta({ description: '当前持有该作业租约的 worker 节点（hostname:pid）' }),
-  traceId: z.string().nullable(),
+  correlationId: z.string().nullable(),
   lastError: z.string().nullable().meta({ description: '完整原始错误' }),
   failedAt: z.string().meta({ description: '最近失败时间' }),
   createdAt: z.string(),
@@ -182,7 +182,7 @@ export const workflowJobFailureClusterSchema = z.object({
   count: z.int(),
   jobTypes: z.array(z.string()),
   instanceId: z.int().nullable(),
-  traceId: z.string().nullable(),
+  correlationId: z.string().nullable(),
   reasonKeyword: z.string().nullable(),
   firstAt: z.string().nullable().meta({ description: '簇内最早失败时间' }),
   lastAt: z.string().nullable().meta({ description: '簇内最近失败时间' }),
@@ -558,7 +558,7 @@ export const workflowEngineActionSampleJobSchema = z.object({
   jobType: z.enum(WORKFLOW_JOB_TYPES),
   status: z.enum(WORKFLOW_JOB_STATUSES),
   instanceId: z.int().nullable(),
-  traceId: z.string().nullable(),
+  correlationId: z.string().nullable(),
   attempts: z.int(),
   runAt: z.string(),
   createdAt: z.string(),
@@ -600,11 +600,11 @@ export const workflowJobListQuery = paginationQuery.extend({
   jobType: queryEnum(WORKFLOW_JOB_TYPES),
   status: queryEnum(WORKFLOW_JOB_STATUSES),
   instanceId: idQuery(),
-  keyword: keywordQuery('幂等键 / traceId / 节点 key '),
+  keyword: keywordQuery('幂等键 / correlationId / 节点 key '),
 });
 
 export const workflowJobTraceParam = z.object({
-  traceId: z.string().min(1).max(64).meta({ description: '链路 ID' }),
+  correlationId: z.string().min(1).max(64).meta({ description: '链路 ID' }),
 });
 
 export const workflowJobFailureClusterQuery = z.object({
@@ -618,8 +618,8 @@ export const workflowEngineContract = defineContract('/api/workflows/engine', {
   previewAction: op.post('/actions/{action}/preview', { access: { permission: 'workflow:instance:monitor' }, params: workflowEngineActionParam, body: workflowEngineActionFilterSchema, response: workflowEngineActionPreviewSchema, summary: '运维恢复动作预览（按筛选统计将处理的作业 + 样本，不执行）' }),
   jobs: op.get('/jobs', { access: { permission: 'workflow:instance:monitor' }, query: workflowJobListQuery, response: paginated(workflowJobSchema), summary: '工作流作业账本列表' }),
   jobsSummary: op.get('/jobs/summary', { access: { permission: 'workflow:instance:monitor' }, response: z.array(workflowJobSummaryItemSchema), summary: '按作业类型聚合的状态计数' }),
-  jobChain: op.get('/jobs/chain/{traceId}', { access: { permission: 'workflow:instance:monitor' }, params: workflowJobTraceParam, response: workflowJobChainSchema, summary: '工作流作业链路（同 traceId 的完整异步 fan-out，含跨实例/子流程串联）' }),
-  jobChainBundle: op.get('/jobs/chain/{traceId}/diagnostic-bundle', { access: { permission: 'workflow:instance:monitor' }, params: workflowJobTraceParam, response: workflowTraceDiagnosticBundleSchema, summary: 'traceId 诊断包（作业链路 + 涉及实例诊断聚合，供工单留档/离线分析）' }),
+  jobChain: op.get('/jobs/chain/{correlationId}', { access: { permission: 'workflow:instance:monitor' }, params: workflowJobTraceParam, response: workflowJobChainSchema, summary: '工作流作业链路（同 correlationId 的完整异步 fan-out，含跨实例/子流程串联）' }),
+  jobChainBundle: op.get('/jobs/chain/{correlationId}/diagnostic-bundle', { access: { permission: 'workflow:instance:monitor' }, params: workflowJobTraceParam, response: workflowTraceDiagnosticBundleSchema, summary: 'correlationId 诊断包（作业链路 + 涉及实例诊断聚合，供工单留档/离线分析）' }),
   batchRetryJobs: op.post('/jobs/batch-retry', { access: { permission: 'workflow:engine:operate' }, audit: '批量重试工作流作业', body: workflowJobBatchRetrySchema, response: workflowJobBatchResultSchema, summary: '批量重试作业' }),
   batchSkipJobs: op.post('/jobs/batch-skip', { access: { permission: 'workflow:engine:operate' }, audit: '批量跳过工作流作业', body: batchIdsBody, response: workflowJobBatchResultSchema, summary: '批量跳过作业' }),
   replayDeadJobs: op.post('/jobs/replay-dead', { access: { permission: 'workflow:engine:operate' }, audit: '重放死信作业', body: workflowJobReplaySchema, response: workflowJobReplayResultSchema, summary: '死信中心：按条件 + 限流重放死信作业' }),

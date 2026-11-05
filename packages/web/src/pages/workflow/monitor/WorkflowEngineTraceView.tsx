@@ -126,7 +126,7 @@ export default function WorkflowEngineTraceView({ instanceId }: Props) {
                     <Tag size="small" color={m.color}>{m.text}</Tag>
                     {entry.nodeName && <Typography.Text type="tertiary" size="small">@ {entry.nodeName}</Typography.Text>}
                     {isJob && entry.attempts != null && <Typography.Text type="tertiary" size="small">尝试 {entry.attempts}/{entry.maxAttempts}</Typography.Text>}
-                    {entry.traceId && <Tooltip content={`traceId: ${entry.traceId}`}><Tag size="small" color="grey" type="ghost" style={{ fontFamily: 'monospace' }}>{entry.traceId.slice(0, 8)}</Tag></Tooltip>}
+                    {entry.correlationId && <Tooltip content={`correlationId: ${entry.correlationId}`}><Tag size="small" color="grey" type="ghost" style={{ fontFamily: 'monospace' }}>{entry.correlationId.slice(0, 8)}</Tag></Tooltip>}
                   </div>
                   {entry.comment && <Typography.Paragraph type="secondary" size="small" style={{ margin: '4px 0 0' }}>意见：{entry.comment}</Typography.Paragraph>}
                   {isJob && entry.nextRetryAt && (

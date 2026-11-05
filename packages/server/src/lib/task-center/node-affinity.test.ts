@@ -15,8 +15,8 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../../db', () => ({ db: { select: mocks.select, update: mocks.update, transaction: mocks.transaction, insert: mocks.insert } }));
 vi.mock('../context', () => ({
   currentUser: () => ({ userId: 7, username: 'editor', roles: [], tenantId: null }),
-  currentTraceId: () => undefined, currentParentRef: () => undefined,
-  runWithCurrentUser: (_u: unknown, fn: () => unknown) => fn(), runWithTraceId: (_t: unknown, fn: () => unknown) => fn(), runWithParentRef: (_r: unknown, fn: () => unknown) => fn(),
+  currentCorrelationId: () => undefined, currentParentRef: () => undefined,
+  runWithCurrentUser: (_u: unknown, fn: () => unknown) => fn(), runWithCorrelationId: (_t: unknown, fn: () => unknown) => fn(), runWithParentRef: (_r: unknown, fn: () => unknown) => fn(),
 }));
 vi.mock('../process-identity', () => ({ PROCESS_HOSTNAME: 'node-a', PROCESS_PID: 11, PROCESS_ID: 'node-a:11' }));
 vi.mock('../pg-boss-scheduler', () => ({

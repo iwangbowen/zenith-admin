@@ -41,7 +41,7 @@ export function buildApiAccessLogsWhere(q: ApiAccessLogsListFilter, user: JwtPay
     q.method ? eq(apiAccessLogs.method, q.method.toUpperCase()) : undefined,
     keywordCondition(q.path, [apiAccessLogs.path]),
     keywordCondition(q.routePath, [apiAccessLogs.routePath]),
-    keywordCondition(q.requestId, [apiAccessLogs.requestId], 'like', 'prefix'),
+    keywordCondition(q.correlationId, [apiAccessLogs.correlationId], 'like', 'prefix'),
     keywordCondition(q.content, [sql`${apiAccessLogs.queryParams}::text`, sql`${apiAccessLogs.requestBody}::text`], 'ilike'),
     keywordCondition(q.serviceName, [apiAccessLogs.serviceName]),
     keywordCondition(q.ip, [apiAccessLogs.ip]),

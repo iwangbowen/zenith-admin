@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode, SetStateAction } from 'react';
 import { useDebouncedValue } from '@tanstack/react-pacer';
-import { matchesLogTraceId } from '@zenith/shared/ops';
+import { matchesLogCorrelationId } from '@zenith/shared/ops';
 import { createLabelOptionsFromMap } from '@zenith/shared/core';
 import { Button, Dropdown, Input, InputNumber, Modal, Radio, RadioGroup, Select, Spin, Tag, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import {
@@ -67,10 +67,10 @@ export interface LogWorkbenchProps {
   initialLevel?: LogLevel;
   /** 初始搜索关键词（深链 `?keyword=`），仅挂载时读取 */
   initialKeyword?: string;
-  /** 应用日志的链路定位（深链 `?traceId=`），保留连续日志并预填搜索。 */
-  initialTraceId?: string;
+  /** 应用日志的链路定位（深链 `?correlationId=`），保留连续日志并预填搜索。 */
+  initialCorrelationId?: string;
   /** 清除定位时同步父级的深链状态，保证再次进入同一链路仍能恢复定位。 */
-  onTraceIdChange?: (traceId: string | undefined) => void;
+  onCorrelationIdChange?: (correlationId: string | undefined) => void;
   /** 追加到头部状态标签之后的内容 */
   headerExtra?: ReactNode;
   /** 追加到「更多」菜单末尾的页面专属动作（下载 / 删除等） */
@@ -83,10 +83,10 @@ export interface LogWorkbenchProps {
  * 日志工作台：末尾 N 行 / 服务端全文过滤 / 实时追踪 + 虚拟滚动查看器 + 搜索 / 级别筛选 / 复制导出。
  * 「日志文件」与「日志查看器」两个页面共用，只需提供来源与页面专属动作。
  */
-export function LogWorkbench({ source, title, canTail = true, autoTail = false, initialLevel, initialKeyword, initialTraceId, onTraceIdChange, headerExtra, menuExtra, exportName }: LogWorkbenchProps) {
-  const [traceId, setTraceId] = useState(source.kind !== 'path' ? initialTraceId : undefined);
+export function LogWorkbench({ source, title, canTail = true, autoTail = false, initialLevel, initialKeyword, initialCorrelationId, onCorrelationIdChange, headerExtra, menuExtra, exportName }: LogWorkbenchProps) {
+  const [correlationId, setCorrelationId] = useState(source.kind !== 'path' ? initialCorrelationId : undefined);
   // 内容搜索：输入即时高亮（防抖），全文模式回车提交服务端过滤
-  const [searchDraft, setSearchDraft] = useState(initialKeyword ?? traceId ?? '');
+  const [searchDraft, setSearchDraft] = useState(initialKeyword ?? correlationId ?? '');
   const debouncedSearch = useDebouncedValue(searchDraft.trim(), { wait: 250 })[0];
   const [searchRegex, setSearchRegex] = useState(false);
   const [searchCaseSensitive, setSearchCaseSensitive] = useState(false);
@@ -115,12 +115,12 @@ export function LogWorkbench({ source, title, canTail = true, autoTail = false, 
   const contentParams = useMemo(
     () => ({
       lines: lineCount,
-      locateTraceId: fullText && serverKeyword ? undefined : traceId,
-      traceId: fullText && serverKeyword === traceId ? traceId : undefined,
-      keyword: fullText && serverKeyword && serverKeyword !== traceId ? serverKeyword : undefined,
+      locateCorrelationId: fullText && serverKeyword ? undefined : correlationId,
+      correlationId: fullText && serverKeyword === correlationId ? correlationId : undefined,
+      keyword: fullText && serverKeyword && serverKeyword !== correlationId ? serverKeyword : undefined,
       context: fullText && serverKeyword && serverContext > 0 ? serverContext : undefined,
     }),
-    [lineCount, traceId, fullText, serverKeyword, serverContext],
+    [lineCount, correlationId, fullText, serverKeyword, serverContext],
   );
 
   const tailUrl = canTail ? logSourceTailUrl(source) : null;
@@ -143,7 +143,7 @@ export function LogWorkbench({ source, title, canTail = true, autoTail = false, 
     () => source.kind === 'console' && consoleFormat === 'pretty' ? rawLines.map(formatConsoleLogLine) : rawLines,
     [source.kind, consoleFormat, rawLines],
   );
-  // 链路归属始终读取原始 NDJSON，展示格式中的正文即使提及另一个 reqId 也不会误归属。
+  // 链路归属始终读取原始 NDJSON，展示格式中的正文即使提及另一个 correlationId 也不会误归属。
   const rawPlainLines = useMemo(() => (rawLines.some(hasAnsi) ? rawLines.map(stripAnsi) : rawLines), [rawLines]);
   // 搜索 / 级别识别 / 复制导出都基于去色文本；无 ANSI 时复用同一数组，不多占内存
   const plainLines = useMemo(() => (renderedLines.some(hasAnsi) ? renderedLines.map(stripAnsi) : renderedLines), [renderedLines]);
@@ -182,10 +182,10 @@ export function LogWorkbench({ source, title, canTail = true, autoTail = false, 
   const searchIndex = useMemo(() => buildSearchIndex(
     baseLines,
     searchPattern,
-    traceId && debouncedSearch === traceId && !searchRegex
-      ? (_line, index) => matchesLogTraceId(rawPlainLines[baseIndexes[index]], traceId)
+    correlationId && debouncedSearch === correlationId && !searchRegex
+      ? (_line, index) => matchesLogCorrelationId(rawPlainLines[baseIndexes[index]], correlationId)
       : undefined,
-  ), [baseLines, searchPattern, traceId, debouncedSearch, searchRegex, rawPlainLines, baseIndexes]);
+  ), [baseLines, searchPattern, correlationId, debouncedSearch, searchRegex, rawPlainLines, baseIndexes]);
 
   const grepActive = matchesOnly && searchPattern !== null;
   const { displayIndexes, displayLines, displayRanges, displayMatches } = useMemo(() => {
@@ -362,17 +362,17 @@ export function LogWorkbench({ source, title, canTail = true, autoTail = false, 
             全文过滤：{serverKeyword}
           </Tag>
         )}
-        {traceId && (
+        {correlationId && (
           <Tag
             color="blue" size="small" closable
             onClose={() => {
-              setTraceId(undefined);
-              if (searchDraft === traceId) setSearchDraft('');
+              setCorrelationId(undefined);
+              if (searchDraft === correlationId) setSearchDraft('');
               setActiveMatchIndex(0);
-              onTraceIdChange?.(undefined);
+              onCorrelationIdChange?.(undefined);
             }}
           >
-            链路定位：{traceId}
+            链路定位：{correlationId}
           </Tag>
         )}
         {headerExtra}

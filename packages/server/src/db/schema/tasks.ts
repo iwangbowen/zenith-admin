@@ -105,8 +105,8 @@ export const asyncTasks = pgTable('async_tasks', {
   idempotencyKey: varchar({ length: 128 }),
   /** 执行心跳（progress 更新时刷新），兜底扫描据此回收卡死任务 */
   heartbeatAt: timestamptz(),
-  /** 链路关联 ID（= 提交请求的 requestId），串起任务与其触发源/后续副作用 */
-  traceId: varchar({ length: 64 }),
+  /** 链路关联 ID（= 提交请求的 correlationId），串起任务与其触发源/后续副作用 */
+  correlationId: varchar({ length: 64 }),
   /** W3C remote parent captured when the task was submitted. */
   traceParent: varchar({ length: 128 }),
   traceState: varchar({ length: 1024 }),
@@ -127,7 +127,7 @@ export const asyncTasks = pgTable('async_tasks', {
   index('async_tasks_status_completed_idx').on(t.status, t.completedAt),
   index('async_tasks_created_by_idx').on(t.createdBy),
   index('async_tasks_created_at_idx').on(t.createdAt),
-  index('async_tasks_trace_idx').on(t.traceId),
+  index('async_tasks_correlation_idx').on(t.correlationId),
   // payload / result 内容检索：jsonb 需先转 text 再挂 gin_trgm_ops
   // （pg_trgm 扩展由迁移基线 0000 顶部创建）
   index('async_tasks_payload_trgm_idx').using('gin', sql`(${t.payload}::text) gin_trgm_ops`),

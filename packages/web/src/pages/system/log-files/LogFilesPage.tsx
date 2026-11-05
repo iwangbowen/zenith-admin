@@ -27,7 +27,7 @@ export default function LogFilesPage() {
   const { hasPermission } = usePermission();
   const [keyword, setKeyword] = useState('');
   // 文件与定位条件成组管理，消费深链或切换到同一文件的另一条链路时不会丢失筛选。
-  const [selection, setSelection] = useUrlSelectionParams(['file', 'level', 'keyword', 'traceId'], { replaceOnNavigate: true });
+  const [selection, setSelection] = useUrlSelectionParams(['file', 'level', 'keyword', 'correlationId'], { replaceOnNavigate: true });
   const selectedFileKey = selection.file;
 
   const filesQuery = useLogFiles();
@@ -61,7 +61,7 @@ export default function LogFilesPage() {
 
   const selectFile = useCallback((file: LogFile) => {
     if (selected?.name === file.name) return;
-    setSelection({ file: file.name, level: null, keyword: null, traceId: null });
+    setSelection({ file: file.name, level: null, keyword: null, correlationId: null });
   }, [selected, setSelection]);
 
   // URL ?file= 深链：文件列表就绪后应用（刷新/分享链接/告警事件跳转直达）。
@@ -73,7 +73,7 @@ export default function LogFilesPage() {
     const target = files.find((f) => f.name === selectedFileKey)
       ?? files.find((f) => f.name === `${selectedFileKey}.gz`);
     if (!target) {
-      if (!filesQuery.isFetching) setSelection({ file: null, level: null, keyword: null, traceId: null });
+      if (!filesQuery.isFetching) setSelection({ file: null, level: null, keyword: null, correlationId: null });
       return;
     }
     if (target.name !== selectedFileKey) {
@@ -83,8 +83,8 @@ export default function LogFilesPage() {
 
   const initialLevel = parseLevelParam(selection.level);
   const initialKeyword = selection.keyword?.trim().slice(0, 200) || undefined;
-  const initialTraceId = selection.traceId && /^[\w-]{8,64}$/.test(selection.traceId)
-    ? selection.traceId
+  const initialCorrelationId = selection.correlationId && /^[\w-]{8,64}$/.test(selection.correlationId)
+    ? selection.correlationId
     : undefined;
 
   const handleDownload = async (file: LogFile) => {
@@ -96,7 +96,7 @@ export default function LogFilesPage() {
   };
 
   const deselectFile = useCallback(() => {
-    setSelection({ file: null, level: null, keyword: null, traceId: null });
+    setSelection({ file: null, level: null, keyword: null, correlationId: null });
   }, [setSelection]);
 
   const handleDelete = (file: LogFile) => {
@@ -323,7 +323,7 @@ export default function LogFilesPage() {
         <>
           {selected && source ? (
             <LogWorkbench
-              key={JSON.stringify([logSourceKey(source), initialLevel, initialKeyword, initialTraceId])}
+              key={JSON.stringify([logSourceKey(source), initialLevel, initialKeyword, initialCorrelationId])}
               source={source}
               title={(
                 <>
@@ -336,8 +336,8 @@ export default function LogFilesPage() {
               canTail={!selected.isGzip && hasPermission('system:log:files')}
               initialLevel={initialLevel}
               initialKeyword={initialKeyword}
-              initialTraceId={initialTraceId}
-              onTraceIdChange={(traceId) => setSelection((prev) => ({ ...prev, traceId: traceId ?? null }))}
+              initialCorrelationId={initialCorrelationId}
+              onCorrelationIdChange={(correlationId) => setSelection((prev) => ({ ...prev, correlationId: correlationId ?? null }))}
               exportName={selected.name}
               menuExtra={(canDownload || canDelete) ? (
                 <>
