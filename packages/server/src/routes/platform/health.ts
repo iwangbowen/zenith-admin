@@ -44,6 +44,38 @@ const healthRoute = defineContractRoute(healthContract.check, {
   },
 });
 
-health.openapiRoutes([healthRoute] as const);
+function probeBody(checks: Record<string, 'ok' | 'degraded' | 'error' | 'unavailable'>, ready: boolean) {
+  const status = Object.values(checks).some((value) => value === 'error' || value === 'unavailable')
+    ? 'unavailable'
+    : Object.values(checks).some((value) => value === 'degraded')
+      ? 'degraded'
+      : 'ok';
+  return { status, ready, version: appVersion, roles: config.roles.list, checks } as const;
+}
+
+const liveRoute = defineContractRoute(healthContract.livez, {
+  middleware: [],
+  handler: (c) => c.json(okBody(probeBody({ process: 'ok' }, true), 'success'), 200),
+});
+
+const startupRoute = defineContractRoute(healthContract.startupz, {
+  middleware: [],
+  handler: (c) => c.json(okBody(probeBody({ process: 'ok', app: 'ok' }, true), 'success'), 200),
+});
+
+const readyRoute = defineContractRoute(healthContract.readyz, {
+  middleware: [],
+  handler: async (c) => {
+    const checks: Record<string, 'ok' | 'degraded' | 'error' | 'unavailable'> = await checkInfraHealth();
+    if (config.roles.api) {
+      checks.wsFanout = wsFanoutState() === 'subscribed' ? 'ok' : 'degraded';
+      checks.workers = await checkWorkers();
+    }
+    const body = probeBody(checks, Object.values(checks).every((value) => value === 'ok'));
+    return c.json(okBody(body, 'success'), body.ready ? 200 : 503);
+  },
+});
+
+health.openapiRoutes([healthRoute, liveRoute, startupRoute, readyRoute] as const);
 
 export default health;

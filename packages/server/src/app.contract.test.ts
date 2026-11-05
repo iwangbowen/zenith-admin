@@ -209,7 +209,8 @@ describe('认证契约：声明与运行时行为必须一致', () => {
     // 5 分钟一次性票据（GETDEL），受 authRateLimit 约束，不接受任何身份声明。
     const publicOps = operations.filter((op) => op.isDeclaredPublic);
     // CMS telemetry validates a signed published-page context and stable event IDs before anonymous ingest.
-    expect(publicOps.length).toBeLessThanOrEqual(69);
+    // Observability v2 adds the public live/startup/readiness probes.
+    expect(publicOps.length).toBeLessThanOrEqual(72);
   });
 });
 
