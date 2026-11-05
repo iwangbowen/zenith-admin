@@ -100,7 +100,7 @@ function formatBitrate(bps: number): string {
 }
 
 /** 页面级 Tab 全集（URL ?tab= 定位与偏好记忆共用） */
-const MONITOR_TABS = ['overview', 'history', 'cpu', 'mem', 'disk', 'net', 'node', 'http', 'db', 'redis', 'ws'] as const;
+const MONITOR_TABS = ['overview', 'observability', 'history', 'cpu', 'mem', 'disk', 'net', 'node', 'http', 'db', 'redis', 'ws'] as const;
 type MonitorTab = typeof MONITOR_TABS[number];
 
 export default function MonitorPage() {
@@ -598,7 +598,6 @@ export default function MonitorPage() {
           {/* ===== 总览 ===== */}
           <TabPane tab={<span className="monitor-tab-label"><Server size={14} />总览</span>} itemKey="overview">
             {data ? (<>
-            <ObservabilitySummaryPanel />
             <div className="monitor-overview-grid">
               <div className="monitor-overview-metric">
                 <div className="monitor-overview-metric__header"><Cpu size={15} /><Text strong>CPU</Text></div>
@@ -734,6 +733,11 @@ export default function MonitorPage() {
               {renderTopProcesses(data.topProcesses)}
             </>)}
             </>) : renderRealtimePlaceholder()}
+          </TabPane>
+
+          {/* ===== 观测汇总 ===== */}
+          <TabPane tab={<span className="monitor-tab-label"><Activity size={14} />观测汇总</span>} itemKey="observability">
+            <ObservabilitySummaryPanel />
           </TabPane>
 
           {/* ===== 历史趋势 ===== */}
