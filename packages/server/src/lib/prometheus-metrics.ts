@@ -5,7 +5,7 @@
  * 端点统一输出（text exposition 格式），可直接接入 Prometheus / Grafana。
  * 所有指标通过 prom-client 的 collect() 钩子在抓取时惰性求值，零常驻开销。
  */
-import { Gauge, type Registry } from 'prom-client';
+import { Counter, Gauge, type Registry } from 'prom-client';
 import { config } from '../config';
 import { metricsSampler } from './metrics-sampler';
 import { countActiveWorkerNodes, getQueueDepths } from './pg-boss-scheduler';
@@ -36,6 +36,21 @@ export function registerZenithMetrics(registry: Registry): void {
       },
     });
   };
+  const counter = (name: string, help: string, fn: () => number) => {
+    let previous = 0;
+    new Counter({
+      name,
+      help,
+      registers: [registry],
+      collect() {
+        const current = Math.max(0, fn());
+        // Source counters are process-local and can reset after a restart. Treat
+        // a reset as a new baseline instead of exporting a negative delta.
+        if (current >= previous) this.inc(current - previous);
+        previous = current;
+      },
+    });
+  };
 
   const latest = () => metricsSampler.getLatest();
 
@@ -57,21 +72,21 @@ export function registerZenithMetrics(registry: Registry): void {
   // ── HTTP ──
   gauge('zenith_http_qps', 'Average QPS over the last 60s window', () => latest()?.qps ?? 0);
   gauge('zenith_http_error_rate_percent', 'HTTP error rate percent over the last 60s window', () => latest()?.errorRate ?? 0);
-  gauge('zenith_http_requests_total', 'Total HTTP requests since process start', () => metricsSampler.http.totals().total);
-  gauge('zenith_http_errors_4xx_total', 'Total HTTP 4xx responses since process start', () => metricsSampler.http.totals().total4xx);
-  gauge('zenith_http_errors_5xx_total', 'Total HTTP 5xx responses since process start', () => metricsSampler.http.totals().total5xx);
+  counter('zenith_http_requests_total', 'Total HTTP requests since process start', () => metricsSampler.http.totals().total);
+  counter('zenith_http_errors_4xx_total', 'Total HTTP 4xx responses since process start', () => metricsSampler.http.totals().total4xx);
+  counter('zenith_http_errors_5xx_total', 'Total HTTP 5xx responses since process start', () => metricsSampler.http.totals().total5xx);
   gauge('zenith_api_access_log_pending', 'Buffered API access records awaiting persistence', () => apiAccessLogStats().pending);
-  gauge('zenith_api_access_log_dropped_total', 'API access records dropped since process start', () => apiAccessLogStats().dropped);
-  gauge('zenith_api_access_log_flush_failures_total', 'Failed API access log batches since process start', () => apiAccessLogStats().flushFailures);
+  counter('zenith_api_access_log_dropped_total', 'API access records dropped since process start', () => apiAccessLogStats().dropped);
+  counter('zenith_api_access_log_flush_failures_total', 'Failed API access log batches since process start', () => apiAccessLogStats().flushFailures);
 
   // ── WebSocket ──
   gauge('zenith_ws_connections', 'Current WebSocket connections', () => getWsSnapshot().currentConnections);
   gauge('zenith_ws_users', 'Current distinct WebSocket users', () => getWsSnapshot().currentUsers);
   // 跨进程 fan-out：published 为本进程发出的信封数，delivered / dropped 为本进程作为订阅方的处理结果
-  gauge('zenith_ws_fanout_published_total', 'WS fan-out envelopes published by this process', () => getWsFanoutCounters().published);
-  gauge('zenith_ws_fanout_publish_failed_total', 'WS fan-out envelopes that failed to publish', () => getWsFanoutCounters().publishFailed);
-  gauge('zenith_ws_fanout_delivered_total', 'WS fan-out envelopes handled by this process', () => getWsFanoutCounters().delivered);
-  gauge('zenith_ws_fanout_dropped_total', 'WS fan-out envelopes dropped (malformed / no handler / handler error)', () => getWsFanoutCounters().dropped);
+  counter('zenith_ws_fanout_published_total', 'WS fan-out envelopes published by this process', () => getWsFanoutCounters().published);
+  counter('zenith_ws_fanout_publish_failed_total', 'WS fan-out envelopes that failed to publish', () => getWsFanoutCounters().publishFailed);
+  counter('zenith_ws_fanout_delivered_total', 'WS fan-out envelopes handled by this process', () => getWsFanoutCounters().delivered);
+  counter('zenith_ws_fanout_dropped_total', 'WS fan-out envelopes dropped (malformed / no handler / handler error)', () => getWsFanoutCounters().dropped);
 
   // ── DB / Redis（外部采集器提供，缺省 0） ──
   gauge('zenith_db_connections', 'PostgreSQL connections to current database', () => latest()?.dbConnections ?? 0);
