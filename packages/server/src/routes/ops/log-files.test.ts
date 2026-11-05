@@ -21,12 +21,25 @@ const deleteLogFile = vi.fn(async () => {});
 const getLogFileBeforeAudit = vi.fn(async (name: string) => ({ name, size: 1, modifiedAt: '2026-10-13 00:00:00', isGzip: false }));
 const getLogFilesBeforeAudit = vi.fn(async (names: string[]) => names.map((name) => ({ name, size: 1, modifiedAt: '2026-10-13 00:00:00', isGzip: false })));
 const listLogFiles = vi.fn(async () => []);
+const locateCorrelationLogs = vi.fn(async (query: { correlationId: string; context?: number }) => ({
+  correlationId: query.correlationId,
+  status: 'matched' as const,
+  matches: [],
+  sources: [],
+  scannedFiles: 0,
+  scannedBytes: 0,
+  truncated: false,
+}));
 
 /** 打包下载的双模服务：同步返回 zip 流 / 超阀值返回任务信封 */
 const batchDownloadLogFiles = vi.fn();
 
 vi.mock('../../services/ops/log-files-download.service', () => ({
   batchDownloadLogFiles: (names: string[]) => batchDownloadLogFiles(names),
+}));
+
+vi.mock('../../services/ops/log-locator.service', () => ({
+  locateCorrelationLogs: (query: { correlationId: string; context?: number }) => locateCorrelationLogs(query),
 }));
 
 vi.mock('../../services/ops/log-files.service', () => ({
@@ -48,6 +61,29 @@ beforeEach(() => {
   batchDeleteLogFiles.mockClear();
   deleteLogFile.mockClear();
   batchDownloadLogFiles.mockReset();
+  locateCorrelationLogs.mockClear();
+});
+
+describe('GET /api/log-files/locate 的分发与校验', () => {
+  it('命中静态 locator 路由而非 /{filename}/content 系列，并把解析后的 query 传给服务', async () => {
+    const res = await app.request('/locate?correlationId=corr-20261106-001&context=4');
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toMatchObject({ code: 0, data: { status: 'matched' } });
+    expect(locateCorrelationLogs).toHaveBeenCalledWith({ correlationId: 'corr-20261106-001', context: 4 });
+  });
+
+  it.each([
+    '/locate?correlationId=short',
+    `/locate?correlationId=${'x'.repeat(65)}`,
+    '/locate?correlationId=corr-20261106-001&context=-1',
+    '/locate?correlationId=corr-20261106-001&context=11',
+    '/locate?correlationId=corr-20261106-001&context=not-a-number',
+  ])('非法 locator query 在服务层之前被拒绝：%s', async (url) => {
+    const res = await app.request(url);
+    expect(res.status).toBe(400);
+    expect(locateCorrelationLogs).not.toHaveBeenCalled();
+  });
 });
 
 describe('DELETE /api/log-files/batch 的分发归属', () => {

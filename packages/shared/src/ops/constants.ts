@@ -561,3 +561,10 @@ export const LOG_SYNC_ZIP_MAX_FILES = 50;
 
 /** 同步返回 zip 的总字节上限（200MB）；超过转任务中心异步打包 */
 export const LOG_SYNC_ZIP_MAX_BYTES = 200 * 1024 * 1024;
+
+/** 日志关联定位的扫描保护：日期仅用于排序，不能绕过总文件 / 字节 / 命中上限。 */
+export const LOG_CORRELATION_LOCATOR_MAX_FILES = 200;
+export const LOG_CORRELATION_LOCATOR_MAX_BYTES = 256 * 1024 * 1024;
+export const LOG_CORRELATION_LOCATOR_MAX_MATCHES = 100;
+export const LOG_CORRELATION_LOCATOR_MAX_CONTEXT_LINES = 10;
+export const LOG_CORRELATION_LOCATOR_MAX_LINE_LENGTH = 16 * 1024;

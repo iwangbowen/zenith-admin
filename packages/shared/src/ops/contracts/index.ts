@@ -7,6 +7,7 @@ export * from './firewall';
 export * from './host-files';
 export * from './log-files';
 export * from './log-lines';
+export * from './log-locator';
 export * from './log-viewer';
 export * from './maintenance';
 export * from './network-diag';

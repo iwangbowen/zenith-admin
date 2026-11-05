@@ -1,7 +1,7 @@
 import { OpenAPIHono, z } from '@hono/zod-openapi';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
-import { logFileContract } from '@zenith/shared/ops';
+import { logFileContract, logLocatorContract } from '@zenith/shared/ops';
 import { setAuditBeforeData } from '../../middleware/guard';
 import { defineContractRoute } from '../../lib/contract-route';
 import { ErrorResponse, apiResponse, errBody, jsonContent, okBody, validationHook } from '../../lib/openapi-schemas';
@@ -10,6 +10,7 @@ import {
   listLogFiles, readLogFileLines, deleteLogFile, resolveLogFile, getLogFileBeforeAudit,
   batchDeleteLogFiles, getLogFilesBeforeAudit,
 } from '../../services/ops/log-files.service';
+import { locateCorrelationLogs } from '../../services/ops/log-locator.service';
 import { batchDownloadLogFiles } from '../../services/ops/log-files-download.service';
 import { TAIL_REPLAY_LINES, readTailLinesStream, watchTail } from '../../services/ops/log-reader';
 import { attachmentDisposition } from '../../lib/content-disposition';
@@ -24,6 +25,10 @@ const fileErrorResponses = {
 
 const listRoute = defineContractRoute(logFileContract.list, {
   handler: async (c) => c.json(okBody(await listLogFiles(), 'success'), 200),
+});
+
+const locateRoute = defineContractRoute(logLocatorContract.locate, {
+  handler: async (c) => c.json(okBody(await locateCorrelationLogs(c.req.valid('query')), 'success'), 200),
 });
 
 const contentRoute = defineContractRoute(logFileContract.content, {
@@ -115,6 +120,6 @@ const tailRoute = defineContractRoute(logFileContract.tail, {
 });
 
 // orderRoutes：静态段先于参数段注册，`DELETE /batch` 不会被 `DELETE /{filename}` 抢先匹配
-router.openapiRoutes(orderRoutes([listRoute, contentRoute, deleteApiRoute, batchDeleteRoute, batchDownloadRoute, downloadRoute, tailRoute]));
+router.openapiRoutes(orderRoutes([listRoute, locateRoute, contentRoute, deleteApiRoute, batchDeleteRoute, batchDownloadRoute, downloadRoute, tailRoute]));
 
 export default router;

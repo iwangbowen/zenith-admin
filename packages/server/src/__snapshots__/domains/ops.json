@@ -83,6 +83,7 @@
   "GET /api/log-files/:filename/content",
   "GET /api/log-files/:filename/download",
   "GET /api/log-files/:filename/tail",
+  "GET /api/log-files/locate",
   "GET /api/log-viewer/content",
   "GET /api/log-viewer/download",
   "GET /api/log-viewer/tail",

@@ -5,6 +5,7 @@
 import { HttpResponse } from 'msw';
 import {
   logFileContract,
+  logLocatorContract,
   logViewerContract,
   terminalFileContract,
   terminalRecordingContract,
@@ -90,6 +91,16 @@ export const terminalFilesHandlers = [
 
   // ── 日志文件（演示模式返回空列表）────────────────────────────────────────
   mock(logFileContract.list, ({ ok }) => ok([])),
+
+  mock(logLocatorContract.locate, ({ query, ok }) => ok({
+    correlationId: query.correlationId,
+    status: 'source_unavailable',
+    matches: [],
+    sources: [],
+    scannedFiles: 0,
+    scannedBytes: 0,
+    truncated: false,
+  })),
 
   mock(logFileContract.content, ({ ok }) => ok({ lines: ['[INFO] 演示模式：日志内容不可访问'] })),
 

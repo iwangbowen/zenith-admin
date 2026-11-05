@@ -13,7 +13,7 @@ import { listTableProps } from '@/components/list-page';
 import { usePermission } from '@/hooks/usePermission';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useRecentTraceFailures, useRecentTraces, useTraceTimeline } from '@/hooks/queries/trace';
-import { useLogFiles, useLogFileContent } from '@/hooks/queries/log-files';
+import { useLogLocator } from '@/hooks/queries/log-locator';
 import { LogLineText } from '@/components/log-workbench/LogLineText';
 import { computeEffectiveLevels } from '@/components/log-workbench/log-search';
 import { LOG_PALETTE_STYLES, useLogPalette } from '@/components/log-workbench/log-palettes';
@@ -43,84 +43,88 @@ const KIND_COLORS = {
   task: 'light-blue',
 } as const satisfies Record<TraceTimelineNode['kind'], string>;
 
-const TRACE_ID_RE = /^[\w-]{8,64}$/;
+const CORRELATION_ID_RE = /^[\w-]{8,64}$/;
 
-/** 按日志的链路标识检索，历史链路优先打开节点发生日期的日志。 */
-function TraceLogsPanel({ correlationId, nodes }: { correlationId: string; nodes: TraceTimelineNode[] }) {
+/** 展示服务端 locator 的实际命中，不依据节点日期猜测唯一日志文件。 */
+function TraceLogsPanel({ correlationId }: { correlationId: string }) {
   const navigate = useNavigate();
-  const filesQuery = useLogFiles();
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
-  // pino-roll 按进程角色、日期轮转；归档仍可检索，不以最近修改时间代替链路发生时间。
-  const appFiles = useMemo(() => {
-    const files = filesQuery.data ?? [];
-    const dates = new Set(nodes.map((node) => node.ts.slice(0, 10)));
-    const requestDate = nodes.find((node) => node.kind === 'request')?.ts.slice(0, 10);
-    const rank = (name: string) => {
-      const match = /^app(?:-(api|worker))?\.(\d{4}-\d{2}-\d{2})\./.exec(name);
-      if (!match) return 0;
-      if (match[2] === requestDate && match[1] !== 'worker') return 2;
-      return dates.has(match[2]) ? 1 : 0;
-    };
-    return files
-      .filter((f) => /^app(?:-(?:api|worker))?\./.test(f.name))
-      .sort((a, b) => rank(b.name) - rank(a.name) || b.modifiedAt.localeCompare(a.modifiedAt));
-  }, [filesQuery.data, nodes]);
-  const activeFile = selectedFile && appFiles.some((f) => f.name === selectedFile)
-    ? selectedFile
-    : appFiles[0]?.name;
-  const contentQuery = useLogFileContent(activeFile, { lines: 5000, correlationId }, Boolean(activeFile));
-  const lines = useMemo(() => contentQuery.data?.lines ?? [], [contentQuery.data]);
-  // 与日志文件页同一套行配色：语法分词 + 行级别底色 + 用户所选调色板。
+  const locatorQuery = useLogLocator(correlationId, 2);
+  const matches = locatorQuery.data?.matches ?? [];
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const selected = matches[selectedIndex] ?? matches[0];
+  const lines = useMemo(() => selected?.context ?? [], [selected]);
   const palette = useLogPalette();
   const levels = useMemo(() => computeEffectiveLevels(lines), [lines]);
 
-  /** 日志文件页按链路精确定位并保留周围日志，避免把查询 URL 当作匹配目标。 */
   const handleViewInLogFiles = () => {
-    if (!activeFile) return;
-    const params = new URLSearchParams({ file: activeFile, correlationId });
+    if (!selected) return;
+    const params = new URLSearchParams({ file: selected.filename, correlationId });
     navigate(`/system/log-files?${params.toString()}`);
   };
 
+  const status = locatorQuery.data?.status;
+  const hasSourceError = locatorQuery.data?.sources.some((source) => source.status === 'error') ?? false;
+  const statusText = status === 'source_unavailable'
+    ? '当前实例不可见可检索的应用日志源'
+    : status === 'source_error' || hasSourceError
+      ? '部分日志源读取失败，结果可能不完整'
+      : status === 'not_found'
+        ? '已扫描可见日志文件，但未找到该业务关联 ID'
+        : null;
+
   return (
-    <Spin spinning={filesQuery.isPending || contentQuery.isFetching}>
-      {activeFile && (
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8, flexWrap: 'wrap' }}>
-          {appFiles.length > 1 && (
-            <Select
-              size="small"
-              value={activeFile}
-              onChange={(v) => setSelectedFile(v as string)}
-              optionList={appFiles.map((f) => ({ value: f.name, label: f.name }))}
-              style={{ width: 260 }}
-            />
-          )}
-          <Button size="small" onClick={handleViewInLogFiles}>在日志文件中查看</Button>
-        </div>
-      )}
-      {lines.length === 0 ? (
-        <Empty description="所选日志文件中未检索到该链路的记录" style={{ padding: '16px 0' }} />
+    <Spin spinning={locatorQuery.isPending}>
+      {locatorQuery.isError ? (
+        <Banner type="danger" closeIcon={null} description={`日志定位失败：${locatorQuery.error.message}`} />
       ) : (
-        <div
-          className="log-content-view"
-          data-palette={palette}
-          style={{
-            ...LOG_PALETTE_STYLES.get(palette),
-            fontFamily: 'var(--zx-font-mono, monospace)', fontSize: 12, lineHeight: '20px',
-            maxHeight: 360, overflow: 'auto', background: 'var(--log-background)',
-            borderRadius: 'var(--semi-border-radius-medium)', padding: '8px 12px', wordBreak: 'break-all',
-          }}
-        >
-          {lines.map((line, i) => (
-            <div key={i} className="log-content-row" data-level={levels[i] ?? undefined}>
-              <LogLineText raw={line} activeStart={null} />
+        <>
+          {statusText && <Banner type={status === 'source_error' || hasSourceError ? 'warning' : 'info'} closeIcon={null} description={statusText} />}
+          {locatorQuery.data?.truncated && (
+            <Banner type="warning" closeIcon={null} description={`扫描达到保护上限（${locatorQuery.data.scannedFiles} 个文件 / ${locatorQuery.data.scannedBytes} 字节），结果可能不完整。`} />
+          )}
+          {matches.length > 0 && (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8, flexWrap: 'wrap' }}>
+              {matches.length > 1 && (
+                <Select
+                  size="small"
+                  value={selectedIndex}
+                  onChange={(v) => setSelectedIndex(v as number)}
+                  optionList={matches.map((match, index) => ({ value: index, label: `${match.role} · ${match.filename} · ${match.matchCount} 次` }))}
+                  style={{ width: 360 }}
+                />
+              )}
+              <Text type="tertiary" size="small">
+                {selected?.hostname}{selected?.pid ? `:${selected.pid}` : ''} · 顶层 {selected?.matchedField} 精确命中
+              </Text>
+              <Button size="small" onClick={handleViewInLogFiles}>在日志文件中查看</Button>
             </div>
-          ))}
-        </div>
-      )}
-      {activeFile && (
-        <Text type="tertiary" size="small" style={{ display: 'block', marginTop: 6 }}>
-          检索范围：{activeFile} 全文，最多展示 5000 条链路日志
-        </Text>
+          )}
+          {lines.length === 0 ? (
+            <Empty description={statusText ?? '未找到该业务关联 ID 的日志记录'} style={{ padding: '16px 0' }} />
+          ) : (
+            <div
+              className="log-content-view"
+              data-palette={palette}
+              style={{
+                ...LOG_PALETTE_STYLES.get(palette),
+                fontFamily: 'var(--zx-font-mono, monospace)', fontSize: 12, lineHeight: '20px',
+                maxHeight: 360, overflow: 'auto', background: 'var(--log-background)',
+                borderRadius: 'var(--semi-border-radius-medium)', padding: '8px 12px', wordBreak: 'break-all',
+              }}
+            >
+              {lines.map((line, i) => (
+                <div key={i} className="log-content-row" data-level={levels[i] ?? undefined}>
+                  <LogLineText raw={line} activeStart={null} />
+                </div>
+              ))}
+            </div>
+          )}
+          {locatorQuery.data && (
+            <Text type="tertiary" size="small" style={{ display: 'block', marginTop: 6 }}>
+              已扫描 {locatorQuery.data.scannedFiles} 个文件、{locatorQuery.data.scannedBytes} 字节；命中 {matches.length} 个文件
+            </Text>
+          )}
+        </>
       )}
     </Spin>
   );
@@ -133,7 +137,7 @@ function RecentTracesPanel({ onView }: { onView: (correlationId: string) => void
   const columns: ColumnProps<TraceListEntry>[] = [
     dateTimeColumn('最近活动', 'ts'),
     { title: '入口摘要', dataIndex: 'title', minWidth: 220, render: (v: string) => renderEllipsis(v) },
-    { title: '链路 ID', dataIndex: 'correlationId', width: 390, render: (v: string) => <ObservabilityLink correlationId={v} compact /> },
+    { title: '业务关联 ID', dataIndex: 'correlationId', width: 390, render: (v: string) => <ObservabilityLink correlationId={v} compact /> },
     {
       title: '状态', dataIndex: 'status', width: 90,
       render: (v: TraceNodeStatus) => <Tag size="small" color={STATUS_META[v].color}>{TRACE_NODE_STATUS_LABELS[v]}</Tag>,
@@ -243,7 +247,7 @@ export default function TracePage() {
    * 基础是 router 给的 searchParams 而非整份替换，页签等其它查询参数原样保留——
    * 与 `useUrlTabState` 的「各写各的参数」一致；参数无变化时不写 URL，不污染历史记录。
    */
-  function applyTraceId(next: string | null) {
+  function applyCorrelationId(next: string | null) {
     const params = new URLSearchParams(searchParams);
     if (next) params.set('correlationId', next);
     else params.delete('correlationId');
@@ -252,8 +256,8 @@ export default function TracePage() {
 
   function handleSearch() {
     const next = draft.trim();
-    if (!next || !TRACE_ID_RE.test(next)) return;
-    applyTraceId(next);
+    if (!next || !CORRELATION_ID_RE.test(next)) return;
+    applyCorrelationId(next);
   }
 
   /**
@@ -263,14 +267,14 @@ export default function TracePage() {
   function handleReset() {
     setDraft('');
     setDetailNode(null);
-    if (correlationId) applyTraceId(null);
+    if (correlationId) applyCorrelationId(null);
   }
 
   /** 失败 / 最近链路列表行点击：回填 ID、切到查询 Tab 并触发查询 */
   function handleViewTrace(id: string) {
     setDraft(id);
     setActiveTab('query');
-    applyTraceId(id);
+    applyCorrelationId(id);
   }
 
   const kindCounts = useMemo(() => {
@@ -309,7 +313,7 @@ export default function TracePage() {
     <div className="page-container zx-flat-panels">
       <Banner
         fullMode={false} type="info" closeIcon={null} style={{ marginBottom: 12 }}
-        description="输入链路 ID（接口响应头 X-Request-Id / 报错提示中的链路ID / 操作日志详情），查看一次操作触发的请求、作业、事件、通知与任务的完整时间线。数据受各锚点保留策略约束，超出保留窗口的节点不再展示。"
+        description="输入业务关联 ID（接口响应头 X-Request-Id / 报错提示中的业务关联 ID / 操作日志详情），查看一次操作触发的请求、作业、事件、通知与任务的完整时间线。数据受各锚点保留策略约束，超出保留窗口的节点不再展示。"
       />
 
       <Tabs type="line" collapsible="auto" activeKey={activeTab} onChange={(k) => setActiveTab(k as 'query' | 'failures')}>
@@ -317,14 +321,14 @@ export default function TracePage() {
           <div style={{ display: 'flex', gap: 8, margin: '12px 0 16px', maxWidth: 680 }}>
             <Input
               prefix={<Search size={14} />}
-              placeholder="链路 ID，如 b9c67477-1433-4815-bbf3-51419c322770"
+              placeholder="业务关联 ID，如 b9c67477-1433-4815-bbf3-51419c322770"
               value={draft}
               onChange={setDraft}
               onEnterPress={handleSearch}
               onClear={handleReset}
               showClear
             />
-            <SearchButton onClick={handleSearch} disabled={!TRACE_ID_RE.test(draft.trim())} />
+            <SearchButton onClick={handleSearch} disabled={!CORRELATION_ID_RE.test(draft.trim())} />
             <ResetButton onClick={handleReset} disabled={!correlationId && draft === ''} />
           </div>
 
@@ -333,7 +337,7 @@ export default function TracePage() {
           ) : (
             <Spin spinning={timelineQuery.isFetching}>
               {timelineQuery.isFetched && nodes.length === 0 ? (
-                <Empty title="未找到该链路的留痕" description="链路 ID 可能有误，或相关数据已按保留策略清理" style={{ padding: '48px 0' }} />
+                <Empty title="未找到该链路的留痕" description="业务关联 ID 可能有误，或相关数据已按保留策略清理" style={{ padding: '48px 0' }} />
               ) : (
                 <>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16, alignItems: 'center' }}>
@@ -367,8 +371,8 @@ export default function TracePage() {
 
                   {!timelineQuery.isPending && !timelineQuery.isError && hasPermission('system:log:files') && (
                     <Collapse style={{ marginTop: 16 }} defaultActiveKey={['logs']}>
-                      <Collapse.Panel header="应用日志（按链路 ID 过滤）" itemKey="logs">
-                        <TraceLogsPanel key={correlationId} correlationId={correlationId} nodes={nodes} />
+                      <Collapse.Panel header="应用日志（按业务关联 ID 过滤）" itemKey="logs">
+                        <TraceLogsPanel key={correlationId} correlationId={correlationId} />
                       </Collapse.Panel>
                     </Collapse>
                   )}
