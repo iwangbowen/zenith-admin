@@ -21,6 +21,7 @@ export default function ObservabilitySummaryPanel() {
   const summary = query.data;
   const readyQueues = summary.capacity.queues.reduce((total, queue) => total + queue.ready, 0);
   const unavailableSources = summary.sources.filter((source) => source.status !== 'ok').map((source) => source.key);
+  const primarySlo = summary.slos[0];
   const freshness = summary.sources.reduce<number | null>((max, source) => {
     if (source.ageSeconds === null) return max;
     return max === null ? source.ageSeconds : Math.max(max, source.ageSeconds);
@@ -43,7 +44,7 @@ export default function ObservabilitySummaryPanel() {
         <StatCard title="就绪队列" value={readyQueues} sub={`${summary.capacity.queues.length} 条队列`} icon={<Layers size={18} />} />
         <StatCard title="数据库连接" value={percent(summary.capacity.database.utilization)} sub={`${summary.capacity.database.activeConnections ?? '—'} / ${summary.capacity.database.totalConnections ?? '—'}`} icon={<Database size={18} />} />
         <StatCard title="Redis 客户端" value={percent(summary.capacity.redis.utilization)} sub={`${summary.capacity.redis.connectedClients ?? '—'} / ${summary.capacity.redis.maxClients ?? '—'}`} icon={<Radio size={18} />} />
-        <StatCard title="SLO 引擎" value={summary.slos.length === 0 ? '待接入' : `${summary.slos.length} 项`} sub="缺失数据不会伪造为健康" icon={<Activity size={18} />} />
+        <StatCard title={primarySlo?.name ?? 'SLO'} value={primarySlo?.achieved === null || primarySlo?.achieved === undefined ? '—' : `${(primarySlo.achieved * 100).toFixed(2)}%`} sub={primarySlo ? `目标 ${(primarySlo.target * 100).toFixed(2)}% · ${primarySlo.status}` : '暂无样本'} icon={<Activity size={18} />} />
       </StatGrid>
     </section>
   );
