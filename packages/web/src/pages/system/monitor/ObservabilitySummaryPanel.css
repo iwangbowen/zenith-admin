@@ -1,0 +1,47 @@
+.observability-summary-panel {
+  margin-bottom: 20px;
+  padding: 14px 0 4px;
+  border-top: 1px solid var(--semi-color-border);
+  border-bottom: 1px solid var(--semi-color-border);
+}
+
+.observability-summary-panel__header,
+.observability-summary-panel__status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.observability-summary-panel__header {
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.observability-summary-panel__header > div:first-child {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.observability-summary-panel__status {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.observability-summary-skeleton {
+  height: 90px;
+  margin-bottom: 20px;
+}
+
+@media (--sm-down) {
+  .observability-summary-panel__header,
+  .observability-summary-panel__header > div:first-child {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .observability-summary-panel__status {
+    justify-content: flex-start;
+  }
+}

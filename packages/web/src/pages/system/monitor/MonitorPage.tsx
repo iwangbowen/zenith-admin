@@ -14,6 +14,7 @@ import { MetricMeter, type MetricMeterTone } from '@/components/data-viz/MetricM
 import './MonitorPage.css';
 import { EMPTY_PLACEHOLDER, dateTimeColumn } from '@/utils/table-columns';
 import { copyTextWithToast } from '@/utils/clipboard';
+import ObservabilitySummaryPanel from './ObservabilitySummaryPanel';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { enumValueOf, formatBytes } from '@zenith/shared/core';
@@ -597,6 +598,7 @@ export default function MonitorPage() {
           {/* ===== 总览 ===== */}
           <TabPane tab={<span className="monitor-tab-label"><Server size={14} />总览</span>} itemKey="overview">
             {data ? (<>
+            <ObservabilitySummaryPanel />
             <div className="monitor-overview-grid">
               <div className="monitor-overview-metric">
                 <div className="monitor-overview-metric__header"><Cpu size={15} /><Text strong>CPU</Text></div>
