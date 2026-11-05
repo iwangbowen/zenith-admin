@@ -4,13 +4,14 @@ import { config } from '../../config';
 import { checkInfraHealth } from '../../lib/health-checks';
 import { countActiveWorkerNodes, getQueueDepths } from '../../lib/pg-boss-scheduler';
 import { getMonitorStatus } from './monitor.service';
+import { metricsSampler } from '../../lib/metrics-sampler';
 
 type ObservabilitySummary = OutputOf<typeof observabilityContract.summary>;
 
-function nowWindow(): ObservabilitySummary['window'] {
+function nowWindow(seconds = 300): ObservabilitySummary['window'] {
   const to = new Date();
-  const from = new Date(to.getTime() - 300_000);
-  return { from: from.toISOString(), to: to.toISOString(), seconds: 300 };
+  const from = new Date(to.getTime() - seconds * 1000);
+  return { from: from.toISOString(), to: to.toISOString(), seconds };
 }
 
 function source(key: string, status: ObservabilitySummary['status'], error: string | null = null): ObservabilitySummary['sources'][number] {
@@ -36,7 +37,7 @@ export async function getObservabilitySummary(): Promise<ObservabilitySummary> {
     getQueueDepths(),
   ]);
 
-  const window = nowWindow();
+  const window = nowWindow(60);
   const monitorValue = monitor.status === 'fulfilled' ? monitor.value : null;
   const infraValue = infra.status === 'fulfilled' ? infra.value : null;
   const activeWorkers = workers.status === 'fulfilled' ? workers.value : null;
@@ -52,12 +53,30 @@ export async function getObservabilitySummary(): Promise<ObservabilitySummary> {
     telemetry: 'degraded',
   };
 
+  const httpWindow = metricsSampler.http.windowStats(60);
+  const hasHttpSamples = httpWindow.total > 0;
+  const apiAchieved = hasHttpSamples ? Math.max(0, 1 - httpWindow.errorRate / 100) : null;
+  const apiTarget = 0.995;
+  const apiSlo: ObservabilitySummary['slos'][number] = {
+    key: 'api.request.success',
+    name: 'API 请求成功率',
+    target: apiTarget,
+    status: apiAchieved === null ? 'unavailable' : apiAchieved >= apiTarget ? 'ok' : 'degraded',
+    achieved: apiAchieved,
+    totalEvents: hasHttpSamples ? httpWindow.total : null,
+    badEvents: hasHttpSamples ? httpWindow.errors : null,
+    errorBudgetRemaining: apiAchieved === null ? null : Math.max(0, (apiAchieved - (1 - apiTarget)) / apiTarget),
+    burnRateFast: apiAchieved === null ? null : Math.max(0, (1 - apiAchieved) / (1 - apiTarget)),
+    burnRateSlow: null,
+    window,
+  };
+
   const sourceRows = [
     infra.status === 'fulfilled' ? source('infrastructure', 'ok') : source('infrastructure', 'unavailable', String(infra.reason)),
     monitor.status === 'fulfilled' ? source('monitor-sampler', 'ok') : source('monitor-sampler', 'unavailable', String(monitor.reason)),
     workers.status === 'fulfilled' ? source('worker-heartbeat', 'ok') : source('worker-heartbeat', 'unavailable', String(workers.reason)),
     queues.status === 'fulfilled' ? source('queue-depth', 'ok') : source('queue-depth', 'unavailable', String(queues.reason)),
-    source('slo-engine', 'degraded', 'SLO recording rules are not connected yet'),
+    source('slo-engine', apiAchieved === null ? 'unavailable' : 'ok', apiAchieved === null ? '最近 60 秒没有请求样本' : null),
   ];
 
   const hasUnavailable = sourceRows.some((row) => row.status === 'unavailable');
@@ -70,9 +89,7 @@ export async function getObservabilitySummary(): Promise<ObservabilitySummary> {
     window,
     sources: sourceRows,
     dependencies,
-    // An empty list is intentional until the SLO evaluator is connected; the source row
-    // tells the UI why it is unavailable instead of fabricating a healthy percentage.
-    slos: [],
+    slos: [apiSlo],
     capacity: {
       database: {
         activeConnections: db?.activeConnections ?? null,
