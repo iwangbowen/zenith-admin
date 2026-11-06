@@ -94,11 +94,15 @@ export const terminalFilesHandlers = [
 
   mock(logLocatorContract.locate, ({ query, ok }) => ok({
     correlationId: query.correlationId,
-    status: 'source_unavailable',
+    status: 'source_error',
     matches: [],
-    sources: [],
-    scannedFiles: 0,
-    scannedBytes: 0,
+    sources: [
+      { role: 'all', hostname: 'zenith-demo', status: 'scanned', scannedFiles: 2, scannedBytes: 4096, error: null },
+      { role: 'api', hostname: null, status: 'unavailable', scannedFiles: 0, scannedBytes: 0, error: '日志卷未挂载' },
+      { role: 'worker', hostname: 'zenith-demo', status: 'error', scannedFiles: 1, scannedBytes: 2048, error: 'worker_log_read_error' },
+    ],
+    scannedFiles: 3,
+    scannedBytes: 6144,
     truncated: false,
   })),
 

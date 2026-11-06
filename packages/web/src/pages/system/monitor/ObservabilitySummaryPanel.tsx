@@ -16,6 +16,14 @@ const SOURCE_STATUS_LABELS = {
   not_sampled: '未采样',
   unavailable: '不可用',
 } as const;
+const SOURCE_LABELS: Record<string, string> = {
+  infrastructure: '基础设施检查',
+  'monitor-sampler': '主机监控采样',
+  'worker-heartbeat': 'Worker 心跳',
+  'queue-depth': '队列深度',
+  'slo-engine': 'API SLO 采样',
+  telemetry: 'OpenTelemetry',
+};
 const DEPENDENCY_LABELS: Record<string, string> = {
   database: '数据库',
   redis: 'Redis',
@@ -41,7 +49,9 @@ export default function ObservabilitySummaryPanel() {
   const readyQueues = queueAvailable
     ? queueItems.reduce((total, queue) => total + queue.ready, 0)
     : null;
-  const unavailableSources = summary.sources.filter((source) => source.status !== 'ok').map((source) => source.key);
+  const unavailableSources = summary.sources
+    .filter((source) => source.status === 'unavailable' || source.status === 'not_sampled')
+    .map((source) => SOURCE_LABELS[source.key] ?? source.key);
   const primarySlo = summary.slos[0];
   const queueTotals = queueAvailable
     ? queueItems.reduce((totals, queue) => ({
@@ -154,8 +164,18 @@ export default function ObservabilitySummaryPanel() {
           <div className="monitor-overview-grid observability-stat-grid">
             <div className="monitor-overview-metric monitor-overview-metric--plain"><div className="monitor-overview-metric__header"><CheckCircle2 size={15} /><Text strong>正常来源</Text></div><div className="monitor-overview-metric__value">{sourceCounts.ok}</div><div className="monitor-overview-metric__info"><Text type="tertiary" size="small">{summary.sources.length} 个来源</Text></div></div>
             <div className="monitor-overview-metric monitor-overview-metric--plain"><div className="monitor-overview-metric__header"><AlertTriangle size={15} /><Text strong>降级/过期来源</Text></div><div className="monitor-overview-metric__value">{sourceCounts.degraded + sourceCounts.stale}</div><div className="monitor-overview-metric__info"><Text type="tertiary" size="small">需要关注</Text></div></div>
-            <div className="monitor-overview-metric monitor-overview-metric--plain"><div className="monitor-overview-metric__header"><Database size={15} /><Text strong>不可用/未采样</Text></div><div className="monitor-overview-metric__value">{sourceCounts.unavailable + sourceCounts.not_sampled}</div><div className="monitor-overview-metric__info"><Text type="tertiary" size="small">不以 0 代替</Text></div></div>
+            <div className="monitor-overview-metric monitor-overview-metric--plain"><div className="monitor-overview-metric__header"><Database size={15} /><Text strong>不可用来源</Text></div><div className="monitor-overview-metric__value">{sourceCounts.unavailable}</div><div className="monitor-overview-metric__info"><Text type="tertiary" size="small">不可读取</Text></div></div>
+            <div className="monitor-overview-metric monitor-overview-metric--plain"><div className="monitor-overview-metric__header"><Clock3 size={15} /><Text strong>未采样来源</Text></div><div className="monitor-overview-metric__value">{sourceCounts.not_sampled}</div><div className="monitor-overview-metric__info"><Text type="tertiary" size="small">尚无第一份样本</Text></div></div>
             <div className="monitor-overview-metric monitor-overview-metric--plain"><div className="monitor-overview-metric__header"><Clock3 size={15} /><Text strong>最大延迟</Text></div><div className="monitor-overview-metric__value">{freshness == null ? '—' : `${Math.round(freshness)}s`}</div><div className="monitor-overview-metric__info"><Text type="tertiary" size="small">最近采集</Text></div></div>
+          </div>
+          <div className="observability-source-list" style={{ marginTop: 12 }}>
+            {summary.sources.map((source) => (
+              <div className="observability-source-item" key={source.key}>
+                <Text strong>{SOURCE_LABELS[source.key] ?? source.key}</Text>
+                <FreshnessBadge status={source.status} ageSeconds={source.ageSeconds} />
+                {source.error && <Text type="tertiary" size="small">{source.error}</Text>}
+              </div>
+            ))}
           </div>
         </section>
       </div>

@@ -1,17 +1,31 @@
 import { Tag, Typography } from '@douyinfe/semi-ui';
-import type { ObservabilityStatus } from '@zenith/shared/platform';
+import type { ObservabilitySourceStatus, ObservabilityStatus } from '@zenith/shared/platform';
 
 const { Text } = Typography;
 
-const STATUS_META: Record<ObservabilityStatus, { label: string; color: 'green' | 'orange' | 'red' }> = {
+type DisplayStatus = ObservabilityStatus | ObservabilitySourceStatus;
+
+type StatusMeta = { label: string; color: 'green' | 'orange' | 'red' | 'grey' };
+
+const STATUS_META: Record<DisplayStatus, StatusMeta> = {
   ok: { label: '正常', color: 'green' },
   degraded: { label: '降级', color: 'orange' },
+  stale: { label: '已过期', color: 'orange' },
+  not_sampled: { label: '未采样', color: 'grey' },
   unavailable: { label: '不可用', color: 'red' },
 };
 
-export function FreshnessBadge({ status, ageSeconds }: Readonly<{ status: ObservabilityStatus; ageSeconds: number | null }>) {
+export function FreshnessBadge({ status, ageSeconds }: Readonly<{ status: DisplayStatus; ageSeconds: number | null }>) {
   const meta = STATUS_META[status];
-  const age = ageSeconds === null ? '无数据' : ageSeconds < 1 ? '刚刚更新' : `${Math.round(ageSeconds)} 秒前更新`;
+  const age = status === 'not_sampled'
+    ? '尚未采样'
+    : status === 'unavailable'
+      ? '不可读取'
+      : ageSeconds === null
+        ? '无数据'
+        : ageSeconds < 1
+          ? '刚刚更新'
+          : `${Math.round(ageSeconds)} 秒前更新`;
   return <Tag color={meta.color} size="small">{meta.label} · {age}</Tag>;
 }
 

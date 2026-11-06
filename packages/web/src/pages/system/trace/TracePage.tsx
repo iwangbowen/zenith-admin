@@ -71,6 +71,8 @@ function TraceLogsPanel({ correlationId }: { correlationId: string }) {
       : status === 'not_found'
         ? '已扫描可见日志文件，但未找到该业务关联 ID'
         : null;
+  const sourceStatusLabel = { scanned: '已扫描', unavailable: '不可用', error: '读取失败' } as const;
+  const sourceStatusColor = { scanned: 'green', unavailable: 'grey', error: 'red' } as const;
 
   return (
     <Spin spinning={locatorQuery.isPending}>
@@ -97,6 +99,19 @@ function TraceLogsPanel({ correlationId }: { correlationId: string }) {
                 {selected?.hostname}{selected?.pid ? `:${selected.pid}` : ''} · 顶层 {selected?.matchedField} 精确命中
               </Text>
               <Button size="small" onClick={handleViewInLogFiles}>在日志文件中查看</Button>
+            </div>
+          )}
+          {locatorQuery.data && locatorQuery.data.sources.length > 0 && (
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
+              <Text type="tertiary" size="small">日志源：</Text>
+              {locatorQuery.data.sources.map((source) => (
+                <Tag key={source.role} size="small" color={sourceStatusColor[source.status]}>
+                  {source.role} · {sourceStatusLabel[source.status]}
+                  {source.hostname ? ` · ${source.hostname}` : ''}
+                  {source.scannedFiles > 0 ? ` · ${source.scannedFiles} 个文件` : ''}
+                  {source.error ? ` · ${source.error}` : ''}
+                </Tag>
+              ))}
             </div>
           )}
           {lines.length === 0 ? (

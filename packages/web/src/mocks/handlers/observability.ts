@@ -10,22 +10,23 @@ const window = (seconds: number) => ({
 
 const summary: ObservabilitySummary = {
   generatedAt: new Date(now).toISOString(),
-  status: 'degraded',
+  status: 'unavailable',
   partial: true,
   window: window(300),
   sources: [
     { key: 'infrastructure', status: 'ok', generatedAt: new Date(now - 1000).toISOString(), ageSeconds: 1, error: null },
-    { key: 'monitor-sampler', status: 'ok', generatedAt: new Date(now - 2000).toISOString(), ageSeconds: 2, error: null },
+    { key: 'monitor-sampler', status: 'not_sampled', generatedAt: null, ageSeconds: null, error: null },
     { key: 'worker-heartbeat', status: 'ok', generatedAt: new Date(now - 3000).toISOString(), ageSeconds: 3, error: null },
     { key: 'queue-depth', status: 'stale', generatedAt: new Date(now - 45_000).toISOString(), ageSeconds: 45, error: null },
     { key: 'slo-engine', status: 'ok', generatedAt: new Date(now - 1000).toISOString(), ageSeconds: 1, error: null },
+    { key: 'telemetry', status: 'unavailable', generatedAt: null, ageSeconds: null, error: 'telemetry_initialization_failed' },
   ],
   dependencies: {
     database: 'ok',
     redis: 'ok',
     invalidationBus: 'ok',
     workers: 'ok',
-    telemetry: 'degraded',
+    telemetry: 'unavailable',
   },
   slos: [{
     key: 'api.request.success',
