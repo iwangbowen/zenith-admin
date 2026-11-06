@@ -224,9 +224,10 @@ export function createWsRoute(upgradeWebSocket: UpgradeWebSocket) {
         },
         async onMessage(evt, ws) {
           if (!identity) return;
-          const frame = bucket.take() ? parseFrame(evt.data) : null;
+          const rateAllowed = bucket.take();
+          const frame = rateAllowed ? parseFrame(evt.data) : null;
           // success 只描述协议接收，不表示会话业务处理 / 转发已被确认；限速和解析失败仍计入全帧收包。
-          incWsRecv(ws, evt.data, Boolean(frame));
+          incWsRecv(ws, evt.data, Boolean(frame), rateAllowed && !frame);
           if (!frame) return;
           try {
             if (frame.type === 'ping') {

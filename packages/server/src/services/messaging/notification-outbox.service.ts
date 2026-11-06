@@ -20,8 +20,8 @@ import { notificationOutbox, notificationOutboxSubjects } from '../../db/schema'
 import type { NotificationOutboxRow } from '../../db/schema';
 import type { DbExecutor, DbTransaction } from '../../db/types';
 import { mapWithConcurrency } from '../../lib/concurrency';
-import { currentCorrelationId, currentParentRef } from '../../lib/context';
-import { currentPersistedOtelContext } from '../../lib/telemetry-context';
+import { currentCorrelationId, currentParentRef, runWithCorrelationId, runWithParentRef } from '../../lib/context';
+import { currentPersistedOtelContext, runWithPersistedOtelContext, withAsyncSpan } from '../../lib/telemetry-context';
 import { formatDateTime } from '../../lib/datetime';
 import { escapeHtml } from '@zenith/shared/core';
 import { deliverOutboxRow, type DeliverSummary } from '../../lib/notification/dispatch';
@@ -239,7 +239,11 @@ function claimableCondition(now: Date) {
 async function deliverClaimedRow(row: NotificationOutboxRow): Promise<void> {
   let summary: DeliverSummary;
   try {
-    summary = await deliverOutboxRow(row);
+    summary = await runWithPersistedOtelContext(row, () => runWithCorrelationId(row.correlationId ?? `notification:${row.id}`, () =>
+      runWithParentRef(`notification:${row.id}`, () => withAsyncSpan('zenith.notification.dispatch', () => deliverOutboxRow(row), {
+        'zenith.async.kind': 'notification_dispatch',
+        'zenith.notification.event': row.eventKey,
+      }))));
   } catch (err) {
     const attempts = row.attempts + 1;
     const status = attempts >= MAX_ATTEMPTS ? 'failed' : 'pending';

@@ -112,6 +112,8 @@ async function enqueueDeferred(
       digestKey: row.eventKey === 'platform.entity.changed' ? null : item.digestKey,
       correlationId: row.correlationId,
       parentRef: row.parentRef,
+      traceParent: row.traceParent,
+      traceState: row.traceState,
       tenantId: row.tenantId,
     }))).onConflictDoNothing({ target: notificationOutbox.dedupeKey, where: sql`${notificationOutbox.dedupeKey} is not null` }).returning({ id: notificationOutbox.id });
     if (subjects.length) await tx.insert(notificationOutboxSubjects).values(deferredRows.flatMap((deferred) => subjects.map((subject) => ({

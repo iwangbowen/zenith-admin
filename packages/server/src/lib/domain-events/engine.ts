@@ -7,7 +7,7 @@ import { registerSystemLedgerWorker } from '../pg-boss-scheduler';
 import { flushTransactionEffects } from '../transaction-effects';
 import logger from '../logger';
 import { runWithCorrelationId, runWithParentRef } from '../context';
-import { runWithPersistedOtelContext } from '../telemetry-context';
+import { runWithPersistedOtelContext, withAsyncSpan } from '../telemetry-context';
 import { EventLeaseLostError, getEventConsumer, PermanentEventError } from './registry';
 import { captureException } from '../error-tracking/reporter';
 import { EVENT_OUTBOX_QUEUE } from './publication';
@@ -68,7 +68,13 @@ export async function executeEventConsumer(delivery: ConsumerDeliveryRow): Promi
       const consumer = getEventConsumer(current.consumerKey);
       const parentRef = `event:${event.eventId.replaceAll('-', '').slice(0, 25)}`;
       const result = await runWithPersistedOtelContext(event, () => runWithCorrelationId(event.correlationId ?? event.eventId, () =>
-        runWithParentRef(parentRef, () => runInEventConsumer(current.consumerKey, () => consumer.handle(tx, event, current)))));
+        runWithParentRef(parentRef, () => withAsyncSpan('zenith.domain_event.consume', () =>
+          runInEventConsumer(current.consumerKey, () => consumer.handle(tx, event, current)), {
+            'zenith.async.kind': 'domain_event_consumer',
+            'zenith.event.consumer': current.consumerKey,
+            'zenith.event.lane': current.lane,
+            'zenith.event.attempt': current.attempts,
+          }))));
       const status = result.outcome === 'skipped' ? 'skipped' : 'succeeded';
       const confirmed = await tx.update(deliveries).set({ status, result: { ...result }, finishedAt: now, lastError: null, ...clearLease })
         .where(owned(delivery)).returning({ id: deliveries.id });
@@ -101,10 +107,19 @@ export async function executeEventConsumer(delivery: ConsumerDeliveryRow): Promi
 
 /** Failed consumer only; successful siblings and immutable facts are never reset. */
 export async function retryEventConsumer(id: number): Promise<boolean> {
-  const [row] = await db.update(deliveries).set({ status: 'pending', attempts: 0, generation: sql`generation + 1`,
-    runAt: now, finishedAt: null, lastError: null, ...clearLease,
-  }).where(and(eq(deliveries.id, id), inArray(deliveries.status, ['dead', 'retrying']))).returning({ id: deliveries.id });
-  return !!row;
+  return withAsyncSpan(
+    'zenith.domain_event.retry',
+    async () => {
+      const [row] = await db.update(deliveries).set({ status: 'pending', attempts: 0, generation: sql`generation + 1`,
+        runAt: now, finishedAt: null, lastError: null, ...clearLease,
+      }).where(and(eq(deliveries.id, id), inArray(deliveries.status, ['dead', 'retrying']))).returning({ id: deliveries.id });
+      return !!row;
+    },
+    {
+      'zenith.async.kind': 'domain_event_retry',
+      'zenith.event.delivery_id': id,
+    },
+  );
 }
 
 export async function registerDomainEventWorker(): Promise<void> {

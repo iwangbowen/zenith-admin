@@ -7,7 +7,7 @@ import { exactTenantCondition } from '../tenant';
 import { currentCorrelationId, currentParentRef } from '../context';
 import { matchingEventConsumers } from './registry';
 import { rememberEventPickup } from './publication';
-import { currentPersistedOtelContext } from '../telemetry-context';
+import { currentPersistedOtelContext, withAsyncSpan } from '../telemetry-context';
 
 export interface PublishEventInput {
   domain: string; eventType: string; tenantId: number | null;
@@ -16,32 +16,39 @@ export interface PublishEventInput {
 }
 /** Caller must own the source aggregate lock and await this write before committing. */
 export async function publishEventInTx(tx: DbTransaction, input: PublishEventInput) {
-  if (input.tenantId === undefined || !input.domain || !input.eventType || !input.businessKey || !input.orderingKey || !input.subjectRefs.length) {
-    throw new Error('Event requires explicit tenant, type, business key, ordering key and subjects');
-  }
-  const signature = stableStringify({ payload: input.payload, scope: input.scope ?? {}, subjects: input.subjectRefs, orderingKey: input.orderingKey });
-  if (Buffer.byteLength(signature) > 262144) throw new Error('Event snapshot exceeds 256 KiB');
-  const payloadHash = createHash('sha256').update(signature).digest('hex');
-  // Identity values are allocated before commit, so they cannot establish ordering on their own.
-  // Serialize publishers for the same business stream before allocating the event id; the xact lock
-  // is released only after commit/rollback, making id order match commit order for that stream.
-  const streamKey = `${input.tenantId ?? 'platform'}:${input.domain}:${input.orderingKey}`;
-  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${streamKey}, 0))`);
-  const matched = matchingEventConsumers(input);
-  const [inserted] = await tx.insert(eventOutbox).values({ ...input, scope: input.scope ?? {},
-    eventId: input.eventId ?? randomUUID(), payloadHash, correlationId: currentCorrelationId(), parentRef: currentParentRef(),
-    ...currentPersistedOtelContext(),
-  }).onConflictDoNothing().returning();
-  if (!inserted) {
-    const [existing] = await tx.select().from(eventOutbox).where(and(
-      exactTenantCondition(eventOutbox.tenantId, input.tenantId), eq(eventOutbox.eventType, input.eventType), eq(eventOutbox.businessKey, input.businessKey),
-    )).limit(1);
-    if (!existing || existing.payloadHash !== payloadHash) throw new Error('Event business key conflicts with a different fact');
-    return existing;
-  }
-  if (matched.length) await tx.insert(eventConsumerDeliveries).values(matched.map((consumer) => ({
-    eventId: inserted.id, consumerKey: consumer.key, orderingKey: input.orderingKey, after: [...consumer.after ?? []], lane: consumer.lane ?? 'business', runAt: sql`clock_timestamp()`,
-  })));
-  rememberEventPickup(tx);
-  return inserted;
+  return withAsyncSpan('zenith.domain_event.publish', async () => {
+    if (input.tenantId === undefined || !input.domain || !input.eventType || !input.businessKey || !input.orderingKey || !input.subjectRefs.length) {
+      throw new Error('Event requires explicit tenant, type, business key, ordering key and subjects');
+    }
+    const signature = stableStringify({ payload: input.payload, scope: input.scope ?? {}, subjects: input.subjectRefs, orderingKey: input.orderingKey });
+    if (Buffer.byteLength(signature) > 262144) throw new Error('Event snapshot exceeds 256 KiB');
+    const payloadHash = createHash('sha256').update(signature).digest('hex');
+    // Identity values are allocated before commit, so they cannot establish ordering on their own.
+    // Serialize publishers for the same business stream before allocating the event id; the xact lock
+    // is released only after commit/rollback, making id order match commit order for that stream.
+    const streamKey = `${input.tenantId ?? 'platform'}:${input.domain}:${input.orderingKey}`;
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${streamKey}, 0))`);
+    const matched = matchingEventConsumers(input);
+    const [inserted] = await tx.insert(eventOutbox).values({ ...input, scope: input.scope ?? {},
+      eventId: input.eventId ?? randomUUID(), payloadHash, correlationId: currentCorrelationId(), parentRef: currentParentRef(),
+      ...currentPersistedOtelContext(),
+    }).onConflictDoNothing().returning();
+    if (!inserted) {
+      const [existing] = await tx.select().from(eventOutbox).where(and(
+        exactTenantCondition(eventOutbox.tenantId, input.tenantId), eq(eventOutbox.eventType, input.eventType), eq(eventOutbox.businessKey, input.businessKey),
+      )).limit(1);
+      if (!existing || existing.payloadHash !== payloadHash) throw new Error('Event business key conflicts with a different fact');
+      return existing;
+    }
+    if (matched.length) await tx.insert(eventConsumerDeliveries).values(matched.map((consumer) => ({
+      eventId: inserted.id, consumerKey: consumer.key, orderingKey: input.orderingKey, after: [...consumer.after ?? []], lane: consumer.lane ?? 'business', runAt: sql`clock_timestamp()`,
+    })));
+    rememberEventPickup(tx);
+    return inserted;
+  }, {
+    'zenith.async.kind': 'domain_event_publish',
+    'zenith.event.domain': input.domain,
+    'zenith.event.type': input.eventType,
+    'zenith.event.transactional': true,
+  });
 }

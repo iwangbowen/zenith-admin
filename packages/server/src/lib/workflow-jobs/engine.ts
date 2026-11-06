@@ -17,7 +17,7 @@ import { isIndeterminateExternalStatus } from './external-effects';
 import { currentWorkflowJobContext, ownedJobCondition, runWithWorkflowJobContext } from './lease';
 import { flushWorkflowJobEffects } from './execution-context';
 import { publishWorkflowJobPickup, rememberWorkflowJobPickup, scheduleJobPickup } from './publication';
-import { currentPersistedOtelContext, runWithPersistedOtelContext } from '../telemetry-context';
+import { currentPersistedOtelContext, runWithPersistedOtelContext, withAsyncSpan } from '../telemetry-context';
 export { scheduleJobPickup, flushWorkflowJobPickups } from './publication';
 export { WORKFLOW_ADVANCING_JOB_TYPES } from '@zenith/shared/workflow';
 
@@ -42,23 +42,29 @@ export interface EnqueueJobInput {
 
 /** Transactional callers persist only; reconciliation covers a missed post-commit wakeup. */
 export async function enqueueJob(input: EnqueueJobInput, executor: DbExecutor = db): Promise<WorkflowJobRow | null> {
-  const values: NewWorkflowJob = {
-    jobType: input.jobType, status: 'pending', payload: input.payload ?? {},
-    instanceId: input.instanceId ?? null, taskId: input.taskId ?? null, nodeKey: input.nodeKey ?? null,
-    idempotencyKey: input.idempotencyKey ?? null, correlationId: input.correlationId ?? currentCorrelationId() ?? null,
-    parentRef: currentParentRef() ?? null, ...currentPersistedOtelContext(), priority: input.priority ?? 100,
-    maxAttempts: input.maxAttempts ?? 1, runAt: input.runAt ?? new Date(), tenantId: input.tenantId ?? null,
-    executionTimeoutMs: Math.max(1, Math.min(input.executionTimeoutMs ?? WORKFLOW_JOB_EXECUTION_TIMEOUT_MS, 3_600_000)),
-  };
-  const insertion = executor.insert(workflowJobs).values(values);
-  const [row] = input.idempotencyKey
-    ? await insertion.onConflictDoNothing({ target: workflowJobs.idempotencyKey }).returning()
-    : await insertion.returning();
-  if (row) {
-    if (executor === db) scheduleJobPickup(row.id, row.runAt);
-    else rememberWorkflowJobPickup(executor, row.id, row.runAt);
-  }
-  return row ?? null;
+  return withAsyncSpan('zenith.workflow.job.enqueue', async () => {
+    const values: NewWorkflowJob = {
+      jobType: input.jobType, status: 'pending', payload: input.payload ?? {},
+      instanceId: input.instanceId ?? null, taskId: input.taskId ?? null, nodeKey: input.nodeKey ?? null,
+      idempotencyKey: input.idempotencyKey ?? null, correlationId: input.correlationId ?? currentCorrelationId() ?? null,
+      parentRef: currentParentRef() ?? null, ...currentPersistedOtelContext(), priority: input.priority ?? 100,
+      maxAttempts: input.maxAttempts ?? 1, runAt: input.runAt ?? new Date(), tenantId: input.tenantId ?? null,
+      executionTimeoutMs: Math.max(1, Math.min(input.executionTimeoutMs ?? WORKFLOW_JOB_EXECUTION_TIMEOUT_MS, 3_600_000)),
+    };
+    const insertion = executor.insert(workflowJobs).values(values);
+    const [row] = input.idempotencyKey
+      ? await insertion.onConflictDoNothing({ target: workflowJobs.idempotencyKey }).returning()
+      : await insertion.returning();
+    if (row) {
+      if (executor === db) scheduleJobPickup(row.id, row.runAt);
+      else rememberWorkflowJobPickup(executor, row.id, row.runAt);
+    }
+    return row ?? null;
+  }, {
+    'zenith.async.kind': 'workflow_job_enqueue',
+    'zenith.workflow.job_type': input.jobType,
+    'zenith.workflow.transactional': executor !== db,
+  });
 }
 
 
@@ -149,16 +155,18 @@ export async function resumeInstanceJobs(tx: DbExecutor, instanceId: number, job
 }
 
 export async function retryJob(id: number, opts?: { payload?: Record<string, unknown>; runAt?: Date }, executor: DbExecutor = db): Promise<WorkflowJobRow | null> {
-  const [row] = await executor.update(workflowJobs).set({
-    status: 'pending', generation: sql`${workflowJobs.generation} + 1`, attempts: 0,
-    lastError: null, result: null, pausedRemainingMs: null, ...clearedLease, runAt: opts?.runAt ?? new Date(),
-    ...(opts?.payload ? { payload: opts.payload, operationKey: randomUUID() } : {}),
-  }).where(and(eq(workflowJobs.id, id), inArray(workflowJobs.status, ['failed', 'dead', 'canceled']))).returning();
-  if (row) {
-    if (executor === db) scheduleJobPickup(row.id, row.runAt);
-    else rememberWorkflowJobPickup(executor, row.id, row.runAt);
-  }
-  return row ?? null;
+  return withAsyncSpan('zenith.workflow.job.retry', async () => {
+    const [row] = await executor.update(workflowJobs).set({
+      status: 'pending', generation: sql`${workflowJobs.generation} + 1`, attempts: 0,
+      lastError: null, result: null, pausedRemainingMs: null, ...clearedLease, runAt: opts?.runAt ?? new Date(),
+      ...(opts?.payload ? { payload: opts.payload, operationKey: randomUUID() } : {}),
+    }).where(and(eq(workflowJobs.id, id), inArray(workflowJobs.status, ['failed', 'dead', 'canceled']))).returning();
+    if (row) {
+      if (executor === db) scheduleJobPickup(row.id, row.runAt);
+      else rememberWorkflowJobPickup(executor, row.id, row.runAt);
+    }
+    return row ?? null;
+  }, { 'zenith.async.kind': 'workflow_job_retry' });
 }
 
 export async function skipJob(id: number): Promise<WorkflowJobRow | null> {
@@ -219,7 +227,15 @@ async function claimJob(jobId: number, executor?: DbTransaction): Promise<Claime
     }).returning({ id: workflowJobExecutions.id });
     return { job, executionId: execution.id };
   };
-  return executor ? claim(executor) : db.transaction(claim);
+  return withAsyncSpan(
+    'zenith.workflow.job.claim',
+    () => executor ? claim(executor) : db.transaction(claim),
+    {
+      'zenith.async.kind': 'workflow_job_claim',
+      'zenith.workflow.job_id': jobId,
+      'zenith.workflow.transactional': Boolean(executor),
+    },
+  );
 }
 
 async function finishJob(context: WorkflowJobContext, error: unknown, result: WorkflowJobResult = {}): Promise<void> {
@@ -278,7 +294,11 @@ async function executeClaimedJob({ job, executionId }: ClaimedJob): Promise<void
     const handler = getJobHandler(job.jobType);
     if (!handler) throw new WorkflowJobPermanentError(`Unregistered workflow handler: ${job.jobType}`);
     const work = runWithPersistedOtelContext(job, () => runWithWorkflowJobContext(context, () => runWithCorrelationId(job.correlationId ?? randomUUID(),
-      () => runWithParentRef(`job:${job.id}`, () => handler(context)))));
+      () => runWithParentRef(`job:${job.id}`, () => withAsyncSpan('zenith.workflow.job', () => handler(context), {
+        'zenith.async.kind': 'workflow_job',
+        'zenith.workflow.job_type': job.jobType,
+        'zenith.workflow.attempt': job.attempts,
+      })) )));
     const result = (await Promise.race([work, aborted])) ?? {};
     await flushWorkflowJobEffects(context);
     await finishJob(context, null, result);
@@ -353,7 +373,14 @@ async function recoverExpiredJobs(tx: DbTransaction, filter: DrainableFilter, li
 /** Reconcile expired leases and publish wakeups without executing handlers. */
 export async function drainWorkflowJobs(opts: DrainWorkflowJobsOptions = {}): Promise<{ recovered: number; requeued: number; dead: number }> {
   const limit = Math.max(1, Math.min(opts.limit ?? opts.batch ?? 200, 1000));
-  const recovery = await db.transaction((tx) => recoverExpiredJobs(tx, opts, limit));
+  const recovery = await withAsyncSpan(
+    'zenith.workflow.job.recover_expired',
+    () => db.transaction((tx) => recoverExpiredJobs(tx, opts, limit)),
+    {
+      'zenith.async.kind': 'workflow_job_lease_recovery',
+      'zenith.workflow.recovery_limit': limit,
+    },
+  );
   const remaining = Math.max(0, limit - recovery.recovered);
   const recoveredIds = recovery.wakeups.map((job) => job.id);
   const pending = remaining === 0 ? [] : await db.select({ id: workflowJobs.id, runAt: workflowJobs.runAt }).from(workflowJobs)

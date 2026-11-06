@@ -255,7 +255,17 @@ describe('连接元数据与最近消息画像', () => {
     m.incWsRecv(a.ws, 'broken-json', false);
     const snap = m.getWsSnapshot();
     expect(a.send).toHaveBeenCalledTimes(2);
-    expect(snap).toMatchObject({ totalSent: 1, totalRecv: 3 });
+    expect(snap).toMatchObject({
+      totalSent: 1,
+      totalRecv: 3,
+      totalSentBytes: Buffer.byteLength(JSON.stringify(PING), 'utf8'),
+      totalRecvBytes: Buffer.byteLength(JSON.stringify({ type: 'ping' }), 'utf8')
+        + Buffer.byteLength('{}', 'utf8')
+        + Buffer.byteLength('broken-json', 'utf8'),
+      totalWriteFailures: 2,
+      totalParseFailures: 3,
+      totalHeartbeatFailures: 2,
+    });
     expect(snap.messages.map((message) => [message.type, message.success])).toEqual([
       ['invalid', false], ['unknown', false], [PING.type, false], [PING.type, true],
     ]);

@@ -43,7 +43,7 @@ import { completeAsyncTasks } from './terminal-events';
 import { taskTransaction, runWithTaskExecution, TaskExecutionLostError } from './execution';
 import { settleTaskState, transitionAsyncTasks } from './settlement';
 import { rememberTransactionEffect } from '../transaction-effects';
-import { currentPersistedOtelContext, runWithPersistedOtelContext } from '../telemetry-context';
+import { currentPersistedOtelContext, runWithPersistedOtelContext, withAsyncSpan } from '../telemetry-context';
 
 const TASK_HEARTBEAT_INTERVAL_MS = Math.floor(HEARTBEAT_STALE_MS / 3);
 
@@ -224,36 +224,42 @@ function queueForTask(task: Pick<AsyncTaskRow, 'nodeId'>): string {
 }
 
 async function enqueueTaskRow(task: Pick<AsyncTaskRow, 'id' | 'nodeId'>): Promise<void> {
-  let [current] = await db.select().from(asyncTasks).where(eq(asyncTasks.id, task.id)).limit(1);
-  if (!current || current.status !== 'pending') return;
-  const queue = queueForTask(current);
-  let state: string | null;
-  try { state = await getSystemJobState(queue, current.dispatchToken); }
-  catch (error) {
-    if (!current.nodeId || !isQueueNotFoundError(error) || !await ensureLocalNodeQueue(queue)) throw error;
-    state = null;
-  }
-  if (dispatchNeedsReplacement(state)) {
-    // A broker timeout or disabled worker may terminate the message before the
-    // business row is claimed. CAS rotates only that still-pending round.
-    const [replacement] = await db.update(asyncTasks).set({ dispatchToken: randomUUID() })
-      .where(and(eq(asyncTasks.id, current.id), eq(asyncTasks.status, 'pending'), eq(asyncTasks.dispatchToken, current.dispatchToken))).returning();
-    if (!replacement) return;
-    current = replacement;
-  } else if (state) return; // One queued/active message already owns this round.
-  const options = asyncTaskDispatchOptions(current);
-  const payload = { taskId: current.id, dispatchToken: current.dispatchToken };
-  const nextRunAt = current.nextRunAt;
-  const send = () => nextRunAt
-    ? sendSystemJobAfter(queue, payload, nextRunAt, options)
-    : sendSystemJob(queue, payload, options);
-  try {
-    await send();
-  } catch (err) {
-    // 本进程的节点队列可能被别的 worker 当作下线节点误删：重建后重试一次
-    if (!task.nodeId || !isQueueNotFoundError(err) || !(await ensureLocalNodeQueue(queue))) throw err;
-    await send();
-  }
+  return withAsyncSpan('zenith.async_task.enqueue', async () => {
+    let [current] = await db.select().from(asyncTasks).where(eq(asyncTasks.id, task.id)).limit(1);
+    if (!current || current.status !== 'pending') return;
+    const queue = queueForTask(current);
+    let state: string | null;
+    try { state = await getSystemJobState(queue, current.dispatchToken); }
+    catch (error) {
+      if (!current.nodeId || !isQueueNotFoundError(error) || !await ensureLocalNodeQueue(queue)) throw error;
+      state = null;
+    }
+    if (dispatchNeedsReplacement(state)) {
+      // A broker timeout or disabled worker may terminate the message before the
+      // business row is claimed. CAS rotates only that still-pending round.
+      const [replacement] = await db.update(asyncTasks).set({ dispatchToken: randomUUID() })
+        .where(and(eq(asyncTasks.id, current.id), eq(asyncTasks.status, 'pending'), eq(asyncTasks.dispatchToken, current.dispatchToken))).returning();
+      if (!replacement) return;
+      current = replacement;
+    } else if (state) return; // One queued/active message already owns this round.
+    const options = asyncTaskDispatchOptions(current);
+    const payload = { taskId: current.id, dispatchToken: current.dispatchToken };
+    const nextRunAt = current.nextRunAt;
+    const send = () => nextRunAt
+      ? sendSystemJobAfter(queue, payload, nextRunAt, options)
+      : sendSystemJob(queue, payload, options);
+    try {
+      await send();
+    } catch (err) {
+      // 本进程的节点队列可能被别的 worker 当作下线节点误删：重建后重试一次
+      if (!task.nodeId || !isQueueNotFoundError(err) || !(await ensureLocalNodeQueue(queue))) throw err;
+      await send();
+    }
+  }, {
+    'zenith.async.kind': 'async_task_enqueue',
+    'zenith.async.task_id': task.id,
+    'zenith.async.node_affine': Boolean(task.nodeId),
+  });
 }
 
 export async function enqueueAsyncTask(taskId: number): Promise<void> {
@@ -335,19 +341,23 @@ function retryDelayFor(attempts: number, baseMs: number): number {
 export async function runAsyncTask(taskId: number, dispatchToken?: string): Promise<string> {
   // 原子领取：仅 pending 且到达 nextRunAt（重试退避）可被领取，重复投递/并发消费天然无害
   const now = new Date();
-  const [claimed] = await transitionAsyncTasks({
-      status: 'running',
-      attempts: sql`${asyncTasks.attempts} + 1`,
-      startedAt: sql`coalesce(${asyncTasks.startedAt}, now())`,
-      heartbeatAt: now,
-      nextRunAt: null,
-      errorMessage: null,
-    }, buildWhere(
-      eq(asyncTasks.id, taskId),
-      eq(asyncTasks.status, 'pending'),
-      dispatchToken ? eq(asyncTasks.dispatchToken, dispatchToken) : undefined,
-      or(isNull(asyncTasks.nextRunAt), lte(asyncTasks.nextRunAt, now)),
-    )!);
+  const [claimed] = await withAsyncSpan('zenith.async_task.claim', () => transitionAsyncTasks({
+    status: 'running',
+    attempts: sql`${asyncTasks.attempts} + 1`,
+    startedAt: sql`coalesce(${asyncTasks.startedAt}, now())`,
+    heartbeatAt: now,
+    nextRunAt: null,
+    errorMessage: null,
+  }, buildWhere(
+    eq(asyncTasks.id, taskId),
+    eq(asyncTasks.status, 'pending'),
+    dispatchToken ? eq(asyncTasks.dispatchToken, dispatchToken) : undefined,
+    or(isNull(asyncTasks.nextRunAt), lte(asyncTasks.nextRunAt, now)),
+  )!), {
+    'zenith.async.kind': 'async_task_claim',
+    'zenith.async.task_id': taskId,
+    'zenith.async.dispatch_token_present': Boolean(dispatchToken),
+  });
   if (!claimed) return `任务 #${taskId} 无需执行（已被领取、已结束或未到重试时间）`;
   const ownedRun = and(eq(asyncTasks.id, taskId), eq(asyncTasks.status, 'running'), eq(asyncTasks.dispatchToken, claimed.dispatchToken));
   pushTaskProgress(claimed, { force: true });
@@ -382,12 +392,16 @@ export async function runAsyncTask(taskId: number, dispatchToken?: string): Prom
   try {
     creator = await getCreatorPayload(claimed);
     // 恢复提交时的链路作用域并登记因果父节点：handler 内的日志/作业/事件/通知继续同链且挂到本任务下
-    const runHandler = () => runWithTaskExecution(execution, () => runWithParentRef(`task:${claimed.id}`, () => (creator
+    const runHandler = () => runWithTaskExecution(execution, () => runWithParentRef(`task:${claimed.id}`, () => withAsyncSpan('zenith.async_task.run', () => (creator
       ? runWithCurrentUser(creator, () => handler.run(ctx))
-      : handler.run(ctx))));
-    const result = claimed.correlationId
-      ? await runWithPersistedOtelContext(claimed, () => runWithCorrelationId(claimed.correlationId!, runHandler))
-      : await runHandler();
+      : handler.run(ctx)), {
+        'zenith.async.kind': 'async_task',
+        'zenith.async.task_type': claimed.taskType,
+        'zenith.async.attempt': claimed.attempts,
+      })));
+    const result = await runWithPersistedOtelContext(claimed, () => claimed.correlationId
+      ? runWithCorrelationId(claimed.correlationId, runHandler)
+      : runHandler());
 
     const [current] = await db.select().from(asyncTasks).where(eq(asyncTasks.id, taskId)).limit(1);
     if (!current || current.status !== 'running' || current.dispatchToken !== claimed.dispatchToken) {
@@ -439,7 +453,8 @@ export async function runAsyncTask(taskId: number, dispatchToken?: string): Prom
     if (canRetry) {
       const delayMs = retryDelayFor(claimed.attempts, claimed.retryDelayMs);
       const nextRunAt = new Date(Date.now() + delayMs);
-      const [retryRow] = await transitionAsyncTasks({
+      const retryRow = await withAsyncSpan('zenith.async_task.retry', async () => {
+        const [row] = await transitionAsyncTasks({
           status: 'pending',
           errorMessage: message,
           progressNote: `执行失败，${Math.round(delayMs / 1000)} 秒后自动重试（第 ${claimed.attempts + 1}/${claimed.maxAttempts} 次）`,
@@ -447,9 +462,18 @@ export async function runAsyncTask(taskId: number, dispatchToken?: string): Prom
           heartbeatAt: null,
           dispatchToken: randomUUID(),
         }, ownedRun);
+        if (row) {
+          pushTaskProgress(row, { force: true });
+          await enqueueCommittedTask(row);
+        }
+        return row;
+      }, {
+        'zenith.async.kind': 'async_task_retry',
+        'zenith.async.task_id': taskId,
+        'zenith.async.task_type': claimed.taskType,
+        'zenith.async.attempt': claimed.attempts,
+      });
       if (retryRow) {
-        pushTaskProgress(retryRow, { force: true });
-        await enqueueCommittedTask(retryRow);
         logger.warn(`[task-center] 任务 #${taskId} 第 ${claimed.attempts} 次执行失败，${Math.round(delayMs / 1000)}s 后自动重试：${message}`);
         return `任务 #${taskId} 执行失败，已安排第 ${claimed.attempts + 1}/${claimed.maxAttempts} 次自动重试`;
       }

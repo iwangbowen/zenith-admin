@@ -29,6 +29,8 @@ import type { CronRunStatus, CronRunTrigger, ProcessRole, SystemSchedulerTaskBas
 import { CRON_HEALTH_RULES, SCHEDULER_WARNING_SEVERE_TYPES, schedulerWarningLabel, toMinuteCron } from '@zenith/shared/platform';
 import { notify } from '../services/messaging/notification-outbox.service';
 import { createLedgerWorker, type LedgerWorkerRegistration } from './ledger-worker';
+import { runWithCorrelationId, runWithParentRef } from './context';
+import { withAsyncSpan } from './telemetry-context';
 
 /** 定时任务失败 → 推送告警卡片给任务创建者（无则推给系统管理员） */
 async function pushCronFailureAlert(jobId: number, jobName: string, message: string): Promise<void> {
@@ -608,7 +610,12 @@ async function executeSystemTask(
   }
 
   try {
-    const result = await fn();
+    const result = await withAsyncSpan('zenith.scheduler.task', fn, {
+      'zenith.async.kind': 'system_scheduler',
+      'zenith.scheduler.task': task.name,
+      'zenith.scheduler.task_type': task.taskType,
+      'zenith.scheduler.trigger': triggerType,
+    });
     const endedAt = new Date();
     const durationMs = endedAt.getTime() - startedAt.getTime();
     const resultMessage = limitText(stringifyRunResult(result));
@@ -915,8 +922,19 @@ async function runCronJob(job: CronJobWithMetadata): Promise<void> {
   }).returning();
   await db.update(cronJobs).set({ lastRunAt: startedAt, lastRunStatus: 'running', lastRunMessage: null }).where(eq(cronJobs.id, jobId));
 
-  // 超时后 handler 仍在后台运行，迟到的结果只记日志、不再回写，避免把 timeout 覆盖成 success
-  const execution = fn(params);
+  // 超时后 handler 仍在后台运行，迟到的结果只记日志、不再回写，避免把 timeout 覆盖成 success。
+  // Cron payload 没有请求侧持久化上下文，因此为本次执行建立独立的业务关联节点，
+  // 不把不存在的来源 request / OTel trace 伪装成可恢复的父链。
+  const execution = runWithCorrelationId(`cron:${jobId}:${logRow.id}`, () => runWithParentRef(
+    `cron:${jobId}`,
+    () => withAsyncSpan('zenith.cron.job', () => fn(params), {
+      'zenith.async.kind': 'cron_job',
+      'zenith.cron.job_id': jobId,
+      'zenith.cron.handler': handlerName,
+      'zenith.cron.attempt': attempt,
+      'zenith.cron.trigger': trigger,
+    }),
+  ));
   let resultMessage: string;
   try {
     resultMessage = await raceWithTimeout(execution, jobRow?.monitorTimeout ?? null);

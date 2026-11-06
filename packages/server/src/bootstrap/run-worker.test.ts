@@ -172,7 +172,8 @@ describe('startWorkerRole', () => {
         v: 1, from: 'api-peer:1', kind: 'wsStats',
         stats: {
           nodeId: 'api-peer:1', at: Date.now(), currentConnections: 1, currentUsers: 1,
-          totalConnects: 1, totalDisconnects: 0, totalSent: sent, totalRecv: 4,
+          sampledAt: Date.now(), totalConnects: 1, totalDisconnects: 0, totalSent: sent, totalRecv: 4,
+          totalSentBytes: sent * 10, totalRecvBytes: 40, totalWriteFailures: 0, totalParseFailures: 0, totalHeartbeatFailures: 0,
           fanout: { state: 'subscribed', published: 1, publishFailed: 0, delivered: 0, dropped: 0 },
           connections: [{ connId: 'remote-1', nodeId: 'api-peer:1', userId: 9, lastActivityAt: Date.now(), sent, recv: 4 }],
           messages: [], controlMessages: [], exceptionMessages: [], heartbeats: [], recentDisconnects: [],

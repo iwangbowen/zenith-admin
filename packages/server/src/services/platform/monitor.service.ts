@@ -821,12 +821,18 @@ export async function getWsMetrics() {
   }));
 
   return {
+    sampledAt: visible.sampledAt,
     currentConnections: visible.currentConnections,
     currentUsers: visible.currentUsers,
     totalConnects: visible.totalConnects,
     totalDisconnects: visible.totalDisconnects,
     totalSent: visible.totalSent,
     totalRecv: visible.totalRecv,
+    totalSentBytes: visible.totalSentBytes,
+    totalRecvBytes: visible.totalRecvBytes,
+    totalWriteFailures: visible.totalWriteFailures,
+    totalParseFailures: visible.totalParseFailures,
+    totalHeartbeatFailures: visible.totalHeartbeatFailures,
     messages: visible.messages,
     controlMessages: visible.controlMessages,
     exceptionMessages: visible.exceptionMessages,

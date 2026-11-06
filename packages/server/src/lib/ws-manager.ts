@@ -42,7 +42,17 @@ const userLastSeen = new Map<number, number>();
 let connSeq = 0;
 
 // ─── 监控指标 ──────────────────────────────────────────────────────────
-const counters = { totalConnects: 0, totalDisconnects: 0, totalSent: 0, totalRecv: 0 };
+const counters = {
+  totalConnects: 0,
+  totalDisconnects: 0,
+  totalSent: 0,
+  totalRecv: 0,
+  totalSentBytes: 0,
+  totalRecvBytes: 0,
+  totalWriteFailures: 0,
+  totalParseFailures: 0,
+  totalHeartbeatFailures: 0,
+};
 // 节点标识与 fan-out `from` 同源（hostname:pid），跨进程镜像按发送方归档时口径一致
 const nodeId = PROCESS_ID;
 let messageSeq = 0;
@@ -74,6 +84,7 @@ function recordWsMessage(
   type: string,
   bytes: number,
   success: boolean,
+  failureKind: 'parse' | 'write' | null = direction === 'inbound' ? 'parse' : 'write',
 ): void {
   messageSeq += 1;
   const now = Date.now();
@@ -97,6 +108,13 @@ function recordWsMessage(
     meta.lastMessageType = type;
     meta.lastMessageAt = now;
     meta.lastDirection = direction;
+  }
+  if (direction === 'inbound') counters.totalRecvBytes += bytes;
+  else if (success) counters.totalSentBytes += bytes;
+  if (!success) {
+    if (failureKind === 'parse') counters.totalParseFailures += 1;
+    if (failureKind === 'write') counters.totalWriteFailures += 1;
+    if (control) counters.totalHeartbeatFailures += 1;
   }
   if (meta && control) {
     if (direction === 'inbound' && type === 'ping') {
@@ -250,7 +268,7 @@ export function removeConnection(ws: WSContext, reason = 'close') {
 }
 
 /** Increment recv counter for a socket (called from WS onMessage). */
-export function incWsRecv(ws: WSContext, data?: unknown, accepted = true) {
+export function incWsRecv(ws: WSContext, data?: unknown, accepted = true, parseFailure = !accepted) {
   counters.totalRecv += 1;
   const m = connections.get(ws);
   if (m) {
@@ -258,7 +276,15 @@ export function incWsRecv(ws: WSContext, data?: unknown, accepted = true) {
     m.lastActivityAt = Date.now();
   }
   const type = messageTypeFromWire(data);
-  recordWsMessage(m, 'inbound', type, messageBytes(data), Boolean(m) && accepted && type !== 'invalid' && type !== 'unknown');
+  const bytes = messageBytes(data);
+  recordWsMessage(
+    m,
+    'inbound',
+    type,
+    bytes,
+    Boolean(m) && accepted && type !== 'invalid' && type !== 'unknown',
+    parseFailure ? 'parse' : null,
+  );
 }
 
 export function sendWsControl(ws: WSContext, message: { type: string }): void {
@@ -623,12 +649,18 @@ export function getWsSnapshot() {
   }
   const { nodes, topics } = buildWsAggregates(snapshot, recentMessages);
   return {
+    sampledAt: Date.now(),
     currentConnections: connections.size,
     currentUsers: userSockets.size,
     totalConnects: counters.totalConnects,
     totalDisconnects: counters.totalDisconnects,
     totalSent: counters.totalSent,
     totalRecv: counters.totalRecv,
+    totalSentBytes: counters.totalSentBytes,
+    totalRecvBytes: counters.totalRecvBytes,
+    totalWriteFailures: counters.totalWriteFailures,
+    totalParseFailures: counters.totalParseFailures,
+    totalHeartbeatFailures: counters.totalHeartbeatFailures,
     messages: [...recentMessages],
     controlMessages: [...recentControlMessages],
     exceptionMessages: [...recentExceptionMessages],
@@ -706,6 +738,11 @@ export interface WsNodeStats {
   totalDisconnects: number;
   totalSent: number;
   totalRecv: number;
+  totalSentBytes: number;
+  totalRecvBytes: number;
+  totalWriteFailures: number;
+  totalParseFailures: number;
+  totalHeartbeatFailures: number;
   fanout: WsFanoutNodeStats;
   connections: WsConnectionSnapshot[];
   recentDisconnects: RecentDisconnect[];
@@ -743,6 +780,11 @@ function collectWsNodeStats(): WsNodeStats {
     totalDisconnects: counters.totalDisconnects,
     totalSent: counters.totalSent,
     totalRecv: counters.totalRecv,
+    totalSentBytes: counters.totalSentBytes,
+    totalRecvBytes: counters.totalRecvBytes,
+    totalWriteFailures: counters.totalWriteFailures,
+    totalParseFailures: counters.totalParseFailures,
+    totalHeartbeatFailures: counters.totalHeartbeatFailures,
     fanout: collectWsFanoutStats(),
     connections: snapshot,
     recentDisconnects: [...recentDisconnects],
@@ -763,6 +805,11 @@ function emptyWsNodeStats(): WsNodeStats {
     totalDisconnects: counters.totalDisconnects,
     totalSent: counters.totalSent,
     totalRecv: counters.totalRecv,
+    totalSentBytes: counters.totalSentBytes,
+    totalRecvBytes: counters.totalRecvBytes,
+    totalWriteFailures: counters.totalWriteFailures,
+    totalParseFailures: counters.totalParseFailures,
+    totalHeartbeatFailures: counters.totalHeartbeatFailures,
     // 进程退出后的空快照：本节点不再持有连接也不再订阅，扇出计数按 0 上报，
     // 否则其他节点的集群视图会一直保留一个已下线节点的历史计数
     fanout: { state: 'idle', published: 0, publishFailed: 0, delivered: 0, dropped: 0 },
@@ -794,6 +841,11 @@ export function getWsClusterSnapshot() {
   let totalDisconnects = local.totalDisconnects;
   let totalSent = local.totalSent;
   let totalRecv = local.totalRecv;
+  let totalSentBytes = local.totalSentBytes;
+  let totalRecvBytes = local.totalRecvBytes;
+  let totalWriteFailures = local.totalWriteFailures;
+  let totalParseFailures = local.totalParseFailures;
+  let totalHeartbeatFailures = local.totalHeartbeatFailures;
   const fanoutNodes = [
     { nodeId: local.nodeId, ...local.fanout },
     ...remotes.map((remote) => ({ nodeId: remote.nodeId, ...remote.fanout })),
@@ -809,6 +861,11 @@ export function getWsClusterSnapshot() {
     totalDisconnects += remote.totalDisconnects;
     totalSent += remote.totalSent;
     totalRecv += remote.totalRecv;
+    totalSentBytes += remote.totalSentBytes;
+    totalRecvBytes += remote.totalRecvBytes;
+    totalWriteFailures += remote.totalWriteFailures;
+    totalParseFailures += remote.totalParseFailures;
+    totalHeartbeatFailures += remote.totalHeartbeatFailures;
     for (const c of remote.connections) {
       connections.push(c);
       userIds.add(c.userId);
@@ -829,12 +886,18 @@ export function getWsClusterSnapshot() {
   if (exceptionMessages.length > WS_EXCEPTION_MESSAGE_SAMPLE_LIMIT) exceptionMessages.length = WS_EXCEPTION_MESSAGE_SAMPLE_LIMIT;
   const { nodes, topics } = buildWsAggregates(connections, sampled);
   return {
+    sampledAt: Math.max(local.at, ...remotes.map((remote) => remote.at)),
     currentConnections: connections.length,
     currentUsers: userIds.size,
     totalConnects,
     totalDisconnects,
     totalSent,
     totalRecv,
+    totalSentBytes,
+    totalRecvBytes,
+    totalWriteFailures,
+    totalParseFailures,
+    totalHeartbeatFailures,
     fanout: {
       published: fanoutNodes.reduce((total, node) => total + node.published, 0),
       publishFailed: fanoutNodes.reduce((total, node) => total + node.publishFailed, 0),
@@ -878,12 +941,18 @@ export function filterWsClusterSnapshot(
   const recentDisconnects = snap.recentDisconnects.filter((d) => visibleUserIds.has(d.userId));
   const { nodes, topics } = buildWsAggregates(connections, messages);
   return {
+    sampledAt: snap.sampledAt,
     currentConnections: connections.length,
     currentUsers: new Set(connections.map((c) => c.userId)).size,
     totalConnects: snap.totalConnects,
     totalDisconnects: snap.totalDisconnects,
     totalSent: snap.totalSent,
     totalRecv: snap.totalRecv,
+    totalSentBytes: snap.totalSentBytes,
+    totalRecvBytes: snap.totalRecvBytes,
+    totalWriteFailures: snap.totalWriteFailures,
+    totalParseFailures: snap.totalParseFailures,
+    totalHeartbeatFailures: snap.totalHeartbeatFailures,
     // 扇出投递是平台级进程指标，没有按用户的历史可回溯，与累计计数器同样不随可见范围裁剪
     fanout: snap.fanout,
     messages,

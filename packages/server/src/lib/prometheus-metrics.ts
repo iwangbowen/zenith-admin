@@ -95,6 +95,13 @@ export function registerZenithMetrics(registry: Registry): void {
   counter('zenith_ws_fanout_publish_failed_total', 'WS fan-out envelopes that failed to publish', () => getWsFanoutCounters().publishFailed);
   counter('zenith_ws_fanout_delivered_total', 'WS fan-out envelopes handled by this process', () => getWsFanoutCounters().delivered);
   counter('zenith_ws_fanout_dropped_total', 'WS fan-out envelopes dropped (malformed / no handler / handler error)', () => getWsFanoutCounters().dropped);
+  counter('zenith_ws_sent_frames_total', 'WebSocket frames written by this process', () => getWsSnapshot().totalSent);
+  counter('zenith_ws_received_frames_total', 'WebSocket frames received by this process', () => getWsSnapshot().totalRecv);
+  counter('zenith_ws_sent_bytes_total', 'WebSocket bytes written by this process', () => getWsSnapshot().totalSentBytes);
+  counter('zenith_ws_received_bytes_total', 'WebSocket bytes received by this process', () => getWsSnapshot().totalRecvBytes);
+  counter('zenith_ws_write_failures_total', 'WebSocket frame write failures in this process', () => getWsSnapshot().totalWriteFailures);
+  counter('zenith_ws_parse_failures_total', 'WebSocket inbound parse or protocol validation failures in this process', () => getWsSnapshot().totalParseFailures);
+  counter('zenith_ws_heartbeat_failures_total', 'WebSocket heartbeat failures in this process', () => getWsSnapshot().totalHeartbeatFailures);
 
   // ── DB / Redis（外部采集器提供；未采样/失败时不导出伪造 0） ──
   gauge('zenith_db_connections', 'PostgreSQL connections to current database', () => latest()?.dbConnections);
