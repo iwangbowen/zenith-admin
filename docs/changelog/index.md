@@ -4,6 +4,35 @@
 
 ---
 
+## v3.14.0 - 2026-11-07
+
+### Added
+
+- 为业务关联 ID 增加跨 API、Worker、任务、事件、通知和日志的统一关联语义，并将其与 OpenTelemetry `trace_id` / `span_id` 分离。
+- 新增跨日志轮转文件、gzip 文件、API / Worker 日志源的服务端关联 ID 定位能力，返回扫描源状态与有界上下文。
+- 为 workflow、异步任务、领域事件、通知、调度和 Cron 执行边界补充有界 OTel child span，并补齐 WebSocket 运行时累计指标。
+- 新增统一 `/livez`、`/startupz`、`/readyz` 健康探针契约、启动生命周期状态和 API / Worker 角色检查。
+
+### Changed
+
+- 观测汇总统一使用真实采样时间，区分正常、降级、过期、未采样和不可用状态。
+- API 成功率 SLO 改用标准 error budget / burn rate 口径，同时展示 5 分钟快速窗口和 1 小时慢速窗口。
+- 队列、数据库、Redis、Worker 和 Prometheus 指标在未知或不可读取时保留未知语义，不再用零值或空队列掩盖数据缺失。
+- TracePage 改为按服务端定位结果展示多文件、多角色日志源；观测页面明确展示 source freshness、source error 和不可用数据。
+- Docker / Compose 日志卷、容器时区、健康检查和部署运维文档完成统一。
+
+### Fixed
+
+- 修复 OTel `trace_id` 被误写为业务关联 ID 导致请求、异步任务和日志链路分叉的问题。
+- 修复按发生日期选择单个日志文件导致轮转、跨午夜、延迟任务和 Worker 日志无法可靠定位的问题。
+- 修复 SLO slow burn、队列读取失败、容量利用率和 telemetry 状态被错误解释为健康零值的问题。
+- 修复健康探针未就绪时通过类型断言隐藏 HTTP 503 的问题。
+
+### 升级说明
+
+- 服务端升级需执行数据库迁移 `0017_observability_correlation_ids.sql`。迁移会将相关业务关联列从 `trace_id` / `request_id` 重命名为 `correlation_id`，并同步重命名对应索引；请在升级前按部署流程备份数据库。
+- 本次发布不提供历史含混 trace ID 的回填或兼容映射；新版本以业务 `correlation_id` 作为唯一业务关联字段。
+
 ## v3.13.0 - 2026-11-05
 
 ### Added
