@@ -42,7 +42,7 @@ const summary: ObservabilitySummary = {
     slowWindow: window(3600),
   }],
   capacity: {
-    database: { activeConnections: 3, observedConnections: 8, poolLimit: 20, utilization: 0.4 },
+    database: { activeConnections: 3, observedConnections: 8, poolLimit: 20, utilization: 0.15 },
     redis: { connectedClients: 20, maxClients: null, utilization: null, usedMemory: 1024 * 1024 },
     workers: { active: 2, required: null },
     queues: {
