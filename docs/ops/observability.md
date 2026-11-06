@@ -75,6 +75,19 @@ API / Worker 分离部署时，纯 Worker 订阅 API 节点的 `wsStats` 镜像�
 
 面板中的「在日志文件中查看」使用实际命中文件；locator 返回首个命中周围有界上下文和同文件精确命中次数。URL、正文、嵌套字段、OTel ID 或相似前后缀不会被当作业务关联命中。
 
+## 健康探针与日志可见性
+
+API 的 canonical 探针位于 `/api/health/livez`、`/api/health/startupz` 和 `/api/health/readyz`；纯 Worker 进程对应 `/livez`、`/startupz` 和 `/readyz`。三类探针都返回完整的 `status`、`ready`、`version`、`roles` 与 `checks`，并使用相同的 HTTP 状态语义：
+
+- `livez` 只表示进程仍能响应，不探测数据库、Redis 或调度器；
+- `startupz` 只有在 pg-boss 初始化且全部后台注册表声明、冻结成功后才返回 200；启动过程中返回 503；
+- `readyz` 要求进程、应用声明生命周期、数据库、Redis 与调度器均正常才返回 200；失效广播、跨进程 WebSocket fan-out 和 API 对 Worker 心跳属于可选能力，异常会显示为 `degraded`，但不会把仍可接收请求的 API 副本误报为不可就绪；
+- `health` 与 Worker 的 `/health`、`/ready` 是兼容端点，不替代 canonical 探针。容器编排的健康检查使用 `readyz`，避免兼容端点的 HTTP 200 掩盖未就绪状态。
+
+拆分部署时 API 与 Worker 挂载同一个 `server_logs` 日志卷；文件名仍按进程角色隔离为 `app-api.*`、`app-worker.*`，`all` 角色使用 `app.*`。locator 只扫描当前进程实际可见的目录和文件，不会把不可见的另一台主机或另一容器日志伪装成未命中。跨主机、多集群或不共享本地卷的部署必须接入集中日志系统，再按 `correlationId` 做全局检索。
+
+`APP_TIME_ZONE` 是业务时间的唯一来源；Docker Compose 将同一值透传为 `TZ`，仅用于 Node / pino-roll 的运行时本地日期和日志文件名。业务代码不得以 `TZ` 替代 `APP_TIME_ZONE`。
+
 ## 观测汇总与数据可用性
 
 `GET /api/observability/summary`（权限 `system:monitor:view`）返回低基数汇总。该接口明确区分：

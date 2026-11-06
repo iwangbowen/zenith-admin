@@ -40,6 +40,7 @@ import { initTelemetry, shutdownTelemetry } from './lib/telemetry';
 import { registerErrorAlertListener } from './services/analytics/error-alert.service';
 import { registerOpenWebhookSubscriber } from './services/open-platform/app-webhooks.service';
 import { sealEventConsumerRegistry } from './lib/domain-events';
+import { markApplicationStartupReady } from './lib/health-probe-state';
 
 // 密钥不合规（非开发环境缺失 JWT_SECRET / FIELD_ENCRYPTION_KEY 或仍是默认值）时在开始监听前终止
 assertRuntimeSecrets(logger);
@@ -152,7 +153,10 @@ process.on('SIGTERM', () => { if (shuttingDown || isFatalShutdownInProgress()) p
 
 // ─── 后台作业声明（所有角色）→ 执行期收尾（worker）────────────────────────────
 const declared = await declareBackgroundJobs();
-if (declared) sealTaskHandlerRegistry();
+if (declared) {
+  sealTaskHandlerRegistry();
+  markApplicationStartupReady();
+}
 if (declared && config.roles.worker) {
   await activateWorkerJobs().catch((err) => logger.error('Failed to activate worker jobs', err));
 }

@@ -20,6 +20,12 @@ export type HttpMethod = 'get' | 'post' | 'put' | 'patch' | 'delete';
 /** 响应载荷的传输形态；非 `json` 时 `response` 被忽略，客户端走下载 / 流式通道 */
 export type ResponseKind = 'json' | 'excel' | 'csv' | 'file' | 'sse';
 
+/** Additional HTTP statuses that reuse the operation's declared response payload. */
+export interface ContractStatusResponse {
+  readonly status: number;
+  readonly description: string;
+}
+
 /**
  * 操作要求的凭证类型，进入 OpenAPI `security`：
  * - `none`：公开接口，无需任何凭证（由 `public: true` 声明）
@@ -96,6 +102,7 @@ export interface OperationConfig<
   TResponse extends z.ZodType,
   TKind extends ResponseKind,
   THeaders extends ParamsSchema | undefined = undefined,
+  TStatus extends readonly ContractStatusResponse[] = readonly [],
 > {
   /** 一句话说明，进入 OpenAPI summary */
   readonly summary: string;
@@ -116,6 +123,8 @@ export interface OperationConfig<
   readonly security?: Exclude<SecurityScheme, 'none'>;
   /** 默认 `json` */
   readonly kind?: TKind;
+  /** Additional HTTP statuses that reuse the operation's declared response payload. */
+  readonly statusResponses?: TStatus;
   /**
    * 响应不施加数据脱敏：仅用于「当前用户查看自己」的自视图（`/auth/me`、会员资料）等
    * 明文即语义的端点。其余含 `sensitive()` 字段的响应一律在契约路由出口按策略打码
@@ -146,6 +155,7 @@ export interface UnboundOperation<
   TResponse extends z.ZodType = z.ZodType,
   TKind extends ResponseKind = ResponseKind,
   THeaders extends ParamsSchema | undefined = ParamsSchema | undefined,
+  TStatus extends readonly ContractStatusResponse[] = readonly [],
 > {
   readonly method: TMethod;
   /** 相对资源根的路径，`/` 表示根；OpenAPI 风格 `{id}` 占位 */
@@ -161,6 +171,7 @@ export interface UnboundOperation<
   readonly public: boolean;
   readonly security: SecurityScheme;
   readonly kind: TKind;
+  readonly statusResponses: TStatus;
   /** 响应不施加数据脱敏（自视图端点） */
   readonly unmasked: boolean;
   readonly tags?: readonly string[];
@@ -183,7 +194,8 @@ export interface Operation<
   TResponse extends z.ZodType = z.ZodType,
   TKind extends ResponseKind = ResponseKind,
   THeaders extends ParamsSchema | undefined = ParamsSchema | undefined,
-> extends UnboundOperation<TMethod, TPath, TParams, TQuery, TBody, TResponse, TKind, THeaders> {
+  TStatus extends readonly ContractStatusResponse[] = readonly [],
+> extends UnboundOperation<TMethod, TPath, TParams, TQuery, TBody, TResponse, TKind, THeaders, TStatus> {
   /** 契约组内的键名（如 `list` / `detail`），用于 query key 与日志 */
   readonly name: string;
   /** 资源根路径，如 `/api/tenants` */
@@ -194,7 +206,7 @@ export interface Operation<
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type AnyOperation = Operation<HttpMethod, string, any, any, any, any, ResponseKind, any>;
+export type AnyOperation = Operation<HttpMethod, string, any, any, any, any, ResponseKind, any, any>;
 
 /** 展平交叉类型，悬停提示直接显示最终对象形状 */
 type Prettify<T> = T extends infer U ? { [K in keyof U]: U[K] } : never;
@@ -252,11 +264,12 @@ function createOperation<
   TResponse extends z.ZodType = z.ZodNull,
   TKind extends ResponseKind = 'json',
   THeaders extends ParamsSchema | undefined = undefined,
+  const TStatus extends readonly ContractStatusResponse[] = readonly [],
 >(
   method: TMethod,
   path: TPath,
-  config: OperationConfig<TParams, TQuery, TBody, TResponse, TKind, THeaders>,
-): UnboundOperation<TMethod, TPath, TParams, TQuery, TBody, TResponse, TKind, THeaders> {
+  config: OperationConfig<TParams, TQuery, TBody, TResponse, TKind, THeaders, TStatus>,
+): UnboundOperation<TMethod, TPath, TParams, TQuery, TBody, TResponse, TKind, THeaders, TStatus> {
   if (!path.startsWith('/')) throw new Error(`契约路径必须以 / 开头：${path}`);
   if (config.public && config.security) throw new Error(`公开操作不能同时声明 security：${path}`);
   const security: SecurityScheme = config.public ? 'none' : (config.security ?? 'bearer');
@@ -276,6 +289,7 @@ function createOperation<
     public: security === 'none',
     security,
     kind: (config.kind ?? 'json') as TKind,
+    statusResponses: (config.statusResponses ?? []) as TStatus,
     unmasked: config.unmasked ?? false,
     tags: config.tags,
     deprecated: config.deprecated ?? false,
@@ -293,10 +307,11 @@ type OpBuilder<TMethod extends HttpMethod> = <
   TResponse extends z.ZodType = z.ZodNull,
   TKind extends ResponseKind = 'json',
   THeaders extends ParamsSchema | undefined = undefined,
+  const TStatus extends readonly ContractStatusResponse[] = readonly [],
 >(
   path: TPath,
-  config: OperationConfig<TParams, TQuery, TBody, TResponse, TKind, THeaders>,
-) => UnboundOperation<TMethod, TPath, TParams, TQuery, TBody, TResponse, TKind, THeaders>;
+  config: OperationConfig<TParams, TQuery, TBody, TResponse, TKind, THeaders, TStatus>,
+) => UnboundOperation<TMethod, TPath, TParams, TQuery, TBody, TResponse, TKind, THeaders, TStatus>;
 
 const builder = <TMethod extends HttpMethod>(method: TMethod): OpBuilder<TMethod> =>
   (path, config) => createOperation(method, path, config);
@@ -332,9 +347,10 @@ export type Bind<T> = T extends UnboundOperation<
   infer B extends z.ZodType | undefined,
   infer R extends z.ZodType,
   infer K extends ResponseKind,
-  infer H extends ParamsSchema | undefined
+  infer H extends ParamsSchema | undefined,
+  infer S extends readonly ContractStatusResponse[]
 >
-  ? Operation<M, P, Pa, Q, B, R, K, H>
+  ? Operation<M, P, Pa, Q, B, R, K, H, S>
   : never;
 
 /**

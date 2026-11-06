@@ -63,8 +63,8 @@ ALLOWED_ORIGINS=https://admin.example.com
 | --- | --- |
 | `DATABASE_MAX_CONNECTIONS` | 单个进程的业务连接池上限，默认 `20`；观测汇总中的数据库 utilization 使用本进程 active 连接数 / 该值，`pg_stat_activity` 全局当前连接数仅作为 observed 值。连接预算按角色累计：业务池 + pg-boss 池（worker 约 10，api send-only 约 2）+ 1 条 LISTEN 连接；api 还包含 Mastra 10 + 5。所有 api / worker 进程总和必须低于 PostgreSQL `max_connections`，超出时前置 pgBouncer（会话池模式，事务池无法透传 LISTEN/NOTIFY）或调低该值 |
 | `ZENITH_ROLES` | 进程角色，逗号分隔：`api` / `worker` / `all`（等于两者）。非 `NODE_ENV=development` 环境必填；单机全量部署显式设为 `all` |
-| `APP_TIME_ZONE` | 业务时区（IANA 名，默认 `Asia/Shanghai`）：接口时间、自然日统计与「今日」窗口按它计算。应用连接数据库时固定会话时区为 UTC，数据库服务端、容器与宿主机的时区设置不影响数据与统计 |
-| `WORKER_HEALTH_PORT` | 纯 worker 探针端口，默认 `3301`，提供 `/health`、`/ready`、`/metrics` |
+| `APP_TIME_ZONE` | 业务时区（IANA 名，默认 `Asia/Shanghai`）：接口时间、自然日统计与「今日」窗口按它计算。应用连接数据库时固定会话时区为 UTC；容器可将同值映射为 `TZ` 供 Node/pino-roll 生成本地日志日期，但业务代码仍只认 `APP_TIME_ZONE` |
+| `WORKER_HEALTH_PORT` | 纯 worker 探针端口，默认 `3301`，提供 canonical `/livez`、`/startupz`、`/readyz`，并保留 `/health`、`/ready`、`/metrics` 兼容端点 |
 | `WORKER_REQUIRED` | 可选的 Worker 最小期望实例数；未配置时观测汇总显示未知，不用固定 `1` 推断容量 |
 | `SHUTDOWN_GRACE_MS` | 优雅停机硬截止；默认 api/all `15000`，纯 worker `120000`。worker 把该预算（扣除收尾步骤的 10s）传给 pg-boss 等待在飞作业收尾，超时的作业被标记失败、由任务中心兜底扫描按断点恢复。容器 `stop_grace_period` / K8s `terminationGracePeriodSeconds` 必须大于该值 |
 | `STORAGE_SHARED` | 默认 `false`。纯 worker 使用本地磁盘相关存储或 CMS 静态化时，设为 `true` 表示 `storage/` 由 api 与 worker 共享 |
@@ -91,8 +91,8 @@ ALLOWED_ORIGINS=https://admin.example.com
 
 | 角色 | 职责 | 端口与探针 |
 | --- | --- | --- |
-| `api` | HTTP / WebSocket 入口、IoT 设备接入、CMS SSR、终端 PTY、OpenAPI、限流规则、Mastra 代理；pg-boss 只声明队列与入队，不执行 `work()` | 监听 `PORT`（默认 3300），健康检查走 `/api/health` |
-| `worker` | 执行任务中心、业务 `cron_jobs`、系统周期任务与系统队列 worker（导出、网盘渲染、工作流作业等） | 纯 worker 不监听业务端口；在 `WORKER_HEALTH_PORT`（默认 3301）暴露 `/health`、`/ready`、`/metrics`，业务路径返回 404 |
+| `api` | HTTP / WebSocket 入口、IoT 设备接入、CMS SSR、终端 PTY、OpenAPI、限流规则、Mastra 代理；pg-boss 只声明队列与入队，不执行 `work()` | 监听 `PORT`（默认 3300），canonical readiness 走 `/api/health/readyz`，兼容检查保留 `/api/health` |
+| `worker` | 执行任务中心、业务 `cron_jobs`、系统周期任务与系统队列 worker（导出、网盘渲染、工作流作业等） | 纯 worker 不监听业务端口；在 `WORKER_HEALTH_PORT`（默认 3301）暴露 `/livez`、`/startupz`、`/readyz` 与兼容 `/health`、`/ready`、`/metrics`，业务路径返回 404 |
 | `all` | 单进程同时承担 api 与 worker | 仅允许开发默认；生产单机部署也必须显式设置 `ZENITH_ROLES=all` |
 
 `ZENITH_ROLES` 未设置时仅 `NODE_ENV=development` 允许默认 `all`；生产或未设置 `NODE_ENV` 时会拒绝启动。
@@ -153,7 +153,7 @@ pm2 save
 pm2 startup
 ```
 
-api 默认监听 `http://localhost:3300`；纯 worker 不占用业务端口，健康探针默认在 `http://localhost:3301/health`。
+api 默认监听 `http://localhost:3300`；纯 worker 不占用业务端口，canonical readiness 默认在 `http://localhost:3301/readyz`，旧 `/health` 端点继续保留。
 
 ### 6. 多实例与本地存储
 
@@ -312,12 +312,12 @@ Docker 构建会自动执行该步骤。手动部署时需先 `npm run build`，
 
 | 能力 | 地址 / 配置 |
 | --- | --- |
-| api 健康检查 | `GET /api/health`，响应包含 `roles`，并在 `checks` 中报告 `wsFanout` 与 `workers`（无可用 worker 心跳时为 `degraded`）。同一状况由监控告警「后台 worker 进程缺失」规则发出通知：api 进程每分钟自查心跳，worker 全部下线时仍能触发 |
-| worker 探针 | 纯 worker 暴露 `GET /health`、`GET /ready`（pg-boss 启动前 503）、`GET /metrics`，端口 `WORKER_HEALTH_PORT`（默认 3301） |
+| canonical 探针 | API：`GET /api/health/livez`、`/startupz`、`/readyz`；Worker：`GET /livez`、`/startupz`、`/readyz`。均返回 `status`、`ready`、`version`、`roles`、`checks`；startup/readiness 未满足条件时真实返回 HTTP 503 |
+| 兼容健康端点 | API：`GET /api/health`；Worker：`GET /health`、`GET /ready`、`GET /metrics`。`/health` 保留诊断形状，编排器应使用 canonical `/readyz` |
 | Swagger UI | `GET /api/docs`（api 角色） |
 | OpenAPI JSON | `GET /api/openapi.json`（api 角色） |
 | Prometheus | api 为 `GET /metrics`；worker 为 `GET /metrics`。指标默认标签包含 `process_role`；WS 扇出提供 published / failed / delivered / dropped 计数；`zenith_pgboss_queue_jobs{queue,state}`（`state="ready"` 为可立即领取的积压，可作 worker HPA 信号）与 `zenith_scheduler_worker_nodes`（有心跳的 worker 进程数） |
-| 日志 | 日志行包含 `role` 字段；`all` 角色写 `logs/app.*.log`，拆分时分别写 `logs/app-api.*.log` 与 `logs/app-worker.*.log` |
+| 日志 | 日志行包含 `role` 字段；`all` 角色写 `logs/app.*.log`，拆分时分别写 `logs/app-api.*.log` 与 `logs/app-worker.*.log`。同机容器可共享 `server_logs` 卷；跨主机需集中日志系统 |
 | OpenTelemetry | `OTEL_ENABLED=true` 或配置 `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` / `OTEL_EXPORTER_OTLP_ENDPOINT`。启用后自动插桩入站 HTTP（每请求 span）与出站 fetch（undici），资源属性包含 `zenith.process.role`，日志行追加 `trace_id` / `span_id` 便于 APM 关联；停机时自动 flush 未导出的 span |
 
 `/metrics` 默认无鉴权，生产环境应只向内网、VPN 或采集器开放。

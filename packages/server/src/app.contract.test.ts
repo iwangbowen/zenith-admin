@@ -89,6 +89,20 @@ describe('路由装配', () => {
     expect(operations.length).toBeGreaterThan(1500);
   });
 
+  it('健康探针在未就绪时声明 503 JSON 响应', () => {
+    const probePaths = ['/api/health/startupz', '/api/health/readyz'];
+    const violations = probePaths.flatMap((path) => {
+      const operation = doc.paths[path]?.get;
+      const responses = operation?.responses ?? {};
+      const response = responses['503'];
+      return !operation || !responses['200'] || !response?.content?.['application/json']
+        ? [path]
+        : [];
+    });
+
+    expect(violations).toEqual([]);
+  });
+
   it('不存在重复注册的 method + path', () => {
     const seen = new Set<string>();
     const duplicated: string[] = [];

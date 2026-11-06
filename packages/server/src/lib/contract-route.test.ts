@@ -27,6 +27,7 @@ const probe = defineContract('/api/contract-probe', {
     headers: z.object({ 'x-idempotency-key': z.string().min(8).max(128) }),
     response: itemSchema,
     summary: '退款（幂等）',
+    statusResponses: [{ status: 202, description: '退款已进入异步处理' }] as const,
   }),
 });
 
@@ -80,7 +81,7 @@ interface Doc {
     description?: string;
     parameters?: Array<{ name: string; in: string; required?: boolean }>;
     requestBody?: { required?: boolean; content: Record<string, { schema: unknown }> };
-    responses: Record<string, { content?: Record<string, { schema: { properties?: Record<string, { $ref?: string; properties?: Record<string, { items?: { $ref?: string } }> }> } }> }>;
+    responses: Record<string, { description?: string; content?: Record<string, { schema: { properties?: Record<string, { $ref?: string; properties?: Record<string, { items?: { $ref?: string } }> }> } }> }>;
   }>>;
   components?: { schemas?: Record<string, unknown> };
 }
@@ -94,6 +95,9 @@ describe('toRoute', () => {
     expect(route.security).toEqual([]);
     expect(route.request.params).toBe(idParam);
     expect(Object.keys(route.responses).sort()).toEqual(['200', '400', '401', '403', '404', '500']);
+    const refundRoute = toRoute(probe.refund, { middleware: [] });
+    expect(refundRoute.responses[202]).toMatchObject({ description: '退款已进入异步处理' });
+    expect(Object.keys(refundRoute.responses[202].content ?? {})).toEqual(['application/json']);
   });
 
   it('declares Bearer security by default and maps binary kinds to file responses', () => {
@@ -143,6 +147,11 @@ describe('defineContractRoute', () => {
     const create = doc.paths['/api/contract-probe'].post;
     expect(create.requestBody?.required).toBe(true);
     expect(Object.keys(create.responses).sort()).toEqual(['200', '400', '401', '403', '404', '409', '500']);
+
+    const refund = doc.paths['/api/contract-probe/{id}/refund'].post;
+    expect(refund.responses['202'].description).toBe('退款已进入异步处理');
+    expect(refund.responses['202'].content?.['application/json'].schema.properties?.data.$ref)
+      .toBe('#/components/schemas/ContractProbeItem');
 
     expect(doc.paths['/api/contract-probe/{id}'].delete.description).toBe('不可恢复');
   });

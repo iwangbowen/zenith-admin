@@ -73,7 +73,7 @@ COPY packages/web/package.json ./packages/web/
 # runtime); python3/make/g++ are only needed to build it, so they're installed
 # as a removable virtual group and dropped again once `npm ci` finishes to keep
 # the production image lean.
-RUN apk add --no-cache libstdc++ \
+RUN apk add --no-cache libstdc++ tzdata \
  && apk add --no-cache --virtual .build-deps python3 make g++ \
  && npm ci --omit=dev \
  && apk del .build-deps

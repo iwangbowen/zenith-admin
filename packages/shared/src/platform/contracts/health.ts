@@ -30,17 +30,22 @@ export type Health = z.infer<typeof healthSchema>;
 export const HEALTH_PROBE_STATUSES = ['ok', 'degraded', 'unavailable'] as const;
 export type HealthProbeStatus = (typeof HEALTH_PROBE_STATUSES)[number];
 
+export const HEALTH_PROBE_CHECK_RESULTS = ['ok', 'degraded', 'error', 'unavailable'] as const;
+export type HealthProbeCheckResult = (typeof HEALTH_PROBE_CHECK_RESULTS)[number];
+
 export const healthProbeSchema = z.object({
   status: z.enum(HEALTH_PROBE_STATUSES),
   ready: z.boolean(),
   version: z.string(),
   roles: z.array(z.enum(PROCESS_ROLES)),
-  checks: z.record(z.string(), z.enum(['ok', 'degraded', 'error', 'unavailable'])),
+  checks: z.record(z.string(), z.enum(HEALTH_PROBE_CHECK_RESULTS)),
 }).meta({ id: 'HealthProbe' });
 
 export type HealthProbe = z.infer<typeof healthProbeSchema>;
 
 // ─── 契约 ────────────────────────────────────────────────────────────────────
+
+const notReadyResponse = [{ status: 503, description: '服务尚未就绪' }] as const;
 
 export const healthContract = defineContract('/api/health', {
   check: op.get('/', {
@@ -50,6 +55,16 @@ export const healthContract = defineContract('/api/health', {
     description: '检查数据库与 Redis 连通状态，返回服务运行信息。',
   }),
   livez: op.get('/livez', { response: healthProbeSchema, public: true, summary: '进程存活探针' }),
-  startupz: op.get('/startupz', { response: healthProbeSchema, public: true, summary: '服务启动探针' }),
-  readyz: op.get('/readyz', { response: healthProbeSchema, public: true, summary: '服务就绪探针' }),
+  startupz: op.get('/startupz', {
+    response: healthProbeSchema,
+    public: true,
+    summary: '服务启动探针',
+    statusResponses: notReadyResponse,
+  }),
+  readyz: op.get('/readyz', {
+    response: healthProbeSchema,
+    public: true,
+    summary: '服务就绪探针',
+    statusResponses: notReadyResponse,
+  }),
 }, { tags: ['服务状态'] });

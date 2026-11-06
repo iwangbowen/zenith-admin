@@ -29,6 +29,8 @@ x-server-env: &server-env
   NODE_ENV: production
   # 业务时区（自然日统计、时间输入输出及数据库终端），必须是有效 IANA 名称
   APP_TIME_ZONE: ${APP_TIME_ZONE:-Asia/Shanghai}
+  # Runtime timezone is for Node/pino-roll file dates only; business code uses APP_TIME_ZONE.
+  TZ: ${APP_TIME_ZONE:-Asia/Shanghai}
   # ── Auth / Encryption（无默认值；生成：npm run secret:generate）────────
   JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required (run `npm run secret:generate`)}
   FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY:?FIELD_ENCRYPTION_KEY is required (run `npm run secret:generate`)}
@@ -130,12 +132,12 @@ services:
     volumes:
       # api 与 worker 同时挂载：上传文件本体 / 分片暂存 / CMS 静态化产物（worker 写、api 读）
       - api_storage:/app/packages/server/storage
-      - api_logs:/app/packages/server/logs
+      - server_logs:/app/packages/server/logs
     ports:
       # 默认只绑定本机回环；需要直接对外暴露 API 时设置 API_BIND=0.0.0.0
       - "${API_BIND:-127.0.0.1}:${API_PORT:-3300}:3300"
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3300/api/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3300/api/health/readyz || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -163,9 +165,9 @@ services:
     stop_grace_period: 130s
     volumes:
       - api_storage:/app/packages/server/storage
-      - worker_logs:/app/packages/server/logs
+      - server_logs:/app/packages/server/logs
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3301/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3301/readyz || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -190,5 +192,4 @@ volumes:
   postgres_data:
   redis_data:
   api_storage:
-  api_logs:
-  worker_logs:
+  server_logs:

@@ -17,7 +17,7 @@ import type { Context, MiddlewareHandler } from 'hono';
 import type { z } from 'zod';
 import {
   accessPermissions, accessPlatformOnly, isMultipart, MULTIPART_CONTENT_TYPE,
-  type AnyOperation, type MultipartBody, type OperationAudit, type ParamsSchema, type SecurityScheme,
+  type AnyOperation, type ContractStatusResponse, type MultipartBody, type OperationAudit, type ParamsSchema, type SecurityScheme,
 } from '@zenith/shared/core';
 import { IOT_SIGN_HEADER, IOT_SN_HEADER, IOT_TIMESTAMP_HEADER } from '@zenith/shared/iot';
 import { isLicenseFeatureKey } from '@zenith/shared/licensing';
@@ -100,6 +100,15 @@ type SuccessFor<Op extends AnyOperation> =
         : Op['kind'] extends 'file' ? ReturnType<typeof okFile>
           : SseSuccess;
 
+type SuccessResponseFor<Op extends AnyOperation> = SuccessFor<Op> extends { 200: infer Response } ? Response : never;
+
+type StatusResponsesFor<Op extends AnyOperation> = Op['statusResponses'] extends readonly (infer Status extends ContractStatusResponse)[]
+  ? {
+      [ResponseStatus in Status as ResponseStatus['status']]:
+        Omit<SuccessResponseFor<Op>, 'description'> & { description: ResponseStatus['description'] };
+    }
+  : Record<never, never>;
+
 type ExtraResponses = Record<number, { description: string; content?: Record<string, { schema: z.ZodType }> }>;
 
 export type RouteOptions<M extends readonly MiddlewareHandler[], Extra extends ExtraResponses> = {
@@ -128,7 +137,7 @@ export type RouteOf<Op extends AnyOperation, M extends readonly MiddlewareHandle
   middleware: [...M];
   hide?: boolean;
   request: RequestFor<Op>;
-  responses: SuccessFor<Op> & typeof commonErrorResponses & Extra;
+  responses: SuccessFor<Op> & StatusResponsesFor<Op> & typeof commonErrorResponses & Extra;
 };
 
 /**
@@ -165,6 +174,21 @@ function buildSuccess(op: AnyOperation): RouteConfig['responses'] {
     default:
       return { 200: { content: jsonContent(apiResponse(op.response)), description: op.summary } };
   }
+}
+
+/**
+ * Status metadata reuses the successful response content while documenting the
+ * alternate status and description declared by the shared contract.
+ */
+function buildStatusResponses(op: AnyOperation): RouteConfig['responses'] {
+  const success = buildSuccess(op);
+  const successResponse = success[200];
+  const statusResponses: readonly ContractStatusResponse[] = op.statusResponses;
+  if (!successResponse || statusResponses.length === 0) return {};
+  return Object.fromEntries(statusResponses.map(({ status, description }) => [
+    status,
+    { ...successResponse, description },
+  ]));
 }
 
 function toAuditLogOptions(audit: OperationAudit): AuditLogOptions {
@@ -240,7 +264,7 @@ export function toRoute<
     middleware: [metadataMiddleware, ...restMiddleware],
     ...(options.hide ? { hide: true } : {}),
     request: buildRequest(op),
-    responses: { ...buildSuccess(op), ...commonErrorResponses, ...(options.responses ?? {}) },
+    responses: { ...buildSuccess(op), ...buildStatusResponses(op), ...commonErrorResponses, ...(options.responses ?? {}) },
   };
   // 运行时对象按契约逐字段构造；精确类型由 RouteOf 静态推导（createRoute 的泛型约束无法在
   // 未实例化的条件类型上求值，此处是全仓唯一一处需要显式断言的地方）

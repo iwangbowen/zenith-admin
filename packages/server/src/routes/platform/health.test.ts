@@ -1,6 +1,13 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ workerNodes: 1, dbDown: false, fanout: 'subscribed' as string, bus: 'listening' as string }));
+const mocks = vi.hoisted(() => ({
+  workerNodes: 1,
+  dbDown: false,
+  fanout: 'subscribed' as string,
+  bus: 'listening' as string,
+  scheduler: true,
+  startupReady: true,
+}));
 
 vi.mock('../../db', () => ({
   db: {
@@ -15,6 +22,12 @@ vi.mock('../../lib/invalidation-bus', async (original) => ({
 vi.mock('../../lib/ws-fanout', async (importOriginal) => ({
   ...await importOriginal<typeof import('../../lib/ws-fanout')>(),
   wsFanoutState: () => mocks.fanout,
+}));
+vi.mock('../../lib/health-probe-state', () => ({ isApplicationStartupReady: () => mocks.startupReady }));
+vi.mock('../../lib/pg-boss-scheduler', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../lib/pg-boss-scheduler')>(),
+  countActiveWorkerNodes: async () => mocks.workerNodes,
+  getSchedulerIntrospection: () => ({ initialized: mocks.scheduler }),
 }));
 vi.mock('../../lib/logger', () => ({ default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child: vi.fn() } }));
 
@@ -43,6 +56,11 @@ async function check(app: HealthApp) {
   return { status: res.status, body: (await res.json()) as { data: { status: string; roles: string[]; checks: Record<string, string> } } };
 }
 
+async function probe(app: HealthApp, path: string) {
+  const res = await app.request(path);
+  return { status: res.status, body: (await res.json()) as { data: { status: string; ready: boolean; version: string; roles: string[]; checks: Record<string, string> } } };
+}
+
 // Contract routing and the scheduler load the complete shared/schema graph.
 // Compile it once as suite setup; each role still gets fresh module state and
 // every request/expectation keeps the normal 15-second test deadline.
@@ -56,6 +74,40 @@ afterEach(() => {
   mocks.dbDown = false;
   mocks.fanout = 'subscribed';
   mocks.bus = 'listening';
+  mocks.scheduler = true;
+  mocks.startupReady = true;
+});
+
+describe('canonical probes', () => {
+  it('returns the complete probe shape and keeps optional fan-out degradation ready', async () => {
+    mocks.fanout = 'degraded';
+    const app = await loadHealth({ api: true, worker: false, list: ['api'] });
+    const live = await probe(app, '/livez');
+    expect(live.status).toBe(200);
+    expect(live.body.data).toMatchObject({ status: 'ok', ready: true, version: expect.any(String), roles: ['api'], checks: { process: 'ok' } });
+
+    const startup = await probe(app, '/startupz');
+    expect(startup.status).toBe(200);
+    expect(startup.body.data).toMatchObject({ ready: true, checks: { process: 'ok', application: 'ok', scheduler: 'ok' } });
+
+    const ready = await probe(app, '/readyz');
+    expect(ready.status).toBe(200);
+    expect(ready.body.data).toMatchObject({ status: 'degraded', ready: true, checks: { database: 'ok', redis: 'ok', wsFanout: 'degraded', workers: 'ok' } });
+  });
+
+  it('returns 503 while startup or readiness required dependencies are unavailable', async () => {
+    mocks.startupReady = false;
+    const app = await loadHealth({ api: true, worker: false, list: ['api'] });
+    expect((await probe(app, '/startupz')).status).toBe(503);
+    expect((await probe(app, '/readyz')).status).toBe(503);
+
+    mocks.startupReady = true;
+    mocks.scheduler = false;
+    expect((await probe(app, '/readyz')).status).toBe(503);
+    mocks.scheduler = true;
+    mocks.dbDown = true;
+    expect((await probe(app, '/readyz')).status).toBe(503);
+  });
 });
 
 describe('GET /api/health 按角色输出', () => {

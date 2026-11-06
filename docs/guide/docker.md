@@ -54,6 +54,7 @@ redis    ─┤──→ migrate（一次性迁移）
 
 api / worker → Redis pub/sub → api  （WebSocket / IoT 推送扇出）
 api ⇄ api_storage ⇄ worker       （本地文件、上传暂存、CMS 静态产物）
+api ⇄ server_logs ⇄ worker       （同主机可见的角色隔离日志文件）
 ```
 
 | 服务 | 镜像 / 阶段 | 说明 |
@@ -61,8 +62,8 @@ api ⇄ api_storage ⇄ worker       （本地文件、上传暂存、CMS 静态
 | `postgres` | `postgres:16-alpine` | 数据库，库名 `zenith_admin`；Compose 启动时预加载 `pg_stat_statements` |
 | `redis` | `redis:7-alpine` | 会话、限流、幂等、黑名单与 WS 扇出状态；始终 `requirepass` + AOF |
 | `migrate` | Dockerfile `server` stage | 一次性执行 `node dist/db/migrate.js`，`restart: "no"` |
-| `api` | Dockerfile `server` stage | Hono 后端，`ZENITH_ROLES=api`，端口 3300，健康检查 `/api/health`；以非 root 用户 `node` 运行 |
-| `worker` | Dockerfile `server` stage | 后台任务进程，`ZENITH_ROLES=worker`，健康检查 `http://localhost:3301/health`，默认不发布端口 |
+| `api` | Dockerfile `server` stage | Hono 后端，`ZENITH_ROLES=api`，端口 3300，canonical readiness 检查 `/api/health/readyz`；以非 root 用户 `node` 运行 |
+| `worker` | Dockerfile `server` stage | 后台任务进程，`ZENITH_ROLES=worker`，canonical readiness 检查 `http://localhost:3301/readyz`，默认不发布端口 |
 | `web` | Dockerfile `web` stage | Nginx 静态站点，代理 `/api` 与 `/api/ws` |
 
 ## Dockerfile 构建流程
@@ -70,7 +71,7 @@ api ⇄ api_storage ⇄ worker       （本地文件、上传暂存、CMS 静态
 | 阶段 | 基础镜像 | 行为 |
 | --- | --- | --- |
 | `builder` | `node:24-alpine` | 安装全量依赖，构建 shared、analytics-sdk、server（含 PDF 字体子集生成）、web，按 `PDF_FONT` 构建参数用 `packages/server/scripts/package-server.mjs` 组装 server 部署目录，执行 `docker/build-studio.mjs`，最后用 `docker/patch-shared-exports.mjs` 把 `@zenith/shared` 的 exports 指向编译产物 |
-| `server` | `node:24-alpine` | 安装生产依赖，复制组装好的 server dist、Drizzle 迁移、PDF 字体与 shared dist，写入 entrypoint；entrypoint 传入参数时直接执行该命令（`migrate` 服务据此运行 `node dist/db/migrate.js`），否则启动 `node dist/index.js`；`storage` / `logs` 归属 `node` 后切换 `USER node` |
+| `server` | `node:24-alpine` | 安装生产依赖与 `tzdata`，复制组装好的 server dist、Drizzle 迁移、PDF 字体与 shared dist，写入 entrypoint；entrypoint 传入参数时直接执行该命令（`migrate` 服务据此运行 `node dist/db/migrate.js`），否则启动 `node dist/index.js`；`storage` / `logs` 归属 `node` 后切换 `USER node` |
 | `web` | `nginx:1.30-alpine` | 复制 `packages/web/dist` 与 `docker/nginx.conf` |
 
 `node-pty` 在 Linux 下需要编译，构建阶段安装 `python3 make g++`；server 阶段保留 `libstdc++` 并移除编译工具链。
@@ -99,6 +100,7 @@ shared 与 server 的 `build` 脚本在 `tsc` 之后运行 `tsc-alias --resolve-
 | `ALLOWED_ORIGINS` | 空 | CSRF 允许来源 |
 | `CORS_ORIGIN` | `*` | CORS 允许来源 |
 | `LOG_LEVEL` | `info` | 后端日志级别 |
+| `APP_TIME_ZONE` | `Asia/Shanghai` | 业务 IANA 时区；Compose 同时映射为容器 `TZ`，仅影响 Node/pino-roll 的运行时日期与日志文件名，业务代码仍只认 `APP_TIME_ZONE` |
 | `OAUTH_GITHUB_CLIENT_ID` / `OAUTH_GITHUB_CLIENT_SECRET` | 空 | GitHub OAuth 登录凭据 |
 | `OAUTH_CALLBACK_BASE_URL` | `http://localhost` | OAuth 回调基础地址 |
 | `TAG` | `latest` | 本地构建镜像标签 |
@@ -185,8 +187,7 @@ npm run dev
 | `postgres_data` | PostgreSQL 数据 |
 | `redis_data` | Redis AOF 数据 |
 | `api_storage` | `storage/` 整体，同时挂载到 api 与 worker：本地上传文件、分片上传暂存目录、CMS 静态化产物（worker 写、api 读） |
-| `api_logs` | api 角色日志 |
-| `worker_logs` | worker 角色日志 |
+| `server_logs` | API 与 Worker 共享的日志目录；文件以 `app-api.*` / `app-worker.*` 前缀隔离（`all` 角色使用 `app.*`） |
 
 ```bash
 # 备份 PostgreSQL

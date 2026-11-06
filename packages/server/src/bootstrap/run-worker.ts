@@ -11,9 +11,11 @@ import { serve, type ServerType } from '@hono/node-server';
 import { prometheus } from '@hono/prometheus';
 import { Hono } from 'hono';
 import { Registry } from 'prom-client';
-import type { HealthCheckResult } from '@zenith/shared/platform';
+import type { HealthCheckResult, HealthProbeCheckResult } from '@zenith/shared/platform';
 import { config } from '../config';
 import { checkInfraHealth, overallHealthStatus } from '../lib/health-checks';
+import { buildHealthProbe } from '../lib/health-probe';
+import { isApplicationStartupReady } from '../lib/health-probe-state';
 import logger from '../lib/logger';
 import { errBody, okBody } from '../lib/openapi-schemas';
 import { getSchedulerIntrospection } from '../lib/pg-boss-scheduler';
@@ -23,9 +25,40 @@ import { startWsFanoutSubscriber, stopWsFanoutSubscriber } from '../lib/ws-fanou
 import { startWsTrendSampling, stopWsTrendSampling } from '../lib/ws-trend';
 import { withTimeout } from './shutdown';
 
+const appVersion = process.env.npm_package_version || 'unknown';
+const STARTUP_REQUIRED_CHECKS = ['process', 'application', 'scheduler'] as const;
+const READINESS_REQUIRED_CHECKS = ['process', 'application', 'database', 'redis', 'scheduler'] as const;
+
 export interface WorkerRoleHandle {
   /** 关闭健康端点监听与纯 worker 的 WS 镜像订阅 / 采样（若有） */
   stopIngress(): Promise<void>;
+}
+
+function probeContext() {
+  return { version: appVersion, roles: config.roles.list };
+}
+
+function schedulerCheck(): HealthCheckResult {
+  return getSchedulerIntrospection().initialized ? 'ok' : 'error';
+}
+
+function startupProbe() {
+  return buildHealthProbe({
+    process: 'ok',
+    application: isApplicationStartupReady() ? 'ok' : 'error',
+    scheduler: schedulerCheck(),
+  }, STARTUP_REQUIRED_CHECKS, probeContext());
+}
+
+async function readinessProbe() {
+  const infra = await checkInfraHealth();
+  const checks: Record<string, HealthProbeCheckResult> = {
+    process: 'ok',
+    ...infra,
+    application: isApplicationStartupReady() ? 'ok' : 'error',
+    scheduler: schedulerCheck(),
+  };
+  return buildHealthProbe(checks, READINESS_REQUIRED_CHECKS, probeContext());
 }
 
 /**
@@ -38,27 +71,34 @@ export function createWorkerApp(): Hono {
   const { printMetrics } = prometheus({ collectDefaultMetrics: true, registry });
   registerZenithMetrics(registry);
 
+  // Compatibility endpoint retained for existing container checks and operators.
   app.get('/health', async (c) => {
     const checks: Record<string, HealthCheckResult> = await checkInfraHealth();
-    checks.scheduler = getSchedulerIntrospection().initialized ? 'ok' : 'error';
-    return c.json(okBody({ status: overallHealthStatus(checks), roles: config.roles.list, checks }), 200);
+    checks.scheduler = schedulerCheck();
+    return c.json(okBody({
+      status: overallHealthStatus(checks),
+      version: appVersion,
+      roles: config.roles.list,
+      checks,
+    }), 200);
   });
-  app.get('/livez', (c) => c.json(okBody({ status: 'ok', ready: true, roles: config.roles.list }, 'success'), 200));
+  app.get('/livez', (c) => {
+    const probe = buildHealthProbe({ process: 'ok' }, ['process'], probeContext());
+    return c.json(okBody(probe.body, 'success'), probe.httpStatus);
+  });
   app.get('/startupz', (c) => {
-    const ready = getSchedulerIntrospection().initialized;
-    return c.json(okBody({ status: ready ? 'ok' : 'unavailable', ready, roles: config.roles.list, checks: { scheduler: ready ? 'ok' : 'error' } }, 'success'), ready ? 200 : 503);
+    const probe = startupProbe();
+    return c.json(okBody(probe.body, 'success'), probe.httpStatus);
   });
-  // 就绪 = pg-boss 已启动并完成声明；未就绪返回 503 让编排器暂缓把它计入可用副本
+  // 就绪 = 核心基础设施与 pg-boss 已启动；未就绪返回 503 让编排器暂缓把它计入可用副本
   app.get('/readyz', async (c) => {
-    const checks: Record<string, HealthCheckResult> = await checkInfraHealth();
-    checks.scheduler = getSchedulerIntrospection().initialized ? 'ok' : 'error';
-    const ready = Object.values(checks).every((value) => value === 'ok');
-    const status = ready ? 'ok' : Object.values(checks).some((value) => value === 'error') ? 'unavailable' : 'degraded';
-    return c.json(okBody({ status, ready, roles: config.roles.list, checks }, 'success'), ready ? 200 : 503);
+    const probe = await readinessProbe();
+    return c.json(okBody(probe.body, 'success'), probe.httpStatus);
   });
-  app.get('/ready', (c) => {
-    const ready = getSchedulerIntrospection().initialized;
-    return c.json(okBody({ ready, roles: config.roles.list }), ready ? 200 : 503);
+  // Legacy alias. Keep its compact response shape while using canonical readiness semantics.
+  app.get('/ready', async (c) => {
+    const probe = await readinessProbe();
+    return c.json(okBody({ ready: probe.body.ready, roles: config.roles.list }), probe.httpStatus);
   });
   app.get('/metrics', printMetrics);
   app.notFound((c) => c.json(errBody('接口不存在', 404), 404));

@@ -1,16 +1,38 @@
 import { OpenAPIHono } from '@hono/zod-openapi';
-import { healthContract, type HealthCheckResult } from '@zenith/shared/platform';
+import { healthContract, type HealthCheckResult, type HealthProbeCheckResult } from '@zenith/shared/platform';
 import { config } from '../../config';
 import { defineContractRoute } from '../../lib/contract-route';
 import { checkInfraHealth, overallHealthStatus } from '../../lib/health-checks';
+import { buildHealthProbe } from '../../lib/health-probe';
+import { isApplicationStartupReady } from '../../lib/health-probe-state';
 import { okBody, validationHook } from '../../lib/openapi-schemas';
-import { countActiveWorkerNodes } from '../../lib/pg-boss-scheduler';
+import { countActiveWorkerNodes, getSchedulerIntrospection } from '../../lib/pg-boss-scheduler';
 import { wsFanoutState } from '../../lib/ws-fanout';
 
 const startTime = Date.now();
 const appVersion = process.env.npm_package_version || 'unknown';
+const STARTUP_REQUIRED_CHECKS = ['process', 'application', 'scheduler'] as const;
+// Database, Redis and the scheduler are required to accept traffic. Optional
+// cross-process capabilities remain visible as degraded without failing readiness.
+const READINESS_REQUIRED_CHECKS = ['process', 'application', 'database', 'redis', 'scheduler'] as const;
 
 const health = new OpenAPIHono({ defaultHook: validationHook });
+
+function probeContext() {
+  return { version: appVersion, roles: config.roles.list };
+}
+
+function schedulerCheck(): HealthCheckResult {
+  return getSchedulerIntrospection().initialized ? 'ok' : 'error';
+}
+
+function startupProbe() {
+  return buildHealthProbe({
+    process: 'ok',
+    application: isApplicationStartupReady() ? 'ok' : 'error',
+    scheduler: schedulerCheck(),
+  }, STARTUP_REQUIRED_CHECKS, probeContext());
+}
 
 /**
  * api 角色的作业执行者感知：近期无任何活跃 worker 心跳时，投递的作业会一直排队无人执行。
@@ -23,6 +45,23 @@ async function checkWorkers(): Promise<HealthCheckResult> {
   } catch {
     return 'error';
   }
+}
+
+async function readinessProbe() {
+  const infra = await checkInfraHealth();
+  const checks: Record<string, HealthProbeCheckResult> = {
+    process: 'ok',
+    ...infra,
+    application: isApplicationStartupReady() ? 'ok' : 'error',
+    scheduler: schedulerCheck(),
+  };
+  if (config.roles.api) {
+    // Cross-process WS delivery is optional for local connections; expose degradation
+    // without removing an otherwise usable API replica from service.
+    checks.wsFanout = wsFanoutState() === 'subscribed' ? 'ok' : 'degraded';
+    checks.workers = await checkWorkers();
+  }
+  return buildHealthProbe(checks, READINESS_REQUIRED_CHECKS, probeContext());
 }
 
 const healthRoute = defineContractRoute(healthContract.check, {
@@ -44,37 +83,27 @@ const healthRoute = defineContractRoute(healthContract.check, {
   },
 });
 
-function probeBody(checks: Record<string, 'ok' | 'degraded' | 'error' | 'unavailable'>, ready: boolean) {
-  const status = Object.values(checks).some((value) => value === 'error' || value === 'unavailable')
-    ? 'unavailable'
-    : Object.values(checks).some((value) => value === 'degraded')
-      ? 'degraded'
-      : 'ok';
-  return { status, ready, version: appVersion, roles: config.roles.list, checks } as const;
-}
-
 const liveRoute = defineContractRoute(healthContract.livez, {
   middleware: [],
-  handler: (c) => c.json(okBody(probeBody({ process: 'ok' }, true), 'success'), 200),
+  handler: (c) => {
+    const probe = buildHealthProbe({ process: 'ok' }, ['process'], probeContext());
+    return c.json(okBody(probe.body, 'success'), 200);
+  },
 });
 
 const startupRoute = defineContractRoute(healthContract.startupz, {
   middleware: [],
-  handler: (c) => c.json(okBody(probeBody({ process: 'ok', app: 'ok' }, true), 'success'), 200),
+  handler: (c) => {
+    const probe = startupProbe();
+    return c.json(okBody(probe.body, 'success'), probe.httpStatus);
+  },
 });
 
 const readyRoute = defineContractRoute(healthContract.readyz, {
   middleware: [],
   handler: async (c) => {
-    const checks: Record<string, 'ok' | 'degraded' | 'error' | 'unavailable'> = await checkInfraHealth();
-    if (config.roles.api) {
-      checks.wsFanout = wsFanoutState() === 'subscribed' ? 'ok' : 'degraded';
-      checks.workers = await checkWorkers();
-    }
-    const body = probeBody(checks, Object.values(checks).every((value) => value === 'ok'));
-    // Contract routes currently describe the success payload as 200; readiness
-    // still deliberately emits HTTP 503 so orchestrators remove an unready node.
-    return c.json(okBody(body, 'success'), (body.ready ? 200 : 503) as 200);
+    const probe = await readinessProbe();
+    return c.json(okBody(probe.body, 'success'), probe.httpStatus);
   },
 });
 

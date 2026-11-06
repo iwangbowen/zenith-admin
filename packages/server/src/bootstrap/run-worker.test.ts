@@ -3,7 +3,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ initialized: true, dbDown: false, topologyError: null as Error | null, sampleListeners: new Set<() => void>() }));
+const mocks = vi.hoisted(() => ({ initialized: true, startupReady: true, dbDown: false, topologyError: null as Error | null, sampleListeners: new Set<() => void>() }));
 
 vi.mock('../db', () => ({ db: { execute: async () => { if (mocks.dbDown) throw new Error('db down'); return []; } } }));
 vi.mock('../lib/logger', () => ({ default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
@@ -22,6 +22,7 @@ vi.mock('../lib/pg-boss-scheduler', () => ({
   }),
   countActiveWorkerNodes: async () => 1,
 }));
+vi.mock('../lib/health-probe-state', () => ({ isApplicationStartupReady: () => mocks.startupReady }));
 vi.mock('../lib/storage-topology', () => ({ assertWorkerStorageTopology: async () => { if (mocks.topologyError) throw mocks.topologyError; } }));
 vi.mock('../lib/metrics-sampler', () => ({ metricsSampler: {
   getLatest: () => null,
@@ -78,6 +79,7 @@ async function load(roles: { api: boolean; worker: boolean }): Promise<RunWorker
 
 afterEach(() => {
   mocks.initialized = true;
+  mocks.startupReady = true;
   mocks.dbDown = false;
   mocks.topologyError = null;
   mocks.sampleListeners.clear();
@@ -93,9 +95,15 @@ describe('createWorkerApp', () => {
 
     const ready = await app.request('/ready');
     expect(ready.status).toBe(200);
-    expect((await app.request('/livez')).status).toBe(200);
-    expect((await app.request('/startupz')).status).toBe(200);
-    expect((await app.request('/readyz')).status).toBe(200);
+    const live = await app.request('/livez');
+    expect(live.status).toBe(200);
+    expect(await live.json()).toMatchObject({ code: 0, data: { status: 'ok', ready: true, version: expect.any(String), roles: ['worker'], checks: { process: 'ok' } } });
+    const startup = await app.request('/startupz');
+    expect(startup.status).toBe(200);
+    expect(await startup.json()).toMatchObject({ code: 0, data: { status: 'ok', ready: true, version: expect.any(String), roles: ['worker'], checks: { process: 'ok', application: 'ok', scheduler: 'ok' } } });
+    const readyz = await app.request('/readyz');
+    expect(readyz.status).toBe(200);
+    expect(await readyz.json()).toMatchObject({ code: 0, data: { status: 'ok', ready: true, version: expect.any(String), roles: ['worker'], checks: { process: 'ok', application: 'ok', database: 'ok', redis: 'ok', scheduler: 'ok' } } });
 
     const metrics = await app.request('/metrics');
     expect(metrics.status).toBe(200);
@@ -114,7 +122,9 @@ describe('createWorkerApp', () => {
     const app = (await load({ api: false, worker: true })).createWorkerApp();
     expect((await app.request('/ready')).status).toBe(503);
     expect((await app.request('/startupz')).status).toBe(503);
-    expect((await app.request('/readyz')).status).toBe(503);
+    const readyz = await app.request('/readyz');
+    expect(readyz.status).toBe(503);
+    expect(await readyz.json()).toMatchObject({ code: 0, data: { ready: false, status: 'unavailable', checks: { scheduler: 'error' } } });
     const health = await (await app.request('/health')).json() as { data: { status: string; checks: Record<string, string> } };
     expect(health.data.checks.scheduler).toBe('error');
     expect(health.data.status).toBe('degraded');
