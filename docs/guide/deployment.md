@@ -61,10 +61,11 @@ ALLOWED_ORIGINS=https://admin.example.com
 
 | 变量 | 用途 |
 | --- | --- |
-| `DATABASE_MAX_CONNECTIONS` | 单个进程的业务连接池上限，默认 `20`。连接预算按角色累计：业务池 + pg-boss 池（worker 约 10，api send-only 约 2）+ 1 条 LISTEN 连接；api 还包含 Mastra 10 + 5。所有 api / worker 进程总和必须低于 PostgreSQL `max_connections`，超出时前置 pgBouncer（会话池模式，事务池无法透传 LISTEN/NOTIFY）或调低该值 |
+| `DATABASE_MAX_CONNECTIONS` | 单个进程的业务连接池上限，默认 `20`；观测汇总中的数据库 utilization 使用本进程 active 连接数 / 该值，`pg_stat_activity` 全局当前连接数仅作为 observed 值。连接预算按角色累计：业务池 + pg-boss 池（worker 约 10，api send-only 约 2）+ 1 条 LISTEN 连接；api 还包含 Mastra 10 + 5。所有 api / worker 进程总和必须低于 PostgreSQL `max_connections`，超出时前置 pgBouncer（会话池模式，事务池无法透传 LISTEN/NOTIFY）或调低该值 |
 | `ZENITH_ROLES` | 进程角色，逗号分隔：`api` / `worker` / `all`（等于两者）。非 `NODE_ENV=development` 环境必填；单机全量部署显式设为 `all` |
 | `APP_TIME_ZONE` | 业务时区（IANA 名，默认 `Asia/Shanghai`）：接口时间、自然日统计与「今日」窗口按它计算。应用连接数据库时固定会话时区为 UTC，数据库服务端、容器与宿主机的时区设置不影响数据与统计 |
 | `WORKER_HEALTH_PORT` | 纯 worker 探针端口，默认 `3301`，提供 `/health`、`/ready`、`/metrics` |
+| `WORKER_REQUIRED` | 可选的 Worker 最小期望实例数；未配置时观测汇总显示未知，不用固定 `1` 推断容量 |
 | `SHUTDOWN_GRACE_MS` | 优雅停机硬截止；默认 api/all `15000`，纯 worker `120000`。worker 把该预算（扣除收尾步骤的 10s）传给 pg-boss 等待在飞作业收尾，超时的作业被标记失败、由任务中心兜底扫描按断点恢复。容器 `stop_grace_period` / K8s `terminationGracePeriodSeconds` 必须大于该值 |
 | `STORAGE_SHARED` | 默认 `false`。纯 worker 使用本地磁盘相关存储或 CMS 静态化时，设为 `true` 表示 `storage/` 由 api 与 worker 共享 |
 | `REQUEST_BODY_LIMIT` | 请求体大小上限，`0` 或未设置表示不启用全局限制（此时只有各上传端点按 `file.size` 自行拦截），生产环境务必设置（`.env.example` 示例为 64 MB，67108864）；至少要容纳一个分片（`files.chunkSizeMb`，最大 32 MB）加 multipart 开销，建议 ≥ 40 MB（41943040）；反向代理的 `client_max_body_size` 同理 |

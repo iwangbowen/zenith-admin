@@ -17,6 +17,6 @@ export function FreshnessBadge({ status, ageSeconds }: Readonly<{ status: Observ
 
 export function PartialDataBanner({ partial, unavailableSources }: Readonly<{ partial: boolean; unavailableSources: string[] }>) {
   if (!partial) return null;
-  const detail = unavailableSources.length > 0 ? `不可用来源：${unavailableSources.join('、')}` : '部分观测源处于降级状态';
+  const detail = unavailableSources.length > 0 ? `需关注来源：${unavailableSources.join('、')}` : '部分观测源处于降级或过期状态';
   return <Text type="warning" size="small">{detail}。页面不会把缺失数据显示为 0。</Text>;
 }

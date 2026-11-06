@@ -636,6 +636,17 @@ export async function getCpuTemperature(): Promise<TemperatureInfo | null> {
 }
 
 // ─── 主入口 ────────────────────────────────────────────────────────────
+export function getMonitorSampleState(): { generatedAt: number | null; error: string | null } {
+  const entries = [cache.db, cache.redis];
+  const sampledAt = entries.map((entry) => entry?.at).filter((at): at is number => at !== undefined);
+  const generatedAt = sampledAt.length > 0 ? Math.min(...sampledAt) : null;
+  const missing = entries.some((entry) => entry?.value === null);
+  return {
+    generatedAt,
+    error: missing ? 'monitor_dependency_unavailable' : null,
+  };
+}
+
 export async function getMonitorStatus() {
   const [dbInfo, redisInfo, disks, memInfo, topProcesses, temperature] = await Promise.all([
     getDbInfo(),
@@ -894,13 +905,13 @@ export function registerMonitorExtCollector(): void {
     ]);
     const dbConnections = connRows
       ? Number((connRows as unknown as Array<{ c: number | string }>)[0]?.c ?? 0)
-      : 0;
-    let redisMemBytes = 0;
-    let redisHitRate = 0;
-    let redisCpuPercent = 0;
-    let redisOpsPerSec = 0;
-    let redisNetRxBps = 0;
-    let redisNetTxBps = 0;
+      : undefined;
+    let redisMemBytes: number | undefined;
+    let redisHitRate: number | undefined;
+    let redisCpuPercent: number | undefined;
+    let redisOpsPerSec: number | undefined;
+    let redisNetRxBps: number | undefined;
+    let redisNetTxBps: number | undefined;
     if (redisInfoRaw) {
       const info = parseRedisInfo(redisInfoRaw);
       const now = Date.now();
@@ -926,6 +937,7 @@ export function registerMonitorExtCollector(): void {
       lastCpuAt = now;
       primed = true;
     }
+    if (dbConnections === undefined && redisInfoRaw === null) return null;
     return {
       dbConnections,
       redisMemBytes,

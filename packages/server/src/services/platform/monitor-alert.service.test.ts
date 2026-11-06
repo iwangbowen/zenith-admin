@@ -326,6 +326,12 @@ describe('evaluateMonitorAlerts 指标子集', () => {
     expect(dbMock.update).not.toHaveBeenCalled();
     expect(dispatchAlertChannels).not.toHaveBeenCalled();
   });
+  it('任意数值指标缺失时不回退为零，也不改变告警生命周期', async () => {
+    dbMock.select.mockReturnValueOnce(createChain([alertRule({ id: 22, metric: 'schedulerQueueBacklog', state: 'firing', threshold: 0 })]));
+    vi.mocked(getMetricSnapshotsByTenant).mockResolvedValue(new Map([[null, { schedulerQueueBacklog: undefined } as never]]));
+    expect(await evaluateMonitorAlerts()).toEqual({ evaluated: 0, fired: 0, resolved: 0 });
+    expect(dbMock.update).not.toHaveBeenCalled();
+  });
   it('传入 metrics 时只评估这些指标的启用规则（api 侧 worker watchdog 只碰 schedulerWorkerNodes）', async () => {
     const cpuRule = alertRule({ id: 1, metric: 'cpu', state: 'ok', breachingSince: null, lastTriggeredAt: null });
     const workerRule = alertRule({

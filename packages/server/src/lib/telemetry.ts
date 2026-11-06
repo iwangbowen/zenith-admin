@@ -4,9 +4,19 @@ import logger from './logger';
 
 let telemetrySdk: NodeSDK | null = null;
 let telemetryInitialized = false;
+let telemetryError: string | null = null;
+
+export type TelemetryStatus = 'disabled' | 'starting' | 'ready' | 'error';
+
+export function getTelemetryStatus(): { status: TelemetryStatus; error: string | null } {
+  if (!config.otel.enabled) return { status: 'disabled', error: null };
+  if (telemetryInitialized) return { status: 'ready', error: null };
+  return telemetryError ? { status: 'error', error: telemetryError } : { status: 'starting', error: null };
+}
 
 export const initTelemetry = async (): Promise<boolean> => {
   if (!config.otel.enabled) {
+    telemetryError = null;
     return false;
   }
 
@@ -14,6 +24,7 @@ export const initTelemetry = async (): Promise<boolean> => {
     return true;
   }
 
+  telemetryError = null;
   try {
     // 惰性加载：@opentelemetry/sdk-node 模块图很大（实测数秒），仅在启用 OTel 时才引入
     const [{ NodeSDK }, { OTLPTraceExporter }, { UndiciInstrumentation }] = await Promise.all([
@@ -53,6 +64,7 @@ export const initTelemetry = async (): Promise<boolean> => {
   } catch (error) {
     telemetrySdk = null;
     telemetryInitialized = false;
+    telemetryError = 'telemetry_initialization_failed';
     logger.error('Failed to initialize OpenTelemetry tracing', error);
     return false;
   }
@@ -70,5 +82,6 @@ export const shutdownTelemetry = async (): Promise<void> => {
   } finally {
     telemetrySdk = null;
     telemetryInitialized = false;
+    telemetryError = null;
   }
 };

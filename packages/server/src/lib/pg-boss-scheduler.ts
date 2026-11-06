@@ -1105,36 +1105,77 @@ export interface QueueDepth {
   total: number;
 }
 
+export interface QueueDepthSnapshot {
+  status: 'ok' | 'unavailable' | 'error';
+  generatedAt: string | null;
+  queues: QueueDepth[] | null;
+  error: string | null;
+}
+
 const QUEUE_DEPTH_CACHE_MS = 10_000;
 let queueDepthCache: { at: number; value: QueueDepth[] } | null = null;
+let queueDepthSnapshot: QueueDepthSnapshot = {
+  status: 'unavailable', generatedAt: null, queues: null, error: 'scheduler_not_initialized',
+};
+
+async function readQueueDepthSnapshot(): Promise<QueueDepthSnapshot> {
+  if (!boss) {
+    return { status: 'unavailable', generatedAt: null, queues: null, error: 'scheduler_not_initialized' };
+  }
+  const now = Date.now();
+  if (queueDepthCache && now - queueDepthCache.at < QUEUE_DEPTH_CACHE_MS) {
+    return { status: 'ok', generatedAt: new Date(queueDepthCache.at).toISOString(), queues: queueDepthCache.value, error: null };
+  }
+  try {
+    const queues = await boss.getQueues();
+    const value = queues
+      .filter((q) => !isPgBossInternalQueue(q.name))
+      .map((q) => ({
+        queue: q.name,
+        ready: q.readyCount ?? Math.max((q.queuedCount ?? 0) - (q.deferredCount ?? 0), 0),
+        deferred: q.deferredCount ?? 0,
+        active: q.activeCount ?? 0,
+        failed: q.failedCount ?? 0,
+        total: q.totalCount ?? 0,
+      }));
+    const at = Date.now();
+    queueDepthCache = { at, value };
+    queueDepthSnapshot = { status: 'ok', generatedAt: new Date(at).toISOString(), queues: value, error: null };
+    return queueDepthSnapshot;
+  } catch {
+    const failure: QueueDepthSnapshot = {
+      status: 'error', generatedAt: null, queues: null, error: 'queue_read_error',
+    };
+    queueDepthSnapshot = failure;
+    return failure;
+  }
+}
+
+/**
+ * 带可用性和真实采样时间的队列读数。观测汇总使用此接口，避免把未初始化/读取失败伪装为空队列。
+ */
+export async function getQueueDepthSnapshot(): Promise<QueueDepthSnapshot> {
+  return readQueueDepthSnapshot();
+}
 
 /**
  * 各队列的作业积压读数（不含 pg-boss 内部队列）。
- * 计数来自 pg-boss 维护在 pgboss.queue 上的缓存统计（由执行角色的 supervisor 每分钟刷新），一次小表查询即可；
- * 进程内再缓存 10s，Prometheus 抓取与监控评估同时到来时不重复查库。pg-boss 未初始化时返回空数组。
+ * 只有成功读取才返回数组；scheduler 未初始化或读取失败均抛出受控错误，
+ * 避免调用方把不可用误判成真实的零队列。
  */
 export async function getQueueDepths(): Promise<QueueDepth[]> {
-  if (!boss) return [];
-  if (queueDepthCache && Date.now() - queueDepthCache.at < QUEUE_DEPTH_CACHE_MS) return queueDepthCache.value;
-  const queues = await boss.getQueues();
-  const value = queues
-    .filter((q) => !isPgBossInternalQueue(q.name))
-    .map((q) => ({
-      queue: q.name,
-      ready: q.readyCount ?? Math.max((q.queuedCount ?? 0) - (q.deferredCount ?? 0), 0),
-      deferred: q.deferredCount ?? 0,
-      active: q.activeCount ?? 0,
-      failed: q.failedCount ?? 0,
-      total: q.totalCount ?? 0,
-    }));
-  queueDepthCache = { at: Date.now(), value };
-  return value;
+  const snapshot = await readQueueDepthSnapshot();
+  if (snapshot.status !== 'ok' || snapshot.queues === null) {
+    throw new Error(snapshot.error ?? 'queue_unavailable');
+  }
+  return snapshot.queues;
 }
 
-/** 全部队列可立即领取的作业总数（监控指标 schedulerQueueBacklog） */
-export async function getQueueBacklog(): Promise<number> {
-  const depths = await getQueueDepths();
-  return depths.reduce((sum, d) => sum + d.ready, 0);
+/** 全部队列可立即领取的作业总数（监控指标 schedulerQueueBacklog）。不可用时返回 null，不能伪装成零积压。 */
+export async function getQueueBacklog(): Promise<number | null> {
+  const snapshot = await readQueueDepthSnapshot();
+  if (snapshot.status !== 'ok' || snapshot.queues === null) return null;
+  return snapshot.queues.reduce((sum, d) => sum + d.ready, 0);
 }
 
 const localNodeQueueOptions = new Map<string, Omit<QueueOptions, 'name'> | undefined>();

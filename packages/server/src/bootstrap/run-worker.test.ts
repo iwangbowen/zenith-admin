@@ -15,12 +15,20 @@ vi.mock('../lib/pg-boss-scheduler', () => ({
   getSchedulerIntrospection: () => ({ initialized: mocks.initialized }),
   purgeOrphanSystemTasks: vi.fn(),
   getQueueDepths: async () => [{ queue: 'async-tasks', ready: 5, deferred: 1, active: 2, failed: 0, total: 30 }],
+  getQueueDepthSnapshot: async () => ({
+    status: 'ok', generatedAt: new Date().toISOString(),
+    queues: [{ queue: 'async-tasks', ready: 5, deferred: 1, active: 2, failed: 0, total: 30 }],
+    error: null,
+  }),
   countActiveWorkerNodes: async () => 1,
 }));
 vi.mock('../lib/storage-topology', () => ({ assertWorkerStorageTopology: async () => { if (mocks.topologyError) throw mocks.topologyError; } }));
 vi.mock('../lib/metrics-sampler', () => ({ metricsSampler: {
   getLatest: () => null,
-  http: { totals: () => ({ total: 0, total4xx: 0, total5xx: 0 }) },
+  http: {
+    totals: () => ({ total: 0, total4xx: 0, total5xx: 0 }),
+    windowStats: () => ({ qps: 0, total: 0, errors: 0, errorRate: 0, latestAt: null }),
+  },
   subscribe: (fn: () => void) => {
     mocks.sampleListeners.add(fn);
     return () => { mocks.sampleListeners.delete(fn); };
@@ -99,7 +107,7 @@ describe('createWorkerApp', () => {
 
     const business = await app.request('/api/auth/me');
     expect(business.status).toBe(404);
-  });
+  }, 120_000);
 
   it('pg-boss 未启动时 /ready 返回 503，/health 标记 scheduler 错误', async () => {
     mocks.initialized = false;

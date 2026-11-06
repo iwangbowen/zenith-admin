@@ -14,7 +14,7 @@ const state = vi.hoisted(() => ({
 vi.mock('../../db', () => ({ db: { transaction: state.transaction } }));
 vi.mock('../../config', () => ({ config: { roles: { api: true }, licenseMode: 'off', log: { level: 'silent' } } }));
 vi.mock('../../lib/ws-manager', () => ({ getWsClusterSnapshot: () => state.snapshot }));
-vi.mock('../../lib/metrics-sampler', () => ({ metricsSampler: { getLatest: () => null, subscribe: vi.fn() } }));
+vi.mock('../../lib/metrics-sampler', () => ({ metricsSampler: { getLatest: () => null, subscribe: vi.fn(), http: { windowStats: vi.fn() } } }));
 vi.mock('../../lib/settings', () => ({ getSettings: async () => ({ enabled: false }) }));
 vi.mock('../../lib/logger', () => ({ default: { debug: vi.fn(), warn: vi.fn() } }));
 vi.mock('./monitor.service', () => ({ getDisks: vi.fn(), getLinuxMemInfo: vi.fn() }));

@@ -8,14 +8,17 @@
 import { countActiveWorkerNodes, getQueueBacklog } from '../../lib/pg-boss-scheduler';
 
 export interface SchedulerAlertMetrics {
-  schedulerWorkerNodes: number;
-  schedulerQueueBacklog: number;
+  schedulerWorkerNodes: number | null;
+  schedulerQueueBacklog: number | null;
 }
 
 export async function getSchedulerAlertMetrics(): Promise<SchedulerAlertMetrics> {
-  const [schedulerWorkerNodes, schedulerQueueBacklog] = await Promise.all([
+  const [schedulerWorkerNodes, schedulerQueueBacklog] = await Promise.allSettled([
     countActiveWorkerNodes(),
     getQueueBacklog(),
   ]);
-  return { schedulerWorkerNodes, schedulerQueueBacklog };
+  return {
+    schedulerWorkerNodes: schedulerWorkerNodes.status === 'fulfilled' ? schedulerWorkerNodes.value : null,
+    schedulerQueueBacklog: schedulerQueueBacklog.status === 'fulfilled' ? schedulerQueueBacklog.value : null,
+  };
 }

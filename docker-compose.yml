@@ -154,6 +154,8 @@ services:
       <<: *server-env
       ZENITH_ROLES: worker
       WORKER_HEALTH_PORT: 3301
+      # 可选的 Worker 期望实例数；未设置时观测汇总显示未知
+      WORKER_REQUIRED: ${WORKER_REQUIRED:-}
       # storage 卷与 api 共享（见上），声明后 worker 才允许使用本地磁盘型存储
       STORAGE_SHARED: "true"
       # 停机时排空在飞作业的预算；stop_grace_period 须大于它

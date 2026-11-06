@@ -12,6 +12,7 @@ const fake = vi.hoisted(() => {
   const ctorOptions: Array<Record<string, unknown>> = [];
   /** 额外的队列（用例按需塞入下线节点的节点队列） */
   const extraQueues: Array<Record<string, unknown>> = [];
+  let businessQueuesEmpty = false;
   class PgBoss {
     constructor(options: Record<string, unknown>) { ctorOptions.push(options); }
     on = record('on');
@@ -23,7 +24,7 @@ const fake = vi.hoisted(() => {
       missingFunctions: [], mismatchedFunctions: [], columnDrift: [], constraintDrift: [], enumDrift: false,
     });
     getQueue = async () => null;
-    getQueues = async () => [
+    getQueues = async () => businessQueuesEmpty ? [] : [
       { name: 'async-tasks', queuedCount: 12, deferredCount: 4, readyCount: 8, activeCount: 3, failedCount: 1, totalCount: 40 },
       { name: 'cron-jobs', queuedCount: 0, deferredCount: 0, readyCount: 0, activeCount: 1, failedCount: 0, totalCount: 5 },
       { name: '__pgboss__send-it', queuedCount: 9, deferredCount: 0, readyCount: 9, activeCount: 0, failedCount: 0, totalCount: 9 },
@@ -47,8 +48,15 @@ const fake = vi.hoisted(() => {
     isMaintaining = () => false;
     getBamStatus = async () => [];
   }
-  const reset = () => { for (const key of Object.keys(calls)) delete calls[key]; ctorOptions.length = 0; extraQueues.length = 0; };
-  return { PgBoss, calls, ctorOptions, extraQueues, reset };
+  const reset = () => { for (const key of Object.keys(calls)) delete calls[key]; ctorOptions.length = 0; extraQueues.length = 0; businessQueuesEmpty = false; };
+  return {
+    PgBoss,
+    calls,
+    ctorOptions,
+    extraQueues,
+    set businessQueuesEmpty(value: boolean) { businessQueuesEmpty = value; },
+    reset,
+  };
 });
 
 vi.mock('pg-boss', () => ({ PgBoss: fake.PgBoss }));
@@ -195,10 +203,23 @@ describe('队列积压读数', () => {
     await expect(s.getQueueBacklog()).resolves.toBe(8);
   });
 
-  it('pg-boss 未初始化时返回空读数，不抛错', async () => {
+  it('pg-boss 未初始化时 depth/backlog/snapshot 都明确返回 unavailable', async () => {
     const s = await loadScheduler('api');
-    await expect(s.getQueueDepths()).resolves.toEqual([]);
-    await expect(s.getQueueBacklog()).resolves.toBe(0);
+    await expect(s.getQueueDepths()).rejects.toThrow('scheduler_not_initialized');
+    await expect(s.getQueueBacklog()).resolves.toBeNull();
+    await expect(s.getQueueDepthSnapshot()).resolves.toMatchObject({
+      status: 'unavailable', queues: null, error: 'scheduler_not_initialized', generatedAt: null,
+    });
+  });
+
+  it('成功读取到零条业务队列时仍是 ok，而不是 unavailable', async () => {
+    const s = await loadScheduler('api');
+    await s.initCronScheduler();
+    fake.businessQueuesEmpty = true;
+    const snapshot = await s.getQueueDepthSnapshot();
+    expect(snapshot.status).toBe('ok');
+    expect(snapshot.queues).toEqual([]);
+    expect(snapshot.generatedAt).toEqual(expect.any(String));
   });
 });
 

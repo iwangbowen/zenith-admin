@@ -5,6 +5,10 @@ import { defineContract, op } from '../../core/contract';
 export const OBSERVABILITY_STATUSES = ['ok', 'degraded', 'unavailable'] as const;
 export type ObservabilityStatus = (typeof OBSERVABILITY_STATUSES)[number];
 
+/** A source has more precise states than the aggregate status shown to operators. */
+export const OBSERVABILITY_SOURCE_STATUSES = ['ok', 'degraded', 'stale', 'not_sampled', 'unavailable'] as const;
+export type ObservabilitySourceStatus = (typeof OBSERVABILITY_SOURCE_STATUSES)[number];
+
 export const observabilityWindowSchema = z.object({
   from: z.string(),
   to: z.string(),
@@ -14,7 +18,7 @@ export type ObservabilityWindow = z.infer<typeof observabilityWindowSchema>;
 
 export const observabilitySourceSchema = z.object({
   key: z.string(),
-  status: z.enum(OBSERVABILITY_STATUSES),
+  status: z.enum(OBSERVABILITY_SOURCE_STATUSES),
   generatedAt: z.string().nullable(),
   ageSeconds: z.number().nonnegative().nullable(),
   error: z.string().nullable(),
@@ -32,19 +36,36 @@ export const observabilitySloSchema = z.object({
   errorBudgetRemaining: z.number().min(0).max(1).nullable(),
   burnRateFast: z.number().nonnegative().nullable(),
   burnRateSlow: z.number().nonnegative().nullable(),
-  window: observabilityWindowSchema,
+  fastWindow: observabilityWindowSchema,
+  slowWindow: observabilityWindowSchema,
 }).meta({ id: 'ObservabilitySlo' });
 export type ObservabilitySlo = z.infer<typeof observabilitySloSchema>;
+
+const observabilityQueueItemSchema = z.object({
+  name: z.string(),
+  ready: z.int().nonnegative(),
+  active: z.int().nonnegative(),
+  deferred: z.int().nonnegative(),
+  failed: z.int().nonnegative(),
+});
+
+export const observabilityQueueSchema = observabilitySourceSchema.extend({
+  items: z.array(observabilityQueueItemSchema).nullable(),
+}).meta({ id: 'ObservabilityQueue' });
+export type ObservabilityQueue = z.infer<typeof observabilityQueueSchema>;
 
 export const observabilityCapacitySchema = z.object({
   database: z.object({
     activeConnections: z.number().nonnegative().nullable(),
-    totalConnections: z.number().nonnegative().nullable(),
+    /** 当前数据库观测到的连接总数，不是容量分母。 */
+    observedConnections: z.number().nonnegative().nullable(),
+    /** 本进程业务连接池上限；utilization 的分母。 */
+    poolLimit: z.number().positive().nullable(),
     utilization: z.number().min(0).max(1).nullable(),
   }),
   redis: z.object({
     connectedClients: z.number().nonnegative().nullable(),
-    maxClients: z.number().nonnegative().nullable(),
+    maxClients: z.number().positive().nullable(),
     utilization: z.number().min(0).max(1).nullable(),
     usedMemory: z.number().nonnegative().nullable(),
   }),
@@ -52,13 +73,7 @@ export const observabilityCapacitySchema = z.object({
     active: z.int().nonnegative().nullable(),
     required: z.int().nonnegative().nullable(),
   }),
-  queues: z.array(z.object({
-    name: z.string(),
-    ready: z.int().nonnegative(),
-    active: z.int().nonnegative(),
-    deferred: z.int().nonnegative(),
-    failed: z.int().nonnegative(),
-  })),
+  queues: observabilityQueueSchema,
 }).meta({ id: 'ObservabilityCapacity' });
 export type ObservabilityCapacity = z.infer<typeof observabilityCapacitySchema>;
 

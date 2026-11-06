@@ -24,6 +24,7 @@ import { asyncTasksHandlers } from './async-tasks';
 import { systemSchedulerHandlers } from './system-scheduler';
 import { cronJobsHandlers } from './cron-jobs';
 import { monitorHandlers } from './monitor';
+import { observabilityHandlers } from './observability';
 import { monitorAlertsHandlers } from './monitor-alerts';
 import { sqlMonitorHandlers } from './sql-monitor';
 import { sslCertificatesHandlers } from './ssl-certificates';
@@ -196,6 +197,7 @@ export const handlers = [
   ...systemSchedulerHandlers,
   ...cronJobsHandlers,
   ...monitorHandlers,
+  ...observabilityHandlers,
   ...monitorAlertsHandlers,
   ...sqlMonitorHandlers,
   ...sslCertificatesHandlers,

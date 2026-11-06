@@ -71,9 +71,24 @@ API / Worker 分离部署时，纯 Worker 订阅 API 节点的 `wsStats` 镜像�
 
 内置规则包括 ERROR ≥ 10 条/分持续 3 分钟（严重）和 WARN ≥ 30 条/分持续 5 分钟（警告）。此类告警事件操作列提供「查看日志」（需 `system:log:files`），跳转到 `/system/log-files?file=app.YYYY-MM-DD.1.log&level=error`。
 
-链路追踪的应用日志面板按 `traceId` 在整个文件内精确匹配 JSON 日志顶层 `reqId`，保留最后 N 条匹配记录；URL 或正文包含目标 ID 的查询请求不会被当作该链路日志。面板优先打开链路节点日期对应的日志，支持切换 `app`、`app-api`、`app-worker` 日志及 gzip 归档。
+链路追踪的应用日志面板按业务 `correlationId` 在所有当前可见的轮转文件内精确匹配 JSON 日志顶层字段，独立于 OTel `trace_id` / `span_id`。服务端 locator 会扫描 `app`、`app-api`、`app-worker` 的所有日期、序号和 gzip 归档；日期只用于排序，不能作为唯一文件选择条件。结果会明确返回 `matched`、`not_found`、`source_unavailable` 或 `source_error`，并标注当前进程可见范围。
 
-面板中的「在日志文件中查看」跳转到 `/system/log-files?file=xxx.log&traceId=目标链路ID`。日志文件页使用 `locateTraceId` 读取首条精确匹配记录周围最多 N 条连续非空日志，命中前保留约半个窗口，再用后续记录补满；找不到时返回普通末尾 N 行。页面保留其他日志行，并像搜索一样自动定位、高亮对应链路，便于查看前后发生的其他请求。
+面板中的「在日志文件中查看」使用实际命中文件；locator 返回首个命中周围有界上下文和同文件精确命中次数。URL、正文、嵌套字段、OTel ID 或相似前后缀不会被当作业务关联命中。
+
+## 观测汇总与数据可用性
+
+`GET /api/observability/summary`（权限 `system:monitor:view`）返回低基数汇总。该接口明确区分：
+
+- `ok`：当前采样成功且在 freshness 阈值内；
+- `degraded`：采样有错误或已过期（`stale`）；
+- `unavailable`：没有样本、依赖不可用或读取失败；
+- `not_sampled`：进程尚未取得第一份样本。
+
+API 成功率 SLO 使用 `status >= 400` 作为 bad event，fast 窗口为 5 分钟、slow 窗口为 1 小时。`achieved = (total - bad) / total`，错误预算消耗率为 `observedBadRate / (1 - target)`，剩余预算为 `clamp(1 - burn, 0, 1)`；无样本或 target 为 100% 时返回 `null`，不会以 0 或当前请求时间伪造数据。
+
+队列结果也有独立可用性：成功读取到零条队列是 `status: ok, items: []`；scheduler 未初始化、读取失败或数据源不可见时为 `items: null`。数据库 utilization 的 numerator 是当前进程业务池的 active 连接数，分母是 `DATABASE_MAX_CONNECTIONS` 业务连接池上限；`pg_stat_activity` 的全局当前连接数仅作为 observed 值；Redis 没有有效 `maxclients` 时 utilization 为 `null`。未设置 `WORKER_REQUIRED` 时 Worker 期望数显示未知。
+
+Prometheus 对未采样、失败或不可用的 gauge 不输出伪造 0，也不保留过期的队列/Worker/workflow 值。基础设施历史表的 NOT NULL 采样列在快照不完整时跳过该轮写入，避免把缺失观测写成健康零值。以上指标均为进程本地或当前可见节点口径，不代表多副本全局聚合。
 
 ## 告警中心
 

@@ -39,7 +39,7 @@ export async function getSchedulerRunHealth(): Promise<JobSourceRawSummary> {
   const now = new Date();
   const since = new Date(now.getTime() - 86_400_000);
   const hour = new Date(now.getTime() - 3_600_000);
-  const [depths, [row], oldestRows] = await Promise.all([
+  const [depthsResult, runsResult, oldestResult] = await Promise.allSettled([
     getQueueDepths(),
     db.select({
       running: sql<number>`count(*) filter (where ${systemSchedulerRuns.status} = 'running')::int`,
@@ -57,6 +57,12 @@ export async function getSchedulerRunHealth(): Promise<JobSourceRawSummary> {
         and left(name, 10) <> '__pgboss__'
     `),
   ]);
+  if (depthsResult.status !== 'fulfilled') throw new Error('scheduler_queue_unavailable');
+  if (runsResult.status !== 'fulfilled') throw new Error('scheduler_run_metrics_unavailable');
+  if (oldestResult.status !== 'fulfilled') throw new Error('scheduler_queue_age_unavailable');
+  const depths = depthsResult.value;
+  const [row] = runsResult.value;
+  const oldestRows = oldestResult.value;
   return {
     counts: { pending: depths.reduce((sum, queue) => sum + queue.ready, 0), running: row?.running ?? 0, stuck: row?.stuck ?? 0, dead: null, failed24h: row?.failed24h ?? 0, succeeded24h: row?.succeeded24h ?? 0 },
     oldestPendingAgeSec: oldestRows[0]?.age ?? null,

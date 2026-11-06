@@ -674,9 +674,10 @@ export async function evaluateMonitorAlerts(options: EvaluateMonitorAlertsOption
     // 该租户本轮取数失败：跳过而不是按 0 处理，避免把采集故障误判成「指标已恢复」
     if (!snapshot) continue;
     const metric = rule.metric as MonitorMetric;
-    if (snapshot[metric] === null) continue;
+    const rawValue = snapshot[metric];
+    if (rawValue === null || rawValue === undefined || !Number.isFinite(rawValue)) continue;
     evaluated += 1;
-    const value = snapshot[metric] ?? 0;
+    const value = rawValue;
     const breaching = compareNumber(value, rule.operator as MonitorAlertOperator, rule.threshold);
     const label = metricLabel(metric);
     const sym = OPERATOR_SYMBOL[rule.operator as MonitorAlertOperator];

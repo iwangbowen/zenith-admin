@@ -103,13 +103,13 @@ const SAMPLE_INTERVAL_MS = 10_000;
 
 /** 外部采集的慢指标（DB / Redis），由 registerExtCollector 注入 */
 export interface ExtMetrics {
-  dbConnections: number;
-  redisMemBytes: number;
-  redisHitRate: number;
-  redisCpuPercent: number;
-  redisOpsPerSec: number;
-  redisNetRxBps: number;
-  redisNetTxBps: number;
+  dbConnections?: number;
+  redisMemBytes?: number;
+  redisHitRate?: number;
+  redisCpuPercent?: number;
+  redisOpsPerSec?: number;
+  redisNetRxBps?: number;
+  redisNetTxBps?: number;
 }
 const TIMESERIES_CAPACITY = 360; // 360 * 10s = 1h
 
@@ -142,9 +142,20 @@ function gcKindName(kind: number): string {
 
 // ─── HTTP 指标收集 ─────────────────────────────────────────────────────
 const HTTP_LATENCY_CAPACITY = 1000;
-const HTTP_QPS_WINDOW_SEC = 60;
+/** 保留 1 小时的秒桶，供独立的 fast/slow SLO 窗口读取。 */
+const HTTP_RETENTION_WINDOW_SEC = 60 * 60;
+const HTTP_DEFAULT_WINDOW_SEC = 60;
 
-class HttpMetricsCollector {
+export interface HttpWindowStats {
+  qps: number;
+  total: number;
+  errors: number;
+  errorRate: number;
+  /** 最近一个纳入窗口的请求时间；没有请求时为 null。 */
+  latestAt: number | null;
+}
+
+export class HttpMetricsCollector {
   private totalRequests = 0;
   private totalErrors = 0;
   private total4xx = 0;
@@ -169,30 +180,34 @@ class HttpMetricsCollector {
   }
 
   private gc(nowSec: number): void {
-    const cutoff = nowSec - HTTP_QPS_WINDOW_SEC;
+    const cutoff = nowSec - HTTP_RETENTION_WINDOW_SEC;
     for (const k of this.perSec.keys()) {
       if (k < cutoff) this.perSec.delete(k);
     }
   }
 
-  /** 最近 N 秒的窗口统计 */
-  windowStats(windowSec = HTTP_QPS_WINDOW_SEC): { qps: number; total: number; errors: number; errorRate: number } {
+  /** 最近 N 秒的窗口统计；窗口边界和最近真实事件时间一并返回，便于判断 freshness。 */
+  windowStats(windowSec = HTTP_DEFAULT_WINDOW_SEC): HttpWindowStats {
     const nowSec = Math.floor(Date.now() / 1000);
+    const boundedWindow = Math.max(1, Math.min(windowSec, HTTP_RETENTION_WINDOW_SEC));
     this.gc(nowSec);
-    const start = nowSec - windowSec;
+    const start = nowSec - boundedWindow;
     let total = 0;
     let errors = 0;
+    let latestAt: number | null = null;
     for (const [k, v] of this.perSec) {
       if (k > start && k <= nowSec) {
         total += v.total;
         errors += v.errors;
+        if (v.total > 0) latestAt = Math.max(latestAt ?? 0, k * 1000);
       }
     }
     return {
-      qps: Math.round((total / windowSec) * 100) / 100,
+      qps: Math.round((total / boundedWindow) * 100) / 100,
       total,
       errors,
       errorRate: total > 0 ? Math.round((errors / total) * 10000) / 100 : 0,
+      latestAt,
     };
   }
 
@@ -202,7 +217,7 @@ class HttpMetricsCollector {
     return this.perSec.get(nowSec - 1)?.total ?? 0;
   }
 
-  /** 错误率（基于全窗口 60s） */
+  /** 错误率（基于默认 60 秒展示窗口） */
   currentErrorRate(): number {
     return this.windowStats().errorRate;
   }
@@ -250,6 +265,8 @@ class MetricsSampler {
   private extCollector: (() => Promise<ExtMetrics | null>) | null = null;
   private extPending = false;
   private latestExt: ExtMetrics | null = null;
+  private latestExtAt: number | null = null;
+  private latestExtError: string | null = null;
 
   // 跟随 @types/node 推断类型，避免绑定具体 Histogram 类型名。
   private readonly elDelay = monitorEventLoopDelay({ resolution: 20 });
@@ -396,7 +413,7 @@ class MetricsSampler {
     // 事件循环延迟，而不是进程启动以来的累计口径——累计口径下短暂阻塞永远被历史
     // 稀释，loopLag 告警规则的「持续 N 分钟超阈」评估毫无意义
     this.elDelay.reset();
-    const httpWindow = this.http.windowStats();
+    const httpWindow = this.http.windowStats(HTTP_DEFAULT_WINDOW_SEC);
 
     const sample: MetricsSample = {
       t: Date.now(),
@@ -425,8 +442,22 @@ class MetricsSampler {
     if (this.extCollector && !this.extPending) {
       this.extPending = true;
       this.extCollector()
-        .then((v) => { if (v) this.latestExt = v; })
-        .catch(() => { /* best-effort */ })
+        .then((v) => {
+          if (v) {
+            this.latestExt = v;
+            this.latestExtAt = Date.now();
+            this.latestExtError = null;
+          } else {
+            this.latestExt = null;
+            this.latestExtAt = null;
+            this.latestExtError = 'external_metrics_unavailable';
+          }
+        })
+        .catch(() => {
+          this.latestExt = null;
+          this.latestExtAt = null;
+          this.latestExtError = 'external_metrics_unavailable';
+        })
         .finally(() => { this.extPending = false; });
     }
   }
@@ -434,6 +465,11 @@ class MetricsSampler {
   /** 注册外部慢指标采集器（DB / Redis 连接数等），由服务启动时调用一次 */
   registerExtCollector(fn: () => Promise<ExtMetrics | null>): void {
     this.extCollector = fn;
+  }
+
+  /** 外部采样器的真实采样时间和最近错误，供观测汇总判断 freshness。 */
+  getExternalSampleState(): { generatedAt: number | null; error: string | null } {
+    return { generatedAt: this.latestExtAt, error: this.latestExtError };
   }
 
   /** 订阅采样事件（SSE 推送），返回取消函数 */

@@ -53,6 +53,11 @@ const envSchema = z.object({
   ZENITH_ROLES: z.string().default(''),
   /** worker 角色的健康 / 指标端口（`/health`、`/ready`、`/metrics`）；纯 worker 进程不监听业务端口 */
   WORKER_HEALTH_PORT: z.coerce.number().int().positive().default(3301),
+  /** 可选的 Worker 最小期望实例数；未配置时观测汇总不猜测容量。 */
+  WORKER_REQUIRED: z.preprocess(
+    (value) => value === '' ? undefined : value,
+    z.coerce.number().int().positive().optional(),
+  ),
   /**
    * 优雅停机硬闸（毫秒）：超过后强制退出。缺省 api 15s（断连接即可），纯 worker 120s（要排空在飞作业）；
    * 容器 stop_grace_period / k8s terminationGracePeriodSeconds 须大于该值
@@ -364,6 +369,7 @@ export const config = {
   roles: processRoles,
   /** worker 角色的健康 / 指标端口 */
   workerHealthPort: env.WORKER_HEALTH_PORT,
+  workerRequired: env.WORKER_REQUIRED ?? null,
   /** 优雅停机硬闸（毫秒）；纯 worker 缺省 120s（排空作业），其余 15s */
   shutdownGraceMs: env.SHUTDOWN_GRACE_MS ?? (processRoles.worker && !processRoles.api ? 120_000 : 15_000),
   /**

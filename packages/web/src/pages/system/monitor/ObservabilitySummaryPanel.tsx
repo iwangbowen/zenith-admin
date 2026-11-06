@@ -9,6 +9,13 @@ const { Text } = Typography;
 
 const STATUS_LABELS = { ok: '正常', degraded: '降级', unavailable: '不可用' } as const;
 const STATUS_COLORS = { ok: 'green', degraded: 'orange', unavailable: 'red' } as const;
+const SOURCE_STATUS_LABELS = {
+  ok: '正常',
+  degraded: '降级',
+  stale: '已过期',
+  not_sampled: '未采样',
+  unavailable: '不可用',
+} as const;
 const DEPENDENCY_LABELS: Record<string, string> = {
   database: '数据库',
   redis: 'Redis',
@@ -29,16 +36,28 @@ export default function ObservabilitySummaryPanel() {
   }
 
   const summary = query.data;
-  const readyQueues = summary.capacity.queues.reduce((total, queue) => total + queue.ready, 0);
+  const queueItems = summary.capacity.queues.items ?? [];
+  const queueAvailable = summary.capacity.queues.status === 'ok' && summary.capacity.queues.items !== null;
+  const readyQueues = queueAvailable
+    ? queueItems.reduce((total, queue) => total + queue.ready, 0)
+    : null;
   const unavailableSources = summary.sources.filter((source) => source.status !== 'ok').map((source) => source.key);
   const primarySlo = summary.slos[0];
-  const queueTotals = summary.capacity.queues.reduce((totals, queue) => ({
-    ready: totals.ready + queue.ready,
-    active: totals.active + queue.active,
-    deferred: totals.deferred + queue.deferred,
-    failed: totals.failed + queue.failed,
-  }), { ready: 0, active: 0, deferred: 0, failed: 0 });
-  const sourceCounts = summary.sources.reduce((counts, source) => ({ ...counts, [source.status]: counts[source.status] + 1 }), { ok: 0, degraded: 0, unavailable: 0 });
+  const queueTotals = queueAvailable
+    ? queueItems.reduce((totals, queue) => ({
+      ready: totals.ready + queue.ready,
+      active: totals.active + queue.active,
+      deferred: totals.deferred + queue.deferred,
+      failed: totals.failed + queue.failed,
+    }), { ready: 0, active: 0, deferred: 0, failed: 0 })
+    : null;
+  const sourceCounts = summary.sources.reduce((counts, source) => ({ ...counts, [source.status]: (counts[source.status] ?? 0) + 1 }), {
+    ok: 0,
+    degraded: 0,
+    stale: 0,
+    not_sampled: 0,
+    unavailable: 0,
+  });
   const freshness = summary.sources.reduce<number | null>((max, source) => {
     if (source.ageSeconds === null) return max;
     return max === null ? source.ageSeconds : Math.max(max, source.ageSeconds);
@@ -58,8 +77,8 @@ export default function ObservabilitySummaryPanel() {
       </div>
       <StatGrid minItemWidth={180}>
         <StatCard title="Worker" value={summary.capacity.workers.active ?? '—'} sub={`需要 ${summary.capacity.workers.required ?? '—'} 个`} icon={<Server size={18} />} />
-        <StatCard title="就绪队列" value={readyQueues} sub={`${summary.capacity.queues.length} 条队列`} icon={<Layers size={18} />} />
-        <StatCard title="数据库连接" value={percent(summary.capacity.database.utilization)} sub={`${summary.capacity.database.activeConnections ?? '—'} / ${summary.capacity.database.totalConnections ?? '—'}`} icon={<Database size={18} />} />
+        <StatCard title="就绪队列" value={readyQueues ?? '—'} sub={queueAvailable ? `${queueItems.length} 条队列` : SOURCE_STATUS_LABELS[summary.capacity.queues.status]} icon={<Layers size={18} />} />
+        <StatCard title="数据库连接" value={percent(summary.capacity.database.utilization)} sub={`${summary.capacity.database.activeConnections ?? '—'} / ${summary.capacity.database.poolLimit ?? '—'}`} icon={<Database size={18} />} />
         <StatCard title="Redis 客户端" value={percent(summary.capacity.redis.utilization)} sub={`${summary.capacity.redis.connectedClients ?? '—'} / ${summary.capacity.redis.maxClients ?? '—'}`} icon={<Radio size={18} />} />
         <StatCard title={primarySlo?.name ?? 'SLO'} value={primarySlo?.achieved === null || primarySlo?.achieved === undefined ? '—' : `${(primarySlo.achieved * 100).toFixed(2)}%`} sub={primarySlo ? `目标 ${(primarySlo.target * 100).toFixed(2)}% · ${primarySlo.status}` : '暂无样本'} icon={<Activity size={18} />} />
       </StatGrid>
@@ -102,9 +121,14 @@ export default function ObservabilitySummaryPanel() {
               <div className="monitor-overview-metric__info"><Tag color={primarySlo?.status === 'ok' ? 'green' : 'orange'} size="small">{primarySlo ? STATUS_LABELS[primarySlo.status] : '无样本'}</Tag></div>
             </div>
             <div className="monitor-overview-metric monitor-overview-metric--plain">
-              <div className="monitor-overview-metric__header"><Clock3 size={15} /><Text strong>观测窗口</Text></div>
-              <div className="monitor-overview-metric__value">{summary.window.seconds}s</div>
-              <div className="monitor-overview-metric__info"><Text type="tertiary" size="small">{primarySlo?.totalEvents ?? 0} 次请求</Text></div>
+              <div className="monitor-overview-metric__header"><Clock3 size={15} /><Text strong>慢速消耗</Text></div>
+              <div className="monitor-overview-metric__value">{primarySlo?.burnRateSlow == null ? '—' : `${primarySlo.burnRateSlow.toFixed(2)}x`}</div>
+              <div className="monitor-overview-metric__info"><Text type="tertiary" size="small">{primarySlo?.slowWindow.seconds ?? 0}s 窗口</Text></div>
+            </div>
+            <div className="monitor-overview-metric monitor-overview-metric--plain">
+              <div className="monitor-overview-metric__header"><Clock3 size={15} /><Text strong>快速窗口</Text></div>
+              <div className="monitor-overview-metric__value">{primarySlo?.fastWindow.seconds ?? summary.window.seconds}s</div>
+              <div className="monitor-overview-metric__info"><Text type="tertiary" size="small">{primarySlo?.totalEvents == null ? '无样本' : `${primarySlo.totalEvents} 次请求`}</Text></div>
             </div>
           </div>
         </section>
@@ -115,10 +139,10 @@ export default function ObservabilitySummaryPanel() {
             <Text type="tertiary" size="small">就绪、执行中、延迟和失败作业</Text>
           </div>
           <div className="monitor-overview-grid observability-stat-grid">
-            <div className="monitor-overview-metric monitor-overview-metric--plain"><div className="monitor-overview-metric__header"><Layers size={15} /><Text strong>就绪作业</Text></div><div className="monitor-overview-metric__value">{queueTotals.ready}</div><div className="monitor-overview-metric__info"><Text type="tertiary" size="small">等待领取</Text></div></div>
-            <div className="monitor-overview-metric monitor-overview-metric--plain"><div className="monitor-overview-metric__header"><Activity size={15} /><Text strong>执行中</Text></div><div className="monitor-overview-metric__value">{queueTotals.active}</div><div className="monitor-overview-metric__info"><Text type="tertiary" size="small">当前占用</Text></div></div>
-            <div className="monitor-overview-metric monitor-overview-metric--plain"><div className="monitor-overview-metric__header"><Clock3 size={15} /><Text strong>延迟作业</Text></div><div className="monitor-overview-metric__value">{queueTotals.deferred}</div><div className="monitor-overview-metric__info"><Text type="tertiary" size="small">等待到期</Text></div></div>
-            <div className="monitor-overview-metric monitor-overview-metric--plain"><div className="monitor-overview-metric__header"><AlertTriangle size={15} /><Text strong>失败作业</Text></div><div className={`monitor-overview-metric__value${queueTotals.failed > 0 ? ' monitor-overview-metric__value--warn' : ''}`}>{queueTotals.failed}</div><div className="monitor-overview-metric__info"><Text type="tertiary" size="small">队列保留失败</Text></div></div>
+            <div className="monitor-overview-metric monitor-overview-metric--plain"><div className="monitor-overview-metric__header"><Layers size={15} /><Text strong>就绪作业</Text></div><div className="monitor-overview-metric__value">{queueTotals?.ready ?? '—'}</div><div className="monitor-overview-metric__info"><Text type="tertiary" size="small">{queueTotals ? '等待领取' : SOURCE_STATUS_LABELS[summary.capacity.queues.status]}</Text></div></div>
+            <div className="monitor-overview-metric monitor-overview-metric--plain"><div className="monitor-overview-metric__header"><Activity size={15} /><Text strong>执行中</Text></div><div className="monitor-overview-metric__value">{queueTotals?.active ?? '—'}</div><div className="monitor-overview-metric__info"><Text type="tertiary" size="small">{queueTotals ? '当前占用' : SOURCE_STATUS_LABELS[summary.capacity.queues.status]}</Text></div></div>
+            <div className="monitor-overview-metric monitor-overview-metric--plain"><div className="monitor-overview-metric__header"><Clock3 size={15} /><Text strong>延迟作业</Text></div><div className="monitor-overview-metric__value">{queueTotals?.deferred ?? '—'}</div><div className="monitor-overview-metric__info"><Text type="tertiary" size="small">{queueTotals ? '等待到期' : SOURCE_STATUS_LABELS[summary.capacity.queues.status]}</Text></div></div>
+            <div className="monitor-overview-metric monitor-overview-metric--plain"><div className="monitor-overview-metric__header"><AlertTriangle size={15} /><Text strong>失败作业</Text></div><div className={`monitor-overview-metric__value${queueTotals && queueTotals.failed > 0 ? ' monitor-overview-metric__value--warn' : ''}`}>{queueTotals?.failed ?? '—'}</div><div className="monitor-overview-metric__info"><Text type="tertiary" size="small">{queueTotals ? '队列保留失败' : SOURCE_STATUS_LABELS[summary.capacity.queues.status]}</Text></div></div>
           </div>
         </section>
 
@@ -129,8 +153,8 @@ export default function ObservabilitySummaryPanel() {
           </div>
           <div className="monitor-overview-grid observability-stat-grid">
             <div className="monitor-overview-metric monitor-overview-metric--plain"><div className="monitor-overview-metric__header"><CheckCircle2 size={15} /><Text strong>正常来源</Text></div><div className="monitor-overview-metric__value">{sourceCounts.ok}</div><div className="monitor-overview-metric__info"><Text type="tertiary" size="small">{summary.sources.length} 个来源</Text></div></div>
-            <div className="monitor-overview-metric monitor-overview-metric--plain"><div className="monitor-overview-metric__header"><AlertTriangle size={15} /><Text strong>降级来源</Text></div><div className="monitor-overview-metric__value">{sourceCounts.degraded}</div><div className="monitor-overview-metric__info"><Text type="tertiary" size="small">需要关注</Text></div></div>
-            <div className="monitor-overview-metric monitor-overview-metric--plain"><div className="monitor-overview-metric__header"><Database size={15} /><Text strong>不可用来源</Text></div><div className="monitor-overview-metric__value">{sourceCounts.unavailable}</div><div className="monitor-overview-metric__info"><Text type="tertiary" size="small">不以 0 代替</Text></div></div>
+            <div className="monitor-overview-metric monitor-overview-metric--plain"><div className="monitor-overview-metric__header"><AlertTriangle size={15} /><Text strong>降级/过期来源</Text></div><div className="monitor-overview-metric__value">{sourceCounts.degraded + sourceCounts.stale}</div><div className="monitor-overview-metric__info"><Text type="tertiary" size="small">需要关注</Text></div></div>
+            <div className="monitor-overview-metric monitor-overview-metric--plain"><div className="monitor-overview-metric__header"><Database size={15} /><Text strong>不可用/未采样</Text></div><div className="monitor-overview-metric__value">{sourceCounts.unavailable + sourceCounts.not_sampled}</div><div className="monitor-overview-metric__info"><Text type="tertiary" size="small">不以 0 代替</Text></div></div>
             <div className="monitor-overview-metric monitor-overview-metric--plain"><div className="monitor-overview-metric__header"><Clock3 size={15} /><Text strong>最大延迟</Text></div><div className="monitor-overview-metric__value">{freshness == null ? '—' : `${Math.round(freshness)}s`}</div><div className="monitor-overview-metric__info"><Text type="tertiary" size="small">最近采集</Text></div></div>
           </div>
         </section>

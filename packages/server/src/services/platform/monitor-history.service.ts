@@ -26,7 +26,7 @@ import { getReplayStorageMbMetric } from '../analytics/session-replays.service';
 import { getLogAlertMetrics } from '../../lib/log-metrics';
 import { MONITOR_HISTORY_RANGE_CONFIG, type MonitorHistoryRange, type MonitorMetric } from '@zenith/shared/platform';
 
-export type MetricSnapshot = Record<Exclude<MonitorMetric, JobMonitorMetricKey>, number> & JobMonitorAlertMetrics;
+export type MetricSnapshot = Record<Exclude<MonitorMetric, JobMonitorMetricKey>, number | null> & JobMonitorAlertMetrics;
 
 /** 基础设施指标（宿主机 / 进程级），全部来自本地采样器，不查数据库。 */
 type InfraMetricSnapshot = Pick<
@@ -34,32 +34,56 @@ type InfraMetricSnapshot = Pick<
   'cpu' | 'memory' | 'disk' | 'swap' | 'load1' | 'procCpu' | 'heap' | 'loopLag'
   | 'qps' | 'errorRate' | 'netRxBps' | 'netTxBps' | 'diskReadBps' | 'diskWriteBps'
 >;
+type CompleteInfraMetricSnapshot = { [K in keyof InfraMetricSnapshot]: number };
+
+const EMPTY_INFRA_METRICS: InfraMetricSnapshot = {
+  cpu: null,
+  memory: null,
+  disk: null,
+  swap: null,
+  load1: null,
+  procCpu: null,
+  heap: null,
+  loopLag: null,
+  qps: null,
+  errorRate: null,
+  netRxBps: null,
+  netTxBps: null,
+  diskReadBps: null,
+  diskWriteBps: null,
+};
+
+function isCompleteInfraMetricSnapshot(value: InfraMetricSnapshot): value is CompleteInfraMetricSnapshot {
+  return Object.values(value).every((item) => typeof item === 'number' && Number.isFinite(item));
+}
 
 /**
  * 采集基础设施指标即时值。磁盘使用率取所有挂载点中的最大值（最易触发容量告警）。
- * 落库的 `system_metric_samples` 只有这部分列，因此定时采样任务只需要这一半。
+ * 落库的 `system_metric_samples` 只有 NOT NULL 基础设施列；缺少任一依赖时保留 null，
+ * 由持久化入口跳过该轮，而不是把不可用数据写成零。
  */
-async function getInfraMetricSnapshot(): Promise<InfraMetricSnapshot> {
+async function getInfraMetricSnapshot(): Promise<InfraMetricSnapshot | null> {
   const sample = metricsSampler.getLatest();
+  if (!sample) return null;
   const diskIo = metricsSampler.getDiskIo();
   const [disks, memInfo] = await Promise.all([getDisks(), getLinuxMemInfo()]);
-  const disk = disks && disks.length > 0 ? Math.max(...disks.map((d) => d.usagePercent)) : 0;
-  const load1 = os.loadavg()[0] ?? 0;
+  const disk = disks && disks.length > 0 ? Math.max(...disks.map((d) => d.usagePercent)) : null;
+  const load1 = os.loadavg()[0] ?? null;
   return {
-    cpu: sample?.cpu ?? 0,
-    memory: sample?.mem ?? 0,
+    cpu: sample.cpu,
+    memory: sample.mem,
     disk,
-    swap: memInfo?.swapUsagePercent ?? 0,
-    load1: Math.round(load1 * 100) / 100,
-    procCpu: sample?.procCpu ?? 0,
-    heap: sample?.heap ?? 0,
+    swap: memInfo?.swapUsagePercent ?? null,
+    load1: load1 === null ? null : Math.round(load1 * 100) / 100,
+    procCpu: sample.procCpu,
+    heap: sample.heap,
     // 告警口径用窗口 max 而非 mean/p99：10s 窗口约 500 个采样点，一次 300ms 阻塞
     // 只占 0.2%，mean 与 p99 都会把它彻底稀释（冒烟实测 p99 无感），只有峰值能暴露
-    loopLag: sample?.loopLagMax ?? 0,
-    qps: sample?.qps ?? 0,
-    errorRate: sample?.errorRate ?? 0,
-    netRxBps: sample?.netRxBps ?? 0,
-    netTxBps: sample?.netTxBps ?? 0,
+    loopLag: sample.loopLagMax,
+    qps: sample.qps,
+    errorRate: sample.errorRate,
+    netRxBps: sample.netRxBps,
+    netTxBps: sample.netTxBps,
     diskReadBps: diskIo.readBps,
     diskWriteBps: diskIo.writeBps,
   };
@@ -80,7 +104,8 @@ async function getGlobalMetricSnapshot(): Promise<GlobalMetricSnapshot> {
     getJobMonitorAlertMetrics(),
   ]);
   return {
-    ...infra,
+    ...EMPTY_INFRA_METRICS,
+    ...(infra ?? {}),
     ...getLogAlertMetrics(),
     ...schedulerMetrics,
     ...jobs,
@@ -211,26 +236,28 @@ export async function persistMetricSample(): Promise<{
 }> {
   let systemMetricStored = false;
   if (metricsSampler.getLatest()) {
-    // 采样表只存基础设施列，无需为此触发各业务域的派生指标查询
+    // 采样表的基础设施列均为 NOT NULL；缺少完整快照时跳过本轮，不用 0 伪造历史数据。
     const [s, jobs] = await Promise.all([getInfraMetricSnapshot(), getJobMonitorAlertMetrics()]);
-    await db.insert(systemMetricSamples).values({
-      cpu: s.cpu,
-      memory: s.memory,
-      disk: s.disk,
-      swap: s.swap,
-      load1: s.load1,
-      procCpu: s.procCpu,
-      heap: s.heap,
-      loopLag: s.loopLag,
-      qps: s.qps,
-      errorRate: s.errorRate,
-      netRxBps: s.netRxBps,
-      netTxBps: s.netTxBps,
-      diskReadBps: s.diskReadBps,
-      diskWriteBps: s.diskWriteBps,
-      ...jobs,
-    });
-    systemMetricStored = true;
+    if (s && isCompleteInfraMetricSnapshot(s)) {
+      await db.insert(systemMetricSamples).values({
+        cpu: s.cpu,
+        memory: s.memory,
+        disk: s.disk,
+        swap: s.swap,
+        load1: s.load1,
+        procCpu: s.procCpu,
+        heap: s.heap,
+        loopLag: s.loopLag,
+        qps: s.qps,
+        errorRate: s.errorRate,
+        netRxBps: s.netRxBps,
+        netTxBps: s.netTxBps,
+        diskReadBps: s.diskReadBps,
+        diskWriteBps: s.diskWriteBps,
+        ...jobs,
+      });
+      systemMetricStored = true;
+    }
   }
 
   const wsTrendStored = await db.transaction(async (tx) => {
