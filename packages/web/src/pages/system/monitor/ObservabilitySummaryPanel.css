@@ -1,87 +1,214 @@
+/* 观测汇总：沿用监控页的扁平细线语言，但把聚合信息收敛成更紧凑的层级。 */
 .observability-summary-panel {
-  margin-bottom: 20px;
-  padding: 4px 0 0;
+  margin-bottom: 12px;
+  padding-top: 0;
 }
 
 .observability-summary-panel__header,
 .observability-summary-panel__status {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .observability-summary-panel__header {
+  align-items: flex-start;
   justify-content: space-between;
-  margin-bottom: 4px;
+  gap: 16px;
+  padding-bottom: 6px;
 }
 
 .observability-summary-panel__header > div:first-child {
   display: flex;
   align-items: baseline;
-  gap: 10px;
+  gap: 8px;
+  min-width: 0;
+}
+
+.observability-summary-panel__title {
+  flex-shrink: 0;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.observability-summary-panel__subtitle {
+  min-width: 0;
+  line-height: 18px;
 }
 
 .observability-summary-panel__status {
   flex-wrap: wrap;
   justify-content: flex-end;
+  min-width: 0;
+}
+
+.observability-summary-panel__status .semi-typography {
+  line-height: 18px;
 }
 
 .observability-summary-skeleton {
-  height: 90px;
-  margin-bottom: 20px;
+  height: 120px;
+  margin-bottom: 16px;
+}
+
+/* 顶部概览沿用 StatGrid，但比业务报表卡片再收一档，避免数字压过导航和标题。 */
+.observability-summary-overview {
+  margin-top: 0;
+}
+
+.observability-summary-overview .zx-stat-grid > * {
+  padding-block: 10px;
+}
+
+.observability-summary-overview .zx-stat__value {
+  font-size: 22px;
+  font-weight: 650;
+  line-height: 1.15;
+}
+
+.observability-summary-overview .zx-stat__title {
+  margin-top: 7px;
+  font-size: 12px;
+}
+
+.observability-summary-overview .zx-stat__sub {
+  margin-top: 3px;
+  font-size: 11px;
 }
 
 .observability-summary-sections {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 24px;
-  margin-top: 20px;
+  align-items: start;
+  gap: 24px 32px;
+  margin-top: 18px;
 }
 
 .observability-summary-section {
   min-width: 0;
+  padding-top: 0;
 }
 
 .observability-summary-section__header {
   display: flex;
   align-items: baseline;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-
-.observability-dependency-grid,
-.observability-source-list {
-  display: grid;
   gap: 8px;
+  min-width: 0;
+  margin-bottom: 5px;
 }
 
-.observability-dependency-item,
-.observability-source-item {
+.observability-summary-section__header > .semi-typography:first-child {
+  flex-shrink: 0;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.observability-summary-section__header > .semi-typography:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 18px;
+}
+
+/* 分区内不再复用总览页的 26px 指标块；每个指标只占一行，信息密度更稳定。 */
+.observability-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 145px), 1fr));
+  column-gap: 16px;
+}
+
+.observability-metric-grid > .monitor-overview-metric {
+  min-width: 0;
+  padding: 8px 0 9px;
+}
+
+.observability-metric-grid .monitor-overview-metric__header {
+  gap: 6px;
+  color: var(--semi-color-text-2);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.observability-metric-grid .monitor-overview-metric__header svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.observability-metric-grid .monitor-overview-metric__value,
+.observability-metric-grid .monitor-overview-metric--plain .monitor-overview-metric__value {
+  display: block;
+  flex: none;
+  margin-top: 2px;
+  color: var(--semi-color-text-0);
+  font-size: 20px;
+  font-weight: 650;
+  line-height: 24px;
+}
+
+.observability-metric-grid .monitor-overview-metric__info {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-height: 30px;
+  justify-content: flex-start;
+  min-height: 18px;
+  gap: 6px;
+  margin-top: 2px;
+  color: var(--semi-color-text-2);
+  font-size: 11px;
+  line-height: 16px;
 }
 
-.observability-dependency-item {
-  justify-content: space-between;
-  padding: 6px 0;
+.observability-metric-grid .monitor-overview-metric__info .semi-tag {
+  margin: 0;
+}
+
+.observability-source-list {
+  display: grid;
+  gap: 0;
+  margin-top: 10px;
+}
+
+.observability-source-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 7px 0;
   border-bottom: 1px solid var(--semi-color-border);
 }
 
-.observability-source-item {
-  flex-wrap: wrap;
+.observability-source-item:first-child {
+  border-top: 1px solid var(--semi-color-border);
 }
 
-@media (--sm-down) {
+.observability-source-item > .semi-typography:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.observability-source-item > .semi-tag {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.observability-source-item > .semi-typography:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+@media (--lg-down) {
   .observability-summary-sections {
     grid-template-columns: 1fr;
-  }
-
-  .observability-summary-section__header {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 4px;
+    gap: 18px;
   }
 }
 
@@ -95,5 +222,24 @@
 
   .observability-summary-panel__status {
     justify-content: flex-start;
+  }
+
+  .observability-summary-section__header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .observability-summary-section__header > .semi-typography:last-child {
+    white-space: normal;
+  }
+
+  .observability-source-item {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .observability-source-item > .semi-typography:last-child {
+    grid-column: 1 / -1;
+    text-align: left;
   }
 }
