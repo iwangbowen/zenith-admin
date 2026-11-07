@@ -5,127 +5,15 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1792668793041,
+      "when": 1794024097333,
       "tag": "0000_baseline",
       "breakpoints": true
     },
     {
       "idx": 1,
       "version": "7",
-      "when": 1792668831457,
+      "when": 1794024137526,
       "tag": "0001_extensions",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1792722229667,
-      "tag": "0002_wealthy_starfox",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1792819112886,
-      "tag": "0003_dashing_skullbuster",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1793030553357,
-      "tag": "0004_previous_scarecrow",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "7",
-      "when": 1793119794560,
-      "tag": "0005_spicy_dagger",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "7",
-      "when": 1793277695438,
-      "tag": "0006_true_senator_kelly",
-      "breakpoints": true
-    },
-    {
-      "idx": 7,
-      "version": "7",
-      "when": 1793280881879,
-      "tag": "0007_nervous_polaris",
-      "breakpoints": true
-    },
-    {
-      "idx": 8,
-      "version": "7",
-      "when": 1793334622256,
-      "tag": "0008_supreme_warlock",
-      "breakpoints": true
-    },
-    {
-      "idx": 9,
-      "version": "7",
-      "when": 1793593927661,
-      "tag": "0009_clammy_inertia",
-      "breakpoints": true
-    },
-    {
-      "idx": 10,
-      "version": "7",
-      "when": 1793699047436,
-      "tag": "0010_futuristic_zeigeist",
-      "breakpoints": true
-    },
-    {
-      "idx": 11,
-      "version": "7",
-      "when": 1793703012067,
-      "tag": "0011_yielding_marrow",
-      "breakpoints": true
-    },
-    {
-      "idx": 12,
-      "version": "7",
-      "when": 1793715190531,
-      "tag": "0012_wealthy_mole_man",
-      "breakpoints": true
-    },
-    {
-      "idx": 13,
-      "version": "7",
-      "when": 1793717372216,
-      "tag": "0013_wakeful_iron_monger",
-      "breakpoints": true
-    },
-    {
-      "idx": 14,
-      "version": "7",
-      "when": 1793719184978,
-      "tag": "0014_sad_masked_marvel",
-      "breakpoints": true
-    },
-    {
-      "idx": 15,
-      "version": "7",
-      "when": 1793802434907,
-      "tag": "0015_dry_lady_deathstrike",
-      "breakpoints": true
-    },
-    {
-      "idx": 16,
-      "version": "7",
-      "when": 1793854518770,
-      "tag": "0016_outgoing_mastermind",
-      "breakpoints": true
-    },
-    {
-      "idx": 17,
-      "version": "7",
-      "when": 1793913069244,
-      "tag": "0017_observability_correlation_ids",
       "breakpoints": true
     }
   ]

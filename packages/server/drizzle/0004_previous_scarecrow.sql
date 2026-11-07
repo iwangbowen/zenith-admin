@@ -1,1 +1,0 @@
-ALTER TYPE "public"."workflow_connector_type" ADD VALUE 'mock' BEFORE 'email';

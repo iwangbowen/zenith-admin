@@ -1,6 +1,6 @@
 {
-  "id": "1343fe9b-2cc3-40fa-ac1f-67114bfaf0f5",
-  "prevId": "8a2ab772-7812-4bea-bab4-7d8ff61cbfe4",
+  "id": "699e97e5-6cb7-42ee-a563-b1c703682522",
+  "prevId": "88a9c543-0656-4f33-84da-644f5ead0edd",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -4257,9 +4257,21 @@
           "primaryKey": false,
           "notNull": false
         },
-        "trace_id": {
-          "name": "trace_id",
+        "correlation_id": {
+          "name": "correlation_id",
           "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "trace_parent": {
+          "name": "trace_parent",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "trace_state": {
+          "name": "trace_state",
+          "type": "varchar(1024)",
           "primaryKey": false,
           "notNull": false
         },
@@ -4444,11 +4456,11 @@
           "method": "btree",
           "concurrently": false
         },
-        "async_tasks_trace_idx": {
-          "name": "async_tasks_trace_idx",
+        "async_tasks_correlation_idx": {
+          "name": "async_tasks_correlation_idx",
           "columns": [
             {
-              "expression": "trace_id",
+              "expression": "correlation_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -13044,6 +13056,420 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.api_access_logs": {
+      "name": "api_access_logs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "name": "api_access_logs_id_seq",
+            "increment": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "startWith": "1",
+            "cache": "1",
+            "cycle": false,
+            "schema": "public",
+            "type": "always"
+          }
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "accessor_id": {
+          "name": "accessor_id",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "accessor_name": {
+          "name": "accessor_name",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "impersonator_id": {
+          "name": "impersonator_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "impersonator_name": {
+          "name": "impersonator_name",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "accessor_type": {
+          "name": "accessor_type",
+          "type": "varchar(24)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'anonymous'"
+        },
+        "member_id": {
+          "name": "member_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "device_id": {
+          "name": "device_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "client_id": {
+          "name": "client_id",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "credential_type": {
+          "name": "credential_type",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'none'"
+        },
+        "method": {
+          "name": "method",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "path": {
+          "name": "path",
+          "type": "varchar(512)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "route_path": {
+          "name": "route_path",
+          "type": "varchar(512)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "correlation_id": {
+          "name": "correlation_id",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "query_params": {
+          "name": "query_params",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "request_body": {
+          "name": "request_body",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "module": {
+          "name": "module",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "operation_key": {
+          "name": "operation_key",
+          "type": "varchar(160)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "operation_name": {
+          "name": "operation_name",
+          "type": "varchar(256)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "operation_type": {
+          "name": "operation_type",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "response_code": {
+          "name": "response_code",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "duration_ms": {
+          "name": "duration_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "error_name": {
+          "name": "error_name",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "error_message": {
+          "name": "error_message",
+          "type": "varchar(512)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "service_name": {
+          "name": "service_name",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "process_role": {
+          "name": "process_role",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hostname": {
+          "name": "hostname",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pid": {
+          "name": "pid",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ip": {
+          "name": "ip",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "location": {
+          "name": "location",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "user_agent": {
+          "name": "user_agent",
+          "type": "varchar(512)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "os": {
+          "name": "os",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "browser": {
+          "name": "browser",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "api_access_logs_tenant_created_idx": {
+          "name": "api_access_logs_tenant_created_idx",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "api_access_logs_created_at_idx": {
+          "name": "api_access_logs_created_at_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "api_access_logs_user_idx": {
+          "name": "api_access_logs_user_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "api_access_logs_member_idx": {
+          "name": "api_access_logs_member_idx",
+          "columns": [
+            {
+              "expression": "member_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "api_access_logs_device_idx": {
+          "name": "api_access_logs_device_idx",
+          "columns": [
+            {
+              "expression": "device_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "api_access_logs_accessor_idx": {
+          "name": "api_access_logs_accessor_idx",
+          "columns": [
+            {
+              "expression": "accessor_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "api_access_logs_correlation_idx": {
+          "name": "api_access_logs_correlation_idx",
+          "columns": [
+            {
+              "expression": "correlation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "api_access_logs_path_idx": {
+          "name": "api_access_logs_path_idx",
+          "columns": [
+            {
+              "expression": "path",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "api_access_logs_route_idx": {
+          "name": "api_access_logs_route_idx",
+          "columns": [
+            {
+              "expression": "route_path",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "api_access_logs_status_idx": {
+          "name": "api_access_logs_status_idx",
+          "columns": [
+            {
+              "expression": "response_code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "api_access_logs_tenant_id_tenants_id_fk": {
+          "name": "api_access_logs_tenant_id_tenants_id_fk",
+          "tableFrom": "api_access_logs",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "tableTo": "tenants",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "set null"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.ip_access_logs": {
       "name": "ip_access_logs",
       "schema": "",
@@ -13574,8 +14000,8 @@
           "primaryKey": false,
           "notNull": true
         },
-        "request_id": {
-          "name": "request_id",
+        "correlation_id": {
+          "name": "correlation_id",
           "type": "varchar(36)",
           "primaryKey": false,
           "notNull": false
@@ -13742,11 +14168,11 @@
           "method": "btree",
           "concurrently": false
         },
-        "operation_logs_request_idx": {
-          "name": "operation_logs_request_idx",
+        "operation_logs_correlation_idx": {
+          "name": "operation_logs_correlation_idx",
           "columns": [
             {
-              "expression": "request_id",
+              "expression": "correlation_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -14038,8 +14464,8 @@
           "primaryKey": false,
           "notNull": false
         },
-        "trace_id": {
-          "name": "trace_id",
+        "correlation_id": {
+          "name": "correlation_id",
           "type": "varchar(128)",
           "primaryKey": false,
           "notNull": false
@@ -14145,11 +14571,11 @@
           "method": "btree",
           "concurrently": false
         },
-        "domain_events_trace_idx": {
-          "name": "domain_events_trace_idx",
+        "domain_events_correlation_idx": {
+          "name": "domain_events_correlation_idx",
           "columns": [
             {
-              "expression": "trace_id",
+              "expression": "correlation_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -17502,8 +17928,8 @@
           "primaryKey": false,
           "notNull": false
         },
-        "trace_id": {
-          "name": "trace_id",
+        "correlation_id": {
+          "name": "correlation_id",
           "type": "varchar(64)",
           "primaryKey": false,
           "notNull": false
@@ -17682,11 +18108,11 @@
           "method": "btree",
           "concurrently": false
         },
-        "error_events_trace_idx": {
-          "name": "error_events_trace_idx",
+        "error_events_correlation_idx": {
+          "name": "error_events_correlation_idx",
           "columns": [
             {
-              "expression": "trace_id",
+              "expression": "correlation_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -17695,7 +18121,7 @@
           "isUnique": false,
           "with": {},
           "method": "btree",
-          "where": "\"error_events\".\"trace_id\" IS NOT NULL",
+          "where": "\"error_events\".\"correlation_id\" IS NOT NULL",
           "concurrently": false
         }
       },
@@ -24164,8 +24590,8 @@
           "primaryKey": false,
           "notNull": false
         },
-        "trace_id": {
-          "name": "trace_id",
+        "correlation_id": {
+          "name": "correlation_id",
           "type": "varchar(64)",
           "primaryKey": false,
           "notNull": false
@@ -24173,6 +24599,18 @@
         "parent_ref": {
           "name": "parent_ref",
           "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "trace_parent": {
+          "name": "trace_parent",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "trace_state": {
+          "name": "trace_state",
+          "type": "varchar(1024)",
           "primaryKey": false,
           "notNull": false
         },
@@ -24456,11 +24894,11 @@
           "method": "btree",
           "concurrently": false
         },
-        "workflow_jobs_trace_idx": {
-          "name": "workflow_jobs_trace_idx",
+        "workflow_jobs_correlation_idx": {
+          "name": "workflow_jobs_correlation_idx",
           "columns": [
             {
-              "expression": "trace_id",
+              "expression": "correlation_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -28857,8 +29295,8 @@
           "primaryKey": false,
           "notNull": false
         },
-        "trace_id": {
-          "name": "trace_id",
+        "correlation_id": {
+          "name": "correlation_id",
           "type": "varchar(64)",
           "primaryKey": false,
           "notNull": false
@@ -28866,6 +29304,18 @@
         "parent_ref": {
           "name": "parent_ref",
           "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "trace_parent": {
+          "name": "trace_parent",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "trace_state": {
+          "name": "trace_state",
+          "type": "varchar(1024)",
           "primaryKey": false,
           "notNull": false
         },
@@ -29022,11 +29472,11 @@
           "method": "btree",
           "concurrently": false
         },
-        "notification_outbox_trace_idx": {
-          "name": "notification_outbox_trace_idx",
+        "notification_outbox_correlation_idx": {
+          "name": "notification_outbox_correlation_idx",
           "columns": [
             {
-              "expression": "trace_id",
+              "expression": "correlation_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -33030,6 +33480,13 @@
         },
         "is_archived": {
           "name": "is_archived",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "is_hidden": {
+          "name": "is_hidden",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
@@ -38058,181 +38515,6 @@
           "nullsNotDistinct": false
         }
       },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.payment_events": {
-      "name": "payment_events",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "identity": {
-            "name": "payment_events_id_seq",
-            "increment": "1",
-            "minValue": "1",
-            "maxValue": "2147483647",
-            "startWith": "1",
-            "cache": "1",
-            "cycle": false,
-            "schema": "public",
-            "type": "always"
-          }
-        },
-        "type": {
-          "name": "type",
-          "type": "varchar(32)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "order_no": {
-          "name": "order_no",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "payload": {
-          "name": "payload",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "payment_event_status",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'pending'"
-        },
-        "attempts": {
-          "name": "attempts",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "last_error": {
-          "name": "last_error",
-          "type": "varchar(512)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "processed_at": {
-          "name": "processed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "payment_events_tenant_idx": {
-          "name": "payment_events_tenant_idx",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "with": {},
-          "method": "btree",
-          "concurrently": false
-        },
-        "payment_events_status_idx": {
-          "name": "payment_events_status_idx",
-          "columns": [
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "with": {},
-          "method": "btree",
-          "concurrently": false
-        },
-        "payment_events_status_created_idx": {
-          "name": "payment_events_status_created_idx",
-          "columns": [
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "with": {},
-          "method": "btree",
-          "concurrently": false
-        },
-        "payment_events_status_processed_idx": {
-          "name": "payment_events_status_processed_idx",
-          "columns": [
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "processed_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "with": {},
-          "method": "btree",
-          "concurrently": false
-        }
-      },
-      "foreignKeys": {
-        "payment_events_tenant_id_tenants_id_fk": {
-          "name": "payment_events_tenant_id_tenants_id_fk",
-          "tableFrom": "payment_events",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "tableTo": "tenants",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -48612,6 +48894,115 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.app_webhook_attempts": {
+      "name": "app_webhook_attempts",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "name": "app_webhook_attempts_id_seq",
+            "increment": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "startWith": "1",
+            "cache": "1",
+            "cycle": false,
+            "schema": "public",
+            "type": "always"
+          }
+        },
+        "delivery_id": {
+          "name": "delivery_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "attempt": {
+          "name": "attempt",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "lease_token": {
+          "name": "lease_token",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'running'"
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "finished_at": {
+          "name": "finished_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "request_url": {
+          "name": "request_url",
+          "type": "varchar(512)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "response_status": {
+          "name": "response_status",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "error_message": {
+          "name": "error_message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "app_webhook_attempts_delivery_id_app_webhook_deliveries_id_fk": {
+          "name": "app_webhook_attempts_delivery_id_app_webhook_deliveries_id_fk",
+          "tableFrom": "app_webhook_attempts",
+          "columnsFrom": [
+            "delivery_id"
+          ],
+          "tableTo": "app_webhook_deliveries",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "app_webhook_attempts_delivery_attempt_unique": {
+          "name": "app_webhook_attempts_delivery_attempt_unique",
+          "columns": [
+            "delivery_id",
+            "attempt"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.app_webhook_deliveries": {
       "name": "app_webhook_deliveries",
       "schema": "",
@@ -48675,6 +49066,18 @@
           "primaryKey": false,
           "notNull": true,
           "default": 0
+        },
+        "lease_token": {
+          "name": "lease_token",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lease_until": {
+          "name": "lease_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         },
         "status": {
           "name": "status",
@@ -50157,8 +50560,8 @@
           "primaryKey": false,
           "notNull": false
         },
-        "request_id": {
-          "name": "request_id",
+        "correlation_id": {
+          "name": "correlation_id",
           "type": "varchar(64)",
           "primaryKey": false,
           "notNull": false
@@ -50449,44 +50852,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "event_id": {
-          "name": "event_id",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "varchar(20)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'pending'"
-        },
-        "attempt": {
-          "name": "attempt",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "started_at": {
-          "name": "started_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "sent_at": {
-          "name": "sent_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "last_error": {
-          "name": "last_error",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -50496,17 +50861,11 @@
         }
       },
       "indexes": {
-        "open_quota_alerts_status_idx": {
-          "name": "open_quota_alerts_status_idx",
+        "open_quota_alerts_created_idx": {
+          "name": "open_quota_alerts_created_idx",
           "columns": [
             {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "started_at",
+              "expression": "created_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -101427,6 +101786,630 @@
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
+    },
+    "public.event_consumer_attempts": {
+      "name": "event_consumer_attempts",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "name": "event_consumer_attempts_id_seq",
+            "increment": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "startWith": "1",
+            "cache": "1",
+            "cycle": false,
+            "schema": "public",
+            "type": "always"
+          }
+        },
+        "delivery_id": {
+          "name": "delivery_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "generation": {
+          "name": "generation",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "attempt": {
+          "name": "attempt",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "lease_token": {
+          "name": "lease_token",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'running'"
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "finished_at": {
+          "name": "finished_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "event_consumer_attempts_delivery_generation_unique": {
+          "name": "event_consumer_attempts_delivery_generation_unique",
+          "columns": [
+            {
+              "expression": "delivery_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "generation",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "event_consumer_attempts_delivery_idx": {
+          "name": "event_consumer_attempts_delivery_idx",
+          "columns": [
+            {
+              "expression": "delivery_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "event_consumer_attempts_delivery_id_event_consumer_deliveries_id_fk": {
+          "name": "event_consumer_attempts_delivery_id_event_consumer_deliveries_id_fk",
+          "tableFrom": "event_consumer_attempts",
+          "columnsFrom": [
+            "delivery_id"
+          ],
+          "tableTo": "event_consumer_deliveries",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.event_consumer_deliveries": {
+      "name": "event_consumer_deliveries",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "name": "event_consumer_deliveries_id_seq",
+            "increment": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "startWith": "1",
+            "cache": "1",
+            "cycle": false,
+            "schema": "public",
+            "type": "always"
+          }
+        },
+        "event_id": {
+          "name": "event_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "consumer_key": {
+          "name": "consumer_key",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ordering_key": {
+          "name": "ordering_key",
+          "type": "varchar(256)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "after": {
+          "name": "after",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "lane": {
+          "name": "lane",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'business'"
+        },
+        "status": {
+          "name": "status",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "max_attempts": {
+          "name": "max_attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 5
+        },
+        "generation": {
+          "name": "generation",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "lease_token": {
+          "name": "lease_token",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lease_until": {
+          "name": "lease_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "run_at": {
+          "name": "run_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "checkpoint": {
+          "name": "checkpoint",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "result": {
+          "name": "result",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_error": {
+          "name": "last_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "finished_at": {
+          "name": "finished_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "event_consumer_deliveries_event_consumer_unique": {
+          "name": "event_consumer_deliveries_event_consumer_unique",
+          "columns": [
+            {
+              "expression": "event_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "consumer_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "event_consumer_deliveries_claim_idx": {
+          "name": "event_consumer_deliveries_claim_idx",
+          "columns": [
+            {
+              "expression": "lane",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "run_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "where": "\"event_consumer_deliveries\".\"status\" in ('pending', 'retrying', 'running')",
+          "concurrently": false
+        },
+        "event_consumer_deliveries_order_idx": {
+          "name": "event_consumer_deliveries_order_idx",
+          "columns": [
+            {
+              "expression": "consumer_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "ordering_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "event_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "event_consumer_deliveries_event_id_event_outbox_id_fk": {
+          "name": "event_consumer_deliveries_event_id_event_outbox_id_fk",
+          "tableFrom": "event_consumer_deliveries",
+          "columnsFrom": [
+            "event_id"
+          ],
+          "tableTo": "event_outbox",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "event_consumer_deliveries_status_check": {
+          "name": "event_consumer_deliveries_status_check",
+          "value": "\"event_consumer_deliveries\".\"status\" in ('pending','running','retrying','succeeded','skipped','dead')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.event_outbox": {
+      "name": "event_outbox",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "name": "event_outbox_id_seq",
+            "increment": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "startWith": "1",
+            "cache": "1",
+            "cycle": false,
+            "schema": "public",
+            "type": "always"
+          }
+        },
+        "event_id": {
+          "name": "event_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "domain": {
+          "name": "domain",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event_type": {
+          "name": "event_type",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "schema_version": {
+          "name": "schema_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "business_key": {
+          "name": "business_key",
+          "type": "varchar(256)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ordering_key": {
+          "name": "ordering_key",
+          "type": "varchar(256)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subject_refs": {
+          "name": "subject_refs",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scope": {
+          "name": "scope",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload": {
+          "name": "payload",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload_hash": {
+          "name": "payload_hash",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "correlation_id": {
+          "name": "correlation_id",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "parent_ref": {
+          "name": "parent_ref",
+          "type": "varchar(256)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "trace_parent": {
+          "name": "trace_parent",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "trace_state": {
+          "name": "trace_state",
+          "type": "varchar(1024)",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "event_outbox_tenant_business_unique": {
+          "name": "event_outbox_tenant_business_unique",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "event_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "business_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "where": "\"event_outbox\".\"tenant_id\" is not null",
+          "concurrently": false
+        },
+        "event_outbox_platform_business_unique": {
+          "name": "event_outbox_platform_business_unique",
+          "columns": [
+            {
+              "expression": "event_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "business_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "where": "\"event_outbox\".\"tenant_id\" is null",
+          "concurrently": false
+        },
+        "event_outbox_ordering_idx": {
+          "name": "event_outbox_ordering_idx",
+          "columns": [
+            {
+              "expression": "ordering_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "event_outbox_tenant_occurred_idx": {
+          "name": "event_outbox_tenant_occurred_idx",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "occurred_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "event_outbox_correlation_idx": {
+          "name": "event_outbox_correlation_idx",
+          "columns": [
+            {
+              "expression": "correlation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "event_outbox_tenant_id_tenants_id_fk": {
+          "name": "event_outbox_tenant_id_tenants_id_fk",
+          "tableFrom": "event_outbox",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "tableTo": "tenants",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "event_outbox_event_id_unique": {
+          "name": "event_outbox_event_id_unique",
+          "columns": [
+            "event_id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "event_outbox_version_check": {
+          "name": "event_outbox_version_check",
+          "value": "\"event_outbox\".\"schema_version\" = 1"
+        }
+      },
+      "isRLSEnabled": false
     }
   },
   "enums": {
@@ -102213,6 +103196,7 @@
       "values": [
         "http",
         "webhook",
+        "mock",
         "email",
         "sms",
         "wecom",
@@ -102296,13 +103280,11 @@
         "external_dispatch",
         "subprocess_spawn",
         "subprocess_join",
-        "event_dispatch",
+        "node_listener_delivery",
         "webhook_delivery",
         "compensation_action",
         "automation_action",
-        "schedule_launch",
-        "access_grant_apply",
-        "access_review_build"
+        "schedule_launch"
       ]
     },
     "public.workflow_node_type": {
@@ -102454,7 +103436,13 @@
         "success",
         "warning",
         "error",
-        "resolved"
+        "resolved",
+        "approved",
+        "rejected",
+        "revision",
+        "pending",
+        "execution_error",
+        "withdrawn"
       ]
     },
     "public.notification_channel": {
@@ -102810,15 +103798,6 @@
         "service_issue",
         "fraud_report",
         "other"
-      ]
-    },
-    "public.payment_event_status": {
-      "name": "payment_event_status",
-      "schema": "public",
-      "values": [
-        "pending",
-        "done",
-        "failed"
       ]
     },
     "public.payment_fund_reservation_status": {
