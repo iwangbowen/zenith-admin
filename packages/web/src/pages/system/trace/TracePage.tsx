@@ -145,6 +145,101 @@ function TraceLogsPanel({ correlationId }: { correlationId: string }) {
   );
 }
 
+function buildTraceTreeRows(nodes: TraceTimelineNode[]): Array<{ node: TraceTimelineNode; depth: number }> {
+  const nodeKey = (node: TraceTimelineNode) => (node.kind === 'request' ? 'request' : `${node.kind}:${node.refId}`);
+  const keySet = new Set(nodes.map(nodeKey));
+  const children = new Map<string, TraceTimelineNode[]>();
+  const roots: TraceTimelineNode[] = [];
+  for (const node of nodes) {
+    const parent = node.parentRef && node.parentRef !== nodeKey(node) && keySet.has(node.parentRef) ? node.parentRef : null;
+    if (parent) {
+      const list = children.get(parent) ?? [];
+      list.push(node);
+      children.set(parent, list);
+    } else {
+      roots.push(node);
+    }
+  }
+  const rows: Array<{ node: TraceTimelineNode; depth: number }> = [];
+  const visit = (node: TraceTimelineNode, depth: number) => {
+    rows.push({ node, depth });
+    for (const child of children.get(nodeKey(node)) ?? []) visit(child, depth + 1);
+  };
+  for (const root of roots) visit(root, 0);
+  return rows;
+}
+
+function TraceTimelineView({
+  correlationId,
+  canViewLogs,
+  onDetailNode,
+}: Readonly<{
+  correlationId: string;
+  canViewLogs: boolean;
+  onDetailNode: (node: TraceTimelineNode) => void;
+}>) {
+  const timelineQuery = useTraceTimeline(correlationId);
+  const nodes = useMemo(() => timelineQuery.data?.nodes ?? [], [timelineQuery.data]);
+  const kindCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const node of nodes) counts.set(node.kind, (counts.get(node.kind) ?? 0) + 1);
+    return counts;
+  }, [nodes]);
+  const treeRows = useMemo(() => buildTraceTreeRows(nodes), [nodes]);
+
+  if (timelineQuery.isPending) return <Spin spinning />;
+  if (timelineQuery.isError) {
+    const message = timelineQuery.error instanceof Error ? timelineQuery.error.message : '链路加载失败';
+    return <Banner type="danger" closeIcon={null} description={`链路加载失败：${message}`} />;
+  }
+  if (timelineQuery.isFetched && nodes.length === 0) {
+    return <Empty title="未找到该链路的留痕" description="业务关联 ID 可能有误，或相关数据已按保留策略清理" style={{ padding: '48px 0' }} />;
+  }
+
+  return (
+    <Spin spinning={timelineQuery.isFetching}>
+      <>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16, alignItems: 'center' }}>
+          <Text type="tertiary" size="small">共 {nodes.length} 个节点：</Text>
+          <ObservabilityLink correlationId={correlationId} compact />
+          {[...kindCounts.entries()].map(([kind, count]) => (
+            <Tag key={kind} size="small" color={KIND_COLORS[kind as TraceTimelineNode['kind']] }>
+              {TRACE_NODE_KIND_LABELS[kind as TraceTimelineNode['kind']]} × {count}
+            </Tag>
+          ))}
+        </div>
+
+        <Timeline mode="left">
+          {treeRows.map(({ node, depth }, index) => (
+            <Timeline.Item
+              key={`${node.kind}-${node.refId}-${index}`}
+              time={node.ts}
+              type={STATUS_META[node.status].timeline}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginLeft: depth * 24 }}>
+                {depth > 0 && <Text type="tertiary" size="small">↳</Text>}
+                <Tag size="small" color={KIND_COLORS[node.kind]}>{TRACE_NODE_KIND_LABELS[node.kind]}</Tag>
+                <Text strong>{node.title}</Text>
+                <Tag size="small" color={STATUS_META[node.status].color}>{TRACE_NODE_STATUS_LABELS[node.status]}</Tag>
+                {node.durationMs !== null && <Text type="tertiary" size="small">{node.durationMs}ms</Text>}
+                <Button size="small" theme="borderless" type="primary" onClick={() => onDetailNode(node)}>详情</Button>
+              </div>
+            </Timeline.Item>
+          ))}
+        </Timeline>
+
+        {!timelineQuery.isPending && !timelineQuery.isError && canViewLogs && (
+          <Collapse style={{ marginTop: 16 }} defaultActiveKey={['logs']}>
+            <Collapse.Panel header="应用日志（按业务关联 ID 过滤）" itemKey="logs">
+              <TraceLogsPanel key={correlationId} correlationId={correlationId} />
+            </Collapse.Panel>
+          </Collapse>
+        )}
+      </>
+    </Spin>
+  );
+}
+
 /** 最近链路列表（无 ID 时的默认浏览入口） */
 function RecentTracesPanel({ onView }: { onView: (correlationId: string) => void }) {
   const [days, setDays] = useState(7);
@@ -253,9 +348,7 @@ export default function TracePage() {
   const [activeTab, setActiveTab] = useUrlTabState(['query', 'failures'] as const, 'query');
   const [draft, setDraft] = useState(correlationId ?? '');
   const [detailNode, setDetailNode] = useState<TraceTimelineNode | null>(null);
-
-  const timelineQuery = useTraceTimeline(correlationId);
-  const nodes = useMemo(() => timelineQuery.data?.nodes ?? [], [timelineQuery.data]);
+  const [traceSheetCorrelationId, setTraceSheetCorrelationId] = useState<string | null>(null);
 
   /**
    * 只改写自己的 correlationId 参数（写新值 / 传 null 删除）。
@@ -287,42 +380,9 @@ export default function TracePage() {
 
   /** 失败 / 最近链路列表行点击：回填 ID、切到查询 Tab 并触发查询 */
   function handleViewTrace(id: string) {
-    setDraft(id);
-    setActiveTab('query');
-    applyCorrelationId(id);
+    setTraceSheetCorrelationId(id);
   }
 
-  const kindCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const n of nodes) counts.set(n.kind, (counts.get(n.kind) ?? 0) + 1);
-    return counts;
-  }, [nodes]);
-
-  // 因果树展开：按 parentRef 组织父子（`kind:refId` / `request`），DFS 顺序 + 缩进深度；
-  // 父引用缺失或指向窗口外节点时兜底为根，保持平铺可读
-  const treeRows = useMemo(() => {
-    const nodeKey = (n: TraceTimelineNode) => (n.kind === 'request' ? 'request' : `${n.kind}:${n.refId}`);
-    const keySet = new Set(nodes.map(nodeKey));
-    const children = new Map<string, TraceTimelineNode[]>();
-    const roots: TraceTimelineNode[] = [];
-    for (const n of nodes) {
-      const parent = n.parentRef && n.parentRef !== nodeKey(n) && keySet.has(n.parentRef) ? n.parentRef : null;
-      if (parent) {
-        const list = children.get(parent) ?? [];
-        list.push(n);
-        children.set(parent, list);
-      } else {
-        roots.push(n);
-      }
-    }
-    const rows: Array<{ node: TraceTimelineNode; depth: number }> = [];
-    const visit = (n: TraceTimelineNode, depth: number) => {
-      rows.push({ node: n, depth });
-      for (const child of children.get(nodeKey(n)) ?? []) visit(child, depth + 1);
-    };
-    for (const r of roots) visit(r, 0);
-    return rows;
-  }, [nodes]);
 
   return (
     <div className="page-container zx-flat-panels">
@@ -350,50 +410,11 @@ export default function TracePage() {
           {!correlationId ? (
             <RecentTracesPanel onView={handleViewTrace} />
           ) : (
-            <Spin spinning={timelineQuery.isFetching}>
-              {timelineQuery.isFetched && nodes.length === 0 ? (
-                <Empty title="未找到该链路的留痕" description="业务关联 ID 可能有误，或相关数据已按保留策略清理" style={{ padding: '48px 0' }} />
-              ) : (
-                <>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16, alignItems: 'center' }}>
-                    <Text type="tertiary" size="small">共 {nodes.length} 个节点：</Text>
-                    <ObservabilityLink correlationId={correlationId} compact />
-                    {[...kindCounts.entries()].map(([kind, count]) => (
-                      <Tag key={kind} size="small" color={KIND_COLORS[kind as TraceTimelineNode['kind']]}>
-                        {TRACE_NODE_KIND_LABELS[kind as TraceTimelineNode['kind']]} × {count}
-                      </Tag>
-                    ))}
-                  </div>
-
-                  <Timeline mode="left">
-                    {treeRows.map(({ node, depth }, i) => (
-                      <Timeline.Item
-                        key={`${node.kind}-${node.refId}-${i}`}
-                        time={node.ts}
-                        type={STATUS_META[node.status].timeline}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginLeft: depth * 24 }}>
-                          {depth > 0 && <Text type="tertiary" size="small">↳</Text>}
-                          <Tag size="small" color={KIND_COLORS[node.kind]}>{TRACE_NODE_KIND_LABELS[node.kind]}</Tag>
-                          <Text strong>{node.title}</Text>
-                          <Tag size="small" color={STATUS_META[node.status].color}>{TRACE_NODE_STATUS_LABELS[node.status]}</Tag>
-                          {node.durationMs !== null && <Text type="tertiary" size="small">{node.durationMs}ms</Text>}
-                          <Button size="small" theme="borderless" type="primary" onClick={() => setDetailNode(node)}>详情</Button>
-                        </div>
-                      </Timeline.Item>
-                    ))}
-                  </Timeline>
-
-                  {!timelineQuery.isPending && !timelineQuery.isError && hasPermission('system:log:files') && (
-                    <Collapse style={{ marginTop: 16 }} defaultActiveKey={['logs']}>
-                      <Collapse.Panel header="应用日志（按业务关联 ID 过滤）" itemKey="logs">
-                        <TraceLogsPanel key={correlationId} correlationId={correlationId} />
-                      </Collapse.Panel>
-                    </Collapse>
-                  )}
-                </>
-              )}
-            </Spin>
+            <TraceTimelineView
+              correlationId={correlationId}
+              canViewLogs={hasPermission('system:log:files')}
+              onDetailNode={setDetailNode}
+            />
           )}
         </TabPane>
         <TabPane tab="最近失败" itemKey="failures">
@@ -402,6 +423,24 @@ export default function TracePage() {
           </div>
         </TabPane>
       </Tabs>
+
+      <SideSheet
+        title={traceSheetCorrelationId ? `链路详情 · ${traceSheetCorrelationId}` : '链路详情'}
+        visible={traceSheetCorrelationId !== null}
+        onCancel={() => setTraceSheetCorrelationId(null)}
+        width={860}
+        closeOnEsc
+      >
+        {traceSheetCorrelationId && (
+          <div className="zx-flat-panels">
+            <TraceTimelineView
+              correlationId={traceSheetCorrelationId}
+              canViewLogs={hasPermission('system:log:files')}
+              onDetailNode={setDetailNode}
+            />
+          </div>
+        )}
+      </SideSheet>
 
       {/* 节点明细抽屉 */}
       <SideSheet

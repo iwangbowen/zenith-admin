@@ -1,6 +1,5 @@
-import { Copy, ExternalLink } from 'lucide-react';
+import { Copy } from 'lucide-react';
 import { Button, Space, Typography } from '@douyinfe/semi-ui';
-import { useNavigate } from 'react-router-dom';
 import { copyTextWithToast } from '@/utils/clipboard';
 
 const { Text } = Typography;
@@ -15,7 +14,6 @@ export default function ObservabilityLink({
   /** 让文本占满所在表格单元格扣除操作按钮后的剩余空间。 */
   expand?: boolean;
 }>) {
-  const navigate = useNavigate();
   return (
     <Space
       spacing={compact ? 4 : 8}
@@ -33,13 +31,6 @@ export default function ObservabilityLink({
         icon={<Copy size={14} />}
         aria-label="复制 correlationId"
         onClick={() => void copyTextWithToast(correlationId, { success: 'correlationId 已复制' })}
-      />
-      <Button
-        theme="borderless"
-        size="small"
-        icon={<ExternalLink size={14} />}
-        aria-label="查看链路日志"
-        onClick={() => navigate(`/system/log-files?correlationId=${encodeURIComponent(correlationId)}`)}
       />
     </Space>
   );
