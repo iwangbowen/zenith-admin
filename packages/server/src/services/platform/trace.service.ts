@@ -2,9 +2,9 @@
  * 链路追踪查看器：按 correlationId 聚合一次操作的全部留痕锚点为统一时间线。
  *
  * correlationId = hono correlationId（见 middleware/request-trace.ts 的合并说明）。
- * 五类锚点纯读聚合，无独立存储：
+ * 五类业务锚点纯读聚合，无独立存储；Cron 执行记录由 `cron:<jobId>:<logId>` 关联 ID 解析到 cron_job_logs：
  *   request      ← operation_logs.correlation_id（无操作日志时回退到 api_access_logs.correlation_id）
- *   job           ← workflow_jobs.correlation_id
+ *   job           ← workflow_jobs.correlation_id / cron_job_logs（Cron 关联 ID）
  *   notification ← notification_outbox.correlation_id + notification_dispatches（渠道级投递结果）
  *   task         ← async_tasks.correlation_id
  */
@@ -14,7 +14,7 @@ import type { TraceFailureEntry, TraceListEntry, TraceNodeKind, TraceNodeStatus,
 import { traceContract } from '@zenith/shared/platform';
 import { db } from '../../db';
 import {
-  apiAccessLogs, asyncTasks, notificationDispatches, notificationOutbox, operationLogs, workflowJobs,
+  apiAccessLogs, asyncTasks, cronJobLogs, notificationDispatches, notificationOutbox, operationLogs, workflowJobs,
 } from '../../db/schema';
 import { formatDateTime } from '../../lib/datetime';
 import { buildWhere } from '../../lib/where-helpers';
@@ -55,6 +55,15 @@ const TASK_STATUS_MAP: Record<string, TraceNodeStatus> = {
   failed: 'failed',
   cancelled: 'failed',
 };
+
+const CRON_STATUS_MAP: Record<string, TraceNodeStatus> = {
+  success: 'success',
+  fail: 'failed',
+  running: 'running',
+  timeout: 'failed',
+};
+
+const CRON_CORRELATION_ID_RE = /^cron:([1-9]\d*):([1-9]\d*)$/;
 
 function requestNodes(rows: (typeof operationLogs.$inferSelect)[]): TraceTimelineNode[] {
   return rows.map((r) => ({
@@ -141,6 +150,38 @@ function taskNodes(rows: (typeof asyncTasks.$inferSelect)[]): TraceTimelineNode[
   }));
 }
 
+/** Cron correlation IDs are derived from the durable execution log ID, not stored as a column. */
+async function cronNodes(correlationId: string): Promise<TraceTimelineNode[]> {
+  const match = CRON_CORRELATION_ID_RE.exec(correlationId);
+  if (!match) return [];
+  const jobId = Number(match[1]);
+  const logId = Number(match[2]);
+  const [row] = await db.select().from(cronJobLogs)
+    .where(and(eq(cronJobLogs.id, logId), eq(cronJobLogs.jobId, jobId)))
+    .limit(1);
+  if (!row) return [];
+  return [{
+    kind: 'job' as const,
+    ts: formatDateTime(row.startedAt),
+    title: row.jobName,
+    status: CRON_STATUS_MAP[row.status] ?? 'pending',
+    durationMs: row.durationMs ?? null,
+    refId: row.id,
+    detail: {
+      jobId: row.jobId,
+      executionCount: row.executionCount,
+      trigger: row.trigger,
+      attempt: row.attempt,
+      scheduledAt: row.scheduledAt ? formatDateTime(row.scheduledAt) : null,
+      latencyMs: row.latencyMs,
+      output: row.output,
+      errorMessage: row.errorMessage,
+      nodeId: row.nodeId,
+      triggeredBy: row.triggeredBy,
+    },
+  }];
+}
+
 async function notificationNodes(correlationId: string): Promise<TraceTimelineNode[]> {
   const user = currentUser();
   const outboxRows = await db.select().from(notificationOutbox)
@@ -194,7 +235,7 @@ async function notificationNodes(correlationId: string): Promise<TraceTimelineNo
 /** 按 correlationId 聚合时间线（五类锚点并行查询，按时间升序归并） */
 export async function getTraceTimeline(correlationId: string): Promise<TraceTimeline> {
   const user = currentUser();
-  const [logRows, apiAccessRows, jobRows, taskRows, notifNodes] = await Promise.all([
+  const [logRows, apiAccessRows, jobRows, taskRows, notifNodes, cronRunNodes] = await Promise.all([
     db.select().from(operationLogs)
       .where(buildWhere(eq(operationLogs.correlationId, correlationId), tenantCondition(operationLogs, user)))
       .orderBy(desc(operationLogs.id))
@@ -212,6 +253,7 @@ export async function getTraceTimeline(correlationId: string): Promise<TraceTime
       .orderBy(desc(asyncTasks.id))
       .limit(NODE_LIMIT_PER_KIND),
     notificationNodes(correlationId),
+    cronNodes(correlationId),
   ]);
 
   const operationRequestIds = new Set(logRows.map((row) => row.correlationId).filter((correlationId): correlationId is string => Boolean(correlationId)));
@@ -219,6 +261,7 @@ export async function getTraceTimeline(correlationId: string): Promise<TraceTime
     ...requestNodes(logRows),
     ...apiAccessRequestNodes(apiAccessRows.filter((row) => !operationRequestIds.has(row.correlationId ?? ''))),
     ...jobNodes(jobRows),
+    ...cronRunNodes,
     ...taskNodes(taskRows),
     ...notifNodes,
   ].sort((a, b) => a.ts.localeCompare(b.ts) || a.refId - b.refId);

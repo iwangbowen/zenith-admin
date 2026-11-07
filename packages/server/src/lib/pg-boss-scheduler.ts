@@ -925,9 +925,16 @@ async function runCronJob(job: CronJobWithMetadata): Promise<void> {
   // 超时后 handler 仍在后台运行，迟到的结果只记日志、不再回写，避免把 timeout 覆盖成 success。
   // Cron payload 没有请求侧持久化上下文，因此为本次执行建立独立的业务关联节点，
   // 不把不存在的来源 request / OTel trace 伪装成可恢复的父链。
-  const execution = runWithCorrelationId(`cron:${jobId}:${logRow.id}`, () => runWithParentRef(
+  const correlationId = `cron:${jobId}:${logRow.id}`;
+  const execution = runWithCorrelationId(correlationId, () => runWithParentRef(
     `cron:${jobId}`,
-    () => withAsyncSpan('zenith.cron.job', () => fn(params), {
+    () => withAsyncSpan('zenith.cron.job', async () => {
+      // Cron 不经过 HTTP middleware，显式记录执行边界，保证链路页能定位到应用日志。
+      logger.info({ cronJobId: jobId, cronLogId: logRow.id, handlerName }, 'Cron job started');
+      const result = await fn(params);
+      logger.info({ cronJobId: jobId, cronLogId: logRow.id, handlerName }, 'Cron job completed');
+      return result;
+    }, {
       'zenith.async.kind': 'cron_job',
       'zenith.cron.job_id': jobId,
       'zenith.cron.handler': handlerName,

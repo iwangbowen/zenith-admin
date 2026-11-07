@@ -158,4 +158,45 @@ describe('getTraceTimeline', () => {
       }],
     });
   });
+
+  it('includes a cron execution log for cron correlation IDs', async () => {
+    const correlationId = 'cron:10:98765';
+    queueResults([
+      [],
+      [],
+      [],
+      [],
+      [],
+      [{
+        id: 98765,
+        jobId: 10,
+        jobName: '监控告警评估',
+        executionCount: 12,
+        startedAt: T('2026-11-07T02:55:13Z'),
+        endedAt: T('2026-11-07T02:55:14Z'),
+        durationMs: 1000,
+        status: 'success',
+        output: '完成评估',
+        trigger: 'schedule',
+        attempt: 0,
+        scheduledAt: null,
+        latencyMs: null,
+        errorMessage: null,
+        nodeId: 'ASUS-Vivobook:60100',
+        triggeredBy: null,
+      }],
+    ]);
+
+    await expect(getTraceTimeline(correlationId)).resolves.toMatchObject({
+      correlationId,
+      nodes: [{
+        kind: 'job',
+        refId: 98765,
+        title: '监控告警评估',
+        status: 'success',
+        durationMs: 1000,
+        detail: { jobId: 10, trigger: 'schedule', output: '完成评估' },
+      }],
+    });
+  });
 });

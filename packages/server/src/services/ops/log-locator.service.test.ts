@@ -205,10 +205,30 @@ describe('locateCorrelationLogs', () => {
     ]));
   });
 
-  it('gzip 损坏或单行超限时保留受控错误状态', async () => {
+  it('允许扫描大型 JSON 日志行并继续定位后续记录', async () => {
+    const correlationId = 'corr-20261106-large-line';
+    await write('app-api.2026-11-06.1.log', [
+      record({ msg: 'x'.repeat(77 * 1024) }),
+      record({ correlationId, msg: 'after large line' }),
+    ].join('\n'));
+
+    const result = await locateCorrelationLogs({ correlationId });
+
+    expect(result.status).toBe('matched');
+    expect(result.matches).toEqual([expect.objectContaining({
+      role: 'api',
+      filename: 'app-api.2026-11-06.1.log',
+      matchCount: 1,
+    })]);
+    expect(result.sources).toEqual(expect.arrayContaining([
+      expect.objectContaining({ role: 'api', status: 'scanned', error: null }),
+    ]));
+  });
+
+  it('gzip 损坏或超过 8 MiB 的单行时保留受控错误状态', async () => {
     const correlationId = 'corr-20261106-007';
     await write('app-worker.2026-11-06.1.log.gz', 'not gzip');
-    await write('app-api.2026-11-06.1.log', `${'x'.repeat(16 * 1024 + 1)}\n`);
+    await write('app-api.2026-11-06.1.log', `${'x'.repeat(8 * 1024 * 1024 + 1)}\n`);
 
     const result = await locateCorrelationLogs({ correlationId });
 

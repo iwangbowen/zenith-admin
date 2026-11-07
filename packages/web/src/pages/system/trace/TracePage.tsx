@@ -152,7 +152,7 @@ function RecentTracesPanel({ onView }: { onView: (correlationId: string) => void
   const columns: ColumnProps<TraceListEntry>[] = [
     dateTimeColumn('最近活动', 'ts'),
     { title: '入口摘要', dataIndex: 'title', minWidth: 220, render: (v: string) => renderEllipsis(v) },
-    { title: '业务关联 ID', dataIndex: 'correlationId', width: 390, render: (v: string) => <ObservabilityLink correlationId={v} compact /> },
+    { title: '业务关联 ID', dataIndex: 'correlationId', width: 390, render: (v: string) => <ObservabilityLink correlationId={v} compact expand /> },
     {
       title: '状态', dataIndex: 'status', width: 90,
       render: (v: TraceNodeStatus) => <Tag size="small" color={STATUS_META[v].color}>{TRACE_NODE_STATUS_LABELS[v]}</Tag>,
