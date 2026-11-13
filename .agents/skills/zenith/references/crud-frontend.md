@@ -268,7 +268,8 @@ onSelect={(deptId) => applySearch({ ...draftParams, departmentId: deptId })}
 一页多个列表、列表 hook 第二实参不是 `enabled`（轮询选项 / 作用域枚举）、会员端 `requestOptions`、`pagination` 需要翻页回调等。
 `useListSearch` 的 `listKey` 传该数据的查询 key（如 `menuKeys.tree`），`submittedParams` 经
 `const filterQuery = useFilterQuery({ ... })` 映射（compactParams 后按内容稳定引用，不写依赖数组）后进请求参数或客户端过滤谓词，
-表格仍用 `listTableProps(listQuery, { pagination: buildPagination })`；持续轮询列表传 `loadingMode: 'initial'`。
+表格仍用 `listTableProps(listQuery, { pagination: buildPagination })`；持续轮询列表传 `loadingMode: 'initial'`，
+并用 `useManualSearchLoading(search.searchVersion, listQuery.isFetching)` 得到 `manualLoading` 一起传给 `listTableProps`。
 它收口的「草稿 / 已提交双状态 + 查询必回源」与是否分页无关，
 不要退回手写 `pendingKeyword` / `keyword` 两个 `useState` + `invalidateQueries`（参考 `DepartmentsPage`）。
 只有**边输边筛、没有「查询」按钮语义**的即时过滤才不属于这两个 hook。

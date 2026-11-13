@@ -190,7 +190,9 @@
   非标准页用 `components/list-page` 的 `listTableProps(listQuery, { pagination: buildPagination })` 展开）——默认 `bordered` / `rowKey="id"` / `size="small"`，
   并接好 `dataSource` / `loading` / `onRefresh` / `refreshLoading`。
   列表默认在查询 / 刷新 / 翻页 / 失效重拉期间显示整表 loading 蒙层；持续轮询或后台自动刷新频繁的列表在 `table` 或
-  `listTableProps` 选项传 `loadingMode: 'initial'`，避免整表反复闪烁。
+  `listTableProps` 选项传 `loadingMode: 'initial'`，避免整表反复闪烁。轮询列表的用户主动查询 / 重置反馈用
+  `useManualSearchLoading(search.searchVersion, listQuery.isFetching)` 取得 `manualLoading` 传给 `listTableProps`
+  （`useListPage` 已内置）；纯客户端过滤的列表用 `useTransition` 驱动整表 loading。
   `ConfigurableTable` 的刷新按钮在 `refreshLoading` 期间显示按钮 loading，点击刷新后同时接管整表蒙层；
   非分页包络的数据源或树形表格才手写这些属性，但必须传 `onRefresh` 与 `refreshLoading`（统一取 `query.isFetching`），
   首屏加载不由外层承担时再传 `loading`
