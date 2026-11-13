@@ -101,7 +101,9 @@ npm 12 默认阻止依赖安装脚本。根 `package.json` 的 `allowScripts` �
 
 - `@node-rs/bcrypt` 2 的 `hash` 使用 `{ cost }` 参数；密码统一入口保持成本 10，并通过升级前的固定哈希样本验证存量密码。
 - TypeScript 保留两个别名：`@typescript/native` 使用 TypeScript 7 原生 CLI，`typescript` 使用 `@typescript/typescript6` 提供 ESLint 与 `tsc-alias` 所需的 JavaScript API。
-- `@mastra/evals` 1.10.5 的可选 Vitest peer 尚未声明支持 Vitest 5。项目仅使用 `scorers/prebuilt`，根 `overrides` 将该 peer 对齐到 Vitest 5；真实工厂注册与打分器替换由 `scorers.test.ts` 验证。项目未使用 `@mastra/evals/vitest`，新增该入口前需单独确认兼容性。上游支持 Vitest 5 后移除此 override。
+- Postgres.js 4 默认由 PostgreSQL 推断参数类型；原生 SQL 中无法从上下文确定类型的日期、数组等参数需显式转换（如 `::timestamptz`、`::int[]`）。应用连接继续经 `createPgClient()` 固定会话时区为 UTC。`npm run verify:numbering -w @zenith/server` 会在隔离数据库中同时验证驱动数据转换、事务 / savepoint、LISTEN/NOTIFY 和业务编号并发。
+- Fontkit 3 使用 ESM 产物，由项目要求的 Node.js 24 加载；PDF 字体解析与子集生成继续沿用现有入口，`build:pdf-font` 和打印导出测试覆盖真实字体处理。
+- `@mastra/evals` 已原生接受 Vitest 5，测试工具统一使用 Vitest 5.1，不再需要 peer override。项目使用 `scorers/prebuilt`，真实工厂注册与打分器替换由 `scorers.test.ts` 验证。
 
 ### 数据库迁移
 

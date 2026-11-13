@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import * as logReader from './log-reader';
 
 const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'zenith-logviewer-'));
 const logDir = path.join(tmpRoot, 'logs');
@@ -129,14 +130,21 @@ describe('日志查看器读取内核', () => {
     fs.writeFileSync(file, 'old\n');
     const ctrl = new AbortController();
     const received: string[][] = [];
+    const watch = vi.spyOn(logReader, 'watchTail');
     const done = followLogLines(file, null, ctrl.signal, async (lines) => {
       received.push(lines);
       ctrl.abort();
     });
-    // 等待首次 stat 完成后再追加，避免追加内容被计入初始位置
-    await new Promise((r) => setTimeout(r, 50));
-    fs.appendFileSync(file, 'fresh\n');
-    await done;
-    expect(received).toEqual([['fresh']]);
+    try {
+      // 等待真实追踪器接收初始位置；固定延迟在并行负载下可能早于 stat 完成。
+      await vi.waitFor(() => expect(watch).toHaveBeenCalled());
+      fs.appendFileSync(file, 'fresh\n');
+      await done;
+      expect(received).toEqual([['fresh']]);
+    } finally {
+      ctrl.abort();
+      await done;
+      watch.mockRestore();
+    }
   });
 });
