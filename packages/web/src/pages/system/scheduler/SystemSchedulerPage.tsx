@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, Col, Descriptions, Form, Modal, Row, Space, TabPane, Tabs, Tag, Toast, Typography, withField } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { AlertTriangle, CheckCircle2, RefreshCw, Trash2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, RefreshCw } from 'lucide-react';
 import type { SystemSchedulerAlertChannel } from '@zenith/shared/chat';
 import { enumValueOf } from '@zenith/shared/core';
 import type { SystemSchedulerNode, SystemSchedulerRun, SystemSchedulerRunStatus, SystemSchedulerTask, SystemSchedulerTaskType, SystemSchedulerTriggerType } from '@zenith/shared/platform';
@@ -39,6 +39,8 @@ import { FilterSelect, KeywordInput, StatusSelect, DateRangeFilter } from '@/com
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { confirmDanger } from '@/utils/confirm';
 import { useFilterQuery } from '@/hooks/useFilterQuery';
+import { ClearLogsButtons } from '@/components/logs/ClearLogsControl';
+import { clearLogsTarget } from '@/hooks/useClearLogs';
 type TabKey = 'tasks' | 'runs' | 'nodes';
 
 interface TaskSearchParams {
@@ -293,14 +295,16 @@ export default function SystemSchedulerPage() {
     });
   };
 
-  const handleCleanupRuns = () => {
+  const handleCleanupRuns = (days: number) => {
     confirmDanger({
-      title: '清理系统调度运行日志',
-      content: submittedRunSearch.taskName ? '将按当前任务的留存策略清理运行日志。' : '将按所有任务的留存策略清理运行日志。',
-      okText: '清理',
+      title: `清除${clearLogsTarget(days, '运行日志')}`,
+      content: `将清除${runFilterQuery.taskName ? '当前已查询任务' : '所有任务'}${days === 0 ? '的全部已结束运行日志' : clearLogsTarget(days, '运行日志')}。运行中记录保留，其他列表筛选条件不影响清除范围。此操作不可恢复。`,
+      okText: '确认清除',
       onOk: async () => {
-        const data = await cleanupRunsMutation.mutateAsync({ query: { taskName: runFilterQuery.taskName } });
+        const data = await cleanupRunsMutation.mutateAsync({ query: { taskName: runFilterQuery.taskName, days } });
         Toast.success(data.message);
+        setDetailRun(null);
+        runSearch.resetPage();
       },
     });
   };
@@ -646,16 +650,7 @@ export default function SystemSchedulerPage() {
             actions={(
               <>
                 <Button icon={<RefreshCw size={14} />} onClick={() => void runsQuery.refetch()} loading={runsQuery.isFetching}>刷新</Button>
-                <Button
-                  type="danger"
-                  theme="light"
-                  icon={<Trash2 size={14} />}
-                  onClick={handleCleanupRuns}
-                  loading={cleanupRunsMutation.isPending}
-                  disabled={!canCleanup}
-                >
-                  清理
-                </Button>
+                {canCleanup && <ClearLogsButtons label="运行日志" loading={cleanupRunsMutation.isPending} onClear={handleCleanupRuns} allowClearAll />}
               </>
             )}
             filterTitle="运行日志筛选"

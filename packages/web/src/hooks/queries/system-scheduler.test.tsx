@@ -5,7 +5,7 @@
  *  1. 手动执行：任务行（最近运行状态）+ 运行日志；节点清单保持 fresh
  *  2. 保存任务配置：只动任务行
  *  3. 确认告警：运行列表 + 该条运行详情 + 任务行 alertCount
- *  4. 清理运行日志：运行列表回源、未挂载的运行详情缓存移除；任务行与节点保持 fresh
+ *  4. 清理运行日志：运行列表与任务统计回源、未挂载的运行详情缓存移除；节点保持 fresh
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
@@ -131,19 +131,25 @@ describe('useAcknowledgeSystemSchedulerAlert', () => {
 });
 
 describe('useCleanupSystemSchedulerRuns', () => {
-  it('refetches the run list, drops inactive run details, and leaves tasks / nodes fresh', async () => {
+  it.each([0, 30, 365])('refetches runs and task statistics, drops inactive details and preserves nodes (days=%i)', async days => {
     const { qc, hook } = await mountPage();
     // 抽屉已关闭遗留的运行详情：清理后可能已不存在，应移除而非失效
     qc.setQueryData(systemSchedulerKeys.runDetail(7), RUN);
     const fetches = observeFetches(qc);
     api.resetCalls();
 
-    await hook.result.current.cleanup.mutateAsync({ query: { taskName: 'cleanup' } });
-    await waitFor(() => expect(fetches.countOf(systemSchedulerKeys.runs)).toBe(1));
+    await hook.result.current.cleanup.mutateAsync({ query: { taskName: 'cleanup', days } });
+    const cleanupCall = api.calls.find(call => call.method === 'POST' && call.url.includes('/runs/cleanup'))!;
+    const cleanupUrl = new URL(cleanupCall.url, 'http://localhost');
+    expect(cleanupUrl.searchParams.get('taskName')).toBe('cleanup');
+    expect(cleanupUrl.searchParams.get('days')).toBe(String(days));
+    await waitFor(() => {
+      expect(fetches.countOf(systemSchedulerKeys.runs)).toBe(1);
+      expect(fetches.countOf(systemSchedulerKeys.tasks)).toBe(1);
+    });
 
     expect(hasCacheEntry(qc, systemSchedulerKeys.runDetail(7))).toBe(false);
     expect(api.countOf('GET', '/api/system-scheduler/runs/7')).toBe(0);
-    expect(fetches.countOf(systemSchedulerKeys.tasks)).toBe(0);
     expect(isFresh(qc, systemSchedulerKeys.tasks)).toBe(true);
     expect(isFresh(qc, systemSchedulerKeys.nodeList(NODE_PARAMS))).toBe(true);
     fetches.stop();

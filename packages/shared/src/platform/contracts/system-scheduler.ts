@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeQuery, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { dateRangeQuery, idParam, logCleanupDaysQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import {
   PROCESS_ROLES,
@@ -162,6 +162,7 @@ export const systemSchedulerRunListQuery = paginationQuery.extend({
 
 export const systemSchedulerCleanupQuery = z.object({
   taskName: z.string().optional().meta({ description: '只清理该任务的运行日志；缺省清理全部' }),
+  days: logCleanupDaysQuery.removeDefault().optional().meta({ description: '清理多少天之前的运行日志；0 表示全部已结束日志，省略时按各任务留存策略清理；运行中记录始终保留' }),
 });
 
 export const systemSchedulerTaskNameParam = z.object({

@@ -1,12 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { PgDialect } from 'drizzle-orm/pg-core';
 
-const { select, getSchedulerIntrospection, getSystemQueueMetrics } = vi.hoisted(() => ({
+const { select, count, execute, deleteLogRows, getSchedulerIntrospection, getSystemQueueMetrics } = vi.hoisted(() => ({
   select: vi.fn(),
+  count: vi.fn(),
+  execute: vi.fn(),
+  deleteLogRows: vi.fn(),
   getSchedulerIntrospection: vi.fn(),
   getSystemQueueMetrics: vi.fn(),
 }));
 
-vi.mock('../../db', () => ({ db: { select } }));
+vi.mock('../../db', () => ({ db: { select, $count: count, execute } }));
+vi.mock('../platform/log-cleanup', () => ({ deleteLogRows }));
 
 vi.mock('../../lib/pg-boss-scheduler', () => ({
   getSchedulerIntrospection,
@@ -15,7 +20,8 @@ vi.mock('../../lib/pg-boss-scheduler', () => ({
   updateSystemTaskRuntimePolicy: vi.fn(),
 }));
 
-import { listSystemSchedulerTasks } from './system-scheduler.service';
+import { cleanupSystemSchedulerRuns, listSystemSchedulerTasks } from './system-scheduler.service';
+import { systemSchedulerRuns } from '../../db/schema';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function chain(result: unknown[]): any {
@@ -32,6 +38,56 @@ function chain(result: unknown[]): any {
  *   6-8 最近一次告警（同上，只有 8 被 await）
  */
 const SELECT_CALLS_PER_LIST = 8;
+
+describe('cleanupSystemSchedulerRuns', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    getSchedulerIntrospection.mockReturnValue({ systemRecurringJobs: [taskInfo('cleanup')], systemQueueWorkers: [] });
+    count.mockResolvedValueOnce(8).mockResolvedValueOnce(5);
+    deleteLogRows.mockResolvedValue(3);
+  });
+
+  it('limits age cleanup to the selected task and preserves running records', async () => {
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(new Date('2026-11-13T08:00:00Z').getTime());
+    try {
+      await expect(cleanupSystemSchedulerRuns({ taskName: 'cleanup', days: 30 })).resolves.toMatchObject({ deletedByAge: 3, deletedByCount: 0, totalBefore: 8, totalAfter: 5 });
+      expect(deleteLogRows.mock.calls[0][0]).toBe(systemSchedulerRuns);
+      const query = new PgDialect({ casing: 'snake_case' }).sqlToQuery(deleteLogRows.mock.calls[0][1]);
+      expect(query.sql).toContain('"system_scheduler_runs"."task_name" =');
+      expect(query.sql).toContain('"system_scheduler_runs"."status" <>');
+      expect(query.sql).toContain('"system_scheduler_runs"."started_at" <');
+      expect(query.params).toEqual(['cleanup', 'running', '2026-10-14T08:00:00.000Z']);
+      expect(execute).not.toHaveBeenCalled();
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it.each([undefined, 'cleanup'])('clears all finished runs without age or count pruning (task=%s)', async taskName => {
+    await cleanupSystemSchedulerRuns({ taskName, days: 0 });
+    const query = new PgDialect({ casing: 'snake_case' }).sqlToQuery(deleteLogRows.mock.calls[0][1]);
+    expect(query.sql).toContain('"system_scheduler_runs"."status" <>');
+    expect(query.sql).not.toContain('started_at');
+    expect(query.params).toEqual(taskName ? [taskName, 'running'] : ['running']);
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it('keeps automatic retention policy cleanup when no days are provided', async () => {
+    count.mockReset().mockResolvedValueOnce(8).mockResolvedValueOnce(5).mockResolvedValueOnce(4);
+    await expect(cleanupSystemSchedulerRuns()).resolves.toMatchObject({ deletedByAge: 3, deletedByCount: 1, totalBefore: 8, totalAfter: 4 });
+    expect(deleteLogRows).not.toHaveBeenCalled();
+    expect(execute).toHaveBeenCalledTimes(2);
+    for (const [statement] of execute.mock.calls) {
+      expect(new PgDialect({ casing: 'snake_case' }).sqlToQuery(statement).sql).toContain("r.status <> 'running'");
+    }
+  });
+
+  it('rejects an unregistered task before counting or deleting', async () => {
+    await expect(cleanupSystemSchedulerRuns({ taskName: 'missing', days: 0 })).rejects.toThrow('系统调度任务不存在或尚未注册');
+    expect(count).not.toHaveBeenCalled();
+    expect(deleteLogRows).not.toHaveBeenCalled();
+  });
+});
 
 function queueSelects(results: { stats?: unknown[]; configs?: unknown[]; latest?: unknown[]; latestAlert?: unknown[] }) {
   const byCall: Record<number, unknown[]> = { 1: results.stats ?? [], 2: results.configs ?? [], 5: results.latest ?? [], 8: results.latestAlert ?? [] };

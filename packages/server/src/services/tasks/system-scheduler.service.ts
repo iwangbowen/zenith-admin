@@ -3,7 +3,7 @@ import type { QueryOutputOf } from '@zenith/shared/core';
 import { systemSchedulerContract, type JobStuckItem } from '@zenith/shared/platform';
 import { buildListResult, listRows } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
-import { and, desc, eq, gte, inArray, isNotNull, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNotNull, lt, ne, or, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { CronExpressionParser } from 'cron-parser';
 import { db } from '../../db';
@@ -22,6 +22,7 @@ import {
 } from '../../lib/pg-boss-scheduler';
 import { buildWhere, dateRangeConditions, withPagination } from '../../lib/where-helpers';
 import type { JobSourceRawSummary } from '../../lib/job-monitor/registry';
+import { deleteLogRows } from '../platform/log-cleanup';
 
 /** 超时策略来自任务配置，未设阈值时按半小时识别未收尾运行。 */
 export function overdueSchedulerRunCondition(asOf = new Date()) {
@@ -105,9 +106,7 @@ export interface UpdateSystemSchedulerTaskConfigInput {
   manualSingleton: boolean;
 }
 
-export interface CleanupSystemSchedulerRunsInput {
-  taskName?: string;
-}
+type CleanupSystemSchedulerRunsInput = QueryOutputOf<typeof systemSchedulerContract.cleanupRuns>;
 
 function nextCronRun(cronExpression: string): string | null {
   try {
@@ -392,6 +391,21 @@ export async function cleanupSystemSchedulerRuns(input: CleanupSystemSchedulerRu
   const taskNameFilter = input.taskName ? sql`and r.task_name = ${input.taskName}` : sql``;
   const countWhere = input.taskName ? eq(systemSchedulerRuns.taskName, input.taskName) : undefined;
   const beforeAge = await db.$count(systemSchedulerRuns, countWhere);
+  if (input.days !== undefined) {
+    const where = buildWhere(
+      countWhere,
+      ne(systemSchedulerRuns.status, 'running'),
+      input.days > 0 ? lt(systemSchedulerRuns.startedAt, new Date(Date.now() - input.days * 86_400_000)) : undefined,
+    );
+    const deleted = await deleteLogRows(systemSchedulerRuns, where);
+    return {
+      message: `清理完成：删除 ${deleted} 条运行日志（保留运行中记录）`,
+      deletedByAge: deleted,
+      deletedByCount: 0,
+      totalBefore: beforeAge,
+      totalAfter: await db.$count(systemSchedulerRuns, countWhere),
+    };
+  }
   await db.execute(sql`
     delete from system_scheduler_runs r
     using system_scheduler_task_configs cfg

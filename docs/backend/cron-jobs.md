@@ -123,6 +123,12 @@
 - `system:scheduler:cleanup`
 - `system:scheduler:alert`
 
+运行日志的清除按钮支持一年前、六个月前、三个月前、一个月前及全部已结束日志的清除。
+`POST /api/system-scheduler/runs/cleanup` 的 `days` 指定保留天数，`0` 表示全部；
+省略 `days` 仍按各任务的留存天数和保留条数执行策略清理，自动清理任务不变。
+清除范围只使用当前已提交查询的 `taskName`，不受类型、状态、告警或列表日期筛选影响；
+未指定任务时作用于所有任务。所有清理方式均保留运行中的记录，不删除任务配置。
+
 系统任务在启动时由代码注册，运行日志写入 `system_scheduler_runs`，节点心跳写入 `system_scheduler_nodes`。周期任务与普通队列任务由 pg-boss 执行，持久账本还可接入独立执行池：
 
 | 类型 | 注册方式 | pg-boss 载体 | 说明 |

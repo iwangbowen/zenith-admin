@@ -404,17 +404,42 @@ export const systemSchedulerHandlers = [
   }),
 
   mock(systemSchedulerContract.cleanupRuns, ({ query, ok }) => {
-    const before = runs.length;
-    if (query.taskName) {
-      const keep = runs.filter((item) => item.taskName === query.taskName).slice(0, 10);
-      removeWhere(runs, (run) => run.taskName === query.taskName && !keep.includes(run));
+    if (query.taskName && !tasks.some(task => task.name === query.taskName)) return notFound('系统调度任务不存在或尚未注册');
+    const inScope = (run: SystemSchedulerRun) => matchesFilter(run.taskName, query.taskName);
+    const before = runs.filter(inScope).length;
+    const now = Date.now();
+    removeWhere(runs, run => {
+      if (!inScope(run) || run.status === 'running') return false;
+      if (query.days === 0) return true;
+      const days = query.days ?? tasks.find(task => task.name === run.taskName)?.logRetentionDays;
+      return days !== undefined && run.startedAt < mockDateTime(now - days * 86_400_000);
+    });
+    const afterAge = runs.filter(inScope).length;
+    if (query.days === undefined) {
+      const ranks = new Map<string, number>();
+      const expired = new Set(runs.filter(run => inScope(run) && run.status !== 'running')
+        .sort((a, b) => b.startedAt.localeCompare(a.startedAt) || b.id - a.id)
+        .filter(run => {
+          const rank = (ranks.get(run.taskName) ?? 0) + 1;
+          ranks.set(run.taskName, rank);
+          return rank > (tasks.find(task => task.name === run.taskName)?.logRetentionRuns ?? 1000);
+        }));
+      removeWhere(runs, run => expired.has(run));
+    }
+    const after = runs.filter(inScope).length;
+    for (const task of tasks.filter(task => matchesFilter(task.name, query.taskName))) {
+      const taskRuns = runs.filter(run => run.taskName === task.name);
+      task.totalRuns = taskRuns.length;
+      task.successCount = taskRuns.filter(run => run.status === 'success').length;
+      task.failedCount = taskRuns.filter(run => run.status === 'failed').length;
+      task.alertCount = taskRuns.filter(run => run.alertMessage).length;
     }
     return ok({
-      message: `清理完成：按时间删除 ${before - runs.length} 条，按数量删除 0 条`,
-      deletedByAge: before - runs.length,
-      deletedByCount: 0,
+      message: `清理完成：删除 ${before - after} 条运行日志（保留运行中记录）`,
+      deletedByAge: before - afterAge,
+      deletedByCount: afterAge - after,
       totalBefore: before,
-      totalAfter: runs.length,
+      totalAfter: after,
     }, '清理完成');
   }),
 ];

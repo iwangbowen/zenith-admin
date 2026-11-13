@@ -62,11 +62,12 @@ export function useAcknowledgeSystemSchedulerAlert() {
   });
 }
 
-/** 清理历史运行日志：运行列表回源；被清理的记录无法逐条定位，未挂载的详情缓存直接移除（再打开会重新请求，不会 404 重拉） */
+/** 清理会改变任务累计次数、告警数和最近日志；列表回源，未挂载的日志详情缓存移除。 */
 export function useCleanupSystemSchedulerRuns() {
   return useApiMutation(systemSchedulerContract.cleanupRuns, {
     invalidate: (qc) => {
       void qc.invalidateQueries({ queryKey: systemSchedulerKeys.runs });
+      void qc.invalidateQueries({ queryKey: systemSchedulerKeys.tasks });
       qc.removeQueries({ queryKey: systemSchedulerKeys.runDetails, type: 'inactive' });
     },
   });
