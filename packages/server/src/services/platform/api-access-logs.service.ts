@@ -12,6 +12,7 @@ import { buildWhere, dateRangeConditions, keywordCondition, withPagination } fro
 import { isPlatformAdmin, tenantCondition } from '../../lib/tenant';
 import type { JwtPayload } from '../../middleware/auth';
 import { config } from '../../config';
+import { deleteLogRows } from './log-cleanup';
 
 export type ApiAccessLogsListFilter = Omit<QueryOutputOf<typeof apiAccessLogContract.list>, 'page' | 'pageSize'>;
 
@@ -74,5 +75,23 @@ export async function getApiAccessLog(id: number) {
   const [row] = await db.select().from(apiAccessLogs).where(and(eq(apiAccessLogs.id, id), tenantCondition(apiAccessLogs, currentUser()))).limit(1);
   requireRow(row, 'API 访问日志不存在');
   return mapApiAccessLog(row);
+}
+
+function buildCleanApiAccessLogsWhere(days: number) {
+  const user = currentUser();
+  assertApiAccessLogScope(user);
+  return buildWhere(
+    days === 0 ? undefined : lte(apiAccessLogs.createdAt, new Date(Date.now() - days * 86_400_000)),
+    tenantCondition(apiAccessLogs, user),
+  );
+}
+
+export async function getCleanApiAccessLogsBeforeAudit(days: number) {
+  return { days, total: await db.$count(apiAccessLogs, buildCleanApiAccessLogsWhere(days)) };
+}
+
+/** 与列表相同的授权范围；days=0 清除全部，冻结初始 ID 边界后分批删除。 */
+export async function cleanApiAccessLogs(days: number) {
+  return deleteLogRows(apiAccessLogs, buildCleanApiAccessLogsWhere(days));
 }
 

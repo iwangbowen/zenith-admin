@@ -26,6 +26,7 @@ exports[`路由表快照 > 完整路由表保持不变 1`] = `
   "DELETE /api/analytics/sites/:id",
   "DELETE /api/announcements/:id",
   "DELETE /api/announcements/batch",
+  "DELETE /api/api-access-logs/clean",
   "DELETE /api/api-scopes/:id",
   "DELETE /api/api-scopes/batch",
   "DELETE /api/api-tokens/:id",

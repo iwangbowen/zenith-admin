@@ -1,9 +1,9 @@
 import { sql, type SQL } from 'drizzle-orm';
 import { db } from '../../db';
 import type { DbExecutor } from '../../db/types';
-import { cronJobLogs, loginLogs, operationLogs, systemSchedulerRuns } from '../../db/schema';
+import { apiAccessLogs, cronJobLogs, loginLogs, operationLogs, systemSchedulerRuns } from '../../db/schema';
 
-type LogTable = typeof operationLogs | typeof loginLogs | typeof cronJobLogs | typeof systemSchedulerRuns;
+type LogTable = typeof apiAccessLogs | typeof operationLogs | typeof loginLogs | typeof cronJobLogs | typeof systemSchedulerRuns;
 const BATCH_SIZE = 5000;
 
 /** Freeze the initial ID boundary: clear all matching logs without chasing concurrent new writes. */

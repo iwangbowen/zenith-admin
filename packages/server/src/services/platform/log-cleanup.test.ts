@@ -4,7 +4,7 @@ import { PgDialect } from 'drizzle-orm/pg-core';
 
 const { select, execute } = vi.hoisted(() => ({ select: vi.fn(), execute: vi.fn() }));
 vi.mock('../../db', () => ({ db: { select, execute } }));
-import { operationLogs, loginLogs, cronJobLogs, systemSchedulerRuns } from '../../db/schema';
+import { apiAccessLogs, operationLogs, loginLogs, cronJobLogs, systemSchedulerRuns } from '../../db/schema';
 import { deleteLogRows } from './log-cleanup';
 
 beforeEach(() => {
@@ -30,7 +30,7 @@ describe('manual log deletion batches', () => {
       expect(compiled.params).toEqual([42, 9123, 5000]);
     }
   });
-  it.each([loginLogs, cronJobLogs, systemSchedulerRuns])('supports each log table without loading all IDs', async table => {
+  it.each([apiAccessLogs, loginLogs, cronJobLogs, systemSchedulerRuns])('supports each log table without loading all IDs', async table => {
     execute.mockResolvedValueOnce([{ id: 1 }]);
     await expect(deleteLogRows(table, undefined)).resolves.toBe(1);
     const compiled = new PgDialect({ casing: 'snake_case' }).sqlToQuery(execute.mock.calls[0][0]);

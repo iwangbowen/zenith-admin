@@ -2,9 +2,23 @@ import { apiAccessLogContract, apiAccessLogListItemSchema } from '@zenith/shared
 import { mockApiAccessLogs } from '@/mocks/data/logs';
 import { mock } from '@/mocks/utils/contract';
 import { includesKeyword, matchesFilter, withinDateRange } from '@/mocks/utils/filter';
-import { notFound } from '@/mocks/utils/handlers';
+import { forbidden, notFound, unauthorized } from '@/mocks/utils/handlers';
+import { removeWhere } from '@/mocks/utils/array';
+import { currentMockSession, isMockPlatformAdmin, mockUserPermissions } from '@/mocks/utils/auth';
+import { config } from '@/config';
 
 export const apiAccessLogsHandlers = [
+  mock(apiAccessLogContract.clean, ({ request, query, ok }) => {
+    const session = currentMockSession(request);
+    if (!session) return unauthorized('未登录', { status: 401 });
+    if (config.multiTenantMode && !isMockPlatformAdmin(session.user)) return forbidden('仅平台管理员可执行此操作', { status: 403 });
+    const permissions = mockUserPermissions(session.user);
+    if (!permissions.includes('*') && !permissions.includes('system:api-access-log:clean')) return forbidden('权限不足', { status: 403 });
+    const tenantId = config.multiTenantMode ? session.viewingTenantId ?? undefined : undefined;
+    const cutoff = new Date(Date.now() - query.days * 86_400_000);
+    const deleted = removeWhere(mockApiAccessLogs, (row) => (tenantId === undefined || row.tenantId === tenantId) && (query.days === 0 || new Date(row.createdAt) <= cutoff));
+    return ok({ deleted });
+  }),
   mock(apiAccessLogContract.list, ({ query, ok, paginate }) => {
     const list = mockApiAccessLogs.filter((row) => {
       if (!matchesFilter(row.userId, query.userId) || !matchesFilter(row.memberId, query.memberId) || !matchesFilter(row.deviceId, query.deviceId)) return false;

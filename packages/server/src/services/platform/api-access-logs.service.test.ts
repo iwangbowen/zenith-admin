@@ -7,15 +7,16 @@ import type { JwtPayload } from '../../middleware/auth';
 const state = vi.hoisted(() => ({
   config: { multiTenantMode: true },
   actor: { userId: 1, username: 'admin', roles: ['super_admin'], tenantId: null } as JwtPayload,
-  select: vi.fn(), count: vi.fn(),
+  select: vi.fn(), count: vi.fn(), remove: vi.fn(),
 }));
 vi.mock('../../config', () => ({ config: state.config }));
 vi.mock('../../db', () => ({ db: { select: state.select, $count: state.count } }));
 vi.mock('../../lib/context', () => ({ currentUser: () => state.actor }));
+vi.mock('./log-cleanup', () => ({ deleteLogRows: state.remove }));
 
 import { apiAccessLogs } from '../../db/schema';
 import { apiAccessLogListQuery } from '@zenith/shared/platform';
-import { apiAccessLogSummaryColumns, assertApiAccessLogScope, buildApiAccessLogsWhere, getApiAccessLog, listApiAccessLogs } from './api-access-logs.service';
+import { apiAccessLogSummaryColumns, assertApiAccessLogScope, buildApiAccessLogsWhere, cleanApiAccessLogs, getApiAccessLog, getCleanApiAccessLogsBeforeAudit, listApiAccessLogs } from './api-access-logs.service';
 
 const dialect = new PgDialect({ casing: 'snake_case' });
 const queryBuilder = new QueryBuilder(dialect);
@@ -38,6 +39,7 @@ beforeEach(() => {
   state.config.multiTenantMode = true;
   state.actor = { ...platform };
   state.count.mockResolvedValue(0);
+  state.remove.mockResolvedValue(7);
 });
 
 describe('API access log visibility', () => {
@@ -47,9 +49,12 @@ describe('API access log visibility', () => {
       expect(() => assertApiAccessLogScope(user)).toThrow('仅平台管理员');
       await expect(listApiAccessLogs({ page: 1, pageSize: 20 })).rejects.toMatchObject({ status: 403 });
       await expect(getApiAccessLog(42)).rejects.toMatchObject({ status: 403 });
+      await expect(cleanApiAccessLogs(0)).rejects.toMatchObject({ status: 403 });
+      await expect(getCleanApiAccessLogsBeforeAudit(0)).rejects.toMatchObject({ status: 403 });
     }
     expect(state.select).not.toHaveBeenCalled();
     expect(state.count).not.toHaveBeenCalled();
+    expect(state.remove).not.toHaveBeenCalled();
   });
 
   it('keeps platform tenant-view filtering in list and detail', async () => {
@@ -67,6 +72,34 @@ describe('API access log visibility', () => {
     state.config.multiTenantMode = false;
     state.actor = tenantAdmin;
     expect(buildApiAccessLogsWhere({})).toBeUndefined();
+  });
+});
+
+describe('API access log cleanup scope', () => {
+  it.each([0, 30, 90, 180, 365])('keeps the selected tenant and age filter in deletion and audit (days=%i)', async days => {
+    state.actor = { ...platform, viewingTenantId: 7 };
+    await expect(cleanApiAccessLogs(days)).resolves.toBe(7);
+    expect(state.remove.mock.calls[0][0]).toBe(apiAccessLogs);
+    const compiled = render(state.remove.mock.calls[0][1]);
+    expect(compiled.sql).toContain('tenant_id');
+    expect(compiled.params.at(-1)).toBe(7);
+    if (days === 0) {
+      expect(compiled.sql).not.toContain('created_at');
+      expect(compiled.params).toEqual([7]);
+    } else {
+      expect(compiled.sql).toContain('created_at');
+      expect(new Date(String(compiled.params[0])).getTime()).toBeCloseTo(Date.now() - days * 86_400_000, -3);
+    }
+    state.count.mockResolvedValueOnce(7);
+    await expect(getCleanApiAccessLogsBeforeAudit(days)).resolves.toEqual({ days, total: 7 });
+    const auditWhere = render(state.count.mock.calls[0][1]);
+    expect(auditWhere.sql).toBe(compiled.sql);
+    expect(auditWhere.params.at(-1)).toBe(7);
+  });
+
+  it('allows platform-wide clear-all without adding an age or tenant filter', async () => {
+    await cleanApiAccessLogs(0);
+    expect(state.remove).toHaveBeenCalledWith(apiAccessLogs, undefined);
   });
 });
 

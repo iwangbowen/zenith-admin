@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { operationLogCleanQuery } from '../platform/contracts/operation-logs';
 import { cronJobClearLogsQuery } from '../platform/contracts/cron-jobs';
 import { loginLogCleanQuery } from '../identity/contracts/login-logs';
+import { apiAccessLogContract } from '../platform/contracts/api-access-logs';
 
-describe.each([['operation', operationLogCleanQuery], ['login', loginLogCleanQuery], ['cron', cronJobClearLogsQuery]] as const)('%s log cleanup query', (_name, schema) => {
+describe.each([['operation', operationLogCleanQuery], ['login', loginLogCleanQuery], ['cron', cronJobClearLogsQuery], ['api-access', apiAccessLogContract.clean.query]] as const)('%s log cleanup query', (_name, schema) => {
   it('defaults to retention cleanup and accepts only explicit zero for all', () => {
     expect(schema.parse({})).toEqual({ days: 180 });
     expect(schema.parse({ days: 0 })).toEqual({ days: 0 });

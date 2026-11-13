@@ -1,11 +1,21 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import type { OutputOf } from '@zenith/shared/core';
 import { apiAccessLogContract } from '@zenith/shared/platform';
 import { mockApiAccessLogs } from '@/mocks/data/logs';
 import { apiAccessLogsHandlers } from './api-access-logs';
+import { mockDateTimeOffset } from '@/mocks/utils/date';
+import { mockAccessToken } from '@/mocks/utils/auth';
+import { config } from '@/config';
 
-async function call(path: string) {
-  const request = new Request(`${window.location.origin}${apiAccessLogContract.basePath}${path}`);
+const originalLogs = mockApiAccessLogs.map(row => ({ ...row }));
+const originalMultiTenantMode = config.multiTenantMode;
+afterEach(() => {
+  mockApiAccessLogs.splice(0, mockApiAccessLogs.length, ...originalLogs.map(row => ({ ...row })));
+  config.multiTenantMode = originalMultiTenantMode;
+});
+
+async function call(path: string, method = 'GET', token: string | null = mockAccessToken('admin')) {
+  const request = new Request(`${window.location.origin}${apiAccessLogContract.basePath}${path}`, { method, headers: token ? { Authorization: `Bearer ${token}` } : {} });
   for (const handler of apiAccessLogsHandlers) {
     const result = await (handler as unknown as { run(args: unknown): Promise<{ response?: Response } | null> }).run({ request, correlationId: `access-${path}` });
     if (result?.response) return result.response;
@@ -18,6 +28,42 @@ async function list(query = '') {
 }
 
 describe('API 访问日志 Demo', () => {
+  it('清除保留所选租户视角，不删除其他租户和平台记录', async () => {
+    config.multiTenantMode = true;
+    const response = await call('/clean?days=0', 'DELETE', mockAccessToken('admin', 2));
+    expect((await response.json()).data).toEqual({ deleted: 1 });
+    expect(mockApiAccessLogs.map(row => row.id)).toEqual([1, 2]);
+  });
+
+  it('未登录和缺少清除权限的会话不能修改日志', async () => {
+    config.multiTenantMode = false;
+    expect((await call('/clean?days=0', 'DELETE', null)).status).toBe(401);
+    expect((await call('/clean?days=0', 'DELETE', mockAccessToken('lisi'))).status).toBe(403);
+    config.multiTenantMode = true;
+    expect((await call('/clean?days=0', 'DELETE', mockAccessToken('lisi'))).status).toBe(403);
+    expect(mockApiAccessLogs).toHaveLength(originalLogs.length);
+  });
+  it('按保留期删除旧记录，保留近期记录并同步详情和列表', async () => {
+    mockApiAccessLogs[0].createdAt = mockDateTimeOffset(-400 * 86_400_000);
+    const response = await call('/clean?days=365', 'DELETE');
+    expect(response.status).toBe(200);
+    expect((await response.json()).data).toEqual({ deleted: 1 });
+    expect((await list()).total).toBe(2);
+    expect((await call('/1')).status).toBe(404);
+    expect((await call('/2')).status).toBe(200);
+  });
+
+  it('明确传入 0 才清除全部，忽略列表筛选且重复清除返回零', async () => {
+    expect((await (await call('/clean', 'DELETE')).json()).data).toEqual({ deleted: 0 });
+    expect((await (await call('/clean?days=0&path=not-matched', 'DELETE')).json()).data).toEqual({ deleted: originalLogs.length });
+    expect((await list()).total).toBe(0);
+    expect((await (await call('/clean?days=0', 'DELETE')).json()).data).toEqual({ deleted: 0 });
+  });
+
+  it.each(['', '%20', '-1', 'abc'])('非法天数 %s 返回 400 且不修改日志', async days => {
+    expect((await call(`/clean?days=${days}`, 'DELETE')).status).toBe(400);
+    expect(mockApiAccessLogs).toHaveLength(originalLogs.length);
+  });
   it('列表摘要按时间与 ID 倒序分页，不返回详情快照', async () => {
     const page = await list('?page=1&pageSize=1');
     expect(page.total).toBe(mockApiAccessLogs.length);

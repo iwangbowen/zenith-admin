@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { Tag } from '@douyinfe/semi-ui';
+import { Tag, Toast } from '@douyinfe/semi-ui';
 import {
   apiAccessLogContract, API_ACCESS_CREDENTIAL_LABELS, API_ACCESS_CREDENTIAL_OPTIONS,
   API_ACCESS_ACCESSOR_TYPE_LABELS, API_ACCESS_ACCESSOR_TYPE_OPTIONS, OPERATION_LOG_RESULT_OPTIONS,
@@ -11,7 +11,11 @@ import ExportButton from '@/components/ExportButton';
 import { ListSearchToolbar } from '@/components/list-page';
 import { FilterSelect, KeywordInput, NumberFilter } from '@/components/search-filters';
 import { useListPage } from '@/hooks/useListPage';
-import { useApiAccessLogList } from '@/hooks/queries/api-access-logs';
+import { useApiAccessLogList, useCleanApiAccessLogs } from '@/hooks/queries/api-access-logs';
+import { usePermission } from '@/hooks/usePermission';
+import { ClearLogsButtons } from '@/components/logs/ClearLogsControl';
+import { clearLogsTarget } from '@/hooks/useClearLogs';
+import { confirmDanger } from '@/utils/confirm';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { copyableNoColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { ApiAccessLogDetailSheet } from './ApiAccessLogDetailSheet';
@@ -20,12 +24,27 @@ const METHOD_OPTIONS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEA
 
 export default function ApiAccessLogsPage() {
   const [detailId, setDetailId] = useState<number>();
+  const { hasPermission } = usePermission();
+  const cleanLogsMutation = useCleanApiAccessLogs();
   const page = useListPage({
     contract: apiAccessLogContract,
     useList: useApiAccessLogList,
     pageSize: 20,
     table: { empty: '暂无 API 访问记录' },
   });
+  const handleClearLogs = (days: number) => {
+    confirmDanger({
+      title: `清除${clearLogsTarget(days, 'API 访问日志')}`,
+      content: `将永久删除当前授权范围内${clearLogsTarget(days, 'API 访问日志')}，不受列表筛选条件限制。此操作不可恢复。`,
+      okText: '确认清除',
+      onOk: async () => {
+        const { deleted } = await cleanLogsMutation.mutateAsync({ query: { days } });
+        Toast.success(`共删除 ${deleted} 条 API 访问日志`);
+        setDetailId(undefined);
+        page.resetPage();
+      },
+    });
+  };
   const columns = useMemo<ColumnProps<ApiAccessLogListItem>[]>(() => [
     { title: 'ID', dataIndex: 'id', width: 80 },
     { title: '访问人 / 调用方', dataIndex: 'accessorName', width: 180, render: (v: string | null, row) => renderEllipsis(v ?? API_ACCESS_ACCESSOR_TYPE_LABELS[row.accessorType]) },
@@ -71,8 +90,14 @@ export default function ApiAccessLogsPage() {
           minDurationMs: (p) => <NumberFilter placeholder="耗时 ≥ (ms)" min={0} {...p.bind('minDurationMs')} />,
           maxDurationMs: (p) => <NumberFilter placeholder="耗时 ≤ (ms)" min={0} {...p.bind('maxDurationMs')} />,
         }}
-        actions={<ExportButton entity="system.api-access-logs" query={page.filterQuery} permission="system:api-access-log:export" executionMode="auto" />}
+        actions={(
+          <>
+            <ExportButton entity="system.api-access-logs" query={page.filterQuery} permission="system:api-access-log:export" executionMode="auto" />
+            {hasPermission('system:api-access-log:clean') && <ClearLogsButtons loading={cleanLogsMutation.isPending} onClear={handleClearLogs} allowClearAll />}
+          </>
+        )}
         filterTitle="API 访问日志筛选"
+        actionTitle="日志操作"
       />
       <ConfigurableTable<ApiAccessLogListItem> columns={columns} {...page.tableProps} />
       <ApiAccessLogDetailSheet id={detailId} onClose={() => setDetailId(undefined)} />

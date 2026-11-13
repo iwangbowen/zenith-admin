@@ -1,4 +1,5 @@
 [
+  "DELETE /api/api-access-logs/clean",
   "DELETE /api/cache",
   "DELETE /api/cache/all",
   "DELETE /api/cache/batch",

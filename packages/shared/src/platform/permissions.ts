@@ -42,6 +42,7 @@ export const PLATFORM_PERMISSIONS = definePermissions({
   'system:log:operation': { label: '查询', menu: 'SystemOperationLogs' },
   'system:api-access-log:list': { label: '查询', menu: 'SystemApiAccessLogs' },
   'system:api-access-log:export': { label: '导出', menu: 'SystemApiAccessLogs' },
+  'system:api-access-log:clean': { label: '清除日志', menu: 'SystemApiAccessLogs' },
   'system:trace:view': { label: '查询', menu: 'SystemTrace' },
   'system:exception-log:list': { label: '查询', menu: 'SystemExceptionLogs' },
   'system:exception-log:manage': { label: '处理 / 删除 / 告警规则', menu: 'SystemExceptionLogs' },

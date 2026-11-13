@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeQuery, idParam, idQuery, keywordQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { dateRangeQuery, idParam, idQuery, keywordQuery, logCleanupDaysQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { API_ACCESS_ACCESSOR_TYPES, API_ACCESS_CREDENTIAL_TYPES, OPERATION_LOG_RESULTS } from '../constants';
 
@@ -75,6 +75,7 @@ export const apiAccessLogListQuery = paginationQuery.extend({
 
 export const apiAccessLogContract = defineContract('/api/api-access-logs', {
   list: op.get('/', { access: { permission: 'system:api-access-log:list', platformOnly: 'multi-tenant' }, query: apiAccessLogListQuery, response: paginated(apiAccessLogListItemSchema), summary: 'API 访问日志分页列表' }),
+  clean: op.delete('/clean', { access: { permission: 'system:api-access-log:clean', platformOnly: 'multi-tenant' }, audit: '清除 API 访问日志', query: z.object({ days: logCleanupDaysQuery }), response: z.object({ deleted: z.int().nonnegative() }), summary: '清除当前授权范围内的 API 访问日志' }),
   detail: op.get('/{id}', { access: { permission: 'system:api-access-log:list', platformOnly: 'multi-tenant' }, params: idParam, response: apiAccessLogSchema, summary: 'API 访问日志详情' }),
 }, { auditModule: 'API 访问日志', tags: ['ApiAccessLogs'] });
 
