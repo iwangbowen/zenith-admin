@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Banner, Radio, RadioGroup, Select, Tag, Typography } from '@douyinfe/semi-ui';
 import { CircleCheck, CircleSlash, Fingerprint, Globe, KeyRound, Layers, Lock, ShieldCheck } from 'lucide-react';
 import { judgeOperation, type OperationVerdict, type PermissionSubject } from '@zenith/shared/permission-catalog-core';
@@ -71,7 +71,9 @@ export default function ApiCatalogPage() {
   const permissionLabels = catalogQuery.data?.permissionLabels ?? NO_LABELS;
   const byPermission = useMemo(() => rowsByPermission(rows), [rows]);
   const stats = useMemo(() => summarizeCatalog(rows), [rows]);
-  const loading = catalogQuery.isPending;
+  const loading = catalogQuery.isFetching;
+  const { refetch: refetchCatalog } = catalogQuery;
+  const refreshCatalog = useCallback(() => { void refetchCatalog(); }, [refetchCatalog]);
 
   const rolesQuery = useRolePermissionSets();
   const userQuery = useUserPermissionSet(subjectKind === 'user' ? userId : null);
@@ -223,6 +225,8 @@ export default function ApiCatalogPage() {
         permissionLabels={permissionLabels}
         pagination={pagination}
         loading={loading}
+        onRefresh={refreshCatalog}
+        refreshLoading={catalogQuery.isFetching}
         onOpen={setSelected}
         verdictOf={verdictOf}
       />

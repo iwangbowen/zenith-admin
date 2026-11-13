@@ -126,6 +126,8 @@ export interface ApiCatalogTableProps {
   readonly permissionLabels: PermissionLabels;
   readonly pagination: PaginationProps;
   readonly loading?: boolean;
+  readonly onRefresh?: () => void;
+  readonly refreshLoading?: boolean;
   readonly onOpen: (row: CatalogRow) => void;
   /** 选中查看主体后传入即追加「可调用」列；非登录令牌接口不经权限码门禁，返回 null 显示「不适用」 */
   readonly verdictOf?: (row: CatalogRow) => OperationVerdict | null;
@@ -135,7 +137,7 @@ export interface ApiCatalogTableProps {
  * 目录表格。memo：页面因输入草稿 / 开关详情抽屉重渲染时不跟着重渲染——
  * 调用方须传稳定引用（`pageRows` / `pagination` / `verdictOf` 均已 memo，`onOpen` 为 setState）
  */
-export const ApiCatalogTable = memo(function ApiCatalogTable({ rows, permissionLabels, pagination, loading, onOpen, verdictOf }: ApiCatalogTableProps) {
+export const ApiCatalogTable = memo(function ApiCatalogTable({ rows, permissionLabels, pagination, loading, onRefresh, refreshLoading, onOpen, verdictOf }: ApiCatalogTableProps) {
   const onRow = useCallback((row?: CatalogRow) => ({ onClick: () => { if (row) onOpen(row); }, style: { cursor: 'pointer' } }), [onOpen]);
   const columns = useMemo<ColumnProps<CatalogRow>[]>(() => [
     { title: '模块', dataIndex: 'domainLabel', width: 110 },
@@ -180,6 +182,8 @@ export const ApiCatalogTable = memo(function ApiCatalogTable({ rows, permissionL
       dataSource={rows as CatalogRow[]}
       pagination={pagination}
       loading={loading}
+      onRefresh={onRefresh}
+      refreshLoading={refreshLoading}
       empty="没有符合条件的接口"
       onRow={onRow}
     />
