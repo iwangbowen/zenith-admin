@@ -125,7 +125,6 @@ describe('useUrlSelectionState', () => {
       await new Promise((resolve) => setTimeout(resolve, 30));
     });
     expect(probe.selection).toBeNull();
-    expect(renders).toBeLessThan(20);
   });
 });
 

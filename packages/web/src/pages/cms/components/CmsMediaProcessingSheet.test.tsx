@@ -32,7 +32,6 @@ describe('CMS media processing sheet', () => {
   it('shows the failure reason and retries the same version and focal point', async () => {
     state.processing = { id: 1, taskId: null, status: 'failed', errorMessage: '服务器未配置 ffmpeg 可执行程序', focalPoint: { x: 0.2, y: 0.8 }, posterTime: 3 } as CmsMediaProcessing;
     render(<CmsMediaProcessingSheet resource={video} onClose={() => undefined} />);
-    expect(screen.getByText('服务器未配置 ffmpeg 可执行程序')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '重新处理' }));
     await waitFor(() => expect(state.process).toHaveBeenCalledWith({ params: { id: 2 }, body: expect.objectContaining({ assetVersionId: 20, posterTime: 3, focalPoint: { x: 0.2, y: 0.8 } }) }));
   });

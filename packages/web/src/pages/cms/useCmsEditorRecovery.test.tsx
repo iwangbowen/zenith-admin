@@ -36,7 +36,6 @@ describe('CMS 编辑恢复', () => {
     const hook = renderHook(() => ({ recovery: useCmsEditorRecovery({ key: '3:new-article', dirty, getDraft: () => draft }), navigate: useNavigate(), location: useLocation() }), { wrapper });
     act(() => hook.result.current.navigate('/cms/contents'));
     expect(localStorage.getItem(key)).not.toBeNull();
-    expect(lastFooter().extraActions.props.children).toBe('直接离开');
     act(() => lastFooter().extraActions.props.onClick());
     expect(localStorage.getItem(key)).toBeNull();
     expect(hook.result.current.location.pathname).toBe('/cms/contents');

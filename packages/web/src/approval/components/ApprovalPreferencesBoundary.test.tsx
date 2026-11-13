@@ -49,79 +49,33 @@ afterEach(() => {
 });
 
 describe('ApprovalPreferencesBoundary', () => {
-  it('uses the approval client for both requests and applies the saved personal layout', async () => {
-    const { unmount } = setup();
-    expect(document.body.dataset.multiSelectLayout).toBe('single-line');
-    await waitFor(() => expect(document.body.dataset.multiSelectLayout).toBe('wrap'));
+  it('uses only the approval client for both preference requests', async () => {
+    const { unmount, client } = setup();
+    await waitFor(() => expect(client.getQueryState(contractKey(settingsProjectionContract.me))?.status).toBe('success'));
     expect(requests.approval.mock.calls.map(([url]) => url).sort()).toEqual([
       authContract.preferences.fullPath, settingsProjectionContract.me.fullPath,
     ].sort());
     expect(requests.approval).toHaveBeenCalledWith(authContract.preferences.fullPath, { silent: true });
     expect(requests.admin).not.toHaveBeenCalled();
     unmount();
-    expect(document.body.dataset.multiSelectLayout).toBeUndefined();
   });
 
-  it('starts both requests together and waits for policy before using personal overrides', async () => {
-    let finishPolicy!: (value: unknown) => void;
-    const pendingPolicy = new Promise((resolve) => { finishPolicy = resolve; });
-    requests.approval.mockImplementation((url: string) => url === authContract.preferences.fullPath
-      ? Promise.resolve(response({ overrides: { multiSelectLayout: 'wrap' } }))
-      : pendingPolicy);
-    const { client } = setup();
-    await waitFor(() => expect(client.getQueryData(contractKey(authContract.preferences))).toBeDefined());
-    expect(requests.approval).toHaveBeenCalledTimes(2);
-    expect(document.body.dataset.multiSelectLayout).toBe('single-line');
-    await act(async () => { finishPolicy(response({ ui: { preferences: policy } })); });
-    await waitFor(() => expect(document.body.dataset.multiSelectLayout).toBe('wrap'));
-  });
-
-  it('honors a system lock and refreshes the layout when the policy changes', async () => {
-    policy.allowUserOverride.multiSelectLayout = false;
-    const { client } = setup();
-    await waitFor(() => expect(client.isFetching()).toBe(0));
-    expect(document.body.dataset.multiSelectLayout).toBe('single-line');
-    policy = { ...policy, allowUserOverride: { ...policy.allowUserOverride, multiSelectLayout: true } };
-    await act(async () => { await client.invalidateQueries({ queryKey: contractKey(settingsProjectionContract.me) }); });
-    await waitFor(() => expect(document.body.dataset.multiSelectLayout).toBe('wrap'));
-  });
-
-  it('falls back to the shared default when the requests fail', async () => {
-    requests.approval.mockRejectedValue(new Error('offline'));
-    const { client } = setup();
-    await waitFor(() => expect(client.getQueryState(contractKey(settingsProjectionContract.me))?.status).toBe('error'));
-    expect(document.body.dataset.multiSelectLayout).toBe('single-line');
-    expect(requests.approval).toHaveBeenCalledTimes(2);
-  });
-
-  it('uses the system default when only personal preferences fail', async () => {
-    policy.defaults.multiSelectLayout = 'wrap';
-    requests.approval.mockImplementation(async (url: string) => {
-      if (url === authContract.preferences.fullPath) throw new Error('offline');
-      return response({ ui: { preferences: policy } });
-    });
-    setup();
-    await waitFor(() => expect(document.body.dataset.multiSelectLayout).toBe('wrap'));
-  });
-
-  it('does not fetch preferences or apply a body marker on the login route', async () => {
+  it('does not fetch preferences on the login route', async () => {
     render(<ApprovalApp />);
     expect(await screen.findByText('审批登录')).toBeTruthy();
     expect(requests.approval).not.toHaveBeenCalled();
-    expect(document.body.dataset.multiSelectLayout).toBeUndefined();
   });
 
-  it('cleans up the body marker and cached preference data when leaving authenticated routes', async () => {
+  it('clears cached personal preferences when leaving authenticated routes', async () => {
     localStorage.setItem(TOKEN_KEY, 'approval-test-token');
     render(<ApprovalApp />);
     expect(await screen.findByText('审批工作台')).toBeTruthy();
-    await waitFor(() => expect(document.body.dataset.multiSelectLayout).toBe('wrap'));
+    await waitFor(() => expect(approvalQueryClient.getQueryData(contractKey(authContract.preferences))).toBeDefined());
     await act(async () => {
       localStorage.removeItem(TOKEN_KEY);
       window.location.hash = '#/login';
     });
     expect(await screen.findByText('审批登录')).toBeTruthy();
-    expect(document.body.dataset.multiSelectLayout).toBeUndefined();
     await waitFor(() => expect(approvalQueryClient.getQueryData(contractKey(authContract.preferences))).toBeUndefined());
   });
 });

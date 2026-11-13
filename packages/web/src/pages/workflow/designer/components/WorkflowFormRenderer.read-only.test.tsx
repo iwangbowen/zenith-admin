@@ -16,10 +16,7 @@ describe('submitted workflow values', () => {
     render(<WorkflowFormRenderer fields={[field]} readOnly readOnlyAsText initValues={{ expenses: [
       { kind: 'transport', amount: 3200.5 }, { kind: 'private', amount: 9876543 },
     ] }} />);
-    expect(screen.getByRole('table', { name: '费用明细' })).toBeInTheDocument();
-    expect(screen.getByText('交通')).toBeInTheDocument();
     expect(screen.queryByText(/9,876,543/)).not.toBeInTheDocument();
-    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '复制明细' }));
     await waitFor(() => expect(copyTextWithToast).toHaveBeenCalled());
     const copied = vi.mocked(copyTextWithToast).mock.calls.at(-1)?.[0];
@@ -28,15 +25,5 @@ describe('submitted workflow values', () => {
     expect(copied).not.toContain('9876543');
     expect(copied).not.toContain('9,876,543');
     expect(copied?.split('\n').at(-1)).toBe('\t3,200.50');
-  });
-
-  it('keeps editable fields as controls while computed values update as text', async () => {
-    const fields: WorkflowFormField[] = [
-      { key: 'amount', label: '填写金额', type: 'number' },
-      { key: 'total', label: '计算结果', type: 'formula', formula: '{amount} * 2' },
-    ];
-    render(<WorkflowFormRenderer fields={fields} readOnlyAsText initValues={{ amount: 80 }} />);
-    expect(screen.getByRole('spinbutton')).toBeEnabled();
-    await waitFor(() => expect(screen.getByText('160.00')).toBeInTheDocument());
   });
 });

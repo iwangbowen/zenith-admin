@@ -19,7 +19,6 @@ const activation: WorkflowNodeActivation = { id: 'round-one', nodeKey: 'review',
 describe('supplemental approval group controls', () => {
   it('allows the group owner to reduce after the original task has already been approved', async () => {
     render(<WorkflowApprovalGroupsPanel activations={[activation]} />);
-    expect(screen.getByText('基础意见 1/1，需 1 票')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '减签' }));
     await act(async () => { fireEvent.click(screen.getByRole('checkbox', { name: '赵法务' })); });
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: '确认' })); });

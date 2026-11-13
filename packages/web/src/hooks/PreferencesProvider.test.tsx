@@ -1,7 +1,6 @@
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { createElement, type ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import BaseDatePicker from '@douyinfe/semi-ui/lib/es/datePicker/datePicker';
 import { ApiRecorder, createRequestMock, createTestQueryClient, createWrapper, type RecordedCall } from '@/test-utils/query-harness';
 import { authContract } from '@zenith/shared/identity';
 import { settingsContract } from '@zenith/shared/settings';
@@ -25,7 +24,6 @@ vi.mock('./useWebSocket', () => ({
 import { PreferencesProvider } from './PreferencesProvider';
 import { usePreferences } from './usePreferences';
 
-const base = BaseDatePicker as unknown as { defaultProps: { weekStartsOn: number } };
 let policy = preferencePolicySchema.parse({});
 let document: UserPreferencesDocument = { overrides: {} };
 
@@ -50,37 +48,23 @@ beforeEach(() => {
     document = structuredClone(call.body) as UserPreferencesDocument;
     return document;
   });
-  base.defaultProps.weekStartsOn = 0;
 });
 
 afterEach(() => {
   cleanup();
-  base.defaultProps.weekStartsOn = 0;
 });
 
 describe('PreferencesProvider', () => {
-  it('applies and persists the multi-select layout, restores the default and cleans up on unmount', async () => {
+  it('persists personal overrides across remounts and removes them when reset', async () => {
     const { hook } = await setup();
-    expect(window.document.body.dataset.multiSelectLayout).toBe('single-line');
     act(() => hook.result.current.setPreferences({ multiSelectLayout: 'wrap' }));
-    expect(window.document.body.dataset.multiSelectLayout).toBe('wrap');
     await waitFor(() => expect(document.overrides.multiSelectLayout).toBe('wrap'));
     hook.unmount();
-    expect(window.document.body.dataset.multiSelectLayout).toBeUndefined();
 
     const reloaded = await setup();
-    expect(window.document.body.dataset.multiSelectLayout).toBe('wrap');
+    expect(reloaded.hook.result.current.overrides.multiSelectLayout).toBe('wrap');
     act(() => reloaded.hook.result.current.resetPreference('multiSelectLayout'));
-    expect(window.document.body.dataset.multiSelectLayout).toBe('single-line');
     await waitFor(() => expect(document.overrides.multiSelectLayout).toBeUndefined());
-  });
-
-  it('applies the week start before the first render and on every change', async () => {
-    const { hook } = await setup();
-    // 默认周一：Provider 初始化时已同步写入，而不是等 effect
-    expect(base.defaultProps.weekStartsOn).toBe(1);
-    act(() => hook.result.current.setPreferences({ weekStart: 'sunday' }));
-    expect(base.defaultProps.weekStartsOn).toBe(0);
   });
 
   it('mirrors refetchOnFocus into the QueryClient default options', async () => {

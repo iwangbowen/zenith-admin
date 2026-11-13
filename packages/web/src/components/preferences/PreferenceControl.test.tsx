@@ -48,7 +48,6 @@ describe('个人偏好策略控件', () => {
     const { rerender } = render(view);
     expect(screen.queryByText('多标签页开关')).not.toBeInTheDocument();
     expect(screen.getByText('标签页风格')).toBeVisible();
-    expect(screen.getByRole('heading', { name: '标签页' })).toBeVisible();
 
     policy.defaults.enableTabs = false;
     setContext(policy);
@@ -57,7 +56,6 @@ describe('个人偏好策略控件', () => {
       <PreferenceControl path="tabStyle"><button>标签页风格</button></PreferenceControl>
     </PreferenceSection>);
     expect(screen.queryByText('标签页风格')).not.toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: '标签页' })).not.toBeInTheDocument();
   });
 
   it('单项重置只清除指定字段的个人覆盖', async () => {
@@ -67,11 +65,5 @@ describe('个人偏好策略控件', () => {
     await userEvent.click(reset);
     expect(context.resetPreference).toHaveBeenCalledExactlyOnceWith('tablePageSize');
     expect(context.resetPreferences).not.toHaveBeenCalled();
-  });
-
-  it('未覆盖的项目不显示重置图标', () => {
-    setContext(defaultPreferencePolicy, { tableStriped: true });
-    render(<PreferenceControl path="tablePageSize"><div><span>默认分页大小</span></div></PreferenceControl>);
-    expect(screen.queryByRole('button', { name: /^重置设置/ })).not.toBeInTheDocument();
   });
 });

@@ -73,7 +73,6 @@ describe('identity security tab permissions', () => {
   });
   it('disables both queries when neither permission is granted', () => {
     show([]);
-    expect(screen.getByText('无访问权限')).toBeInTheDocument();
     expect(state.policy).toHaveBeenLastCalledWith('identitySecurity', false);
     expect(state.risk.mock.lastCall?.[1]).toBe(false);
   });

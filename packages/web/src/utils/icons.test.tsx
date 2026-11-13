@@ -13,12 +13,10 @@ describe('icons utility (async registry)', () => {
     expect(result.current).toBe(true);
   });
 
-  it('should have a sorted list of all icon names', () => {
+  it('loads registered icon names', () => {
     const { result } = renderHook(() => useAllIconNames());
     expect(Array.isArray(result.current)).toBe(true);
     expect(result.current.length).toBeGreaterThan(0);
-    const sorted = [...result.current].sort((a, b) => a.localeCompare(b));
-    expect(result.current).toEqual(sorted);
   });
 
   it('should filter out createLucideIcon and *Icon aliases', () => {

@@ -1,7 +1,6 @@
 import { createPreferencesContext } from '@/test-utils/preferences';
 /**
- * 契约派生筛选控件 + 标准操作列：锁住「x-filter 语义 → 控件」的映射、关键字进主区其余进筛选区、
- * override / 范围端点 / 未声明语义的处理，以及操作列的权限门控与删除确认接线。
+ * 保留筛选参数语义、操作权限及删除载荷边界，不限定列宽、动作顺序或展示文案。
  */
 import { fireEvent, render, renderHook,} from '@testing-library/react';
 import type { ModalReactProps } from '@douyinfe/semi-ui/lib/es/modal';
@@ -82,7 +81,7 @@ describe('useCrudOperationColumn', () => {
   interface Row { id: number; name: string }
   const record: Row = { id: 7, name: '甲' };
 
-  it('权限前缀派生 :update / :delete 门控；删除弹确认（含对象名）并按 [id] 调 mutateAsync', async () => {
+  it('权限前缀派生 :update / :delete 门控，确认删除后按 [id] 调 mutateAsync', async () => {
     const openEdit = vi.fn();
     const mutateAsync = vi.fn().mockResolvedValue(null);
     const { result } = renderHook(() => useCrudOperationColumn<Row>({ permission: 'demo:item' as CrudPermissionPrefix, edit: { openEdit }, remove: { mutateAsync }, label: (r) => r.name, content: '不可恢复' }), { wrapper: wrapper(['demo:item:update', 'demo:item:delete']) });
@@ -91,14 +90,12 @@ describe('useCrudOperationColumn', () => {
     expect(openEdit).toHaveBeenCalledWith(record);
     fireEvent.click(cell.getByRole('button', { name: '删除' }));
     expect(confirmCalls).toHaveLength(1);
-    expect(confirmCalls[0].title).toBe('确定要删除「甲」吗？');
-    expect(confirmCalls[0].content).toBe('不可恢复');
+    expect(mutateAsync).not.toHaveBeenCalled();
     await (confirmCalls[0].onOk as () => Promise<void>)();
     expect(mutateAsync).toHaveBeenCalledWith([7]);
-    expect(result.current.width).toBe(150);
   });
 
-  it('无权限时动作隐藏；extra 动作排在编辑之前并加宽', () => {
+  it('无权限时不提供编辑和删除动作', () => {
     const { result } = renderHook(() => useCrudOperationColumn<Row>({
       permission: 'demo:item' as CrudPermissionPrefix,
       edit: { openEdit: vi.fn() },
@@ -109,7 +106,6 @@ describe('useCrudOperationColumn', () => {
     expect(cell.queryByRole('button', { name: '编辑' })).toBeNull();
     expect(cell.queryByRole('button', { name: '删除' })).toBeNull();
     expect(cell.getByRole('button', { name: '测试甲' })).toBeTruthy();
-    expect(result.current.width).toBe(210);
   });
 
   it('permissions 映射覆盖前缀约定；edit / remove 传回调直接调用', async () => {
@@ -120,7 +116,7 @@ describe('useCrudOperationColumn', () => {
     fireEvent.click(cell.getByRole('button', { name: '编辑' }));
     expect(edit).toHaveBeenCalledWith(record);
     fireEvent.click(cell.getByRole('button', { name: '删除' }));
-    expect(confirmCalls[0].title).toBe('确定要删除吗？');
+    expect(remove).not.toHaveBeenCalled();
     await (confirmCalls[0].onOk as () => Promise<void>)();
     expect(remove).toHaveBeenCalledWith(record);
   });

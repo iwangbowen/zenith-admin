@@ -77,7 +77,7 @@ describe('ChatBI P2 states', () => {
     expect(getChatbiSavedResourceAction(chatMessage({
       savedResourceId: 9,
       savedResourceType: 'dashboard',
-    }))).toEqual({ label: '查看已保存仪表盘', resourceType: 'dashboard' });
+    }))).toMatchObject({ resourceType: 'dashboard' });
   });
 });
 

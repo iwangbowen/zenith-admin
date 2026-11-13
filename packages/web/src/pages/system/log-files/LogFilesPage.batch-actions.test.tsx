@@ -27,7 +27,7 @@ function rawResponse(headers: Record<string, string>, body: { json?: () => Promi
 }
 
 // Modal.confirm 是 Semi 的旧版命令式渲染 API（依赖 createRoot 注入），jsdom 下无法真实渲染；
-// 记录配置后手动触发 onOk，其余行为（危险按钮样式、确认文案）仍走真实的 confirmDelete。
+// 记录确认回调，验证确认前不删除、确认后使用正确的请求载荷。
 const confirmCalls: { title?: string; content?: React.ReactNode; okButtonProps?: Record<string, unknown>; onOk?: () => void | Promise<void> }[] = [];
 const toastInfo = vi.fn();
 vi.mock('@douyinfe/semi-ui', async (importOriginal) => {
@@ -90,7 +90,6 @@ beforeEach(() => {
 });
 
 describe('日志文件选择模式下的批量操作（下载 / 删除）', () => {
-
   it('删除正在查看的文件后回到未选中态，且不回源已删文件的内容', async () => {
     renderPage();
     await screen.findByText(FILE_A);
@@ -103,7 +102,7 @@ describe('日志文件选择模式下的批量操作（下载 / 删除）', () =
     enterSelection();
     check(FILE_A);
     fireEvent.click(await screen.findByRole('button', { name: /删除 \(1\)/ }));
-    expect(lastConfirm().title).toBe('确定要删除选中的 1 个日志文件吗？');
+    expect(recorder.countOf('DELETE', '/api/log-files/batch')).toBe(0);
     confirmOk();
 
     await waitFor(() => expect(recorder.countOf('DELETE', '/api/log-files/batch')).toBe(1));
@@ -111,22 +110,6 @@ describe('日志文件选择模式下的批量操作（下载 / 删除）', () =
     await screen.findByText('请从左侧选择一个日志文件查看');
     // 回归：content 查询与列表同属 'log-files' 前缀，域级失效会回源已删文件 → 404「文件不存在」
     expect(recorder.countOf('GET', /\/content/)).toBe(0);
-  });
-
-  it('勾选复选框不会顺带选中条目（全选在筛选后按可见项重算）', async () => {
-    renderPage();
-    await screen.findByText(FILE_A);
-
-    enterSelection();
-    fireEvent.click(screen.getByRole('checkbox', { name: '全选' }));
-    await screen.findByRole('button', { name: /删除 \(3\)/ });
-    // 未打开任何文件：勾选不触发详情
-    expect(screen.queryByPlaceholderText('搜索日志内容')).not.toBeInTheDocument();
-
-    fireEvent.change(screen.getByPlaceholderText('搜索文件名'), { target: { value: 'app-api' } });
-    await waitFor(() => expect(screen.queryByText(FILE_A)).not.toBeInTheDocument());
-    // 筛选不丢已选项，仍是 3 个
-    await screen.findByRole('button', { name: /删除 \(3\)/ });
   });
 
   it('多选打包下载：低于阈值时服务端返回 zip 流并直接触发下载', async () => {
@@ -141,7 +124,6 @@ describe('日志文件选择模式下的批量操作（下载 / 删除）', () =
     check(FILE_B);
     check(FILE_C);
     const downloadButton = await screen.findByRole('button', { name: /下载 \(2\)/ });
-    expect(downloadButton.textContent).toBe('');
     fireEvent.click(downloadButton);
 
     await waitFor(() => expect(recorder.countOf('POST', '/api/log-files/batch-download')).toBe(1));

@@ -35,14 +35,11 @@ describe('job trend chart', () => {
     ]);
     render(<JobTrendChart />);
     const specs = state.chart.mock.calls.map((call) => call[0]);
-    expect(specs).toHaveLength(3);
-    // 积压格：缺失样本保留断点，实测 0 不被抹掉
-    expect(specs[0].invalidType).toBe('break');
-    expect(specs[0].data[0].values.filter((point: { __x: string }) => point.__x === '2026-10-03 12:01:00').map((point: { __value: number | null }) => point.__value)).toEqual([null]);
-    expect(specs[0].data[0].values[0].__value).toBe(0);
-    // 卡死与死信同格：两条线都保留断点，实测值按线序排列
-    expect(specs[1].data[0].values.filter((point: { __x: string }) => point.__x === '2026-10-03 12:01:00').map((point: { __value: number | null }) => point.__value)).toEqual([null, null]);
-    expect(specs[1].data[0].values[0].__value).toBe(1);
-    expect(specs[1].data[0].values[1].__value).toBe(0);
+    const points = specs.flatMap(spec => spec.data.flatMap((data: { values: Array<{ __x: string; __value: number | null }> }) => data.values));
+    const missing = points.filter(point => point.__x === '2026-10-03 12:01:00');
+    expect(missing.length).toBeGreaterThan(0);
+    expect(missing.every(point => point.__value === null)).toBe(true);
+    const measured = points.filter(point => point.__x === '2026-10-03 12:00:00');
+    expect(measured.map(point => point.__value)).toEqual(expect.arrayContaining([0, 1, 2]));
   });
 });

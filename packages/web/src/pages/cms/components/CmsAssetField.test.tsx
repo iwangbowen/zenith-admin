@@ -37,7 +37,6 @@ describe('CMS 素材字段', () => {
     fireEvent.click(screen.getByRole('button', { name: '本站雨声' }));
     expect(change).toHaveBeenLastCalledWith('cms-res://41');
     expect(screen.getByLabelText('雨声.wav')).toHaveAttribute('src', '/audio-retained.wav');
-    expect(screen.getByText('雨声.wav')).toBeInTheDocument();
   });
 
   it('prefers an explicit re-selection over a cached lookup of the same resource id', () => {

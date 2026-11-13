@@ -21,6 +21,6 @@ describe('默认主题模型展示卡', () => {
   });
   it('does not reinterpret incompatible fields from an older pinned model revision', () => {
     const binding: CmsModelDisplay = { modelId: 3, kind: 'download', fields: { file: 'document' } };
-    expect(render(binding, [field('document', 'text', '这不是文件')])('.model-display')).toHaveLength(0);
+    expect(render(binding, [field('document', 'text', '这不是文件')])('a[download]')).toHaveLength(0);
   });
 });

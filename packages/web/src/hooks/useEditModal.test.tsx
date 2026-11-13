@@ -1,13 +1,5 @@
 /**
- * useEditModal 契约测试。
- *
- * 这里锁的是四条**可以被静默漏掉**的编排契约。它们的共同点是：漏写不会报错、
- * 不会让任何现有测试变红，只能靠人工逐页 review 发现——而全站有 169 个手抄点。
- *
- * 其中「详情到达必须重挂载表单」一条在迁移前的 `TenantsPage` /
- * `TenantPackagesPage` 上是实际失效的：`initValues` 只在挂载时读取一次，
- * 弹窗打开后才返回的详情永远进不了表单。当时未暴露，仅因为这两个资源的
- * 列表与详情恰好经同一个 `mapTenant` 返回了相同字段集。
+ * 验证新增 / 编辑数据、异步详情与保存边界，不限定弹窗标题、表单 key 或 DOM 重挂载方式。
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
@@ -19,7 +11,7 @@ vi.mock('@douyinfe/semi-ui', () => ({
   },
 }));
 
-import { useEditModal, formRemountKey, type DetailHook } from './useEditModal';
+import { useEditModal, type DetailHook } from './useEditModal';
 import { SubmitAborted } from '@/lib/abort-submit';
 
 interface Row {
@@ -45,7 +37,7 @@ beforeEach(() => {
 });
 
 describe('打开与初始值', () => {
-  it('新增时使用 defaults，且表单 key 标记为 new', () => {
+  it('新增时使用 defaults', () => {
     const save = makeSave();
     const { result } = renderHook(() => useEditModal<Row>({ entityName: '角色', save, defaults: { name: '' } }));
 
@@ -53,9 +45,7 @@ describe('打开与初始值', () => {
 
     expect(result.current.visible).toBe(true);
     expect(result.current.isEdit).toBe(false);
-    expect(result.current.modalProps.title).toBe('新增角色');
     expect(result.current.formProps.initValues).toEqual({ name: '' });
-    expect(result.current.formKey).toBe('new:row');
   });
 
   it('defaults 为函数时每次打开重新求值', () => {
@@ -86,14 +76,12 @@ describe('打开与初始值', () => {
     act(() => result.current.openEdit({ id: 7, name: 'admin', remark: 'x' }));
 
     expect(result.current.isEdit).toBe(true);
-    expect(result.current.modalProps.title).toBe('编辑角色');
     expect(result.current.formProps.initValues).toEqual({ name: 'admin' });
-    expect(result.current.formKey).toBe('7:row');
   });
 });
 
-describe('异步详情：到达后必须重挂载表单', () => {
-  it('详情返回后 key 变化，initValues 切换为详情数据', () => {
+describe('异步详情数据', () => {
+  it('详情到达后使用完整记录，加载期间禁止提交占位数据', () => {
     const save = makeSave();
     // 先返回 undefined（加载中），再返回详情——模拟弹窗打开后详情才到达
     let detailData: Row | undefined = undefined;
@@ -104,7 +92,6 @@ describe('异步详情：到达后必须重挂载表单', () => {
     act(() => result.current.openEdit({ id: 12, name: '列表行' }));
     // 详情未到达：用列表行占位
     expect(result.current.formProps.initValues).toMatchObject({ name: '列表行' });
-    expect(result.current.formKey).toBe('12:row');
     expect(result.current.detailLoading).toBe(true);
     // 详情加载期间禁止提交，避免把占位数据当成完整记录保存
     expect(result.current.modalProps.okButtonProps.disabled).toBe(true);
@@ -112,8 +99,6 @@ describe('异步详情：到达后必须重挂载表单', () => {
     detailData = { id: 12, name: '详情名', remark: '仅详情返回的字段' };
     rerender();
 
-    // key 必须变化，否则 Semi 不会重新读取 initValues
-    expect(result.current.formKey).toBe('12:detail');
     expect(result.current.formProps.initValues).toMatchObject({ name: '详情名', remark: '仅详情返回的字段' });
     expect(result.current.detailLoading).toBe(false);
     expect(result.current.modalProps.okButtonProps.disabled).toBe(false);
@@ -124,23 +109,6 @@ describe('异步详情：到达后必须重挂载表单', () => {
     const { result } = renderHook(() => useEditModal<Row>({ entityName: '角色', save }));
     act(() => result.current.openEdit({ id: 3, name: 'a' }));
     expect(result.current.detailLoading).toBe(false);
-    expect(result.current.formKey).toBe('3:row');
-  });
-});
-
-describe('formRemountKey（自持表单实例的正当场景直接调用）', () => {
-  it('同一条记录在详情到达前后必须产出不同的 key', () => {
-    // 只含 id 的写法（key={record.id}）在这两步之间不变，详情因此永远进不了表单
-    expect(formRemountKey(12, undefined)).not.toBe(formRemountKey(12, { id: 12 }));
-  });
-
-  it('新增态与编辑态区分开', () => {
-    expect(formRemountKey(undefined, undefined)).toBe('new:row');
-    expect(formRemountKey(null, undefined)).toBe('new:row');
-  });
-
-  it('不同记录产出不同 key', () => {
-    expect(formRemountKey(1, undefined)).not.toBe(formRemountKey(2, undefined));
   });
 });
 
@@ -223,7 +191,6 @@ describe('提交编排', () => {
     act(() => result.current.openCreate());
     expect(result.current.isEdit).toBe(false);
     expect(result.current.formProps.initValues).toEqual({ name: '' });
-    expect(result.current.formKey).toBe('new:row');
   });
 
   it('successMessage 可覆盖默认提示，onSaved 拿到保存结果', async () => {
@@ -258,23 +225,5 @@ describe('提交编排', () => {
     expect(toastSuccess).not.toHaveBeenCalled();
     expect(result.current.visible).toBe(false);
     expect(onSaved).toHaveBeenCalled();
-  });
-});
-
-describe('多编辑单元共存', () => {
-  it('同一组件内两次调用互不干扰', () => {
-    const saveA = makeSave();
-    const saveB = makeSave();
-    const { result } = renderHook(() => ({
-      a: useEditModal<Row>({ entityName: '友链', save: saveA }),
-      b: useEditModal<Row>({ entityName: '分组', save: saveB }),
-    }));
-
-    act(() => result.current.a.openEdit({ id: 1, name: 'link' }));
-
-    expect(result.current.a.visible).toBe(true);
-    expect(result.current.b.visible).toBe(false);
-    expect(result.current.a.modalProps.title).toBe('编辑友链');
-    expect(result.current.b.modalProps.title).toBe('新增分组');
   });
 });

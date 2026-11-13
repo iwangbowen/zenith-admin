@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { render } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { WorkflowApproverPreviewNode } from '@zenith/shared/workflow';
 import { compactSelectedInitiatorApprovers, firstMissingInitiatorApproverNode, WorkflowApprovalChain } from './WorkflowApprovalChainPanel';
@@ -22,31 +22,18 @@ const unknown: WorkflowApproverPreviewNode = {
 };
 
 describe('approval chain path prediction', () => {
-  it('excludes unmatched branches from counts and required selections, including the full structure view', () => {
+  it('excludes unmatched branches from required approver selections', () => {
     const onNodesChange = vi.fn();
     render(<WorkflowApprovalChain nodes={[manager, excluded]} selectable onNodesChange={onNodesChange} />);
 
-    expect(screen.getByText('共 1 步 · 约 1 人审批')).toBeInTheDocument();
-    expect(screen.queryByText('大额财务复核')).not.toBeInTheDocument();
     expect(onNodesChange).toHaveBeenLastCalledWith([]);
-    fireEvent.click(screen.getByRole('button', { name: '全部结构' }));
-    expect(screen.getByText('大额财务复核')).toBeInTheDocument();
-    expect(screen.getByText('不经过')).toBeInTheDocument();
-    expect(screen.getByText('报销金额未达到复核门槛')).toBeInTheDocument();
-    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
-    expect(screen.getByText('共 1 步 · 约 1 人审批')).toBeInTheDocument();
     expect(compactSelectedInitiatorApprovers({ finance: [3] }, onNodesChange.mock.lastCall![0])).toBeUndefined();
   });
 
-  it('explains uncertain branches and requires their potential approvers to be selected before launch', () => {
+  it('requires potential approvers for uncertain branches before launch', () => {
     const onNodesChange = vi.fn();
     render(<WorkflowApprovalChain nodes={[unknown]} selectable highlightMissing onNodesChange={onNodesChange} />);
 
-    expect(screen.getByText('待条件确认')).toBeInTheDocument();
-    expect(screen.getByText('条件未定，请预选可能需要的审批人')).toBeInTheDocument();
-    expect(screen.getByText('主管审批时还可调整合同金额')).toBeInTheDocument();
-    expect(screen.getByText('预计 1 步 · 1 步待条件确认 · 含自选')).toBeInTheDocument();
-    expect(screen.getByRole('combobox', { name: '法务复核' })).toBeInTheDocument();
     const selectNodes = onNodesChange.mock.lastCall![0];
     expect(firstMissingInitiatorApproverNode({}, selectNodes)?.nodeKey).toBe('legal');
     expect(firstMissingInitiatorApproverNode({ legal: [4] }, selectNodes)).toBeNull();

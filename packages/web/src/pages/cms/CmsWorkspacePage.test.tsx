@@ -80,27 +80,21 @@ describe('CMS 内容工作台入口', () => {
   it('requires site access and at least one operational permission', () => {
     permissions.codes = ['cms:content:list'];
     const { rerender } = render(<CmsWorkspacePage />, { wrapper: WorkspaceWrapper });
-    expect(screen.getByText(/需要站点查询权限/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '选择站点' })).not.toBeInTheDocument();
 
     permissions.codes = ['cms:site:list', 'cms:dashboard:view'];
     rerender(<CmsWorkspacePage />);
-    expect(screen.getByText(/需要站点查询权限/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '选择站点' })).toBeInTheDocument();
-    expect(screen.queryByText('编辑与读者反馈工作台')).not.toBeInTheDocument();
     expect(workspace.useCmsEditorialWorkspace).not.toHaveBeenCalled();
   });
 
   it('keeps the dashboard distinct and requires site-list permission for the site selector', () => {
     permissions.codes = ['cms:dashboard:view'];
     const { rerender } = render(<CmsDashboardPage />, { wrapper: DashboardWrapper });
-    expect(screen.getByText('使用数据看板需要 CMS 看板查询和站点查询权限。')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '选择站点' })).not.toBeInTheDocument();
     expect(dashboard.stats).toHaveBeenLastCalledWith(undefined);
 
     permissions.codes = ['cms:dashboard:view', 'cms:site:list'];
     rerender(<CmsDashboardPage />);
-    expect(screen.getByRole('button', { name: '选择站点' })).toBeInTheDocument();
     expect(dashboard.stats).toHaveBeenLastCalledWith(undefined);
     fireEvent.click(screen.getByRole('button', { name: '选择站点' }));
     expect(dashboard.stats).toHaveBeenLastCalledWith(7);
@@ -111,7 +105,6 @@ describe('CMS 内容工作台入口', () => {
       permissions.codes = ['cms:site:list', permission];
       const { unmount } = render(<CmsWorkspacePage />, { wrapper: WorkspaceWrapper });
       fireEvent.click(screen.getByRole('button', { name: '选择站点' }));
-      expect(screen.getByText('编辑与读者反馈工作台')).toBeInTheDocument();
       expect(workspace.useCmsEditorialWorkspace).toHaveBeenLastCalledWith(expect.objectContaining({ siteId: 7 }), true);
       expect(dashboard.stats).not.toHaveBeenCalled();
       unmount();

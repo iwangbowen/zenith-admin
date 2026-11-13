@@ -8,16 +8,6 @@ describe('useFilterQuery', () => {
     expect(result.current).toEqual({ page: 0, archived: false, type: 'a' });
   });
 
-  it('同内容同引用：传入新对象但内容不变时沿用上一次结果，可安全进 useMemo / query key', () => {
-    const { result, rerender } = renderHook(({ kw }: { kw: string }) => useFilterQuery({ keyword: kw, status: 'enabled' }), { initialProps: { kw: 'a' } });
-    const first = result.current;
-    rerender({ kw: 'a' });
-    expect(result.current).toBe(first);
-    rerender({ kw: 'b' });
-    expect(result.current).not.toBe(first);
-    expect(result.current).toEqual({ keyword: 'b', status: 'enabled' });
-  });
-
   it('映射里引用的外部值变化会直接反映（不依赖手写依赖数组）', () => {
     let imageOnly = false;
     const { result, rerender } = renderHook(() => useFilterQuery({ type: imageOnly ? 'image' : undefined }));

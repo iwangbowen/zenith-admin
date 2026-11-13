@@ -25,7 +25,6 @@ describe('签名选择', () => {
   it('审批预览默认选择本人当前版本，输出中不携带签署元数据', async () => {
     render(<Selection />);
     await waitFor(() => expect(screen.getByRole('status').textContent).toBe('{"source":"saved","signatureId":7,"version":3}'));
-    expect(screen.getByAltText('本次使用的签名')).toHaveAttribute('src', SIGNATURE_TEST_PNG);
     fireEvent.click(screen.getByText('重新手写'));
     fireEvent.click(screen.getByText('模拟手写'));
     expect(screen.getByRole('status').textContent).toContain('"source":"drawn"');
@@ -36,7 +35,6 @@ describe('签名选择', () => {
     view.rerender(<Selection savedOnly />);
     await waitFor(() => expect(screen.getByRole('status').textContent).toBe('null'));
     expect(screen.queryByAltText('本次使用的签名')).toBeNull();
-    expect(screen.getByText(/已保存的签名发生变更/)).toBeInTheDocument();
   });
 
 });

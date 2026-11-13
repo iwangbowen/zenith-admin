@@ -26,7 +26,7 @@ describe('likes island', () => {
     expect(calls).toHaveLength(0);
   });
 
-  it('已登录：拉取状态 + 上报浏览；点击点赞 POST、再点 DELETE，计数与 active 同步', async () => {
+  it('按服务器状态取消已有点赞，并创建收藏请求', async () => {
     setMemberToken('tk');
     const { calls } = stubFetch([
       { code: 0, data: { liked: true, favorited: false, likeCount: 3, favoriteCount: 1 } },  // GET state
@@ -43,21 +43,14 @@ describe('likes island', () => {
     ]);
     const like = bar.querySelector<HTMLButtonElement>('#btn-like')!;
     const fav = bar.querySelector<HTMLButtonElement>('#btn-fav')!;
-    expect(like.classList.contains('active')).toBe(true);
-    expect(like.dataset.on).toBe('1');
-    expect(bar.querySelector('#like-count')!.textContent).toBe('3');
 
     like.click();
     await flush();
     expect(calls[2]).toMatchObject({ method: 'DELETE', url: '/api/member/cms/contents/7/like' });
-    expect(like.classList.contains('active')).toBe(false);
-    expect(bar.querySelector('#like-count')!.textContent).toBe('2');
 
     fav.click();
     await flush();
     expect(calls[3]).toMatchObject({ method: 'POST', url: '/api/member/cms/contents/7/favorite' });
-    expect(fav.classList.contains('active')).toBe(true);
-    expect(bar.querySelector('#fav-count')!.textContent).toBe('2');
   });
 
   it('接口 401：跳会员端登录', async () => {

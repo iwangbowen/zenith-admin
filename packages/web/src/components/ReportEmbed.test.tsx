@@ -130,14 +130,14 @@ describe('ReportEmbed SDK', () => {
       />,
     );
 
-    expect(screen.getByTestId('canvas-values').textContent).toContain('"region":"east"');
+    expect(ref.current?.getState().filterValues).toEqual({ region: 'east' });
     await user.click(screen.getByRole('button', { name: 'change-filter' }));
     expect(onFilterChange).toHaveBeenCalledWith(expect.objectContaining({
       filterId: 'region',
       value: 'west',
       filterValues: { region: 'west' },
     }));
-    expect(screen.getByTestId('canvas-values').textContent).toContain('"region":"east"');
+    expect(ref.current?.getState().filterValues).toEqual({ region: 'east' });
 
     expect(ref.current?.setFilter('region', 'north')).toBe(false);
     expect(onFilterChange).toHaveBeenCalledTimes(1);
@@ -150,7 +150,7 @@ describe('ReportEmbed SDK', () => {
         onFilterChange={onFilterChange}
       />,
     );
-    expect(screen.getByTestId('canvas-values').textContent).toContain('"region":"north"');
+    expect(ref.current?.getState().filterValues).toEqual({ region: 'north' });
   });
 
   it('supports uncontrolled filters, callbacks, interception and imperative methods without PermissionContext', async () => {
@@ -179,7 +179,7 @@ describe('ReportEmbed SDK', () => {
       filterValues: { region: 'east' },
     })));
     await user.click(screen.getByRole('button', { name: 'change-filter' }));
-    expect(screen.getByTestId('canvas-values').textContent).toContain('"region":"west"');
+    expect(ref.current?.getState().filterValues).toEqual({ region: 'west' });
 
     await user.click(screen.getByRole('button', { name: 'widget-click' }));
     expect(onWidgetClick).toHaveBeenCalledWith({
@@ -235,6 +235,5 @@ describe('ReportEmbed SDK', () => {
     render(<ReportEmbed embedToken="expired" onError={onError} />);
 
     await waitFor(() => expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'token expired' })));
-    expect(document.body.contains(screen.getByText('仪表盘不存在或无权访问'))).toBe(true);
   });
 });

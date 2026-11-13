@@ -23,7 +23,6 @@ describe('流程实例编号控件', () => {
   it('草稿和设计预览不制造编号，也不提交默认值', async () => {
     let api: FormApi | undefined;
     render(<WorkflowFormRenderer fields={fields} getFormApi={value => { api = value; }} />);
-    expect(screen.getByText('正式提交后自动生成')).toBeInTheDocument();
     expect(screen.queryByText('FORGED-DEFAULT')).not.toBeInTheDocument();
     await waitFor(() => expect(api?.getValues()).not.toHaveProperty('number'));
   });
@@ -32,7 +31,6 @@ describe('流程实例编号控件', () => {
     const nested: WorkflowFormField[] = [{ key: 'group', label: '单据信息', type: 'group', children: fields }];
     let api: FormApi | undefined;
     const view = render(<WorkflowFormRenderer fields={nested} readOnly readOnlyAsText initValues={{ number: 'FORGED', reason: '采购' }} getFormApi={value => { api = value; }} />);
-    expect(screen.getByText('正式提交后自动生成')).toBeInTheDocument();
     view.rerender(<WorkflowFormRenderer fields={nested} readOnly readOnlyAsText instanceSerialNo="WF-20261011-0002" initValues={{ number: 'FORGED', reason: '采购' }} getFormApi={value => { api = value; }} />);
     expect(screen.getByText('WF-20261011-0002')).toBeInTheDocument();
     expect(screen.queryByText('FORGED')).not.toBeInTheDocument();

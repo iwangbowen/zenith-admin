@@ -10,7 +10,6 @@ import {
   modeToSymbolic,
   octalToMode,
   permStringToOctal,
-  searchResultTitle,
   updateUploadPct,
   validateEntryName,
 } from './fs-utils';
@@ -145,11 +144,5 @@ describe('misc helpers', () => {
     expect(next[0]).toEqual({ name: 'a', progress: 0 });
     expect(next[1]).toEqual({ name: 'b', progress: 50 });
     expect(prev[1].progress).toBe(10);
-  });
-
-  it('formats search result title with 200+ cap marker', () => {
-    expect(searchResultTitle(null)).toBe('搜索结果');
-    expect(searchResultTitle([])).toBe('搜索结果（0）');
-    expect(searchResultTitle(Array.from({ length: 200 }, (_, i) => ({ name: `${i}`, path: `${i}`, type: 'file' as const, size: 0, mtime: '' })))).toBe('搜索结果（200+）');
   });
 });

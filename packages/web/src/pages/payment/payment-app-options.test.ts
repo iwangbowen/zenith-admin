@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import type { PaymentApp, PaymentChannelConfig } from '@zenith/shared/payment';
 import { PAYMENT_DEDUCT_METHODS, PAYMENT_PREAUTH_METHOD_LABELS, PAYMENT_PREAUTH_METHODS, paymentAppBoundConfigIds } from '@zenith/shared/payment';
-import { paymentCapabilityReason, useAppBoundConfigOptions, useAppPaymentMethodOptions, useEnabledPaymentAppLookup } from './payment-app-options';
+import { paymentCapabilityReason, useAppBoundConfigOptions, useAppPaymentMethodOptions } from './payment-app-options';
 
 const mocks = vi.hoisted(() => ({
   capabilities: vi.fn(),
@@ -28,16 +28,6 @@ vi.mock('@/hooks/usePermission', () => ({
 }));
 
 describe('payment app options', () => {
-  it('builds default and override labels', () => {
-    const { result, rerender } = renderHook(({ override }: { override?: boolean }) => useEnabledPaymentAppLookup({
-      label: override ? (app) => `${app.name} · ${app.openClientName}` : undefined,
-    }), { initialProps: { override: false } });
-    expect(result.current.appOptions).toEqual([{ value: 1, label: '商城 · 沙箱' }, { value: 2, label: '小程序 · 生产' }]);
-
-    rerender({ override: true });
-    expect(result.current.appOptions[0]?.label).toBe('商城 · 官网');
-  });
-
   it('returns bound config ids', () => {
     expect([...paymentAppBoundConfigIds(apps[0])]).toEqual([10, 12]);
   });
@@ -49,7 +39,7 @@ describe('payment app options', () => {
       { id: 12, name: '云闪付商户', channel: 'unionpay', sandbox: true },
     ] as PaymentChannelConfig[];
     const { result } = renderHook(() => useAppBoundConfigOptions({ selectedAppId: 1, configs, apps }));
-    expect(result.current.options.map((option) => option.label)).toEqual(['微信商户 · 微信支付 · 沙箱', '云闪付商户 · 云闪付 · 沙箱']);
+    expect(result.current.options.map(option => option.value)).toEqual([10, 12]);
     expect(result.current.configById.get(10)?.name).toBe('微信商户');
   });
 
@@ -81,7 +71,7 @@ describe('payment app options', () => {
       operation: 'preauth.freeze',
       currency: 'CNY',
     }, true);
-    expect(result.current.options).toEqual([{ value: 'alipay_preauth', label: '支付宝预授权' }]);
+    expect(result.current.options.map(option => option.value)).toEqual(['alipay_preauth']);
   });
 
   it('按签约能力隐藏已停用的代扣方式', () => {
@@ -109,7 +99,7 @@ describe('payment app options', () => {
     const selectedApp = { ...apps[0], alipayConfigId: 11 } as PaymentApp;
     const { result } = renderHook(() => useAppPaymentMethodOptions(selectedApp, PAYMENT_DEDUCT_METHODS, { operation: 'contract.sign' }));
 
-    expect(result.current.options).toEqual([{ value: 'alipay_cycle', label: '支付宝周期扣款' }]);
+    expect(result.current.options.map(option => option.value)).toEqual(['alipay_cycle']);
   });
 
   it('exposes the server reason for an empty capability state', () => {

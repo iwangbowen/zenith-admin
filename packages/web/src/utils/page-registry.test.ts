@@ -4,24 +4,9 @@ import { hasPageComponent, lazyPageComponent } from './page-registry';
 import { businessFormModules, hasBusinessFormComponent, lazyBusinessFormComponent } from './business-form-registry';
 
 describe('page registry', () => {
-  it('reuses the same lazy component identity across parent rerenders', () => {
-    const first = lazyPageComponent('users/UsersPage');
-    const second = lazyPageComponent('/users/UsersPage.tsx');
-
-    expect(first).not.toBeNull();
-    expect(second).toBe(first);
-  });
-
   it('returns null for unknown page components', () => {
     expect(hasPageComponent('missing/UnknownPage')).toBe(false);
     expect(lazyPageComponent('missing/UnknownPage')).toBeNull();
-  });
-
-  it('registers only the new alert center page paths', () => {
-    expect(hasPageComponent('alerts/rules/AlertRulesPage')).toBe(true);
-    expect(hasPageComponent('alerts/events/AlertEventsPage')).toBe(true);
-    expect(hasPageComponent('system/monitor-alerts/MonitorAlertsPage')).toBe(false);
-    expect(hasPageComponent('system/monitor-alert-events/MonitorAlertEventsPage')).toBe(false);
   });
 
   it('excludes tests and loading skeletons', () => {

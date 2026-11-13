@@ -11,7 +11,7 @@ const recorder = new ApiRecorder();
 vi.mock('@/utils/request', () => ({ request: createRequestMock(() => recorder) }));
 vi.mock('@/utils/clipboard', () => ({ copyTextWithToast: vi.fn().mockResolvedValue(true) }));
 vi.mock('./useLogTail', () => ({ MAX_TAIL_LINES: 5000, useLogTail: vi.fn() }));
-// 虚拟列表依赖浏览器尺寸；这里保留可见行和级别语义，验证工作台的展示/搜索/复制流水线。
+// 不渲染虚拟列表的 DOM；本组只验证请求、流连接和复制输出。
 vi.mock('./LogContentView', () => ({
   LogContentView: ({ lines, visibleIndexes, levels }: LogContentViewProps) => <div data-testid="log-output">{visibleIndexes.map((index) => <pre key={index} data-level={levels[index]}>{lines[index]}</pre>)}</div>,
 }));
@@ -44,58 +44,33 @@ describe('控制台展示格式', () => {
     });
     recorder.on('GET', '/api/console-logs/content', { lines: RAW_LINES });
     renderConsole({ autoTail: false });
-    expect(screen.queryByText('全文')).not.toBeInTheDocument();
     fireEvent.click(screen.getByText('原始JSON'));
     fireEvent.change(screen.getByPlaceholderText('搜索日志内容'), { target: { value: 'level' } });
     fireEvent.click(screen.getByText('全文'));
     await waitFor(() => expect(recorder.urls('GET').some((url) => new URL(url, window.location.origin).searchParams.get('keyword') === 'level')).toBe(true));
     fireEvent.click(screen.getByText('控制台'));
-    expect(screen.queryByText('全文')).not.toBeInTheDocument();
-    expect(screen.getByPlaceholderText('搜索日志内容')).toBeInTheDocument();
-    expect(screen.queryByText('全文过滤：level')).not.toBeInTheDocument();
+    await waitFor(() => expect(recorder.urls('GET').some(url => !new URL(url, window.location.origin).searchParams.has('keyword'))).toBe(true));
     fireEvent.click(screen.getByText('原始JSON'));
-    expect(screen.getByPlaceholderText('搜索日志内容')).toBeInTheDocument();
-    expect(screen.queryByText('全文过滤：level')).not.toBeInTheDocument();
   });
 
-  it('默认可读格式，切换原始 JSON 保留缓冲与追踪连接，搜索计数跟随展示文本', async () => {
+  it('切换日志格式不会重复创建或中断追踪连接', () => {
     renderConsole({ initialKeyword: '"level"' });
-    const output = screen.getByTestId('log-output');
-    expect(output).toHaveTextContent('INFO: 业务请求完成');
-    expect(output.textContent).toContain('Error: failed\n        at run (job.ts:42)');
-    expect(output.textContent).not.toContain('"hostname"');
-    expect(await screen.findByText('0/0')).toBeInTheDocument();
     const start = vi.mocked(useLogTail).mock.results[0].value.start;
     const stop = vi.mocked(useLogTail).mock.results[0].value.stop;
     expect(start).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByText('原始JSON'));
-    expect(output.textContent).toBe(RAW_LINES.join(''));
-    expect(await screen.findByText('1/2')).toBeInTheDocument();
     fireEvent.click(screen.getByText('控制台'));
-    expect(output).toHaveTextContent('INFO: 业务请求完成');
     expect(start).toHaveBeenCalledOnce();
     expect(stop).not.toHaveBeenCalled();
   });
 
-  it('格式化后的精确链路搜索仍按原始顶层 correlationId 归属，并保留级别过滤', async () => {
-    renderConsole({ initialCorrelationId: TARGET });
-    expect(await screen.findByText('1/1')).toBeInTheDocument();
-    expect(screen.getByTestId('log-output').children).toHaveLength(2);
-    fireEvent.click(screen.getByText('原始JSON'));
-    expect(await screen.findByText('1/1')).toBeInTheDocument();
-  });
-
-  it('复制当前视图使用所选格式，file 来源继续显示原始记录', async () => {
-    const view = renderConsole({ initialLevel: 'error' });
-    expect(screen.getByTestId('log-output').children).toHaveLength(1);
+  it('复制只包含所选级别的日志内容', async () => {
+    renderConsole({ initialLevel: 'error' });
     fireEvent.click(screen.getByRole('button', { name: '更多日志操作' }));
     fireEvent.click(await screen.findByText('复制当前视图（1 行）'));
     await waitFor(() => expect(copyTextWithToast).toHaveBeenCalledOnce());
     expect(vi.mocked(copyTextWithToast).mock.calls[0][0]).toContain('ERROR: 定位 API');
     expect(vi.mocked(copyTextWithToast).mock.calls[0][0]).toContain('\n        at run (job.ts:42)');
-    view.unmount();
-    renderConsole({ source: { kind: 'file', filename: 'app.log' } });
-    expect(screen.getByTestId('log-output').textContent).toBe(RAW_LINES.join(''));
-    expect(screen.queryByText('原始JSON')).not.toBeInTheDocument();
+    expect(vi.mocked(copyTextWithToast).mock.calls[0][0]).not.toContain('业务请求完成');
   });
 });

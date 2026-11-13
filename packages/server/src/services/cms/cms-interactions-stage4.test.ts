@@ -93,7 +93,7 @@ describe('CMS Stage4 unified interactions', () => {
     expect((service.match(/\.for\('update'\)/g) ?? []).length).toBeGreaterThanOrEqual(2);
     expect(service).toContain('current.responseCount > 0');
     expect(service).toContain('validateInteractionAnswers(questions, input)');
-    // 多次参与表单提交后复用（保留表单、刷新实时结果、清空答案）由 cms/islands/survey/survey.test.ts 以 DOM 行为断言
+    // 多次参与表单提交后复用（保留表单、刷新实时结果、清空答案）由 cms/islands/survey/survey.test.ts 以实际提交载荷断言
   });
 
   it('copies every question presentation and branching property', async () => {
@@ -121,13 +121,12 @@ describe('CMS Stage4 unified interactions', () => {
     expect(canExposeCmsInteractionResults({ visibility: 'after_close', status: 'published', submitted: true })).toBe(false);
   });
 
-  it('renders the survey as an island container instead of an inline script', async () => {
+  it('renders the survey through the registered island boundary', async () => {
     const [theme, marker] = await Promise.all([
       readFile(new URL('../../cms/themes/default/templates.tsx', import.meta.url), 'utf8'),
       readFile(new URL('./cms-interactions-responses.service.ts', import.meta.url), 'utf8'),
     ]);
-    // 问卷交互（题型渲染、条件显隐 / 分页、多选与「其他」校验、草稿、提交与验证码重取）全部位于
-    // cms/islands/survey/**，由 survey.test.ts 以 DOM 行为断言；主题与正文标记只输出同一 data 契约
+    // The theme emits only the island mount contract; survey behavior is covered through submitted payloads in survey.test.ts.
     expect(theme).not.toContain('INTERACTION_SCRIPT');
     expect(theme).toContain('className="cms-interaction" data-island="survey"');
     expect(marker).toContain('class="cms-interaction" data-island="survey"');

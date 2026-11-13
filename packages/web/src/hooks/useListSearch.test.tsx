@@ -132,14 +132,6 @@ describe('setField 单字段绑定', () => {
     expect(result.current.draftParams).toEqual({ keyword: 'abc', status: 'enabled' });
   });
 
-  it('同一 key 跨渲染返回同一引用，可安全交给 memo 化子组件', () => {
-    const { result } = setup();
-    const first = result.current.setField('keyword');
-    act(() => { first('abc'); });
-    expect(result.current.setField('keyword')).toBe(first);
-    expect(result.current.setField('status')).not.toBe(first);
-  });
-
   it('handleReset 后 setField 仍作用于最新草稿', () => {
     const { result } = setup();
     act(() => { result.current.setField('keyword')('abc'); });

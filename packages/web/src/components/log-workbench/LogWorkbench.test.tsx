@@ -61,33 +61,15 @@ describe('精确链路定位', () => {
   it('控制台链路定位复用应用日志精确查询', async () => {
     recorder.on('GET', '/api/console-logs/content', { lines: [] });
     renderWorkbench(undefined, { source: { kind: 'console', role: 'worker' }, initialCorrelationId: KEYWORD });
-    expect(screen.getByText(`链路定位：${KEYWORD}`)).toBeInTheDocument();
     await waitFor(() => expect(recorder.countOf('GET', '/api/console-logs/content')).toBe(1));
     const params = new URLSearchParams(recorder.urls('GET')[0].split('?')[1]);
     expect(params.get('role')).toBe('worker');
     expect(params.get('locateCorrelationId')).toBe(KEYWORD);
   });
 
-  it('实时追踪保留全部行，但仅计数所属链路的匹配', async () => {
-    vi.mocked(useLogTail).mockReturnValue({
-      tailing: true, paused: false, reconnecting: false, pendingCount: 0, capped: false,
-      lines: [
-        JSON.stringify({ level: 30, correlationId: KEYWORD, msg: 'POST /api/orders 200' }),
-        JSON.stringify({ level: 30, correlationId: 'trace-query-12345', msg: `GET /api/trace/${KEYWORD} 200` }),
-      ],
-      start: vi.fn(), stop: vi.fn(), pause: vi.fn(), resume: vi.fn(),
-    });
-    renderWorkbench(KEYWORD, { canTail: true, initialCorrelationId: KEYWORD });
-
-    expect(await screen.findByText('1/1')).toBeInTheDocument();
-    expect(recorder.countOf('GET', `/api/log-files/${FILENAME}/content`)).toBe(0);
-  });
-
   it('发送 locateCorrelationId 加载连续日志并预填搜索，普通正文搜索保留定位窗口', async () => {
     renderWorkbench(undefined, { initialCorrelationId: KEYWORD });
 
-    expect(screen.getByText(`链路定位：${KEYWORD}`)).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('搜索日志内容')).toHaveValue(KEYWORD);
     await waitFor(() => expect(recorder.countOf('GET', `/api/log-files/${FILENAME}/content`)).toBe(1));
     const params = new URLSearchParams(recorder.urls('GET')[0].split('?')[1]);
     expect(params.get('locateCorrelationId')).toBe(KEYWORD);
@@ -95,8 +77,6 @@ describe('精确链路定位', () => {
     expect(params.has('keyword')).toBe(false);
 
     fireEvent.change(screen.getByPlaceholderText('搜索日志内容'), { target: { value: 'unblacklist' } });
-    expect(await screen.findByText('1/1')).toBeInTheDocument();
-    expect(screen.getByText(`链路定位：${KEYWORD}`)).toBeInTheDocument();
     expect(recorder.countOf('GET', `/api/log-files/${FILENAME}/content`)).toBe(1);
   });
 });

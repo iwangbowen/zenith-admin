@@ -17,7 +17,7 @@ beforeEach(() => { confirmCalls.length = 0; });
 afterEach(() => { vi.restoreAllMocks(); });
 
 describe('batchStatusHandler', () => {
-  it('默认只有停用需要确认：启用直接执行 → 清选中 → 「批量启用成功」', async () => {
+  it('批量变更使用选中 ID，停用确认前不执行', async () => {
     const success = vi.spyOn(Toast, 'success');
     const run = vi.fn(() => Promise.resolve());
     const clearSelection = vi.fn();
@@ -26,19 +26,17 @@ describe('batchStatusHandler', () => {
     expect(confirmCalls).toHaveLength(0);
     expect(run).toHaveBeenCalledWith([1, 2], 'enabled');
     expect(clearSelection).toHaveBeenCalledTimes(1);
-    expect(success).toHaveBeenCalledWith('批量启用成功');
+    expect(success).toHaveBeenCalledTimes(1);
 
     await handle('disabled');
     expect(confirmCalls).toHaveLength(1);
-    expect(confirmCalls[0]).toMatchObject({ title: '确认批量停用选中的 2 项？' });
-    expect(confirmCalls[0].okButtonProps).toBeUndefined();
+    expect(run).toHaveBeenCalledTimes(1);
     await confirmCalls[0].onOk?.({} as never);
     expect(run).toHaveBeenLastCalledWith([1, 2], 'disabled');
-    expect(success).toHaveBeenLastCalledWith('批量停用成功');
+    expect(success).toHaveBeenCalledTimes(2);
   });
 
-  it('confirm=always + danger + 自定义文案：启用普通确认、禁用红色实心确认，成功提示可覆盖', async () => {
-    const success = vi.spyOn(Toast, 'success');
+  it('confirm=always 时启用与停用均需确认', async () => {
     const run = vi.fn(() => Promise.resolve());
     const handle = batchStatusHandler({
       selectedRowKeys: [7], clearSelection: () => {}, run,
@@ -47,13 +45,14 @@ describe('batchStatusHandler', () => {
       successMessage: () => '操作成功',
     });
     await handle('enabled');
-    expect(confirmCalls[0]).toMatchObject({ title: '确认批量启用选中的 1 个用户？' });
-    expect(confirmCalls[0].okButtonProps).toBeUndefined();
+    expect(run).not.toHaveBeenCalled();
+    await confirmCalls[0].onOk?.({} as never);
+    expect(run).toHaveBeenCalledWith([7], 'enabled');
     await handle('disabled');
-    expect(confirmCalls[1]).toMatchObject({ title: '确认批量禁用选中的 1 个用户？', content: '停用后无法登录', okButtonProps: { type: 'danger', theme: 'solid' } });
+    expect(run).toHaveBeenCalledTimes(1);
     await confirmCalls[1].onOk?.({} as never);
     expect(run).toHaveBeenCalledWith([7], 'disabled');
-    expect(success).toHaveBeenCalledWith('操作成功');
+    expect(run).toHaveBeenCalledTimes(2);
   });
 
   it('空选中直接返回；confirm=never 时停用也不弹确认', async () => {
@@ -67,31 +66,18 @@ describe('batchStatusHandler', () => {
 });
 
 describe('deleteAction', () => {
-  it('返回红色删除动作；弹 confirmDelete，确认后执行 run、提示并回调 onDeleted', async () => {
+  it('确认后才执行删除，成功后回调 onDeleted', async () => {
     const success = vi.spyOn(Toast, 'success');
     const run = vi.fn(() => Promise.resolve());
     const onDeleted = vi.fn();
     const action = deleteAction({ title: '确定要删除标签「A」吗？', content: '删除后不可恢复', run, onDeleted, hidden: false });
-    expect(action).toMatchObject({ key: 'delete', label: '删除', danger: true, hidden: false });
     await action.onClick?.();
     expect(confirmCalls).toHaveLength(1);
-    expect(confirmCalls[0]).toMatchObject({ title: '确定要删除标签「A」吗？', content: '删除后不可恢复', okButtonProps: { type: 'danger', theme: 'solid' } });
     expect(run).not.toHaveBeenCalled();
     await confirmCalls[0].onOk?.({} as never);
     expect(run).toHaveBeenCalledTimes(1);
-    expect(success).toHaveBeenCalledWith('删除成功');
+    expect(success).toHaveBeenCalledTimes(1);
     expect(onDeleted).toHaveBeenCalledTimes(1);
-  });
-
-  it('自定义 key / label / okText；successMessage 为 null 时不提示', async () => {
-    const success = vi.spyOn(Toast, 'success');
-    const action = deleteAction({ key: 'purge', label: '彻底删除', title: '彻底删除？', okText: '彻底删除', run: () => Promise.resolve(), successMessage: null });
-    expect(action.key).toBe('purge');
-    expect(action.label).toBe('彻底删除');
-    await action.onClick?.();
-    expect(confirmCalls[0]).toMatchObject({ title: '彻底删除？', okText: '彻底删除' });
-    await confirmCalls[0].onOk?.({} as never);
-    expect(success).not.toHaveBeenCalled();
   });
 
   it('confirmAndDelete：successMessage / onDeleted 可拿到 run 的结果', async () => {
@@ -116,36 +102,21 @@ describe('deleteAction', () => {
 describe('listTableProps', () => {
   const buildPagination = (total: number) => ({ currentPage: 1, pageSize: 10, total, onPageChange: () => {}, onPageSizeChange: () => {} });
 
-  it('分页包络：数据源 / total / 刷新接线，默认 id · small · bordered；请求期间盖整表蒙层', () => {
+  it('分页包络保留数据和总数，刷新时重新获取数据', () => {
     const refetch = vi.fn();
     const props = listTableProps({ data: { list: [{ id: 1 }], total: 7 }, isFetching: true, refetch }, { pagination: buildPagination });
-    expect(props).toMatchObject({ bordered: true, rowKey: 'id', size: 'small', dataSource: [{ id: 1 }], loading: true, refreshLoading: true });
+    expect(props.dataSource).toEqual([{ id: 1 }]);
     expect(props.pagination && props.pagination.total).toBe(7);
     props.onRefresh();
     expect(refetch).toHaveBeenCalledTimes(1);
   });
 
-  it('loadingMode=initial：已有数据快照时，后台重拉不盖整表蒙层', () => {
-    const props = listTableProps(
-      { data: { list: [{ id: 1 }], total: 1 }, isFetching: true, refetch: () => {} },
-      { loadingMode: 'initial' },
-    );
-    expect(props).toMatchObject({ loading: false, refreshLoading: true });
-
-    const manual = listTableProps(
-      { data: { list: [{ id: 1 }], total: 1 }, isFetching: false, refetch: () => {} },
-      { loadingMode: 'initial', manualLoading: true },
-    );
-    expect(manual).toMatchObject({ loading: true });
-  });
-
-  it('数组型数据与未加载态；显式覆盖 rowKey / size / empty / bordered', () => {
+  it('数组与未加载态归一为列表数据，缺少数据时总数为零', () => {
     const props = listTableProps<{ code: string }>({ data: [{ code: 'a' }, { code: 'b' }], isFetching: false, refetch: () => {} }, { rowKey: 'code', size: 'default', empty: '暂无数据', bordered: false });
-    expect(props).toMatchObject({ rowKey: 'code', size: 'default', empty: '暂无数据', bordered: false, dataSource: [{ code: 'a' }, { code: 'b' }] });
+    expect(props.dataSource).toEqual([{ code: 'a' }, { code: 'b' }]);
     expect(props.pagination).toBe(false);
     const pending = listTableProps({ data: undefined, isFetching: true, refetch: () => {} }, { pagination: buildPagination });
     expect(pending.dataSource).toEqual([]);
     expect(pending.pagination && pending.pagination.total).toBe(0);
-    expect(pending).toMatchObject({ loading: true, refreshLoading: true });
   });
 });

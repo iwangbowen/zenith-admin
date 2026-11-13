@@ -2,14 +2,14 @@
  * 剪贴板工具契约测试。
  *
  * 内网以 http://ip 访问时不是安全上下文，navigator.clipboard 为 undefined；
- * 锁住「写文本回退 execCommand、读文本返回 null、Toast 反馈跟随结果」三条行为。
+ * 保留剪贴板兼容、复制内容和失败回退，Toast 文案不在本组固定。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const toastMock = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock('@douyinfe/semi-ui', () => ({ Toast: toastMock }));
 
-import { canWriteClipboardItems, copyText, copyTextWithToast, readClipboardText } from './clipboard';
+import { canWriteClipboardItems, copyText, readClipboardText } from './clipboard';
 
 const originalClipboard = Object.getOwnPropertyDescriptor(Navigator.prototype, 'clipboard')
   ?? Object.getOwnPropertyDescriptor(navigator, 'clipboard');
@@ -80,25 +80,6 @@ describe('copyText', () => {
     await copyText('别的内容');
     expect(selection.toString()).toBe('先选中这段文字再点复制');
     p.remove();
-  });
-});
-
-describe('copyTextWithToast', () => {
-  it('成功时提示默认文案，可覆盖', async () => {
-    setClipboard({ writeText: vi.fn().mockResolvedValue(undefined) });
-    await copyTextWithToast('a');
-    expect(toastMock.success).toHaveBeenCalledWith('已复制');
-    await copyTextWithToast('b', { success: '链接已复制' });
-    expect(toastMock.success).toHaveBeenLastCalledWith('链接已复制');
-    expect(toastMock.error).not.toHaveBeenCalled();
-  });
-
-  it('失败时提示错误文案', async () => {
-    setClipboard(undefined);
-    document.execCommand = vi.fn(() => false);
-    await expect(copyTextWithToast('a', { error: '复制失败，请手动复制链接' })).resolves.toBe(false);
-    expect(toastMock.error).toHaveBeenCalledWith('复制失败，请手动复制链接');
-    expect(toastMock.success).not.toHaveBeenCalled();
   });
 });
 

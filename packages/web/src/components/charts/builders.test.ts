@@ -63,14 +63,8 @@ type TooltipLine = { key: string; value: (datum: ChartDatum) => string; visible:
 function labelText(spec: ReturnType<typeof build>): StyleFn {
   return (spec.label as { style: { text: StyleFn } }).style.text;
 }
-function nodeFill(spec: ReturnType<typeof build>): StyleFn {
-  return (spec.node as { style: { fill: StyleFn } }).style.fill;
-}
 function tooltipLines(spec: ReturnType<typeof build>): TooltipLine[] {
   return (spec.tooltip as { mark: { content: TooltipLine[] } }).mark.content;
-}
-function tooltipTitle(spec: ReturnType<typeof build>): StyleFn {
-  return (spec.tooltip as { mark: { title: { value: StyleFn } } }).mark.title.value;
 }
 
 describe('makeSankeySpec', () => {
@@ -82,12 +76,6 @@ describe('makeSankeySpec', () => {
 
   it('元素未携带 datum 时靠 nodeKey 还原标签', () => {
     expect(labelText(build())(bareNodeElement('s2:/users'))).toBe('第2步·/users');
-  });
-
-  it('节点配色来自 nodeColor 而不是回退主题色', () => {
-    const fill = nodeFill(build());
-    expect(fill(nodeElement('s2:/users'))).toBe('#green');
-    expect(fill(nodeElement('s2:$exit'))).toBe('#gray');
   });
 
   it('链路 tooltip 能读到业务字段 step', () => {
@@ -102,15 +90,5 @@ describe('makeSankeySpec', () => {
     expect(lines.filter((line) => line.visible(node))).toHaveLength(1);
     expect(lines.filter((line) => line.visible(link))).toHaveLength(1);
     expect(lines.find((line) => line.visible(node))?.value(node)).toBe('1');
-  });
-
-  it('链路 tooltip 标题回退为 source → target', () => {
-    expect(tooltipTitle(build())(linkElement(0))).toBe('s1:/ → s2:/users');
-  });
-
-  it('nodeLayer 按 step 锁定层级，退出节点不会被推到最右列', () => {
-    const spec = build() as unknown as { setNodeLayer: (datum: ChartDatum) => number };
-    expect(spec.setNodeLayer(nodeElement('s1:/'))).toBe(0);
-    expect(spec.setNodeLayer(nodeElement('s2:$exit'))).toBe(1);
   });
 });

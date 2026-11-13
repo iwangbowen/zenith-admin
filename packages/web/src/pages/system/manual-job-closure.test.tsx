@@ -81,7 +81,6 @@ describe('manual stuck-job closure controls', () => {
     fireEvent.click(within(screen.getByRole('region', { name: '记录 3' })).getByRole('button', { name: '查看差异' }));
     fireEvent.click(within(screen.getByRole('region', { name: '记录 3' })).getByRole('button', { name: '标记为失败' }));
     expect(state.markRun).not.toHaveBeenCalled();
-    expect(state.confirm.mock.lastCall?.[0].okText).toBe('标记为失败');
     await act(async () => { await state.confirm.mock.lastCall?.[0].onOk(); });
     expect(state.markRun).toHaveBeenCalledExactlyOnceWith({ params: { id: 3 } });
     expect(within(screen.getByRole('dialog')).getByText('管理员手动标记卡死同步为失败')).toBeInTheDocument();

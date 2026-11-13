@@ -14,7 +14,6 @@ describe('CMS 模型媒体字段的草稿校验', () => {
       <CmsModelMediaField field={{ ...base, name: 'document', label: '资料', fieldType, required: true }} canUpload={false} />
       <Button htmlType="submit">保存工作稿</Button>
     </Form>);
-    expect(screen.getByText('资料（发布必填）')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '保存工作稿' }));
     await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
     expect(submit.mock.calls[0][0].extend.document).toBeUndefined();

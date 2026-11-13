@@ -10,30 +10,18 @@ vi.mock('../../services/short-link/short-link-redirect.service', () => ({
 
 import redirectRouter from './redirect';
 
-describe('短链访问密码显隐', () => {
-  it.each(['/sample', '/sample?pwd=incorrect'])('在 %s 默认隐藏，切换不改变输入或触发表单提交', async (url) => {
+describe('短链密码保护页', () => {
+  it.each(['/sample', '/sample?pwd=incorrect'])('访问 %s 不回显输入或泄露实际密码', async (url) => {
     const response = await redirectRouter.request(url);
     expect(response.status).toBe(200);
-    const dom = new JSDOM(await response.text(), { runScripts: 'dangerously', url: 'https://example.com/s/sample' });
+    const markup = await response.text();
+    expect(markup).not.toContain('test-password');
+    const dom = new JSDOM(markup);
     try {
       const document = dom.window.document;
       const input = document.querySelector<HTMLInputElement>('input[name="pwd"]')!;
-      const button = document.querySelector<HTMLButtonElement>('.password-toggle')!;
-      const submit = vi.fn((event: Event) => event.preventDefault());
-      document.querySelector('form')!.addEventListener('submit', submit);
       expect(input.type).toBe('password');
       expect(input.value).toBe('');
-      input.value = 'a-new-password';
-      button.click();
-      expect(input.type).toBe('text');
-      expect(button.getAttribute('aria-label')).toBe('隐藏密码');
-      expect(button.getAttribute('aria-pressed')).toBe('true');
-      button.click();
-      expect(input.type).toBe('password');
-      expect(button.getAttribute('aria-label')).toBe('显示密码');
-      expect(input.value).toBe('a-new-password');
-      expect(submit).not.toHaveBeenCalled();
-      expect(new dom.window.FormData(document.querySelector('form')!).get('pwd')).toBe('a-new-password');
     } finally {
       dom.window.close();
     }

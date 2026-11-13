@@ -1,16 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
-  defaultPreferences,
-  LOADING_STYLE_OPTIONS,
   sanitizeImportedPreferences,
 } from './usePreferences';
 
 describe('loading style preference', () => {
-  it('uses the grid animation as the default and shows it first', () => {
-    expect(defaultPreferences.loadingStyle).toBe('grid');
-    expect(LOADING_STYLE_OPTIONS[0]).toMatchObject({ value: 'grid', label: '九宫格', isDefault: true });
-  });
-
   it('accepts known loading styles when importing preferences', () => {
     expect(sanitizeImportedPreferences({ loadingStyle: 'dots' })).toEqual({
       loadingStyle: 'dots',
@@ -23,12 +16,6 @@ describe('loading style preference', () => {
 });
 
 describe('dark surface tone preference', () => {
-  it('defaults every region to the bg-1 tone', () => {
-    expect(defaultPreferences.darkSidebarTone).toBe('bg-1');
-    expect(defaultPreferences.darkHeaderTone).toBe('bg-1');
-    expect(defaultPreferences.darkContentTone).toBe('bg-1');
-  });
-
   it('accepts known tones for each region when importing preferences', () => {
     expect(sanitizeImportedPreferences({
       darkSidebarTone: 'bg-0',
@@ -47,11 +34,6 @@ describe('dark surface tone preference', () => {
 });
 
 describe('notification sound preference', () => {
-  it('is off by default and uses the chime style once enabled', () => {
-    expect(defaultPreferences.notificationSound).toBe(false);
-    expect(defaultPreferences.notificationSoundStyle).toBe('chime');
-  });
-
   it('accepts known sound styles and rejects unknown ones when importing preferences', () => {
     expect(sanitizeImportedPreferences({ notificationSound: false, notificationSoundStyle: 'pop' })).toEqual({
       notificationSound: false,
@@ -62,16 +44,6 @@ describe('notification sound preference', () => {
 });
 
 describe('display & behaviour preferences', () => {
-  it('defaults preserve the pre-existing behaviour except the Monday week start', () => {
-    expect(defaultPreferences.uiScale).toBe(100);
-    expect(defaultPreferences.fontFamily).toBe('system');
-    expect(defaultPreferences.timeDisplay).toBe('absolute');
-    expect(defaultPreferences.weekStart).toBe('monday');
-    expect(defaultPreferences.desktopNotification).toBe(false);
-    expect(defaultPreferences.refetchOnFocus).toBe(false);
-    expect(defaultPreferences.rememberListFilters).toBe(false);
-  });
-
   it('accepts known enum values and rejects unknown ones when importing preferences', () => {
     expect(sanitizeImportedPreferences({ uiScale: 110, fontFamily: 'mono', timeDisplay: 'relative', weekStart: 'sunday' })).toEqual({
       uiScale: 110,

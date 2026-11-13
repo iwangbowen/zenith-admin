@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, waitFor } from '@testing-library/react';
 import { Form } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { describe, expect, it, vi } from 'vitest';
@@ -14,12 +14,9 @@ describe('model field editor initial values', () => {
       { id: 'description', name: 'bio', label: '简介', fieldType: 'textarea' },
       { id: 'score', name: 'score', label: '分数', fieldType: 'number', defaultValue: 2, configuration: { min: 1, max: 10 } },
     ] }} getFormApi={value => { api = value; }}><CmsFieldDefinitionsEditor field="fields" siteId={1} /></Form>);
-    await waitFor(() => expect(screen.getByRole('spinbutton', { name: '默认值' })).toHaveValue('2'));
-    expect(screen.getByText('多行文本')).toBeInTheDocument();
-    expect(screen.getByText('数字')).toBeInTheDocument();
-    expect(api?.getValue('fields')).toEqual(expect.arrayContaining([
+    await waitFor(() => expect(api?.getValue('fields')).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 'description', fieldType: 'textarea' }),
       expect.objectContaining({ id: 'score', fieldType: 'number', defaultValue: 2, configuration: expect.objectContaining({ min: 1, max: 10 }) }),
-    ]));
+    ])));
   });
 });

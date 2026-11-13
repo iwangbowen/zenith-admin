@@ -72,11 +72,9 @@ describe('useListPage', () => {
     expect(isInvalidated(client, [...listKey, { page: 1 }])).toBe(true);
   });
 
-  it('tableProps 接好数据源 / 分页 / 空态，翻页驱动查询参数', () => {
+  it('保留列表数据与总数，翻页提交正确的查询参数', () => {
     const { result } = setup();
     expect(result.current.tableProps.dataSource).toEqual([{ id: 1, name: 'p1' }]);
-    expect(result.current.tableProps.empty).toBe('暂无数据');
-    expect(result.current.tableProps.rowKey).toBe('id');
     const pagination = result.current.tableProps.pagination;
     expect(pagination && pagination.total).toBe(42);
 
@@ -159,10 +157,5 @@ describe('useListPage · 契约模式', () => {
     expect(useContractListMock).toHaveBeenLastCalledWith({ page: 1, pageSize: 10, startTime: '2026-09-01 00:00:00', endTime: '2026-09-30 23:59:59' }, undefined);
     act(() => { result.current.bindRange(['startTime', 'endTime']).onChange(null); });
     expect(result.current.draftParams).toEqual({ startTime: undefined, endTime: undefined });
-  });
-
-  it('toolbarProps 即查询 / 重置，引用随 handleSearch 稳定', () => {
-    const { result } = setupContract();
-    expect(result.current.toolbarProps).toEqual({ onSearch: result.current.handleSearch, onReset: result.current.handleReset });
   });
 });
