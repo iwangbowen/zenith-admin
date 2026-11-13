@@ -41,8 +41,8 @@ export default defineConfig({
     // node_modules/.vite/deps），22 核实测全量从 288.6s 降到 139.4s，但 Vitest 5
     // 的 client 预打包有双平台回归：Windows 会生成 Node ESM 加载器拒绝的原始 C:\
     // 路径，5.0.5 在 Linux 还会把 Semi CJS 内 require 的 CSS 外部化并报
-    // ERR_UNKNOWN_FILE_EXTENSION。Vitest 例外固定在 5.0.3（见 package.json），
-    // 预打包暂时关闭、Semi 走 Vite 逐模块转译；恢复前需在 Windows 与 Linux 同时验证。
+    // ERR_UNKNOWN_FILE_EXTENSION。升级 Vitest 后仍保持预打包关闭，Semi 走 Vite
+    // 逐模块转译；恢复前需在 Windows 与 Linux 同时验证。
     deps: {
       optimizer: {
         client: {

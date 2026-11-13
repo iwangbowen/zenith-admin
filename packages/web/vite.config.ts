@@ -1,4 +1,6 @@
 import { fileURLToPath, URL } from 'node:url';
+import { createRequire } from 'node:module';
+import { dirname } from 'node:path';
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { fileViewerRenderers } from '@file-viewer/vite-plugin';
@@ -61,6 +63,8 @@ const ENTRY_INPUTS = entriesManifest.entries as Record<string, { input: string; 
 type BuildEntry = keyof typeof ENTRY_INPUTS;
 /** 第一个入口负责清空 dist，其余入口追加写入 */
 const FIRST_ENTRY = Object.keys(ENTRY_INPUTS)[0];
+// renderer-geo 固定了较旧的 MapLibre；统一使用 web 的直接依赖，避免重复打包两个完整地图引擎。
+const maplibreRoot = dirname(createRequire(import.meta.url).resolve('maplibre-gl/package.json'));
 
 function resolveBuildEntry(): BuildEntry | null {
   const raw = process.env.ZENITH_WEB_ENTRY;
@@ -206,6 +210,7 @@ export default defineConfig(({ command, mode }) => {
     resolve: {
       alias: [
         { find: '@', replacement: fileURLToPath(new URL('./src', import.meta.url)) },
+        { find: 'maplibre-gl', replacement: maplibreRoot },
         // 精确匹配裸导入 '@douyinfe/semi-ui' → 本地无副作用影子 barrel（见该文件头部说明）：
         // 官方 barrel 被声明为 sideEffect，全量 re-export 无法摇树，
         // aiChatDialogue/MarkdownRender 等重组件会被拖进首屏（~550KB gzip）。

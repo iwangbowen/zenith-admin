@@ -135,7 +135,7 @@ describe('EntityContextView with actual Semi components', () => {
     fireEvent.change(await screen.findByPlaceholderText('搜索用户、订单、流程、内容或设备'), { target: { value: '关联测试' } });
     expect(await screen.findByText('关联测试文档')).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: '选择' }));
-    fireEvent.click(screen.getByRole('button', { name: 'confirm' }));
+    fireEvent.click(screen.getByRole('button', { name: '建立关联' }));
     await waitFor(() => expect(recorder.calls.find((call) => call.method === 'POST')?.body).toEqual({ target: { type: 'wiki.document', key: '8' }, relationType: 'related', note: '' }));
   });
 });

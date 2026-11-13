@@ -64,13 +64,13 @@
   "devDependencies": {
     "@typescript/native": "npm:typescript@^7.0.2",
     "concurrently": "^10.0.5",
-    "jsdom": "^30.0.1",
+    "jsdom": "^31.0.0",
     "mastra": "^1.27.3",
     "mermaid": "^11.17.2",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "vite": "^8.2.2",
+    "vite": "^8.3.8",
     "vitepress": "^1.6.4",
     "vitepress-plugin-mermaid": "^2.0.17"
   }

@@ -13,7 +13,6 @@ import { usePreferences } from '@/hooks/usePreferences';
 import { hasPostLoginHome, clearPostLoginHome } from '@/lib/post-login';
 import { ThemeProvider } from '@/providers/ThemeProvider';
 import { useQueryClient } from '@tanstack/react-query';
-import MaintenanceOverlay from '@/components/MaintenanceOverlay';
 import { maintenanceKeys, usePublicMaintenanceStatus } from '@/hooks/queries/maintenance';
 import { lazyPageComponent } from '@/utils/page-registry';
 import { useCurrentUserMenuTree, useMenuTree } from '@/hooks/queries/menus';
@@ -25,6 +24,8 @@ import RouteSuspense from '@/layouts/RouteSuspense';
 // AdminLayout 懒加载：后台布局静态依赖图很重（通知/文件预览/偏好面板/dnd-kit/DatePicker 等），
 // 登录页与公开页（支付链接、公开报表、OAuth 授权）不应预载它
 const AdminLayout = React.lazy(() => import('@/layouts/AdminLayout'));
+// 维护遮罩只在维护生效后加载，避免其 Empty 等组件进入每次登录的关键路径。
+const MaintenanceOverlay = React.lazy(() => import('@/components/MaintenanceOverlay'));
 
 // 登录页静态引入：未登录首屏只需关键路径本身，不再多一轮 chunk 下载。
 // 代价是它的静态闭包直接决定匿名首屏体积：Semi Form（含 BaseForm）会静态拖入全部字段控件（≈770 KB / 210 KB gz），
@@ -391,7 +392,7 @@ export default function App() {
   // maintenance:enabled 让状态失效，遮罩里的刷新图标就会被动地反复转圈。
   // 只渲染遮罩可以把这些请求一起停掉；维护结束后由遮罩自身的 30 秒轮询解除。
   if (showMaintenance && maintenance) {
-    return <AppChrome><MaintenanceOverlay info={maintenance} /></AppChrome>;
+    return <AppChrome><Suspense fallback={routeFallback}><MaintenanceOverlay info={maintenance} /></Suspense></AppChrome>;
   }
 
   // Electron file:// 协议不支持 BrowserRouter，需使用 HashRouter

@@ -22,7 +22,7 @@ describe('supplemental approval group controls', () => {
     expect(screen.getByText('基础意见 1/1，需 1 票')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '减签' }));
     await act(async () => { fireEvent.click(screen.getByRole('checkbox', { name: '赵法务' })); });
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'confirm' })); });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '确认' })); });
     await waitFor(() => expect(mutation.reduce).toHaveBeenCalledWith(expect.objectContaining({
       params: { groupId: 20 }, body: expect.objectContaining({ targetSlotIds: [12] }),
     })));
