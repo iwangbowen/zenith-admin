@@ -451,7 +451,7 @@ export default function WorkflowEventSubscriptionsPage() {
         </div>
         <ConfigurableTable<WorkflowEventDelivery>
           columns={deliveryColumns}
-          {...listTableProps(deliveriesQuery, { pagination: buildDeliveryPagination })}
+          {...listTableProps(deliveriesQuery, { pagination: buildDeliveryPagination, loadingMode: 'initial' })}
         />
       </SideSheet>
 

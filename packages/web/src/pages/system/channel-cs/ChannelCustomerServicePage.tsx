@@ -210,6 +210,7 @@ export default function ChannelCustomerServicePage() {
         />
         <Button
           icon={<RotateCcw size={14} />}
+          loading={conversationsQuery.isFetching || (activeUserId != null && messagesQuery.isFetching)}
           onClick={() => { void conversationsQuery.refetch(); if (activeUserId != null) void messagesQuery.refetch(); }}
         >
           刷新

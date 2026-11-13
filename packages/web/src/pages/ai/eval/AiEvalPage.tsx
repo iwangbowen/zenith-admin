@@ -293,7 +293,7 @@ function DatasetDetail({ dataset, canManage }: { dataset: AiEvalDataset; canMana
             style={{ marginTop: 12 }}
             columnSettingsKey="ai-eval-experiments"
             columns={experimentColumns}
-            {...listTableProps(experimentsQuery, { empty: '暂无实验，发起实验后 Mastra 在后台逐条执行并打分' })}
+            {...listTableProps(experimentsQuery, { empty: '暂无实验，发起实验后 Mastra 在后台逐条执行并打分', loadingMode: 'initial' })}
           />
         </TabPane>
       </Tabs>

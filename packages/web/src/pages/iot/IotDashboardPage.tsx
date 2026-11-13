@@ -161,7 +161,7 @@ export default function IotDashboardPage() {
             <ConfigurableTable
               columnSettingsKey="iot-dashboard-recent-alarms"
               columns={alarmColumns}
-              {...listTableProps({ ...query, data: data?.recentAlarms ?? [] }, { empty: '暂无告警' })}
+              {...listTableProps({ ...query, data: data?.recentAlarms ?? [] }, { empty: '暂无告警', loadingMode: 'initial' })}
             />
           </Card>
         </div>
@@ -170,7 +170,7 @@ export default function IotDashboardPage() {
           <ConfigurableTable
             columnSettingsKey="iot-dashboard-recent-events"
             columns={eventColumns}
-            {...listTableProps({ ...query, data: (data?.recentEvents ?? []) as RecentEvent[] }, { empty: '暂无设备事件' })}
+            {...listTableProps({ ...query, data: (data?.recentEvents ?? []) as RecentEvent[] }, { empty: '暂无设备事件', loadingMode: 'initial' })}
           />
         </Card>
         <Text type="tertiary" size="small" style={{ display: 'block', marginTop: 8 }}>

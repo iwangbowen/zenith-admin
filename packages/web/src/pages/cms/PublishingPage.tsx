@@ -296,6 +296,7 @@ export default function PublishingPage() {
         columns={taskColumns}
         {...listTableProps(taskListQuery, {
           rowKey: (record) => String(record?.id ?? ''),
+          loadingMode: 'initial',
           pagination: (total) => taskPagination.buildPagination(total, () => setSelected([])),
           rowSelection: canManage ? { selectedRowKeys: selected.map(String), onChange: (keys) => setSelected((keys ?? []).map(Number)) } : undefined,
         })}

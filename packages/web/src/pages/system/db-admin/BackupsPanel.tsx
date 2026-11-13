@@ -190,7 +190,7 @@ export function BackupsPanel({ canMaintain, active }: Readonly<{ canMaintain: bo
 
       <ConfigurableTable<DbBackup>
         columns={columns}
-        {...listTableProps(listQuery, { pagination: buildPagination })}
+        {...listTableProps(listQuery, { pagination: buildPagination, loadingMode: 'initial' })}
       />
 
       <EditFormModal modal={createModal} title="创建备份" okText="确定" cancelText="取消">

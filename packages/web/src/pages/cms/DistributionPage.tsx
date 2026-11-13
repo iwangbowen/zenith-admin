@@ -440,7 +440,7 @@ export default function DistributionPage() {
           />
           <ConfigurableTable<CmsDistributionRun>
             columns={runColumns}
-            {...listTableProps(runQuery, { pagination: runSearch.buildPagination })}
+            {...listTableProps(runQuery, { pagination: runSearch.buildPagination, loadingMode: 'initial' })}
           />
         </TabPane>
       </Tabs>

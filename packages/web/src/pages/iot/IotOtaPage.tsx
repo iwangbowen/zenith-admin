@@ -422,7 +422,7 @@ function OtaTaskDetailDrawer({ task: initialTask, onClose }: Readonly<{ task: Io
           <ConfigurableTable
             columnSettingsKey="iot-ota-task-devices"
             columns={columns}
-            {...listTableProps(devicesQuery, { pagination: buildPagination, empty: '暂无设备明细' })}
+            {...listTableProps(devicesQuery, { pagination: buildPagination, empty: '暂无设备明细', loadingMode: 'initial' })}
           />
           <EntityContextView entityType="iot.ota-task" entityKey={String(task.id)} />
         </>

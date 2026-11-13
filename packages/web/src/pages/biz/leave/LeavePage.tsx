@@ -64,7 +64,7 @@ export default function LeavePage() {
   const deepLinked = useBizLeaveRecord(deepLinkedId);
   const { hasPermission } = usePermission();
   const { options: leaveTypeOptions, getLabel: getLeaveTypeLabel } = useDictItems('leave_type');
-  const page = useListPage({ contract: bizLeaveContract, useList: useBizLeaveList });
+  const page = useListPage({ contract: bizLeaveContract, useList: useBizLeaveList, table: { loadingMode: 'initial' } });
   useListDeepLink(['keyword'], (params) => page.applySearch({ keyword: params.keyword ?? '', status: undefined }));
   const saveMutation = useSaveBizLeave();
   const submitMutation = useSubmitBizLeave();

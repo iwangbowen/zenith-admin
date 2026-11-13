@@ -224,6 +224,7 @@ export default function DirectorySyncLogsPage() {
         {...listTableProps(listQuery, {
           pagination: buildPagination,
           empty: '暂无同步记录',
+          loadingMode: 'initial',
         })}
       />
 

@@ -172,9 +172,7 @@ export default function ImportCenterPage() {
 
       <ConfigurableTable
         columns={columns}
-        {...listTableProps(listQuery, { pagination: buildPagination, empty: '暂无导入记录，点击「新建导入」开始' })}
-        // 进行中任务每 3s 轮询：遮罩只在首屏出现，后台刷新不遮住表格（刷新图标仍由 refreshLoading 转动）
-        loading={listQuery.isFetching && !listQuery.data}
+        {...listTableProps(listQuery, { pagination: buildPagination, empty: '暂无导入记录，点击「新建导入」开始', loadingMode: 'initial' })}
       />
 
       <NewImportModal

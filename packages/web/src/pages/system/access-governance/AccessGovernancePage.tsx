@@ -326,7 +326,7 @@ function PolicyDetailSheet({ record, onClose }: { readonly record: PermissionPol
 
 function RequestsTab() {
   const { hasPermission } = usePermission();
-  const page = useListPage({ op: accessGovernanceContract.requestList, useList: useAccessRequestList, table: { rowKey: 'id', empty: '暂无权限申请' } });
+  const page = useListPage({ op: accessGovernanceContract.requestList, useList: useAccessRequestList, table: { rowKey: 'id', empty: '暂无权限申请', loadingMode: 'initial' } });
   const retry = useRetryAccessProvision();
   const [detail, setDetail] = useState<AccessRequest | null>(null);
   const columns: ColumnProps<AccessRequest>[] = [

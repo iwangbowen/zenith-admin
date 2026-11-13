@@ -22,8 +22,8 @@ export interface ListTablePropsOptions<T extends Data> {
   rowSelection?: TableProps<T>['rowSelection'];
   /**
    * 整表 loading 蒙层的显示时机：
-   * - `initial`（默认）：仅首屏没有数据快照时显示；后台重拉只让刷新按钮转圈，避免整表闪烁
-   * - `always`：任何请求（查询 / 刷新 / 翻页 / 失效重拉）期间都显示整表蒙层
+   * - `always`（默认）：任何请求（查询 / 刷新 / 翻页 / 失效重拉）期间都显示整表蒙层
+   * - `initial`：仅首屏没有数据快照时显示；持续轮询、后台自动刷新频繁的列表用它避免整表反复闪烁
    */
   loadingMode?: 'initial' | 'always';
 }
@@ -43,11 +43,9 @@ export function listTableProps<T extends Data>(query: ListQueryLike<T>, options:
     rowKey: options.rowKey ?? 'id',
     size: options.size ?? 'small',
     dataSource: list,
-    // `initial` 只在还没有数据快照（首载）时盖 Spin 蒙层：Semi 的 Spin 会把子树压暗到 50% 再弹回，
-    // 若让后台重拉（mutation 后的失效刷新、翻页时的 placeholder 数据）也盖蒙层，
-    // 批量上传一类场景会每个文件闪一次整表；后台重拉只让列头刷新按钮转圈（refreshLoading）。
-    // `always` 用于要求「每次请求都有明确反馈」的列表：查询 / 刷新 / 翻页 / 失效重拉都显示整表蒙层。
-    loading: query.isFetching && (options.loadingMode === 'always' || query.data === undefined),
+    // 默认任何请求都盖 Spin 蒙层，查询 / 刷新 / 翻页 / 失效重拉都有明确反馈。
+    // `initial` 只给持续轮询、后台自动刷新频繁的列表：仅首屏无数据快照时盖蒙层，避免整表反复闪烁。
+    loading: query.isFetching && (options.loadingMode !== 'initial' || query.data === undefined),
     onRefresh: () => { void query.refetch(); },
     refreshLoading: query.isFetching,
     pagination: options.pagination ? options.pagination(total) : (false as const),

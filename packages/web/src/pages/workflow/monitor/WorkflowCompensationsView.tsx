@@ -130,7 +130,7 @@ export default function WorkflowCompensationsView() {
             value={status}
             onChange={(v) => setStatus(v as string)}
           />
-          <RefreshButton onClick={() => void listQuery.refetch()} />
+          <RefreshButton onClick={() => void listQuery.refetch()} loading={listQuery.isFetching} />
           <Typography.Text type="tertiary" size="small">异常捕获 / 补偿产生的修复工单</Typography.Text>
         </Space>
       )} />

@@ -189,7 +189,7 @@ function AutomationRunsSheet({ rule, onClose }: { rule: WorkflowAutomation | nul
       ) : (
         <ConfigurableTable<WorkflowAutomationRun>
           columns={columns}
-          {...listTableProps(runsQuery, { pagination: buildPagination })}
+          {...listTableProps(runsQuery, { pagination: buildPagination, loadingMode: 'initial' })}
         />
       )}
       <WorkflowInstanceDetailSheet instanceId={targetInstanceId} visible={targetInstanceId !== null} onClose={() => setTargetInstanceId(null)} />

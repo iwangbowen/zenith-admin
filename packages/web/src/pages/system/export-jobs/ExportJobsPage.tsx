@@ -78,7 +78,7 @@ export default function ExportJobsPage() {
   const page = useListPage({
     contract: exportJobContract,
     useList: useExportJobList,
-    table: { rowSelection, empty: '暂无导出任务' },
+    table: { rowSelection, empty: '暂无导出任务', loadingMode: 'initial' },
   });
   const { tableProps, listQuery } = page;
   useListDeepLink(['status'], (params) => page.applySearch({ status: enumValueOf(EXPORT_JOB_STATUSES, params.status) }));

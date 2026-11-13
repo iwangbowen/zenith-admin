@@ -97,7 +97,7 @@ export default function CheckinMilestonesPage() {
       <SearchToolbar
         primary={(
           <>
-            <RefreshButton onClick={() => void queryClient.invalidateQueries({ queryKey: memberAdminKeys.checkinMilestones })} />
+            <RefreshButton onClick={() => void queryClient.invalidateQueries({ queryKey: memberAdminKeys.checkinMilestones })} loading={listQuery.isFetching} />
             <CreateButton permission="member:checkin:milestone:create" onClick={() => openModal(null)} />
           </>
         )}

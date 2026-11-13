@@ -206,7 +206,7 @@ export default function MpKfSessionsPage() {
   ) : null;
   const sessionActions = (
     <>
-      <Button icon={<RefreshCw size={14} />} onClick={refreshAll}>刷新</Button>
+      <Button icon={<RefreshCw size={14} />} onClick={refreshAll} loading={listQuery.isFetching}>刷新</Button>
       {configButton}
     </>
   );

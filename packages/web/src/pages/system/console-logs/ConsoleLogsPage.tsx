@@ -56,7 +56,7 @@ export default function ConsoleLogsPage() {
         ) : sourcesQuery.isError ? (
           <div className="console-logs-page__placeholder">
             <Typography.Text type="tertiary">日志来源加载失败</Typography.Text>
-            <Button size="small" theme="light" icon={<RefreshCw size={14} />} onClick={() => void sourcesQuery.refetch()}>重试</Button>
+            <Button size="small" theme="light" icon={<RefreshCw size={14} />} loading={sourcesQuery.isFetching} onClick={() => void sourcesQuery.refetch()}>重试</Button>
           </div>
         ) : source ? (
           <LogWorkbench

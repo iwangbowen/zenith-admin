@@ -25,7 +25,8 @@ function couponDiscount(mc: MemberCoupon, amountCents: number): number {
 
 export default function WalletPage() {
   const queryClient = useQueryClient();
-  const wallet = useMemberWallet().data ?? null;
+  const walletQuery = useMemberWallet();
+  const wallet = walletQuery.data ?? null;
   const paymentOptionsQuery = useMemberPaymentOptions();
   const paymentOptions = useMemo(() => paymentOptionsQuery.data ?? [], [paymentOptionsQuery.data]);
   const availableApplications = useMemo(
@@ -118,6 +119,7 @@ export default function WalletPage() {
           theme="borderless"
           size="small"
           icon={<RefreshCw size={14} />}
+          loading={walletQuery.isFetching}
           onClick={handleRefresh}
         >
           刷新

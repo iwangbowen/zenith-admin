@@ -78,7 +78,7 @@ export default function CheckinRulesPage() {
   ];
 
   const renderRefreshButton = () => (
-    <RefreshButton onClick={() => void queryClient.invalidateQueries({ queryKey: memberAdminKeys.checkinRules })} />
+    <RefreshButton onClick={() => void queryClient.invalidateQueries({ queryKey: memberAdminKeys.checkinRules })} loading={listQuery.isFetching} />
   );
 
   const renderSettingsButton = () => hasPermission('member:checkin:setting:update') ? (

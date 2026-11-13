@@ -33,7 +33,7 @@ export default function AccessReviews({ onDetail }: Readonly<{ onDetail: (item: 
     const parsed = Number(raw);
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
   });
-  const campaigns = useListPage({ op: accessGovernanceContract.reviewCampaignList, useList: useAccessReviewCampaignList, table: { rowKey: 'id', empty: '暂无复核批次' } });
+  const campaigns = useListPage({ op: accessGovernanceContract.reviewCampaignList, useList: useAccessReviewCampaignList, table: { rowKey: 'id', empty: '暂无复核批次', loadingMode: 'initial' } });
   const items = useListPage({ op: accessGovernanceContract.reviewItemList, useList: useAccessReviewItemList, params: { campaignId: campaignId ?? undefined }, table: { rowKey: 'id', empty: '所选范围没有复核项' } });
   const create = useCreateAccessReviewCampaign();
   const assign = useAssignAccessReviewCampaign();

@@ -17,7 +17,7 @@ import { useWebSocket } from '@/hooks/useWebSocket';
 import { singleLineColumns, dateTimeColumn } from '@/utils/table-columns';
 
 function MyRequests() {
-  const page = useListPage({ op: accessGovernanceContract.myRequests, useList: useMyAccessRequests, table: { rowKey: 'id', empty: '暂无权限申请' } });
+  const page = useListPage({ op: accessGovernanceContract.myRequests, useList: useMyAccessRequests, table: { rowKey: 'id', empty: '暂无权限申请', loadingMode: 'initial' } });
   const [instanceId, setInstanceId] = useState<number | null>(null);
   const columns: ColumnProps<AccessRequest>[] = [
     { title: '申请原因', dataIndex: 'reason', minWidth: 240 },

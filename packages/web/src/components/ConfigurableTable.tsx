@@ -231,9 +231,24 @@ export function ConfigurableTable<RecordType extends TableRecord = TableRecord>(
   const {
     bordered, className, onRow, size, pagination,
     scroll, rowSelection, expandedRowRender, hideExpandedColumn, sticky, resizable, virtualized, components,
+    loading,
     ...restTableProps
   } = tableProps;
   const rootRef = useRef<HTMLDivElement>(null);
+  // 手动刷新期间盖整表蒙层：轮询也会让 refreshLoading 变化，但只有点击刷新按钮才置位，
+  // 避免轮询列表每隔几秒整表闪烁。请求结束后自动收起。
+  const [manualRefreshing, setManualRefreshing] = useState(false);
+  useEffect(() => {
+    if (!manualRefreshing || refreshLoading) return;
+    const timer = globalThis.setTimeout(() => setManualRefreshing(false), 150);
+    return () => globalThis.clearTimeout(timer);
+  }, [manualRefreshing, refreshLoading]);
+  const handleRefresh = useCallback(() => {
+    if (!onRefresh) return;
+    setManualRefreshing(true);
+    onRefresh();
+  }, [onRefresh]);
+  const effectiveLoading = loading || (manualRefreshing && refreshLoading);
 
   // 虚拟化表格：Semi 把 scroll.x 写成 wrapper 宽度（非最小宽度），铺满容器必须量出容器宽度；
   // 各列之和要按 body 可视宽度（clientWidth）给——行宽等于各列之和，纵向滚动条又占在 body 内部。
@@ -514,11 +529,12 @@ export function ConfigurableTable<RecordType extends TableRecord = TableRecord>(
           <Button
             type="tertiary"
             theme="borderless"
-            icon={<RefreshCw size={14} className={refreshLoading ? 'spin' : ''} />}
+            icon={<RefreshCw size={14} />}
+            loading={refreshLoading}
             aria-label="刷新"
             title="刷新"
             disabled={refreshLoading}
-            onClick={() => onRefresh()}
+            onClick={handleRefresh}
           />
         )}
         {effectiveColumnSettings && configurableOptions.length > 0 && (
@@ -561,6 +577,7 @@ export function ConfigurableTable<RecordType extends TableRecord = TableRecord>(
       </div>
       <Table<RecordType>
         {...restTableProps}
+        loading={effectiveLoading}
         bordered={effectiveBordered}
         className={tableClassName}
         columns={resolvedLayout.columns}

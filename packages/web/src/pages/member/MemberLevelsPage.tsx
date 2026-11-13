@@ -74,7 +74,7 @@ export default function MemberLevelsPage() {
       <SearchToolbar
         primary={(
           <>
-            <RefreshButton onClick={() => void queryClient.invalidateQueries({ queryKey: memberAdminKeys.levels })} />
+            <RefreshButton onClick={() => void queryClient.invalidateQueries({ queryKey: memberAdminKeys.levels })} loading={listQuery.isFetching} />
             <CreateButton permission="member:level:create" onClick={levelModal.openCreate}>新增等级</CreateButton>
           </>
         )}

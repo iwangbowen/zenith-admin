@@ -240,7 +240,7 @@ export default function TerminalSessionsPage() {
 
       <ConfigurableTable<TerminalSession>
         columns={columns}
-        {...listTableProps(listQuery, { rowKey: 'sessionId', pagination: buildPagination, empty: '暂无活动终端会话' })}
+        {...listTableProps(listQuery, { rowKey: 'sessionId', pagination: buildPagination, empty: '暂无活动终端会话', loadingMode: 'initial' })}
       />
 
       <SideSheet

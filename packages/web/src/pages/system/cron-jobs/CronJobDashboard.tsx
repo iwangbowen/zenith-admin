@@ -423,7 +423,8 @@ export default function CronJobDashboard({ onViewLogs }: Readonly<Props>) {
           </Tooltip>
           <Button
             type="tertiary" theme="borderless" size="small"
-            icon={<RefreshCw size={14} className={statsQuery.isFetching ? 'spin' : ''} />}
+            icon={<RefreshCw size={14} />}
+            loading={statsQuery.isFetching}
             aria-label="立即刷新" title="立即刷新"
             disabled={statsQuery.isFetching}
             onClick={() => { void statsQuery.refetch(); }}

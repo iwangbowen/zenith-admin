@@ -103,7 +103,7 @@ export default function DashboardViewPage() {
   const aspect = isCanvas ? `${screen?.width || 1920} / ${screen?.height || 1080}` : undefined;
   const refreshInterval = dashboard?.config?.refreshInterval && dashboard.config.refreshInterval > 0 ? dashboard.config.refreshInterval * 1000 : false;
 
-  const { get: getData, refresh } = useReportDashboardWidgetData(dashboardId, widgets, debouncedFilterValues, {
+  const { get: getData, refresh, query: dataQuery } = useReportDashboardWidgetData(dashboardId, widgets, debouncedFilterValues, {
     refetchInterval: refreshInterval,
     widgetQueries,
     mode: viewMode,
@@ -288,7 +288,7 @@ export default function DashboardViewPage() {
           <Button icon={<ArrowLeft size={16} />} theme="borderless" onClick={() => navigate('/report/dashboards')}>返回</Button>
           <span className="report-screen-header__title" style={{ margin: 0, color: isDark ? '#eaf4ff' : 'var(--semi-color-text-0)', fontSize: isCanvas ? 20 : 18 }}>{dashboard?.name ?? '仪表盘'}</span>
           <div style={{ flex: 1 }} />
-          <Button icon={<RotateCcw size={16} />} onClick={() => refresh()}>刷新</Button>
+          <Button icon={<RotateCcw size={16} />} loading={dataQuery.isFetching} onClick={() => refresh()}>刷新</Button>
           <Button icon={<Image size={16} />} loading={exporting} onClick={handleExportPng}>图片</Button>
           <Button icon={<Maximize size={16} />} onClick={toggleFullscreen}>全屏</Button>
           {hasPermission('report:dashboard:list') && (

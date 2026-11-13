@@ -71,7 +71,8 @@ export default function WorkflowEngineTraceView({ instanceId }: Props) {
         <Button
           size="small"
           theme="borderless"
-          icon={<RefreshCw size={14} className={loading ? 'spin' : ''} />}
+          icon={<RefreshCw size={14} />}
+          loading={loading}
           disabled={loading}
           onClick={() => void queryClient.invalidateQueries({ queryKey: workflowMonitorKeys.trace(instanceId) })}
         >

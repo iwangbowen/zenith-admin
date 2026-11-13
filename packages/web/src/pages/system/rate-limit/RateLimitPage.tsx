@@ -511,7 +511,7 @@ export default function RateLimitPage() {
             )}
           />
           <ConfigurableTable
-            {...listTableProps(bansQuery, { rowKey: (b: { name: string; key: string } | undefined) => `${b?.name}|${b?.key}` })}
+            {...listTableProps(bansQuery, { rowKey: (b: { name: string; key: string } | undefined) => `${b?.name}|${b?.key}`, loadingMode: 'initial' })}
             columns={[
               { title: '规则', dataIndex: 'name', minWidth: 200, render: (v: string) => <Tag color="blue" size="small">{v}</Tag> },
               copyableNoColumn('被封禁 Key', 'key', { width: undefined }),

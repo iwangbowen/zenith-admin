@@ -56,7 +56,7 @@ export default function WorkflowScheduleRunsSheet({ schedule, onClose }: Readonl
           <RefreshButton onClick={() => void runs.refetch()} loading={runs.isFetching} />
         </Space>
         {runs.data?.total === 0 ? <Empty description="暂无执行记录，定时触发或立即执行后在这里查看" style={{ marginTop: 64 }} /> : (
-          <ConfigurableTable<WorkflowScheduleRun> columns={columns} {...listTableProps(runs, { pagination: pagination.buildPagination })} />
+          <ConfigurableTable<WorkflowScheduleRun> columns={columns} {...listTableProps(runs, { pagination: pagination.buildPagination, loadingMode: 'initial' })} />
         )}
       </SideSheet>
       <SideSheet visible={selectedRun !== null} title="周期执行尝试" onCancel={() => setSelectedRun(null)} width={620} closeOnEsc>

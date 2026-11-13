@@ -67,7 +67,7 @@ export default function WorkflowHealthCheckDrawer({ visible, flowData, definitio
   return (
     <SideSheet title="发布前体检" visible={visible} onCancel={onClose} width="min(560px, 96vw)">
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-        <Button size="small" theme="borderless" icon={<RefreshCw size={14} className={loading ? 'spin' : ''} />} disabled={loading} onClick={() => void runCheck()}>重新检查</Button>
+        <Button size="small" theme="borderless" icon={<RefreshCw size={14} />} loading={loading} disabled={loading} onClick={() => void runCheck()}>重新检查</Button>
       </div>
 
       {loading && !report && <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>}

@@ -466,7 +466,8 @@ export default function CacheManagePage() {
               style={{ marginLeft: 'auto' }}
               type="tertiary"
               theme="borderless"
-              icon={<RefreshCw size={14} className={overviewLoading ? 'spin' : ''} />}
+              icon={<RefreshCw size={14} />}
+              loading={overviewLoading}
               aria-label="刷新概览"
               title="刷新概览"
               disabled={overviewLoading}

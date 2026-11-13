@@ -122,7 +122,7 @@ function ContentPickerModal({ siteId, visible, onCancel, onSelect, excludeId }: 
           <ConfigurableTable
             columnSettingsKey="cms-link-content-picker"
             columns={columns}
-            {...listTableProps(listQuery, { bordered: false })}
+            {...listTableProps(listQuery, { bordered: false, loadingMode: 'initial' })}
             dataSource={rows}
             scroll={{ y: isMobile ? 240 : 336 }}
             pagination={{ ...buildPagination(listQuery.data?.total ?? 0), showSizeChanger: false }}

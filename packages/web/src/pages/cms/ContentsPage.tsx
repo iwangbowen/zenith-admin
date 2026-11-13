@@ -857,6 +857,7 @@ export default function ContentsPage() {
         {...listTableProps(listQuery, {
           rowKey: (record) => String(record?.id ?? ''),
           empty: '暂无内容',
+          loadingMode: 'initial',
           pagination: (total) => buildPagination(total, () => setSelectedIds([])),
           rowSelection: {
             selectedRowKeys: selectedIds.map(String),

@@ -83,7 +83,7 @@ export default function FormSelectorPanel({ formId, formName, onSelect, typeSwit
           </div>
         </div>
         <div className="fd-form-selector__bar-right">
-          <Button icon={<RefreshCw size={14} />} type="tertiary" theme="borderless" disabled={editorOpen} onClick={() => void formsQuery.refetch()}>
+          <Button icon={<RefreshCw size={14} />} type="tertiary" theme="borderless" loading={formsQuery.isFetching} disabled={editorOpen} onClick={() => void formsQuery.refetch()}>
             刷新
           </Button>
           {selected && (

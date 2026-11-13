@@ -69,7 +69,7 @@ export default function PaymentMethodsPage() {
   ];
 
   const refreshButton = (
-    <RefreshButton onClick={() => { void queryClient.invalidateQueries({ queryKey: paymentMethodKeys.lists }); }} />
+    <RefreshButton onClick={() => { void queryClient.invalidateQueries({ queryKey: paymentMethodKeys.lists }); }} loading={listQuery.isFetching} />
   );
 
   return (

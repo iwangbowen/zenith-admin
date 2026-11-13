@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, Input, Space, Switch, Tag, Toast, Tabs, TabPane, Banner, Typography, TextArea } from '@douyinfe/semi-ui';
-import { Search, RefreshCw, Briefcase } from 'lucide-react';
+import { RefreshCw, Briefcase } from 'lucide-react';
 import { enumValueOf } from '@zenith/shared/core';
 import type { SendMpTemplateInput } from '@zenith/shared/messaging';
 import { MP_TEMPLATE_SEND_STATUSES, type MpMessageTemplate } from '@zenith/shared/mp';
@@ -146,7 +146,10 @@ export default function MpTemplateMessagesPage() {
     <MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />
   );
   const templateRefreshButton = (
-    <RefreshButton onClick={() => { tplPg.setPage(1); void queryClient.invalidateQueries({ queryKey: mpTemplateKeys.lists }); }} />
+    <RefreshButton
+      onClick={() => { tplPg.setPage(1); void queryClient.invalidateQueries({ queryKey: mpTemplateKeys.lists }); }}
+      loading={templateQuery.isFetching}
+    />
   );
   const templateActions = can('mp:template:sync') ? (
     <>
@@ -162,7 +165,7 @@ export default function MpTemplateMessagesPage() {
   );
   const refreshLogs = logSearch.handleSearch;
   const logRefreshButton = (
-    <Button type="tertiary" icon={<Search size={14} />} onClick={refreshLogs}>刷新</Button>
+    <RefreshButton onClick={refreshLogs} loading={logQuery.isFetching} />
   );
 
   const sending = sendMutation.isPending || batchSendMutation.isPending;

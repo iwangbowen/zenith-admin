@@ -181,7 +181,7 @@ export default function MpConditionalMenusPage() {
     <MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />
   );
   const refreshButton = (
-    <RefreshButton onClick={() => void listQuery.refetch()} />
+    <RefreshButton onClick={() => void listQuery.refetch()} loading={listQuery.isFetching} />
   );
   const createButton = (
     <CreateButton permission="mp:condmenu:create" onClick={openCreate} disabled={!currentId}>新增个性化菜单</CreateButton>

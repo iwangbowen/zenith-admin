@@ -116,21 +116,21 @@ describe('deleteAction', () => {
 describe('listTableProps', () => {
   const buildPagination = (total: number) => ({ currentPage: 1, pageSize: 10, total, onPageChange: () => {}, onPageSizeChange: () => {} });
 
-  it('分页包络：数据源 / total / 刷新接线，默认 id · small · bordered；后台重拉不盖蒙层', () => {
+  it('分页包络：数据源 / total / 刷新接线，默认 id · small · bordered；请求期间盖整表蒙层', () => {
     const refetch = vi.fn();
     const props = listTableProps({ data: { list: [{ id: 1 }], total: 7 }, isFetching: true, refetch }, { pagination: buildPagination });
-    expect(props).toMatchObject({ bordered: true, rowKey: 'id', size: 'small', dataSource: [{ id: 1 }], loading: false, refreshLoading: true });
+    expect(props).toMatchObject({ bordered: true, rowKey: 'id', size: 'small', dataSource: [{ id: 1 }], loading: true, refreshLoading: true });
     expect(props.pagination && props.pagination.total).toBe(7);
     props.onRefresh();
     expect(refetch).toHaveBeenCalledTimes(1);
   });
 
-  it('loadingMode=always：已有数据快照时，后台重拉也显示整表蒙层', () => {
+  it('loadingMode=initial：已有数据快照时，后台重拉不盖整表蒙层', () => {
     const props = listTableProps(
       { data: { list: [{ id: 1 }], total: 1 }, isFetching: true, refetch: () => {} },
-      { loadingMode: 'always' },
+      { loadingMode: 'initial' },
     );
-    expect(props).toMatchObject({ loading: true, refreshLoading: true });
+    expect(props).toMatchObject({ loading: false, refreshLoading: true });
   });
 
   it('数组型数据与未加载态；显式覆盖 rowKey / size / empty / bordered', () => {
