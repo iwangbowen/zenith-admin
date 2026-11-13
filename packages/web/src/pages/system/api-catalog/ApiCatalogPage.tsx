@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState, useTransition } from 'react';
 import { Banner, Radio, RadioGroup, Select, Tag, Typography } from '@douyinfe/semi-ui';
 import { CircleCheck, CircleSlash, Fingerprint, Globe, KeyRound, Layers, Lock, ShieldCheck } from 'lucide-react';
 import { judgeOperation, type OperationVerdict, type PermissionSubject } from '@zenith/shared/permission-catalog-core';
@@ -94,6 +94,17 @@ export default function ApiCatalogPage() {
     resetKey: [subjectKind, roleId, userId],
   });
   const { submittedParams, applySearch, page, pageSize, buildPagination } = search;
+  // 目录过滤在浏览器内完成：用 transition 让表格先进入 loading，再提交过滤结果
+  const [isFiltering, startFilteringTransition] = useTransition();
+  const applyFilterSearch = useCallback((params: CatalogFilters) => {
+    startFilteringTransition(() => applySearch(params));
+  }, [applySearch, startFilteringTransition]);
+  const searchBar = {
+    ...search,
+    handleSearch: () => startFilteringTransition(search.handleSearch),
+    handleReset: () => startFilteringTransition(search.handleReset),
+    applySearch: applyFilterSearch,
+  };
 
   // 判定只对后台登录令牌操作有意义；公开 / 会员 / 设备 / 网关接口不经权限码门禁 → null（表内显示「不适用」）
   const verdicts = useMemo(() => {
@@ -124,23 +135,24 @@ export default function ApiCatalogPage() {
   // 表格已 memo：分页配置按 total / 页码稳定引用，避免每次渲染新对象把它拖下水
   const pagination = useMemo(() => buildPagination(filtered.length), [buildPagination, filtered.length]);
 
+  const tableLoading = loading || isFiltering;
   const activeStat = activeStatOf(submittedParams);
   const toggleStat = (key: StatKey) => {
-    applySearch({ ...submittedParams, ...(activeStat === key ? CLEARED_STAT_FILTER : STAT_FILTERS[key]) });
+    applyFilterSearch({ ...submittedParams, ...(activeStat === key ? CLEARED_STAT_FILTER : STAT_FILTERS[key]) });
   };
   const toggleVerdict = (verdict: OperationVerdict) => {
-    applySearch({ ...submittedParams, verdict: submittedParams.verdict === verdict ? undefined : verdict });
+    applyFilterSearch({ ...submittedParams, verdict: submittedParams.verdict === verdict ? undefined : verdict });
   };
   // 选中主体即刻提交「只看可调用」；清空主体回到普通目录
   const selectSubject = (next: { roleId?: number | null; userId?: number | null }) => {
     if (next.roleId !== undefined) setRoleId(next.roleId);
     if (next.userId !== undefined) setUserId(next.userId);
     const picked = (next.roleId ?? next.userId) != null;
-    applySearch({ ...submittedParams, verdict: picked ? 'allowed' : undefined });
+    applyFilterSearch({ ...submittedParams, verdict: picked ? 'allowed' : undefined });
   };
   const switchSubjectKind = (kind: SubjectKind) => {
     setSubjectKind(kind);
-    applySearch({ ...submittedParams, verdict: undefined });
+    applyFilterSearch({ ...submittedParams, verdict: undefined });
   };
   const canPickUser = hasPermission('system:user:list');
 
@@ -215,8 +227,8 @@ export default function ApiCatalogPage() {
       <ApiCatalogSearchBar
         rows={rows}
         permissionLabels={permissionLabels}
-        search={search}
-        extraFilters={verdictOf ? <FilterSelect placeholder="全部判定" items={VERDICT_OPTIONS} {...search.bind('verdict')} width={120} /> : undefined}
+        search={searchBar}
+        extraFilters={verdictOf ? <FilterSelect placeholder="全部判定" items={VERDICT_OPTIONS} {...searchBar.bind('verdict')} width={120} /> : undefined}
         extra={<Typography.Text type="tertiary" size="small">{summaryText}</Typography.Text>}
       />
 
@@ -224,7 +236,7 @@ export default function ApiCatalogPage() {
         rows={pageRows}
         permissionLabels={permissionLabels}
         pagination={pagination}
-        loading={loading}
+        loading={tableLoading}
         onRefresh={refreshCatalog}
         refreshLoading={catalogQuery.isFetching}
         onOpen={setSelected}
