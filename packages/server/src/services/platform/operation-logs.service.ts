@@ -13,6 +13,7 @@ import { getNicknameMap, findUsernamesByNickname } from '../../lib/user-nickname
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
 import { localDate, localTime } from "../../lib/datetime-sql";
+import { deleteLogRows } from './log-cleanup';
 
 export type OperationLogsListFilter = Omit<QueryOutputOf<typeof operationLogContract.list>, 'page' | 'pageSize'>;
 
@@ -225,7 +226,10 @@ async function computeOperationLogStats(user: JwtPayload, daysRaw?: number) {
 }
 
 function buildCleanOperationLogsWhere(days: number) {
-  return lte(operationLogs.createdAt, new Date(Date.now() - days * 86_400_000));
+  return buildWhere(
+    days === 0 ? undefined : lte(operationLogs.createdAt, new Date(Date.now() - days * 86_400_000)),
+    tenantCondition(operationLogs, currentUser()),
+  );
 }
 
 function mapOperationLogForAudit(row: typeof operationLogs.$inferSelect) {
@@ -253,10 +257,10 @@ export async function getCleanOperationLogsBeforeAudit(days: number) {
 }
 
 /**
- * 手动清除指定天数之前的操作日志。
- * 复用统一保留框架的分批删除实现，避免一次性把待删主键载入内存。
+ * 手动清除当前租户视角内的操作日志；days=0 不限制时间，分批删除避免载入全部主键。
  */
 export async function cleanOperationLogs(days: number) {
-  const { runPolicy } = await import('../../lib/retention');
-  return runPolicy('operation_logs', { days });
+  const deleted = await deleteLogRows(operationLogs, buildCleanOperationLogsWhere(days));
+  operationStatsCache.clear();
+  return deleted;
 }

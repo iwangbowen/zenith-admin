@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeQuery, idParam, idQuery, paginated, paginationQuery, queryBool, queryEnum, keywordQuery } from '../../core/api-schemas';
+import { dateRangeQuery, idParam, idQuery, paginated, paginationQuery, queryBool, queryEnum, keywordQuery, logCleanupDaysQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { OPERATION_LOG_RESULTS } from '../constants';
 
@@ -94,7 +94,7 @@ export const operationLogStatsQuery = z.object({
 });
 
 export const operationLogCleanQuery = z.object({
-  days: z.coerce.number().int().min(1).max(3650).default(180).meta({ description: '清除多少天之前的日志' }),
+  days: logCleanupDaysQuery,
 });
 
 // ─── 契约 ────────────────────────────────────────────────────────────────────

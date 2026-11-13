@@ -66,7 +66,13 @@ setAuditAfterData(c, after)
 | --- | --- | --- | --- |
 | `GET` | `/` | `system:log:operation` | 分页查询 |
 | `GET` | `/stats` | `system:log:operation` | 统计 |
-| `DELETE` | `/clean` | `system:log:operation` | 按天数清理并记录审计 |
+| `DELETE` | `/clean` | `system:log:operation` | 按天数或全部清理并记录审计 |
+
+操作日志与登录日志的清除下拉菜单末尾提供「清除全部日志」，仍需管理员密码二次确认。
+`DELETE /api/operation-logs/clean` 与 `DELETE /api/login-logs/clean` 的 `days` 默认 180，正数只清理相应天数之前的记录，
+明确传 `days=0` 才清除当前租户视角的全部记录；空串、负数和无效值拒绝。全部清除不使用页面的搜索条件。
+审计快照与删除使用相同范围；每批删除 5,000 行，并固定开始时的最大 ID，避免持续追逐新写入的日志。
+清除后列表与统计刷新；操作日志中可能出现清除动作自身的新审计记录。
 
 分页查询支持：
 

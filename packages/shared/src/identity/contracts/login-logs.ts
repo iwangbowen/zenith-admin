@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeQuery, idQuery, paginated, paginationQuery, queryEnum, keywordQuery } from '../../core/api-schemas';
+import { dateRangeQuery, idQuery, paginated, paginationQuery, queryEnum, keywordQuery, logCleanupDaysQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { LOGIN_EVENT_TYPES, LOGIN_STATUSES } from '../constants';
 
@@ -71,7 +71,7 @@ export const loginLogStatsQuery = z.object({
 });
 
 export const loginLogCleanQuery = z.object({
-  days: z.coerce.number().int().min(1).max(3650).default(180).meta({ description: '清除多少天之前的日志' }),
+  days: logCleanupDaysQuery,
 });
 
 export const loginLogContract = defineContract('/api/login-logs', {

@@ -21,10 +21,16 @@
 | `POST` | `/{id}/run` | `system:cronjob:execute` | 手动执行 |
 | `GET` | `/{id}/logs` | `system:cronjob:list` | 单任务执行日志 |
 | `GET` | `/logs` | `system:cronjob:list` | 全部执行日志，支持 `jobId` / `status` / `keyword` / `startTime` / `endTime` 筛选 |
+| `DELETE` | `/logs/clean` | `system:cronjob:delete` | 清理所有任务的执行日志，`days=0` 表示全部 |
+| `DELETE` | `/{id}/logs/clean` | `system:cronjob:delete` | 只清理指定任务的执行日志，`days=0` 表示该任务全部日志 |
 | `GET` | `/stats?days=14` | `system:cronjob:list` | 执行概览统计：今日 / 昨日同时段 / 周期与上一周期汇总、调度器状态、健康提醒、逐任务指标、每日趋势、星期 × 小时分布、失败原因聚合、下次执行 |
 | `GET` | `/{id}/stats?days=14` | `system:cronjob:list` | 单任务下钻：周期汇总与环比、每日趋势、耗时散点、调度延迟分布、最近失败 / 超时、未来 10 次执行 |
 
 任务字段包括 `name`、`cronExpression`、`handler`、`params`、`status`、`retryCount`、`retryInterval`、`retryBackoff`、`monitorTimeout`（秒）和最近运行结果。
+
+「全部执行日志」与单任务日志抽屉的清除下拉菜单末尾均提供「清除全部日志」，继续保留危险操作二次确认和原有权限门控。
+清除不受列表筛选条件限制；单任务抽屉始终带任务 ID，不能清理其它任务的日志。省略 `days` 默认保留 180 天，
+只有明确的 `0` 才不限制时间。清除仅影响执行日志及其统计，任务配置和最近运行字段不变。
 
 `cron_job_logs` 每条执行记录除状态 / 耗时 / 输出外，还记录执行上下文：
 

@@ -162,7 +162,7 @@ describe('useRunCronJob —— 命令型接口但副作用广', () => {
 });
 
 describe('useClearCronJobLogs —— 只影响日志与由日志聚合的概览', () => {
-  it('refreshes logs and stats but leaves the job list and detail untouched', async () => {
+  it.each([90, 0])('clearing logs with days=%s refreshes stats but leaves jobs untouched', async (days) => {
     const { qc, hook } = mountJobsTab();
     await settle(hook);
 
@@ -172,7 +172,8 @@ describe('useClearCronJobLogs —— 只影响日志与由日志聚合的概览'
     const fetches = observeFetches(qc);
     api.resetCalls();
 
-    await hook.result.current.clearLogs.mutateAsync({ query: { days: 90 } });
+    await hook.result.current.clearLogs.mutateAsync({ query: { days } });
+    expect(api.urls('DELETE')).toEqual([`/api/cron-jobs/logs/clean?days=${days}`]);
     await waitFor(() => expect(fetches.countOf(cronJobKeys.stats)).toBe(1));
 
     expect(fetches.countOf(cronJobKeys.lists)).toBe(0);
@@ -183,7 +184,7 @@ describe('useClearCronJobLogs —— 只影响日志与由日志聚合的概览'
     fetches.stop();
   });
 
-  it('per-job clearing hits the job endpoint and shares the same invalidation surface', async () => {
+  it.each([30, 0])('per-job days=%s clearing retains the job scope and invalidation surface', async (days) => {
     const { qc, hook } = mountJobsTab();
     await settle(hook);
 
@@ -193,10 +194,10 @@ describe('useClearCronJobLogs —— 只影响日志与由日志聚合的概览'
     const fetches = observeFetches(qc);
     api.resetCalls();
 
-    await extra.result.current.clearJobLogs.mutateAsync({ params: { id: 1 }, query: { days: 30 } });
+    await extra.result.current.clearJobLogs.mutateAsync({ params: { id: 1 }, query: { days } });
     await waitFor(() => expect(fetches.countOf(cronJobKeys.stats)).toBe(1));
 
-    expect(api.urls('DELETE')).toEqual(['/api/cron-jobs/1/logs/clean?days=30']);
+    expect(api.urls('DELETE')).toEqual([`/api/cron-jobs/1/logs/clean?days=${days}`]);
     expect(fetches.countOf(cronJobKeys.lists)).toBe(0);
     expect(fetches.countOf(cronJobKeys.detail(1))).toBe(0);
     expect(isFresh(qc, cronJobKeys.detail(1))).toBe(true);

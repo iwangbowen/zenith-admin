@@ -135,7 +135,7 @@ export function useUpdateCronJobStatus() {
   });
 }
 
-/** 清除全部执行日志（按天数） */
+/** 清除所有任务范围的执行日志；days=0 表示不限制保留天数。 */
 export function useClearCronJobLogs() {
   return useApiMutation(cronJobContract.clearLogs, { invalidate: invalidateAfterLogsCleared });
 }

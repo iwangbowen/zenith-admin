@@ -12,6 +12,7 @@ import { getNicknameMap, findUsernamesByNickname } from '../../lib/user-nickname
 import type { QueryOutputOf } from '@zenith/shared/core';
 import type { loginLogContract } from '@zenith/shared/identity';
 import { localDate, localTime } from "../../lib/datetime-sql";
+import { deleteLogRows } from '../platform/log-cleanup';
 
 export type LoginLogListFilter = Omit<QueryOutputOf<typeof loginLogContract.list>, 'page' | 'pageSize'>;
 
@@ -152,7 +153,10 @@ async function computeLoginLogStats(user: JwtPayload, daysRaw?: number) {
 }
 
 function buildCleanLoginLogsWhere(days: number) {
-  return lte(loginLogs.createdAt, new Date(Date.now() - days * 86_400_000));
+  return buildWhere(
+    days === 0 ? undefined : lte(loginLogs.createdAt, new Date(Date.now() - days * 86_400_000)),
+    tenantCondition(loginLogs, currentUser()),
+  );
 }
 
 function mapLoginLogForAudit(row: typeof loginLogs.$inferSelect) {
@@ -177,10 +181,10 @@ export async function getCleanLoginLogsBeforeAudit(days: number) {
 }
 
 /**
- * 手动清除指定天数之前的登录日志。
- * 复用统一保留框架的分批删除实现，避免一次性把待删主键载入内存。
+ * 手动清除当前租户视角内的登录日志；days=0 不限制时间，分批删除避免载入全部主键。
  */
 export async function cleanLoginLogs(days: number) {
-  const { runPolicy } = await import('../../lib/retention');
-  return runPolicy('login_logs', { days });
+  const deleted = await deleteLogRows(loginLogs, buildCleanLoginLogsWhere(days));
+  loginStatsCache.clear();
+  return deleted;
 }

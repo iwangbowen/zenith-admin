@@ -100,7 +100,7 @@ export const loginLogsHandlers = [
     const cutoff = new Date(Date.now() - days * 24 * 3600 * 1000);
     const deleted = removeWhere(
       mockLoginLogs,
-      (log) => new Date(log.createdAt) < cutoff,
+      (log) => days === 0 || new Date(log.createdAt) < cutoff,
     );
     return ok(null, `共删除 ${deleted} 条登录日志`);
   }),

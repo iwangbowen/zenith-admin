@@ -35,7 +35,7 @@ import { useEditModal } from '@/hooks/useEditModal';
 import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect } from '@/components/search-filters';
 import { confirmDanger } from '@/utils/confirm';
-import { CLEAR_LOGS_LABELS } from '@/hooks/useClearLogs';
+import { clearLogsTarget } from '@/hooks/useClearLogs';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useListPage } from '@/hooks/useListPage';
@@ -209,10 +209,11 @@ export default function CronJobsPage() {
   };
 
   const handleClearLogs = (days: number, jobId?: number | null) => {
-    const label = CLEAR_LOGS_LABELS[days] ?? `${days} 天前`;
+    const scope = jobId != null ? `「${logsJobName}」的执行日志` : '执行日志';
+    const label = clearLogsTarget(days, scope);
     confirmDanger({
       title: '确认清除日志',
-      content: `将删除${label}的执行日志，此操作不可恢复，确认继续吗？`,
+      content: `将永久删除${label}，不受当前列表筛选条件限制。此操作不可恢复，确认继续吗？`,
       onOk: async () => {
         if (jobId !== null && jobId !== undefined) {
           await clearJobLogsMutation.mutateAsync({ params: { id: jobId }, query: { days } });
@@ -493,7 +494,7 @@ export default function CronJobsPage() {
             width={220}
           />
           {hasPermission('system:cronjob:delete') && (
-            <ClearLogsButtons loading={clearingLogs} onClear={(days) => handleClearLogs(days, null)} />
+            <ClearLogsButtons allowClearAll loading={clearingLogs} onClear={(days) => handleClearLogs(days, null)} />
           )}
         </div>
         <ConfigurableTable
@@ -521,7 +522,7 @@ export default function CronJobsPage() {
       >
         {hasPermission('system:cronjob:delete') && (
           <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'flex-end' }}>
-            <ClearLogsButtons loading={clearingLogs} onClear={(days) => handleClearLogs(days, logsJobId)} />
+            <ClearLogsButtons allowClearAll loading={clearingLogs} onClear={(days) => handleClearLogs(days, logsJobId)} />
           </div>
         )}
         <ConfigurableTable

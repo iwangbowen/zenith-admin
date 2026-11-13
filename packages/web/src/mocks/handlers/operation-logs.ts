@@ -199,7 +199,7 @@ export const operationLogsHandlers = [
     const cutoff = new Date(Date.now() - (query.days ?? 180) * 24 * 3600 * 1000);
     const deleted = removeWhere(
       mockOperationLogs,
-      (log) => new Date(log.createdAt) < cutoff,
+      (log) => query.days === 0 || new Date(log.createdAt) < cutoff,
     );
     return ok(null, `共删除 ${deleted} 条操作日志`);
   }),

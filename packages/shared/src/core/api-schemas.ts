@@ -2,6 +2,11 @@ import * as z from 'zod';
 import { USER_STATUSES } from './constants';
 import { filterMeta, type FilterMetaOption } from './filter-meta';
 
+/** Manual log cleanup: only an explicit numeric 0 selects all; blank query values must never do so. */
+export const logCleanupDaysQuery = z.union([z.number(), z.string().trim().min(1)])
+  .transform(value => Number(value)).pipe(z.number().int().min(0).max(3650)).default(180)
+  .meta({ description: '清除多少天之前的日志；明确传入 0 表示清除当前授权范围内的全部日志，省略时默认 180 天' });
+
 /**
  * 契约层通用 schema 积木：路径 / 分页 / 状态 / 审计列 / 响应信封。
  *

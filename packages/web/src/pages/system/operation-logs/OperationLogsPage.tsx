@@ -132,7 +132,7 @@ export default function OperationLogsPage() {
             actions={(
               <>
                 <ExportButton entity="system.operation-logs" query={filterQuery} />
-                <ClearLogsButtons loading={clearLogsLoading} onClear={clearLogs.openClearModal} />
+                <ClearLogsButtons allowClearAll loading={clearLogsLoading} onClear={clearLogs.openClearModal} />
               </>
             )}
             filterTitle="操作日志筛选"

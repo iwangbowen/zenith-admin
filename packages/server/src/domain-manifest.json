@@ -464,6 +464,16 @@
         "src/services/messaging/notification-outbox.service.test.ts",
         "src/lib/task-center/transaction-submit.test.ts"
       ]
+    },
+    "log-cleanup": {
+      "domains": [
+        "identity",
+        "platform",
+        "tasks"
+      ],
+      "tests": [
+        "src/services/platform/log-cleanup-scopes.test.ts"
+      ]
     }
   },
   "structuralTests": [

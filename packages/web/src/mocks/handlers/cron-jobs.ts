@@ -10,6 +10,12 @@ import { mockDateTime } from '@/mocks/utils/date';
 import { filterByKeyword, matchesFilter } from '@/mocks/utils/filter';
 import { buildMockCronJobDetailStats, buildMockCronJobStats } from './cron-job-stats';
 import { mockResource } from '@/mocks/utils/resource';
+import { removeWhere } from '@/mocks/utils/array';
+
+function clearMockCronLogs(days: number, jobId?: number) {
+  const cutoff = Date.now() - days * 86_400_000;
+  return removeWhere(mockCronJobLogs, log => (jobId === undefined || log.jobId === jobId) && (days === 0 || log.ts < cutoff));
+}
 
 export const cronJobsHandlers = [
   // 获取可用任务处理器列表（必须在 :id 路由之前声明）
@@ -83,12 +89,12 @@ export const cronJobsHandlers = [
   }),
 
   // 清除所有执行日志（必须在 DELETE /:id 之前声明）
-  mock(cronJobContract.clearLogs, ({ query, ok }) => ok(null, `已清除 ${query.days} 天前的日志`)),
+  mock(cronJobContract.clearLogs, ({ query, ok }) => ok(null, `已清除 ${clearMockCronLogs(query.days)} 条日志`)),
 
   // 清除单任务执行日志（必须在 DELETE /:id 之前声明）
   mock(cronJobContract.clearJobLogs, ({ params, query, ok }) => {
     const job = requireItem(mockCronJobs, params.id, '任务不存在');
-    return ok(null, `已清除「${job.name}」${query.days} 天前的日志`);
+    return ok(null, `已清除「${job.name}」${clearMockCronLogs(query.days, params.id)} 条日志`);
   }),
 
   // 立即执行任务（demo 模式仅更新 lastRunAt）

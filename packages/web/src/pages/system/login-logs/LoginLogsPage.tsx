@@ -87,7 +87,7 @@ export default function LoginLogsPage() {
             actions={(
               <>
                 <ExportButton entity="system.login-logs" query={filterQuery} />
-                <ClearLogsButtons loading={clearLogsLoading} onClear={clearLogs.openClearModal} />
+                <ClearLogsButtons allowClearAll loading={clearLogsLoading} onClear={clearLogs.openClearModal} />
               </>
             )}
             filterTitle="登录日志筛选"

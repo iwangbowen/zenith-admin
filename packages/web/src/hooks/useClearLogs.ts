@@ -7,6 +7,11 @@ export const CLEAR_LOGS_LABELS: Record<number, string> = { 30: '一个月前', 9
 /** 手动清除入口提供的保留天数档位（从宽到严），与契约的 `days` 单位一致 */
 export const CLEAR_LOGS_DAYS = [365, 180, 90, 30] as const;
 
+/** 0 是明确的全部清除选项；默认与正数天数仍保持按保留期清理。 */
+export function clearLogsTarget(days: number, label: string): string {
+  return days === 0 ? `全部${label}` : `${CLEAR_LOGS_LABELS[days] ?? `${days} 天前`}的${label}`;
+}
+
 interface UseClearLogsOptions {
   /** 执行清除（通常为 mutation 的 mutateAsync） */
   clean: (days: number) => Promise<unknown>;

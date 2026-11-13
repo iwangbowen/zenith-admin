@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, dateRangeQuery, entityStatusQuery, idParam, idQuery, keywordQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { auditFieldsSchema, dateRangeQuery, entityStatusQuery, idParam, idQuery, keywordQuery, paginated, paginationQuery, queryEnum, logCleanupDaysQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { CRON_ALERT_LEVELS, CRON_ALERT_TYPES, CRON_JOB_STATUSES, CRON_RUN_STATUSES, CRON_RUN_TRIGGERS } from '../constants';
 import { createCronJobSchema, cronJobStatusSchema, cronValidateSchema, updateCronJobSchema } from '../validation';
@@ -274,7 +274,7 @@ export const cronJobStatsQuery = z.object({
 
 
 export const cronJobClearLogsQuery = z.object({
-  days: z.coerce.number().int().min(1).max(3650).default(180).meta({ description: '清除多少天之前的日志' }),
+  days: logCleanupDaysQuery,
 });
 
 export const cronJobContract = defineContract('/api/cron-jobs', {

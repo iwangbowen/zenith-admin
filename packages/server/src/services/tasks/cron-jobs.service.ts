@@ -46,6 +46,7 @@ import {
 } from '../../lib/pg-boss-scheduler';
 import { HTTPException } from 'hono/http-exception';
 import { currentUserOrNull } from '../../lib/context';
+import { deleteLogRows } from '../platform/log-cleanup';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { defineCrudService } from '../../lib/crud-service';
 import { entityMapper } from '../../lib/entity-map';
@@ -178,12 +179,13 @@ export async function listCronJobLogs(jobId: number, q: QueryOutputOf<typeof cro
 
 function buildClearCronJobLogsWhere(days: number, jobId?: number) {
   return buildWhere(
-    lt(cronJobLogs.startedAt, new Date(Date.now() - days * 86_400_000)),
-    jobId ? eq(cronJobLogs.jobId, jobId) : undefined,
+    days === 0 ? undefined : lt(cronJobLogs.startedAt, new Date(Date.now() - days * 86_400_000)),
+    jobId !== undefined ? eq(cronJobLogs.jobId, jobId) : undefined,
   );
 }
 
 export async function getClearCronJobLogsBeforeAudit(days: number, jobId?: number) {
+  if (jobId !== undefined) await getCronJob(jobId);
   const where = buildClearCronJobLogsWhere(days, jobId);
   const [total, sample] = await Promise.all([
     db.$count(cronJobLogs, where),
@@ -192,11 +194,11 @@ export async function getClearCronJobLogsBeforeAudit(days: number, jobId?: numbe
   return { jobId, days, total, sample: sample.map(mapLog) };
 }
 
-/** 手动清除指定天数之前的定时任务执行日志 */
+/** 手动清除任务范围内的执行日志；days=0 不限制日志时间。 */
 export async function clearCronJobLogs(days: number, jobId?: number) {
+  if (jobId !== undefined) await getCronJob(jobId);
   const where = buildClearCronJobLogsWhere(days, jobId);
-  const result = await db.delete(cronJobLogs).where(where);
-  return (result as unknown as { rowCount?: number }).rowCount ?? 0;
+  return deleteLogRows(cronJobLogs, where);
 }
 
 

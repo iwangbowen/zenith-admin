@@ -250,7 +250,7 @@ describe('db-admin refreshMatview', () => {
 });
 
 describe('login-logs / licensing / sessions / retention / ssl —— 域内全部查询按操作前缀逐个失效', () => {
-  it('cleaning login logs refreshes the list and the stats panel', async () => {
+  it.each([90, 0])('cleaning login logs with days=%s refreshes the list and stats', async (days) => {
     const qc = createTestQueryClient();
     const { result } = renderHook(
       () => ({ list: useLoginLogList(PAGE), stats: useLoginLogStats({ days: 7 }), clean: useCleanLoginLogs() }),
@@ -262,7 +262,8 @@ describe('login-logs / licensing / sessions / retention / ssl —— 域内全�
     });
     const fetches = observeFetches(qc);
 
-    await result.current.clean.mutateAsync({ query: { days: 90 } });
+    await result.current.clean.mutateAsync({ query: { days } });
+    expect(api.urls('DELETE')).toContain(`/api/login-logs/clean?days=${days}`);
     await waitFor(() => {
       expect(fetches.countOf(loginLogKeys.lists)).toBe(1);
       expect(fetches.countOf(loginLogKeys.stats)).toBe(1);
