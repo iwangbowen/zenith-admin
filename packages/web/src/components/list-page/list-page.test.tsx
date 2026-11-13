@@ -125,6 +125,14 @@ describe('listTableProps', () => {
     expect(refetch).toHaveBeenCalledTimes(1);
   });
 
+  it('loadingMode=always：已有数据快照时，后台重拉也显示整表蒙层', () => {
+    const props = listTableProps(
+      { data: { list: [{ id: 1 }], total: 1 }, isFetching: true, refetch: () => {} },
+      { loadingMode: 'always' },
+    );
+    expect(props).toMatchObject({ loading: true, refreshLoading: true });
+  });
+
   it('数组型数据与未加载态；显式覆盖 rowKey / size / empty / bordered', () => {
     const props = listTableProps<{ code: string }>({ data: [{ code: 'a' }, { code: 'b' }], isFetching: false, refetch: () => {} }, { rowKey: 'code', size: 'default', empty: '暂无数据', bordered: false });
     expect(props).toMatchObject({ rowKey: 'code', size: 'default', empty: '暂无数据', bordered: false, dataSource: [{ code: 'a' }, { code: 'b' }] });

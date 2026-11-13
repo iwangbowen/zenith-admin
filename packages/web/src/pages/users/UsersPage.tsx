@@ -780,6 +780,8 @@ export default function UsersPage() {
         {...listTableProps(listQuery, {
           pagination: buildPagination,
           empty: '暂无数据',
+          // 查询 / 刷新 / 翻页都给出明确的整表 loading 反馈
+          loadingMode: 'always',
           rowSelection: {
             selectedRowKeys,
             onChange: (keys) => {

@@ -20,6 +20,12 @@ export interface ListTablePropsOptions<T extends Data> {
   bordered?: boolean;
   empty?: ReactNode;
   rowSelection?: TableProps<T>['rowSelection'];
+  /**
+   * 整表 loading 蒙层的显示时机：
+   * - `initial`（默认）：仅首屏没有数据快照时显示；后台重拉只让刷新按钮转圈，避免整表闪烁
+   * - `always`：任何请求（查询 / 刷新 / 翻页 / 失效重拉）期间都显示整表蒙层
+   */
+  loadingMode?: 'initial' | 'always';
 }
 
 /**
@@ -37,10 +43,11 @@ export function listTableProps<T extends Data>(query: ListQueryLike<T>, options:
     rowKey: options.rowKey ?? 'id',
     size: options.size ?? 'small',
     dataSource: list,
-    // 只有还没有数据快照（首载）时才盖 Spin 蒙层：Semi 的 Spin 会把子树压暗到 50% 再弹回，
+    // `initial` 只在还没有数据快照（首载）时盖 Spin 蒙层：Semi 的 Spin 会把子树压暗到 50% 再弹回，
     // 若让后台重拉（mutation 后的失效刷新、翻页时的 placeholder 数据）也盖蒙层，
     // 批量上传一类场景会每个文件闪一次整表；后台重拉只让列头刷新按钮转圈（refreshLoading）。
-    loading: query.isFetching && query.data === undefined,
+    // `always` 用于要求「每次请求都有明确反馈」的列表：查询 / 刷新 / 翻页 / 失效重拉都显示整表蒙层。
+    loading: query.isFetching && (options.loadingMode === 'always' || query.data === undefined),
     onRefresh: () => { void query.refetch(); },
     refreshLoading: query.isFetching,
     pagination: options.pagination ? options.pagination(total) : (false as const),
