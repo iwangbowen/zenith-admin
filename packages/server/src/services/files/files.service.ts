@@ -11,6 +11,7 @@ import { buildManagedFileProxyUrl, buildPublicFileUrl, deleteStoredFile, readSto
 import { formatDateTime } from '../../lib/datetime';
 import { getSettings } from '../../lib/settings';
 import type { FilesSettings } from '@zenith/shared/settings';
+import { blobUploadTypeSource, validateUploadType, type UploadTypeSource } from './upload-type';
 
 export function mapManagedFile(row: typeof managedFiles.$inferSelect, config?: FileStorageConfigRow) {
   return pickEntity(managedFileSchema, row, {
@@ -171,26 +172,10 @@ export async function simpleUploadLimitBytes(settings?: FilesSettings) {
   return chunkThresholdMb * 1024 * 1024;
 }
 
-/** 基于 magic bytes 校验真实文件类型；headBytes 为文件前若干字节，fallbackMime 用于无法识别时回退 */
-export async function assertUploadTypeAllowed(headBytes: Buffer, fallbackMime: string, settings?: FilesSettings) {
+/** 基于内容校验真实文件类型；CFB 需按目录读取文件，纯文本等无法识别时使用 fallbackMime。 */
+export async function assertUploadTypeAllowed(source: UploadTypeSource, fallbackMime: string, settings?: FilesSettings) {
   const { uploadValidateType, uploadAllowedTypes } = settings ?? await getSettings('files');
-  if (!uploadValidateType) return;
-  const allowedPatterns = uploadAllowedTypes.map((s) => s.trim()).filter(Boolean);
-  const { fileTypeFromBuffer } = await import('file-type');
-  const detected = await fileTypeFromBuffer(headBytes);
-  // 无法识别（如纯文本）时回退使用调用方提供的 MIME
-  const actualMime = detected?.mime ?? fallbackMime;
-  const allowed = allowedPatterns.some((pattern) => {
-    if (pattern === '*' || pattern === '*/*') return true;
-    if (pattern.endsWith('/*')) {
-      const mainType = pattern.slice(0, -2);
-      return actualMime.startsWith(`${mainType}/`);
-    }
-    return actualMime === pattern;
-  });
-  if (!allowed) {
-    throw new HTTPException(400, { message: `文件类型不允许：检测到 ${actualMime}，不在允许类型列表中` });
-  }
+  await validateUploadType(source, fallbackMime, { uploadValidateType, uploadAllowedTypes });
 }
 
 function normalizeUploadFile(value: unknown): File {
@@ -211,7 +196,7 @@ export async function uploadManagedFile(file: File, options: ManagedFileUploadOp
   // 大小上限 + 基于 magic bytes 的真实类型校验
   await assertUploadSizeAllowed(file.size);
   if (!options.skipTypeCheck) {
-    await assertUploadTypeAllowed(Buffer.from(await file.slice(0, 4100).arrayBuffer()), file.type);
+    await assertUploadTypeAllowed(blobUploadTypeSource(file), file.type);
   }
   const [maybeDefaultConfig] = await db
     .select()

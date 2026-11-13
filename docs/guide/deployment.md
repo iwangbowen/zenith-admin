@@ -163,11 +163,12 @@ api 默认监听 `http://localhost:3300`；纯 worker 不占用业务端口，ca
 | 目录 | 内容 | 何时涉及 |
 | --- | --- | --- |
 | `storage/local`（或存储配置的 `localRootPath`） | `local` 存储的文件本体 | 默认文件服务是 `local` |
-| `storage/tmp/uploads`（`UPLOAD_TEMP_DIR`） | 分片上传的本地暂存分片 | 默认文件服务是 `local` / `kodo` / `sftp`——它们没有可控的云端 multipart，分片先落本地再合并上传 |
+| `storage/tmp/uploads`（`UPLOAD_TEMP_DIR`） | 分片上传的本地暂存分片；云端 CFB 校验的短时临时文件 | 默认文件服务是 `local` / `kodo` / `sftp`——它们没有可控的云端 multipart，分片先落本地再合并上传；云端 CFB 校验临时文件仅供单次请求使用，无需共享 |
 | `storage/cms-static`（`CMS_STATIC_ROOT`） | CMS 静态化产物 | 启用了 CMS 静态化 |
 
-默认文件服务为 `oss` / `s3` / `cos` / `obs` / `azure` / `bos` 时，分片直传云端 multipart、进度记在数据库，不依赖本地磁盘，
-无需共享卷。api / worker 拆分且 worker 需要访问本地暂存或 CMS 静态产物时，必须共享 `storage/` 并在 worker 设置 `STORAGE_SHARED=true`。Docker Compose 已把 `api_storage` 卷同时挂载到 api 与 worker，容器重建不会丢失进行中的分片。
+默认文件服务为 `oss` / `s3` / `cos` / `obs` / `azure` / `bos` 时，分片直传云端 multipart、进度记在数据库，无需共享卷。
+CFB 类型校验会在完成请求所在节点临时写入完整对象，`UPLOAD_TEMP_DIR` 需可写并能容纳待校验文件，校验结束即清理。
+api / worker 拆分且 worker 需要访问本地暂存或 CMS 静态产物时，必须共享 `storage/` 并在 worker 设置 `STORAGE_SHARED=true`。Docker Compose 已把 `api_storage` 卷同时挂载到 api 与 worker，容器重建不会丢失进行中的分片。
 
 多 api / worker 进程依赖 Redis 保持运行时正确性：会话、限流、权限缓存与跨进程 WebSocket / IoT 推送都经 Redis 协作；WS 扇出使用 Redis pub/sub，Redis 故障时实时推送按 at-most-once 语义丢弃，客户端重连后回源补齐。
 

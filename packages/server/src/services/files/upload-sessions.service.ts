@@ -1,6 +1,6 @@
 import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { createHash, randomUUID } from 'node:crypto';
-import { promises as fs, createReadStream, createWriteStream } from 'node:fs';
+import { promises as fs, createReadStream, createWriteStream, openAsBlob } from 'node:fs';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
@@ -15,6 +15,7 @@ import { currentUser } from '../../lib/context';
 import { config } from '../../config';
 import { getSettings } from '../../lib/settings';
 import { assertUploadSizeAllowed, assertUploadTypeAllowed, mapManagedFile, type ManagedFileUploadOptions } from './files.service';
+import { blobUploadTypeSource, isCompoundFile } from './upload-type';
 import { buildWhere } from '../../lib/where-helpers';
 
 /** 完成分片上传时归属模块可指定的属性 */
@@ -145,6 +146,51 @@ async function sha256OfStoredObject(session: UploadSessionRow, config: FileStora
   return hash.digest('hex');
 }
 
+/** Validate a completed cloud object. Legacy Office files need the complete CFB directory, not only the first chunk. */
+async function assertStoredObjectTypeAllowed(session: UploadSessionRow, config: FileStorageConfigRow) {
+  const settings = await getSettings('files');
+  if (!settings.uploadValidateType) return;
+  const { stream } = await readStoredFile({
+    objectKey: session.objectKey, bucketName: session.bucketName, provider: session.provider,
+    mimeType: session.mimeType, originalName: session.fileName,
+  }, config);
+  const reader = stream.getReader();
+  let temporaryDirectory: string | undefined;
+  try {
+    const parts: Uint8Array[] = [];
+    let total = 0;
+    let done = false;
+    while (!done && total < 4100) {
+      const result = await reader.read();
+      done = result.done;
+      if (result.value) { parts.push(result.value); total += result.value.length; }
+    }
+    const head = Buffer.concat(parts);
+    if (!isCompoundFile(head)) {
+      await assertUploadTypeAllowed(blobUploadTypeSource(new Blob([head])), session.mimeType ?? '', settings);
+      return;
+    }
+    // Only CFB needs random access. Spool to disk instead of buffering a potentially large Office file.
+    await fs.mkdir(UPLOAD_TEMP_ROOT, { recursive: true });
+    temporaryDirectory = await fs.mkdtemp(path.join(UPLOAD_TEMP_ROOT, 'type-check-'));
+    const temporaryFile = path.join(temporaryDirectory, 'content');
+    async function* contents() {
+      yield head;
+      while (!done) {
+        const result = await reader.read();
+        done = result.done;
+        if (result.value) yield result.value;
+      }
+    }
+    await pipeline(Readable.from(contents()), createWriteStream(temporaryFile));
+    await assertUploadTypeAllowed(blobUploadTypeSource(await openAsBlob(temporaryFile)), session.mimeType ?? '', settings);
+  } finally {
+    await reader.cancel().catch(() => { /* 保留原始读取 / 校验错误 */ });
+    reader.releaseLock();
+    if (temporaryDirectory) await fs.rm(temporaryDirectory, { recursive: true, force: true });
+  }
+}
+
 const HASH_MISMATCH_MESSAGE = '文件内容校验失败：实际内容的 SHA-256 与声明不一致，请重新上传';
 
 export async function initChunkUpload(input: InitChunkUploadInput) {
@@ -214,7 +260,10 @@ export async function uploadChunk(uploadId: string, index: number, chunk: File, 
   if (driver && session.multipartUploadId) {
     // 云原生 multipart：分片直传云端，记录 ETag（首片做真实类型校验，快速失败）
     const body = Buffer.from(await chunk.arrayBuffer());
-    if (index === 0 && !options.skipTypeCheck) await assertUploadTypeAllowed(body.subarray(0, 4100), session.mimeType ?? '');
+    // Non-CFB formats can fail early. CFB directory sectors may be in later chunks, so validate them after completion.
+    if (index === 0 && !options.skipTypeCheck && !isCompoundFile(body)) {
+      await assertUploadTypeAllowed(blobUploadTypeSource(chunk), session.mimeType ?? '');
+    }
     const config = await getSessionConfig(session.storageConfigId);
     const etag = await driver.uploadPart(config, session.objectKey, session.multipartUploadId, index + 1, body);
     await db
@@ -310,9 +359,18 @@ async function mergeAndRegister(
   const driver = getMultipartDriver(session.provider);
 
   if (driver && session.multipartUploadId) {
-    // 云原生 multipart：用各分片 ETag 完成合并（类型校验已在首片上传时完成）
+    // 云原生 multipart：合并后校验完整内容，CFB 的目录可能位于首片之后。
     const parts = chunkRows.map((r) => ({ partNumber: r.index + 1, etag: r.etag ?? '' }));
     await driver.complete(config, session.objectKey, session.multipartUploadId, parts, session.mimeType ?? undefined);
+    if (!options.skipTypeCheck) {
+      try {
+        await assertStoredObjectTypeAllowed(session, config);
+      } catch (err) {
+        await deleteObjectByConfig(config, session.objectKey, session.bucketName).catch(() => { /* 清理失败不掩盖类型错误 */ });
+        await abortSession(session, config, { multipartCompleted: true });
+        throw markSessionAborted(err);
+      }
+    }
     if (needHash) {
       contentHash = await sha256OfStoredObject(session, config);
       if (expectedHash && contentHash !== expectedHash) {
@@ -323,9 +381,32 @@ async function mergeAndRegister(
   } else {
     // 本地暂存：首片真实类型校验 + 内容哈希校验 + 按序流式合并上传
     if (!options.skipTypeCheck) {
-      const head = await fs.readFile(chunkPath(uploadId, 0));
       try {
-        await assertUploadTypeAllowed(head.subarray(0, 4100), session.mimeType ?? '');
+        await assertUploadTypeAllowed({
+          size: session.fileSize,
+          read: async (offset, length) => {
+            const result: Buffer[] = [];
+            let cursor = offset;
+            let remaining = length;
+            while (remaining > 0) {
+              const index = Math.floor(cursor / session.chunkSize);
+              const within = cursor % session.chunkSize;
+              const handle = await fs.open(chunkPath(uploadId, index), 'r');
+              try {
+                const take = Math.min(remaining, session.chunkSize - within);
+                const bytes = Buffer.alloc(take);
+                const { bytesRead } = await handle.read(bytes, 0, take, within);
+                if (bytesRead <= 0) throw new Error('分片内容不足');
+                result.push(bytes.subarray(0, bytesRead));
+                cursor += bytesRead;
+                remaining -= bytesRead;
+              } finally {
+                await handle.close();
+              }
+            }
+            return Buffer.concat(result);
+          },
+        }, session.mimeType ?? '');
       } catch (err) {
         // 类型不允许是确定性失败，继续保留会话只会让客户端反复 complete
         await abortSession(session, config);

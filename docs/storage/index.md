@@ -75,11 +75,13 @@
 `POST /api/files/upload` 支持多文件字段 `file`，返回 `ManagedFile[]`；`POST /api/files/upload-one` 返回单个 `ManagedFile`。两者都使用当前启用的默认存储配置：
 
 1. 校验文件大小，运行时设置 `files.uploadMaxSizeMb`（模块见[运行时设置](../backend/settings.md)）为 0 表示不限制。
-2. 读取文件前 4100 字节做 Magic Bytes 检测；`files.uploadValidateType` 默认开启。
+2. 读取文件前 4100 字节做 Magic Bytes 检测；`files.uploadValidateType` 默认开启。旧版 Office 使用的 CFB 容器会继续按目录、分配表和主数据流签名识别为 Word / Excel / PowerPoint，按需读取元数据，避免把整个文件载入内存。
 3. 允许类型来自 `files.uploadAllowedTypes` 数组，支持精确 MIME、`type/*`、`*`、`*/*`。
 4. 无法通过 Magic Bytes 识别的文本类文件回退到上传方提供的 MIME。
 5. 生成对象 key：`basePath/YYYY/MM/DD/{timestamp}-{random}.{ext}`。
 6. 上传到 provider 后写入 `managed_files`。
+
+默认白名单已包含 `application/msword`、`application/vnd.ms-excel`、`application/vnd.ms-powerpoint`。识别完成后仍以当前生效的 `files.uploadAllowedTypes` 为准；自定义配置移除某类 Office MIME 后，对应文件仍会被拒绝。未知、损坏或仅伪造扩展名的 CFB 容器不会回退信任上传方声明的 Office MIME。
 
 通用 `files` API 没有独立的秒传接口；分片接口使用 `uploadId + index` 保证同一分片重传幂等，但不按内容 hash 跳过整文件上传。`managed_files.contentHash` 已支持持久化，网盘在此底座上实现自己的预检查与秒传，详见[企业网盘：存储集成](../drive/index.md#存储集成)。
 
@@ -90,7 +92,7 @@
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | POST | `/api/files/upload/init` | 初始化上传会话，校验文件大小，选择默认存储，裁定分片大小，返回 `uploadId`、`chunkSize`、`totalChunks`、`received` |
-| POST | `/api/files/upload/chunk` | 上传单片；index 从 0 开始，逐片校验字节数，首片执行 Magic Bytes 校验；返回 `receivedCount`（完整序号列表经 status 获取） |
+| POST | `/api/files/upload/chunk` | 上传单片；index 从 0 开始，逐片校验字节数；云端首片对非 CFB 格式执行 Magic Bytes 校验，CFB 完整校验在 complete 阶段进行；返回 `receivedCount`（完整序号列表经 status 获取） |
 | POST | `/api/files/upload/complete` | 校验分片完整、总字节数与（可选）内容哈希后完成上传并写入 `managed_files`；并发到达时只有一个能合并，其余 409 |
 | GET | `/api/files/upload/{uploadId}/status` | 查询已接收分片与会话状态 |
 | DELETE | `/api/files/upload/{uploadId}` | 中止上传并清理临时目录或云端 multipart；合并中（`completing`）与已完成的会话不可中止 |
@@ -113,6 +115,7 @@
   切片；上调后仍超过 `UPLOAD_CHUNK_MAX_BYTES`（32 MB：路由层会把整片读入内存，按 3 并发计每用户约 96 MB 在途）则拒绝。
 - 每一片的实际字节数必须等于该序号的期望值（非末片为 `chunkSize`，末片为余量），complete 时再核对总和等于声明的
   `fileSize`——声明大小是上传上限、网盘配额与 `managed_files.size` 的依据，不允许与实际落地字节数不一致。
+- 本地暂存路径在 complete 时跨分片按需读取 CFB 目录和主数据流；云原生 multipart 在合并后读取对象完成类型校验，CFB 内容临时写入 `UPLOAD_TEMP_DIR` 后随机读取，结束即删除。校验失败的云端对象会被删除，会话置为 `aborted`，不登记为托管文件；不会通过放行全部 CFB 绕过 MIME 配置。
 - 归属模块可在 complete 时传入 `expectedHash`（客户端预先算好的 SHA-256）：本地暂存路径直接对分片文件计算，
   云原生 multipart 路径合并后读回一遍计算；一致才写入 `contentHash` 参与秒传 / 去重，不一致则删除对象并中止会话。
   传 `computeHash: true` 则在没有客户端声明值时也由服务端计算并写入（制品 / 固件的 sha256 来源）。
