@@ -43,7 +43,7 @@ function sortTabs(tabs: TabItem[]): TabItem[] {
 
 export function useTabsStore(
   maxCount: number = 20,
-  onEvict?: (evicted: TabItem[]) => void,
+  onEvict?: (evicted: TabItem[], reason: 'overflow' | 'limit-reduced') => void,
   keepTabs: boolean = false,
   evictPolicy: 'fifo' | 'lru' = 'fifo',
   insertPolicy: 'append' | 'insert-next' = 'append',
@@ -125,7 +125,7 @@ export function useTabsStore(
       const idx = pickEvictIdx(next);
       if (idx >= 0) {
         const [evicted] = next.splice(idx, 1);
-        onEvictRef.current?.([evicted]);
+        onEvictRef.current?.([evicted], 'overflow');
       }
     }
     setTabs(next);
@@ -133,7 +133,10 @@ export function useTabsStore(
   }, [maxCount]);
 
   // When maxCount decreases, trim excess tabs immediately
+  const previousMaxCountRef = useRef(maxCount);
   useEffect(() => {
+    const limitReduced = maxCount < previousMaxCountRef.current;
+    previousMaxCountRef.current = maxCount;
     const { tabs: currentTabs, activeKey: currentActive } = stateRef.current;
     if (currentTabs.length <= maxCount) return;
     const next = [...currentTabs];
@@ -147,7 +150,7 @@ export function useTabsStore(
     if (!next.some((t) => t.key === currentActive)) {
       setActiveKey('/');
     }
-    if (evicted.length > 0) onEvictRef.current?.(evicted);
+    if (evicted.length > 0) onEvictRef.current?.(evicted, limitReduced ? 'limit-reduced' : 'overflow');
   }, [maxCount]);
 
   // setActiveKey 时同步更新 lastUsedAt

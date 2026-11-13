@@ -5,6 +5,7 @@ import { BackTop, Divider, SideSheet, Spin, Toast } from '@douyinfe/semi-ui';
 import { ChevronLeft, ChevronRight, Expand, Shrink } from 'lucide-react';
 import { ensurePinyin } from '@/utils/pinyin';
 import { copyText } from '@/utils/clipboard';
+import { scopedStorageKey } from '@/utils/storage';
 import MenuSearchInput, { type FlatMenuItem } from '@/components/MenuSearchInput';
 import { TopbarClock } from '@/components/TopbarClock';
 import type { User, Menu } from '@zenith/shared/identity';
@@ -88,6 +89,8 @@ interface AdminLayoutProps {
   /** 当前用户可见菜单树（由 App 的 TanStack Query 提供，本组件不再持有副本） */
   readonly menus: Menu[];
 }
+
+const TAB_EVICTION_NOTICE_KEY = scopedStorageKey('zenith_tab_eviction_notice_shown');
 
 export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLayoutProps) {
   const { preferences, setPreferences, resetPreferences, canEditPreference } = usePreferences();
@@ -192,17 +195,29 @@ export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLa
   // Fullscreen
   const { isFullscreen, toggleFullscreen } = useFullscreen();
 
-  // 自动回收是页签上限策略，不作为错误；相邻回收合并提示，避免高频导航刷屏。
-  const evictToastAtRef = useRef(0);
+  // 自动回收仅在当前浏览器会话首次提示；刷新或页签数量回落后不重置。
+  const evictNoticeShownRef = useRef(false);
   const { tabs, activeKey, setActiveKey, addTab, setTabMeta, removeTab, closeOthers, closeLeft, closeRight, closeAll, reorderTabs, pinTab, unpinTab } = useTabsStore(
     preferences.tabsMaxCount,
-    (evicted) => {
-      const now = Date.now();
-      if (now - evictToastAtRef.current < 3000) return;
-      evictToastAtRef.current = now;
-      const names = evicted.map((t) => `「${t.title}」`).join('、');
+    (evicted, reason) => {
+      if (reason === 'limit-reduced') {
+        Toast.info({
+          content: `页签上限已设为 ${preferences.tabsMaxCount} 个，已关闭 ${evicted.length} 个页签。`,
+          duration: 4,
+        });
+        return;
+      }
+      if (evictNoticeShownRef.current) return;
+      evictNoticeShownRef.current = true;
+      try {
+        if (sessionStorage.getItem(TAB_EVICTION_NOTICE_KEY) === '1') return;
+        sessionStorage.setItem(TAB_EVICTION_NOTICE_KEY, '1');
+      } catch {
+        // 存储受限时仍在本次布局生命周期内只提醒一次，不影响页签回收。
+      }
+      const policy = preferences.tabEvictPolicy === 'lru' ? '最久未使用' : '最早打开';
       Toast.info({
-        content: `页签已达到上限 (${preferences.tabsMaxCount})，已按回收策略关闭 ${names}`,
+        content: `页签已满（${preferences.tabsMaxCount} 个），将自动关闭${policy}的页签。`,
         duration: 4,
       });
     },
