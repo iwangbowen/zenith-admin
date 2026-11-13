@@ -128,7 +128,7 @@ export default function XxxPage() {
     // defaults: { status: 'enabled' },      // 初始筛选（重置回到这里）；缺省为空
     // params: { siteId },                   // 契约必填的作用域参数：原样传给 useList，不经 compact
     // enabled: siteId !== undefined,        // 作用域未就绪时不发请求
-    // table: { rowSelection, empty: '暂无数据' },   // rowSelection / empty / rowKey → listTableProps
+    // table: { rowSelection, empty: '暂无数据', loadingMode: 'always' },   // rowSelection / empty / rowKey / loadingMode → listTableProps
   });
 
   // ─── 新增 / 编辑弹窗 ────────────────────────────────────────────────────
@@ -199,7 +199,8 @@ export default function XxxPage() {
         actions={<ExportButton entity="system.xxxs" query={page.filterQuery} permission="system:xxx:export" />}
       />
 
-      {/* 数据源 / loading / 刷新 / 分页（/ 多选）由 useListPage 的 tableProps 接好；默认 rowKey id · size small · bordered */}
+      {/* 数据源 / loading / 刷新 / 分页（/ 多选）由 useListPage 的 tableProps 接好；默认 rowKey id · size small · bordered；
+          标准列表页在 table 选项传 loadingMode: 'always'，查询 / 刷新 / 翻页期间显示整表 loading */}
       <ConfigurableTable<Xxx>
         columns={columns}
         {...page.tableProps}
@@ -267,7 +268,7 @@ onSelect={(deptId) => applySearch({ ...draftParams, departmentId: deptId })}
 一页多个列表、列表 hook 第二实参不是 `enabled`（轮询选项 / 作用域枚举）、会员端 `requestOptions`、`pagination` 需要翻页回调等。
 `useListSearch` 的 `listKey` 传该数据的查询 key（如 `menuKeys.tree`），`submittedParams` 经
 `const filterQuery = useFilterQuery({ ... })` 映射（compactParams 后按内容稳定引用，不写依赖数组）后进请求参数或客户端过滤谓词，
-表格仍用 `listTableProps(listQuery, { pagination: buildPagination })`。
+表格仍用 `listTableProps(listQuery, { pagination: buildPagination, loadingMode: 'always' })`。
 它收口的「草稿 / 已提交双状态 + 查询必回源」与是否分页无关，
 不要退回手写 `pendingKeyword` / `keyword` 两个 `useState` + `invalidateQueries`（参考 `DepartmentsPage`）。
 只有**边输边筛、没有「查询」按钮语义**的即时过滤才不属于这两个 hook。

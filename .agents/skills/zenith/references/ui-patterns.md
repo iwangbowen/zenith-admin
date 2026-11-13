@@ -575,6 +575,7 @@ const columns: ColumnProps<Region>[] = [
   dataSource={list}
   rowKey="id"
   pagination={false}
+  loading={treeQuery.isFetching}
   onRefresh={() => void treeQuery.refetch()}
   refreshLoading={treeQuery.isFetching}
 />
