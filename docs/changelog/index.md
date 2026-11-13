@@ -4,6 +4,28 @@
 
 ---
 
+## v3.17.0 - 2026-11-13
+
+### Changed
+
+- 前端与埋点 SDK 的外部依赖更新至最新稳定版，包含 Semi UI、文件预览引擎、Univer、TanStack Query、地图、图标、回放与开发工具；同步生成 MSW worker 和 Iconify 静态资产。
+- 后端与 Shared 的外部依赖更新至最新稳定版，包含 Postgres.js 4.1.1、Fontkit 3.0.0、Mastra 配套包及 CLI、Hono、OpenTelemetry 和存储 SDK。
+- 测试工具统一使用 Vitest 5.1，升级 jsdom 31 与 Stylelint 18；Mastra evals 已原生支持 Vitest 5，移除临时 peer override。
+- 文件预览与设备地图共用当前 MapLibre 引擎，维护遮罩按状态懒加载，保持现有生产包体积预算。
+- 新增隔离 PostgreSQL 的驱动数据转换、事务 / savepoint、LISTEN/NOTIFY 验证，并接入业务编号并发验证入口。
+
+### Fixed
+
+- 修复 doc、xls、ppt 已在 MIME 白名单中仍被上传校验拒绝的问题：读取 CFB 目录和主数据流签名，识别真实 Office 类型后继续执行当前生效的 MIME 白名单。
+- 普通上传、本地分片和云端 multipart 统一使用内容识别；云端校验失败时删除对象并中止会话，损坏或未知的 CFB 文件保留其实际检测类型。
+- 适配新版 Semi 按钮的无障碍名称，并让日志追踪测试等待真实追踪器启动，消除固定延时在并行负载下的竞态。
+
+### Compatibility
+
+- Postgres.js 4 默认由数据库推断参数类型；原生 SQL 中无法从上下文确定类型的日期、数组等参数需显式转换，如 `::timestamptz`、`::int[]`。应用连接继续固定会话时区为 UTC。
+- Fontkit 3 使用 ESM 产物；运行环境继续要求 Node.js 24.15.0 或更新的 24.x、npm 12.2.0 或更新版本。
+- 云端 CFB 文件在完成上传时使用 `UPLOAD_TEMP_DIR` 暂存并校验，该目录需可写且能容纳待校验文件；校验结束即清理。
+
 ## v3.16.0 - 2026-11-13
 
 ### Added
