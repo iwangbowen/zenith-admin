@@ -131,6 +131,12 @@ describe('listTableProps', () => {
       { loadingMode: 'initial' },
     );
     expect(props).toMatchObject({ loading: false, refreshLoading: true });
+
+    const manual = listTableProps(
+      { data: { list: [{ id: 1 }], total: 1 }, isFetching: false, refetch: () => {} },
+      { loadingMode: 'initial', manualLoading: true },
+    );
+    expect(manual).toMatchObject({ loading: true });
   });
 
   it('数组型数据与未加载态；显式覆盖 rowKey / size / empty / bordered', () => {

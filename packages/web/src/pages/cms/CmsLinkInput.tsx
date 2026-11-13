@@ -9,7 +9,7 @@ import { buildCmsEntityLink, buildCmsChannelCodeLink, parseCmsLink, CMS_CONTENT_
 import type { CmsChannel, CmsContentListItem } from '@zenith/shared/cms';
 import { cmsContentKeys, useAllCmsSites, useCmsChannelTree, useCmsContentList, useCmsLinkTarget } from '@/hooks/queries/cms';
 import { useIsMobile } from '@/hooks/useMediaQuery';
-import { useListSearch } from '@/hooks/useListSearch';
+import { useListSearch, useManualSearchLoading } from '@/hooks/useListSearch';
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
 import { dateTimeColumn } from '@/utils/table-columns';
@@ -38,7 +38,7 @@ function ContentPickerModal({ siteId, visible, onCancel, onSelect, excludeId }: 
   // 选择器弹窗固定 10 条 / 页；关键词经「查询」提交，点栏目树则立即应用（applySearch）
   const {
     page, pageSize, buildPagination,
-    draftParams, bindKeyword, submittedParams, applySearch,
+    draftParams, bindKeyword, submittedParams, searchVersion, applySearch,
     handleSearch, handleReset,
   } = useListSearch<ContentPickerSearchParams>({ defaults: defaultContentPickerSearch, listKey: cmsContentKeys.lists, pageSize: 10 });
   const isMobile = useIsMobile();
@@ -51,6 +51,7 @@ function ContentPickerModal({ siteId, visible, onCancel, onSelect, excludeId }: 
     { page, pageSize, siteId: siteId ?? 0, ...filterQuery, status: 'published' },
     enabled,
   );
+  const manualLoading = useManualSearchLoading(searchVersion, listQuery.isFetching);
   const rows = (listQuery.data?.list ?? []).filter((c) => c.id !== excludeId);
 
   const treeQuery = useCmsChannelTree(enabled ? siteId : undefined);
@@ -122,7 +123,7 @@ function ContentPickerModal({ siteId, visible, onCancel, onSelect, excludeId }: 
           <ConfigurableTable
             columnSettingsKey="cms-link-content-picker"
             columns={columns}
-            {...listTableProps(listQuery, { bordered: false, loadingMode: 'initial' })}
+            {...listTableProps(listQuery, { bordered: false, loadingMode: 'initial', manualLoading })}
             dataSource={rows}
             scroll={{ y: isMobile ? 240 : 336 }}
             pagination={{ ...buildPagination(listQuery.data?.total ?? 0), showSizeChanger: false }}

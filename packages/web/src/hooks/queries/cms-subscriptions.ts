@@ -10,6 +10,7 @@ export type CmsSubscriptionAggregateParams = NonNullable<QueryOf<typeof cmsSubsc
 export const cmsSubscriptionKeys = {
   lists: contractKey(cmsSubscriptionContract.list),
   list: (params: CmsSubscriptionListParams) => contractKey(cmsSubscriptionContract.list, { query: params }),
+  aggregatesAll: contractKey(cmsSubscriptionContract.aggregates),
   aggregates: (params: CmsSubscriptionAggregateParams) => contractKey(cmsSubscriptionContract.aggregates, { query: params }),
 };
 

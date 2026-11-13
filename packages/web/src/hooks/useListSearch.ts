@@ -1,4 +1,4 @@
-import { useCallback, useContext, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { UNSAFE_LocationContext } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import type { QueryKey } from '@tanstack/react-query';
@@ -68,6 +68,8 @@ export interface UseListSearchReturn<T> extends UsePaginationReturn {
   readonly bindKeyword: <K extends keyof T>(key: K) => { readonly value: T[K]; readonly onChange: (value: T[K]) => void; readonly onSearch: () => void };
   /** 进入 query key；变化自动触发请求 */
   readonly submittedParams: T;
+  /** 用户主动查询 / 重置的递增版本号；配合 `useManualSearchLoading` 驱动手动加载态 */
+  readonly searchVersion: number;
   /** 提交草稿条件、回到第 1 页，并强制失效列表 */
   readonly handleSearch: () => void;
   /**
@@ -138,6 +140,9 @@ export function useListSearch<T>({
   }, []);
   const [draftParams, setDraftParams] = useState<T>(relationRestore?.draft ?? initialParams);
   const [submittedParams, setSubmittedParams] = useState<T>(relationRestore?.submitted ?? initialParams);
+  // 每次用户主动查询 / 重置递增；配合 useManualSearchLoading 驱动轮询列表的手动加载态
+  const [searchVersion, setSearchVersion] = useState(0);
+  const markSearch = useCallback(() => setSearchVersion((version) => version + 1), []);
   const relationSnapshot = useRef({ draft: draftParams, submitted: submittedParams, page: pagination.page, pageSize: pagination.pageSize });
   relationSnapshot.current = { draft: draftParams, submitted: submittedParams, page: pagination.page, pageSize: pagination.pageSize };
   useLayoutEffect(() => {
@@ -171,16 +176,18 @@ export function useListSearch<T>({
     setSubmittedParams(params);
     rememberSubmitted(params);
     invalidate();
+    markSearch();
     onSearch?.();
-  }, [setPage, invalidate, onSearch, rememberSubmitted]);
+  }, [setPage, invalidate, markSearch, onSearch, rememberSubmitted]);
 
   const handleSearch = useCallback(() => {
     setPage(1);
     setSubmittedParams(draftParams);
     rememberSubmitted(draftParams);
     invalidate();
+    markSearch();
     onSearch?.();
-  }, [setPage, draftParams, invalidate, onSearch, rememberSubmitted]);
+  }, [setPage, draftParams, invalidate, markSearch, onSearch, rememberSubmitted]);
 
   const handleReset = useCallback(() => {
     // defaults 为函数时每次重置都重新求值，保证「最近 7 天」这类相对区间是最新的
@@ -190,8 +197,9 @@ export function useListSearch<T>({
     setSubmittedParams(next);
     forgetSubmitted();
     invalidate();
+    markSearch();
     onReset?.();
-  }, [setPage, invalidate, onReset, defaults, forgetSubmitted]);
+  }, [setPage, invalidate, markSearch, onReset, defaults, forgetSubmitted]);
 
   const bind = useCallback(<K extends keyof T, R>(key: K, parse?: (raw: R) => T[K]) => {
     const setter = setField(key);
@@ -215,8 +223,33 @@ export function useListSearch<T>({
     bind,
     bindKeyword,
     submittedParams,
+    searchVersion,
     handleSearch,
     applySearch,
     handleReset,
   };
+}
+
+/**
+ * 用户主动查询 / 重置后的手动加载态：查询开始后置为 true，列表查询结束后自动收起。
+ * 用于 `loadingMode: 'initial'` 的轮询列表：后台轮询不触发，只有查询 / 重置 / 筛选动作显示整表 loading。
+ */
+export function useManualSearchLoading(searchVersion: number, isFetching: boolean): boolean {
+  const [loading, setLoading] = useState(false);
+  const versionRef = useRef(searchVersion);
+
+  useEffect(() => {
+    if (searchVersion === versionRef.current) return;
+    versionRef.current = searchVersion;
+    setLoading(true);
+  }, [searchVersion]);
+
+  useEffect(() => {
+    if (!loading) return;
+    if (isFetching) return;
+    const timer = globalThis.setTimeout(() => setLoading(false), 150);
+    return () => globalThis.clearTimeout(timer);
+  }, [loading, isFetching]);
+
+  return loading;
 }

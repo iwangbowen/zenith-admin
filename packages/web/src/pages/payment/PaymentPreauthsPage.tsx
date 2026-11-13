@@ -54,7 +54,7 @@ export default function PaymentPreauthsPage() {
   const [selectedAppId, setSelectedAppId] = useState<number | null>(null);
   const [preauthAppId, setPreauthAppId] = useState<number | null>(null);
 
-  const { apps: paymentApps, appById, appOptions, isFetching: appsFetching } = useEnabledPaymentAppLookup();
+  const { apps: paymentApps, appById, appOptions, isFetching: appsFetching, refetch: refetchApps } = useEnabledPaymentAppLookup();
   const effectivePreauthAppId = preauthAppId ?? paymentApps[0]?.id;
 
   // 已提交筛选 → 契约查询参数：只映射一次
@@ -69,6 +69,19 @@ export default function PaymentPreauthsPage() {
     pageSize,
     ...filterQuery,
   }, effectivePreauthAppId != null);
+  // 未选中 / 暂无支付应用时，刷新或查询退回刷新应用列表，避免向预授权接口发送 applicationId=0
+  const refreshPreauthList = () => {
+    if (effectivePreauthAppId != null) void listQuery.refetch();
+    else void refetchApps();
+  };
+  const handlePreauthSearch = () => {
+    if (effectivePreauthAppId != null) handleSearch();
+    else void refetchApps();
+  };
+  const handlePreauthReset = () => {
+    handleReset();
+    if (effectivePreauthAppId == null) void refetchApps();
+  };
   const selectedPaymentApp = selectedAppId == null ? null : appById.get(selectedAppId);
   const {
     options: preauthMethodOptions,
@@ -197,7 +210,7 @@ export default function PaymentPreauthsPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="预授权单号/付款人/事由..." {...bindKeyword('keyword')} />}
+        keyword={<KeywordInput placeholder="预授权单号/付款人/事由..." {...bindKeyword('keyword')} onSearch={handlePreauthSearch} />}
         filters={(
           <>
             <PaymentAppFilterSelect
@@ -217,8 +230,8 @@ export default function PaymentPreauthsPage() {
             />
           </>
         )}
-        onSearch={handleSearch}
-        onReset={handleReset}
+        onSearch={handlePreauthSearch}
+        onReset={handlePreauthReset}
         create={(
           canManage ? (
             <Button type="primary" icon={<Plus size={14} />} onClick={() => { setSelectedAppId(null); createModal.openCreate(); }}>发起冻结</Button>
@@ -226,11 +239,23 @@ export default function PaymentPreauthsPage() {
         )}
         filterTitle="预授权筛选"
       />
+      {!appsFetching && paymentApps.length === 0 && (
+        <Banner
+          type="warning"
+          closeIcon={null}
+          style={{ marginBottom: 12 }}
+          description="暂无可用支付应用，请先在「支付中心 → 支付应用」中启用应用后再查询预授权。"
+        />
+      )}
 
       <ConfigurableTable<PaymentPreauth>
         columns={columns}
-        empty="暂无数据"
-        {...listTableProps({ ...listQuery, isFetching: appsFetching || listQuery.isFetching }, { pagination: buildPagination })}
+        {...listTableProps(
+          { ...listQuery, isFetching: appsFetching || listQuery.isFetching },
+          { pagination: buildPagination, empty: effectivePreauthAppId != null ? '暂无数据' : '请先选择支付应用' },
+        )}
+        onRefresh={refreshPreauthList}
+        refreshLoading={appsFetching || listQuery.isFetching}
       />
 
       <EditFormModal modal={createModal} title="发起预授权冻结" width={660} header={<Banner type="warning" closeIcon={null} style={{ marginBottom: 16 }} description="资金冻结操作（押金场景）：冻结成功计入渠道账户冻结余额，可转支付或解冻；沙箱渠道即时生效。" />}>

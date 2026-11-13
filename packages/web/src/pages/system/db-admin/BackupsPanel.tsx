@@ -20,7 +20,7 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { FilterSelect, StatusSelect } from '@/components/search-filters';
 import { CreateButton } from '@/components/toolbar-controls';
 import { useEditModal } from '@/hooks/useEditModal';
-import { useListSearch } from '@/hooks/useListSearch';
+import { useListSearch, useManualSearchLoading } from '@/hooks/useListSearch';
 import { useListDeepLink } from '@/hooks/useListDeepLink';
 import { dbAdminKeys, useCreateDbBackup, useDbBackups, useDeleteDbBackup, useMarkDbBackupFailed } from '@/hooks/queries/db-admin';
 import { urlOf } from '@/lib/contract-query';
@@ -59,11 +59,12 @@ export function BackupsPanel({ canMaintain, active }: Readonly<{ canMaintain: bo
 
   const {
     page, pageSize, setPage, buildPagination,
-    bind, submittedParams,
+    bind, submittedParams, searchVersion,
     handleSearch, handleReset, applySearch,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: dbAdminKeys.backupLists });
   useListDeepLink(['status'], params => applySearch({ ...defaultSearchParams, status: enumValueOf(DB_BACKUP_STATUSES, params.status) }));
   const listQuery = useDbBackups({ page, pageSize, status: submittedParams.status, type: submittedParams.type }, active);
+  const manualLoading = useManualSearchLoading(searchVersion, listQuery.isFetching);
   const createMutation = useCreateDbBackup();
   const deleteMutation = useDeleteDbBackup();
   const markFailedMutation = useMarkDbBackupFailed();
@@ -190,7 +191,7 @@ export function BackupsPanel({ canMaintain, active }: Readonly<{ canMaintain: bo
 
       <ConfigurableTable<DbBackup>
         columns={columns}
-        {...listTableProps(listQuery, { pagination: buildPagination, loadingMode: 'initial' })}
+        {...listTableProps(listQuery, { pagination: buildPagination, loadingMode: 'initial', manualLoading })}
       />
 
       <EditFormModal modal={createModal} title="创建备份" okText="确定" cancelText="取消">

@@ -17,7 +17,7 @@ import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-fi
 import { CreateButton } from '@/components/toolbar-controls';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { dateTimeColumn, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
-import { useListSearch } from '@/hooks/useListSearch';
+import { useListSearch, useManualSearchLoading } from '@/hooks/useListSearch';
 import { useImportEntities } from '@/hooks/queries/import-jobs';
 import { asyncTaskKeys, useAsyncTaskList } from '@/hooks/queries/async-tasks';
 import NewImportModal from './NewImportModal';
@@ -62,7 +62,7 @@ export default function ImportCenterPage() {
   const qc = useQueryClient();
   const {
     page, pageSize, buildPagination,
-    bind, bindKeyword, submittedParams,
+    bind, bindKeyword, submittedParams, searchVersion,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: asyncTaskKeys.lists });
 
@@ -87,6 +87,7 @@ export default function ImportCenterPage() {
     // 有进行中的任务时轮询列表（渲染期重新求值，任务终态后自动停止）
     { refetchInterval: hasActiveTask ? 3000 : false },
   );
+  const manualLoading = useManualSearchLoading(searchVersion, listQuery.isFetching);
   const list = listQuery.data?.list ?? EMPTY_TASKS;
 
   useEffect(() => {
@@ -172,7 +173,7 @@ export default function ImportCenterPage() {
 
       <ConfigurableTable
         columns={columns}
-        {...listTableProps(listQuery, { pagination: buildPagination, empty: '暂无导入记录，点击「新建导入」开始', loadingMode: 'initial' })}
+        {...listTableProps(listQuery, { pagination: buildPagination, empty: '暂无导入记录，点击「新建导入」开始', loadingMode: 'initial', manualLoading })}
       />
 
       <NewImportModal

@@ -26,6 +26,11 @@ export interface ListTablePropsOptions<T extends Data> {
    * - `initial`：仅首屏没有数据快照时显示；持续轮询、后台自动刷新频繁的列表用它避免整表反复闪烁
    */
   loadingMode?: 'initial' | 'always';
+  /**
+   * 用户主动查询 / 重置期间的手动 loading：与 `loadingMode: 'initial'` 搭配，
+   * 让轮询列表只在用户操作时显示整表蒙层，后台轮询不闪烁。
+   */
+  manualLoading?: boolean;
 }
 
 /**
@@ -45,7 +50,7 @@ export function listTableProps<T extends Data>(query: ListQueryLike<T>, options:
     dataSource: list,
     // 默认任何请求都盖 Spin 蒙层，查询 / 刷新 / 翻页 / 失效重拉都有明确反馈。
     // `initial` 只给持续轮询、后台自动刷新频繁的列表：仅首屏无数据快照时盖蒙层，避免整表反复闪烁。
-    loading: query.isFetching && (options.loadingMode !== 'initial' || query.data === undefined),
+    loading: options.manualLoading || (query.isFetching && (options.loadingMode !== 'initial' || query.data === undefined)),
     onRefresh: () => { void query.refetch(); },
     refreshLoading: query.isFetching,
     pagination: options.pagination ? options.pagination(total) : (false as const),

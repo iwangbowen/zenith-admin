@@ -14,7 +14,7 @@ import { EMPTY_PLACEHOLDER, createdAtColumn, dateTimeColumn, renderEllipsis, ren
 import { formatDateTimeForApi, formatDateTimeRangeForApi } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
-import { useListSearch } from '@/hooks/useListSearch';
+import { useListSearch, useManualSearchLoading } from '@/hooks/useListSearch';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useAllCmsSites, useCmsChannelTree } from '@/hooks/queries/cms';
 import { CronBuilderPopover } from '@/components/CronBuilderPopover';
@@ -95,6 +95,7 @@ export default function DistributionPage() {
     pageSize: runSearch.pageSize,
     ...runFilterQuery,
   });
+  const runManualLoading = useManualSearchLoading(runSearch.searchVersion, runQuery.isFetching);
   const runDetailQuery = useCmsDistributionRunDetail(detailRunId, detailRunId !== undefined);
   const saveMutation = useSaveCmsDistributionRule();
   const ruleModal = useEditModal<CmsDistributionRule, Record<string, unknown>, Record<string, unknown>>({
@@ -440,7 +441,7 @@ export default function DistributionPage() {
           />
           <ConfigurableTable<CmsDistributionRun>
             columns={runColumns}
-            {...listTableProps(runQuery, { pagination: runSearch.buildPagination, loadingMode: 'initial' })}
+            {...listTableProps(runQuery, { pagination: runSearch.buildPagination, loadingMode: 'initial', manualLoading: runManualLoading })}
           />
         </TabPane>
       </Tabs>

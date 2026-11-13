@@ -75,7 +75,7 @@ export default function PaymentContractsPage() {
   const [selectedAppId, setSelectedAppId] = useState<number | null>(null);
   const [contractAppId, setContractAppId] = useState<number | null>(null);
 
-  const { apps: paymentApps, appById, appOptions, isFetching: appsFetching } = useEnabledPaymentAppLookup();
+  const { apps: paymentApps, appById, appOptions, isFetching: appsFetching, refetch: refetchApps } = useEnabledPaymentAppLookup();
   const effectiveContractAppId = contractAppId ?? paymentApps[0]?.id;
 
   // 已提交筛选 → 契约查询参数：只映射一次
@@ -92,6 +92,19 @@ export default function PaymentContractsPage() {
     pageSize: cPageSize,
     ...filterQuery,
   }, effectiveContractAppId != null);
+  // 未选中 / 暂无支付应用时，刷新或查询退回刷新应用列表，避免向契约接口发送 applicationId=0
+  const refreshContractList = () => {
+    if (effectiveContractAppId != null) void contractQuery.refetch();
+    else void refetchApps();
+  };
+  const handleContractSearch = () => {
+    if (effectiveContractAppId != null) handleSearch();
+    else void refetchApps();
+  };
+  const handleContractReset = () => {
+    handleReset();
+    if (effectiveContractAppId == null) void refetchApps();
+  };
   // 已提交筛选 → 契约查询参数：只映射一次
   const planFilterQuery = useFilterQuery({
     keyword: planSearch.submittedParams.keyword,
@@ -302,7 +315,7 @@ export default function PaymentContractsPage() {
       <Tabs collapsible="auto" activeKey={activeTab} onChange={(k) => setActiveTab(k as 'contracts' | 'plans')} type="line" lazyRender keepDOM={false}>
         <TabPane tab="签约协议" itemKey="contracts">
           <ListSearchToolbar
-            keyword={<KeywordInput placeholder="协议号/签约账号/业务ID..." {...bindKeyword('keyword')} />}
+            keyword={<KeywordInput placeholder="协议号/签约账号/业务ID..." {...bindKeyword('keyword')} onSearch={handleContractSearch} />}
             filters={(
               <>
                 <PaymentAppFilterSelect
@@ -322,20 +335,33 @@ export default function PaymentContractsPage() {
                 />
               </>
             )}
-            onSearch={handleSearch}
-            onReset={handleReset}
+            onSearch={handleContractSearch}
+            onReset={handleContractReset}
             create={(
               canManage ? (
                 <CreateButton onClick={() => { setSelectedAppId(null); signModal.openCreate(); }}>新增签约</CreateButton>
               ) : null
             )}
-            actions={<ExportButton entity="payment.contracts" query={filterQuery} />}
+            actions={effectiveContractAppId != null ? <ExportButton entity="payment.contracts" query={filterQuery} /> : null}
             filterTitle="签约协议筛选"
           />
+          {!appsFetching && paymentApps.length === 0 && (
+            <Banner
+              type="warning"
+              closeIcon={null}
+              style={{ marginTop: 12, marginBottom: 12 }}
+              description="暂无可用支付应用，请先在「支付中心 → 支付应用」中启用应用后再查询签约协议。"
+            />
+          )}
           <ConfigurableTable
             columns={contractColumns}
-            {...listTableProps(contractQuery, { pagination: buildCPagination, empty: '暂无数据' })}
+            {...listTableProps(contractQuery, {
+              pagination: buildCPagination,
+              empty: effectiveContractAppId != null ? '暂无数据' : '请先选择支付应用',
+            })}
             loading={appsFetching || contractQuery.isFetching}
+            onRefresh={refreshContractList}
+            refreshLoading={appsFetching || contractQuery.isFetching}
           />
         </TabPane>
         <TabPane tab="扣款计划" itemKey="plans">

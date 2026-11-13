@@ -4,7 +4,7 @@ import * as z from 'zod';
 import { contractKey, type ResourceContract } from '@/lib/contract-query';
 import { listTableProps, type ListQueryLike, type ListTablePropsOptions } from '@/components/list-page';
 import { useFilterQuery } from '@/hooks/useFilterQuery';
-import { useListSearch, type UseListSearchOptions, type UseListSearchReturn } from '@/hooks/useListSearch';
+import { useListSearch, useManualSearchLoading, type UseListSearchOptions, type UseListSearchReturn } from '@/hooks/useListSearch';
 import type { CompactParams } from '@/lib/query';
 import { formatDateTimeRangeValuesForApi } from '@/utils/date';
 import type { AnyOperation, QueryOf } from '@zenith/shared/core';
@@ -158,7 +158,8 @@ export function useListPage(
   const raw = listOp ? search.submittedParams : (options as UseListPageOptions<Record<string, unknown>, Record<string, unknown>, Record<string, unknown>, ListQueryLike<Data>>).toQuery(search.submittedParams);
   const filterQuery = useFilterQuery(raw);
   const listQuery = useList({ page: search.page, pageSize: search.pageSize, ...params, ...filterQuery }, enabled);
-  const tableProps = listTableProps<Data>(listQuery as ListQueryLike<Data>, { pagination: search.buildPagination, ...table });
+  const manualLoading = useManualSearchLoading(search.searchVersion, listQuery.isFetching);
+  const tableProps = listTableProps<Data>(listQuery as ListQueryLike<Data>, { pagination: search.buildPagination, ...table, manualLoading });
   const filterSchema = listOp ? (listOp.query as z.ZodObject<z.ZodRawShape> | undefined) : undefined;
 
   const { draftParams, setDraftParams, handleSearch, handleReset } = search;

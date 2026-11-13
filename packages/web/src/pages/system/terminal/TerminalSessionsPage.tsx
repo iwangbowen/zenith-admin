@@ -13,7 +13,7 @@ import { useThemeController } from '@/providers/theme-controller';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
-import { useListSearch } from '@/hooks/useListSearch';
+import { useListSearch, useManualSearchLoading } from '@/hooks/useListSearch';
 import { EMPTY_PLACEHOLDER, dateTimeColumn, overflowTagColumn, renderEllipsis } from '@/utils/table-columns';
 import { useTerminalPreferences } from './useTerminalPreferences';
 import { resolveTheme, toXtermTheme } from './themes';
@@ -126,7 +126,7 @@ export default function TerminalSessionsPage() {
   const defaultSearchParams: SearchParams = { keyword: '', kind: undefined };
   const {
     page, pageSize, buildPagination,
-    draftParams, bindKeyword, submittedParams,
+    draftParams, bindKeyword, submittedParams, searchVersion,
     handleSearch, applySearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: terminalKeys.sessionLists });
 
@@ -141,6 +141,7 @@ export default function TerminalSessionsPage() {
   });
 
   const listQuery = useTerminalSessionList({ page, pageSize, ...filterQuery }, { refetchInterval: autoRefresh ? 5000 : false });
+  const manualLoading = useManualSearchLoading(searchVersion, listQuery.isFetching);
   const terminateMutation = useTerminateTerminalSession();
 
   const handleTerminate = async (record: TerminalSession) => {
@@ -240,7 +241,7 @@ export default function TerminalSessionsPage() {
 
       <ConfigurableTable<TerminalSession>
         columns={columns}
-        {...listTableProps(listQuery, { rowKey: 'sessionId', pagination: buildPagination, empty: '暂无活动终端会话', loadingMode: 'initial' })}
+        {...listTableProps(listQuery, { rowKey: 'sessionId', pagination: buildPagination, empty: '暂无活动终端会话', loadingMode: 'initial', manualLoading })}
       />
 
       <SideSheet

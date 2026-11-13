@@ -12,7 +12,7 @@ import AppModal from '@/components/AppModal';
 import ExportButton from '@/components/ExportButton';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { COMPACT_PAGINATION_PROPS, usePagination } from '@/hooks/usePagination';
-import { useListSearch } from '@/hooks/useListSearch';
+import { useListSearch, useManualSearchLoading } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import { useTaskProgressEvents } from '@/hooks/useAsyncTasks';
 import { useAllCmsSites, useCmsChannelTree, useCmsPageList } from '@/hooks/queries/cms';
@@ -76,7 +76,7 @@ export default function PublishingPage() {
   // 同一组筛选驱动任务列表与产物列表：任务列表分页由 useListSearch 托管，产物列表另有独立分页，查询 / 重置时同步回首页
   const artifactPagination = usePagination();
   const {
-    bind, bindKeyword, submittedParams: submitted,
+    bind, bindKeyword, submittedParams: submitted, searchVersion,
     handleSearch: applySearch, handleReset: resetSearch, ...taskPagination
   } = useListSearch<Filters>({
     defaults: EMPTY_FILTERS,
@@ -110,6 +110,7 @@ export default function PublishingPage() {
     pageSize: taskPagination.pageSize,
     ...taskFilterQuery,
   }, activeTab !== 'artifacts' && activeTab !== 'releases' && activeTab !== 'capacity' && activeTab !== 'delivery');
+  const manualLoading = useManualSearchLoading(searchVersion, taskListQuery.isFetching);
   const artifactListQuery = useCmsPublishArtifactList({
     page: artifactPagination.page,
     pageSize: artifactPagination.pageSize,
@@ -297,6 +298,7 @@ export default function PublishingPage() {
         {...listTableProps(taskListQuery, {
           rowKey: (record) => String(record?.id ?? ''),
           loadingMode: 'initial',
+          manualLoading,
           pagination: (total) => taskPagination.buildPagination(total, () => setSelected([])),
           rowSelection: canManage ? { selectedRowKeys: selected.map(String), onChange: (keys) => setSelected((keys ?? []).map(Number)) } : undefined,
         })}

@@ -34,7 +34,12 @@ export default function SubscriptionsPage() {
     page, pageSize, setPage, buildPagination,
     bind, bindKeyword, submittedParams: submitted,
     handleSearch, handleReset,
-  } = useListSearch<SearchState>({ defaults: initialSearch, listKey: cmsSubscriptionKeys.lists });
+  } = useListSearch<SearchState>({
+    defaults: initialSearch,
+    listKey: cmsSubscriptionKeys.lists,
+    // 订阅聚合是独立查询：查询 / 重置时与明细一起回源
+    extraKeys: [cmsSubscriptionKeys.aggregatesAll],
+  });
   const [siteId, setSiteId] = useState<number | undefined>();
   const [detail, setDetail] = useState<CmsMemberSubscription | null>(null);
   // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射

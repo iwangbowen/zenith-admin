@@ -40,7 +40,7 @@ export function useEnabledPaymentAppLookup(options: { label?: (app: PaymentApp) 
     })),
     [apps, label],
   );
-  return { apps, appById, appOptions, isFetching: appsQuery.isFetching };
+  return { apps, appById, appOptions, isFetching: appsQuery.isFetching, refetch: appsQuery.refetch };
 }
 
 export function useAppBoundConfigOptions({

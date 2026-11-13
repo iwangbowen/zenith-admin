@@ -7,7 +7,7 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { DateRangeFilter, FilterSelect, StatusSelect } from '@/components/search-filters';
 import { dateTimeColumn, renderEllipsis, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
-import { useListSearch } from '@/hooks/useListSearch';
+import { useListSearch, useManualSearchLoading } from '@/hooks/useListSearch';
 import { useListDeepLink } from '@/hooks/useListDeepLink';
 import { usePagination } from '@/hooks/usePagination';
 import { formatDateTimeRangeForApi } from '@/utils/date';
@@ -66,7 +66,7 @@ export default function DirectorySyncLogsPage() {
 
   const {
     page, pageSize, buildPagination,
-    bind, submittedParams,
+    bind, submittedParams, searchVersion,
     handleSearch, handleReset, applySearch,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: directorySyncRunKeys.lists });
   useListDeepLink(['status'], (params) => applySearch({ ...defaultSearchParams, status: enumValueOf(DIRECTORY_SYNC_RUN_STATUSES, params.status) }));
@@ -78,6 +78,7 @@ export default function DirectorySyncLogsPage() {
     status: enumValueOf(DIRECTORY_SYNC_RUN_STATUSES, submittedParams.status),
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
   });
+  const manualLoading = useManualSearchLoading(searchVersion, listQuery.isFetching);
 
   // 源筛选下拉：复用同步源列表查询
   const sourcesQuery = useDirectorySyncSourceList({ page: 1, pageSize: 100 });
@@ -225,6 +226,7 @@ export default function DirectorySyncLogsPage() {
           pagination: buildPagination,
           empty: '暂无同步记录',
           loadingMode: 'initial',
+          manualLoading,
         })}
       />
 

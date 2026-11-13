@@ -12,7 +12,7 @@ import AppModal from '@/components/AppModal';
 import { ExportButton } from '@/components/ExportButton';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import { usePermission } from '@/hooks/usePermission';
-import { useListSearch } from '@/hooks/useListSearch';
+import { useListSearch, useManualSearchLoading } from '@/hooks/useListSearch';
 import ImportButton from '@/components/ImportButton';
 import {
   useCmsChannelTree, useCmsContentList, useCmsContentAction, useCmsContentBatch,
@@ -160,7 +160,7 @@ export default function ContentsPage() {
   // 栏目 / 类型为即时筛选，仅关键字走「草稿 → 查询」；重置时一并清空即时筛选与选中行
   const {
     page, pageSize, setPage, buildPagination,
-    bind, bindKeyword, submittedParams, handleSearch, handleReset, applySearch,
+    bind, bindKeyword, submittedParams, searchVersion, handleSearch, handleReset, applySearch,
   } = useListSearch<ContentFilters>({
     defaults: DEFAULT_FILTERS,
     listKey: cmsContentKeys.lists,
@@ -246,6 +246,7 @@ export default function ContentsPage() {
     ...filterQuery,
     siteId: siteId ?? 0,
   }, siteId !== undefined && activeTab !== 'calendar');
+  const manualLoading = useManualSearchLoading(searchVersion, listQuery.isFetching);
   const list = listQuery.data?.list ?? [];
   const listModelFields = new Map<string, { modelId: number; modelName: string; field: CmsModelField }>();
   for (const record of list) {
@@ -858,6 +859,7 @@ export default function ContentsPage() {
           rowKey: (record) => String(record?.id ?? ''),
           empty: '暂无内容',
           loadingMode: 'initial',
+          manualLoading,
           pagination: (total) => buildPagination(total, () => setSelectedIds([])),
           rowSelection: {
             selectedRowKeys: selectedIds.map(String),
