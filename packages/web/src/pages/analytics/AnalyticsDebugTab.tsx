@@ -4,7 +4,7 @@
 import { Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
-import { useListSearch } from '@/hooks/useListSearch';
+import { useListSearch, useManualSearchLoading } from '@/hooks/useListSearch';
 import { useAnalyticsDebugEvents } from '@/hooks/queries/analytics';
 import type { AnalyticsDebugEvent, AnalyticsQualityIssueType } from '@zenith/shared/analytics';
 import { ANALYTICS_ENVIRONMENT_LABELS, ANALYTICS_EVENT_SOURCE_LABELS, ANALYTICS_QUALITY_ISSUE_TYPE_LABELS, USER_BEHAVIOR_EVENT_TYPE_LABELS } from '@zenith/shared/analytics';
@@ -25,7 +25,7 @@ function labelOf(labels: Record<string, string>, value: string | null | undefine
 export default function AnalyticsDebugTab({ active }: Readonly<{ active: boolean }>) {
   const {
     page, pageSize, buildPagination,
-    bindKeyword, submittedParams,
+    bindKeyword, submittedParams, searchVersion,
     handleSearch, handleReset,
   } = useListSearch<{ eventName: string }>({
     defaults: { eventName: '' },
@@ -35,7 +35,7 @@ export default function AnalyticsDebugTab({ active }: Readonly<{ active: boolean
   // 已提交筛选 → 契约查询参数：只映射一次
   const filterQuery = useFilterQuery({ eventName: submittedParams.eventName });
   const debugQuery = useAnalyticsDebugEvents({ page, pageSize, ...filterQuery }, active);
-  const events = debugQuery.data?.list ?? [];
+  const manualLoading = useManualSearchLoading(searchVersion, debugQuery.isFetching);
 
   const columns: ColumnProps<AnalyticsDebugEvent>[] = [
     dateTimeColumn('时间', 'createdAt'),
@@ -87,9 +87,7 @@ export default function AnalyticsDebugTab({ active }: Readonly<{ active: boolean
       />
       <ConfigurableTable
         columns={columns}
-        {...listTableProps(debugQuery, { pagination: buildPagination, empty: '暂无最近事件' })}
-        // 遮罩只在首屏出现：Tab 切回时的后台刷新不遮住已有事件
-        loading={debugQuery.isFetching && events.length === 0}
+        {...listTableProps(debugQuery, { pagination: buildPagination, empty: '暂无最近事件', loadingMode: 'initial', manualLoading })}
         expandedRowRender={renderExpanded}
         hideExpandedColumn={false}
         expandRowByClick
