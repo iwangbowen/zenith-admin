@@ -24,7 +24,7 @@ integration('task-center real PostgreSQL transaction ownership', () => {
 
   beforeAll(async () => {
     const url = new URL(testDatabaseUrl!);
-    if (!['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) || url.pathname !== '/zenith_review') {
+    if (!['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) || !['/zenith_review', '/zenith_export_qa'].includes(url.pathname)) {
       throw new Error('TEST_DATABASE_URL must target a disposable local zenith_review database');
     }
     vi.stubEnv('DATABASE_URL', testDatabaseUrl!);

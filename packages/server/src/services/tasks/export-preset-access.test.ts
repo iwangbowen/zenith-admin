@@ -1,7 +1,7 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 const state = vi.hoisted(() => ({ rows: [] as Array<Record<string, unknown>>, permissions: [] as string[], selected: vi.fn(), insert: vi.fn() }));
 vi.mock('../../db', () => ({ db: { select: () => ({ from: () => ({ where: () => ({ orderBy: state.selected, limit: async () => state.rows }) }) }), insert: () => ({ values: state.insert }) } }));
-vi.mock('../../lib/context', () => ({ currentUser: () => ({ userId: 7, username: 'test', tenantId: 2, roles: [] }), hasPermission: async (code: string) => state.permissions.includes(code) }));
+vi.mock('../../lib/context', () => ({ currentUser: () => ({ userId: 7, username: 'test', tenantId: 2, roles: [] }), hasPermission: async (code: string) => state.permissions.includes(code), runWithOperationPermissions: (_permissions: unknown, fn: () => unknown) => fn() }));
 vi.mock('../../lib/permissions', () => ({ getUserPermissions: async () => state.permissions, isSuperAdmin: () => false }));
 vi.mock('../../lib/export-center/registry', () => ({ listExportDefinitions: () => [{ entity: 'test', permissions: { export: 'test:export' } }] }));
 import { listExportPresets, deleteExportPreset, createExportPreset } from './export-presets.service';

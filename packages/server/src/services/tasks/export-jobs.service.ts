@@ -16,8 +16,8 @@ import { exportJobDownloads, exportJobs, exportDailyUsage, asyncTasks, managedFi
 import { pageOffset } from '../../lib/pagination';
 import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
 import { formatDateTime, formatFileTimestamp, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
-import { currentUser, runWithCurrentUser } from '../../lib/context';
-import { getUserPermissions, isSuperAdmin } from '../../lib/permissions';
+import { currentUser, runWithCurrentUser, runWithOperationPermissions } from '../../lib/context';
+import { getUserPermissions, isSuperAdmin, runWithFreshUserPermissions } from '../../lib/permissions';
 import { exactTenantCondition, getCreateTenantId, isTenantActive, tenantCondition } from '../../lib/tenant';
 import { getRestrictedFileForRead, saveGeneratedManagedFile, deleteGeneratedManagedFile } from '../files/files.service';
 import { readStoredFile } from '../../lib/file-storage';
@@ -25,6 +25,8 @@ import { getExportDefinition, listExportDefinitions } from '../../lib/export-cen
 import { leafColumns, renderExportWorkbook, renderExportToPath } from '../../lib/export-center/writer';
 import { renderPartitionedExport } from '../../lib/export-center/partition';
 import { selectExportRows } from '../../lib/export-center/scope';
+import { exportRowKey, exportScopeFingerprint, verifyExportRows, type ExportAuthorization } from '../../lib/export-center/authorization';
+import { cleanupAbandonedExportTemps } from '../../lib/export-center/temporary';
 import { prepareExport, prepareExportQuery, assertExportPermission, type ExportRequest } from '../../lib/export-center/prepare';
 export { assertExportPermission } from '../../lib/export-center/prepare';
 import type { AnyExportDefinition, ExportExecutionMode, ExportFormat, ExportRequestMode, ExportRuntimeContext } from '../../lib/export-center/types';
@@ -230,10 +232,11 @@ async function updateExportProgress(row: typeof exportJobs.$inferSelect, process
   if (!updated) throw new ExportCancelledError('导出任务已取消或已被新的执行替换');
 }
 
-type RenderedJobFile = { mimeType: string; filename: string; rowCount?: number | null; manifest?: Record<string, unknown>; cleanup?: () => Promise<void> }
+type RenderedJobFile = { mimeType: string; filename: string; rowCount?: number | null; manifest?: Record<string, unknown>; authorization: ExportAuthorization; cleanup?: () => Promise<void> }
   & ({ buffer: Buffer; filePath?: never } | { buffer?: never; filePath: string });
 
 async function renderJobFile(row: typeof exportJobs.$inferSelect, definition: AnyExportDefinition, task?: TaskRunContext): Promise<RenderedJobFile> {
+  await cleanupAbandonedExportTemps();
   const creator = await getCreatorPayload(row);
   const filename = row.filename ?? buildFilename(definition, row.id, row.format);
   // 脱敏导出：预加载数据脱敏中心规则，敏感列渲染时统一打码
@@ -262,12 +265,15 @@ async function renderJobFile(row: typeof exportJobs.$inferSelect, definition: An
       await updateExportProgress(row, processed, total);
     },
   };
-  return runWithCurrentUser(creator, async () => {
+  return runWithCurrentUser(creator, () => runWithOperationPermissions([definition.permissions.export], async () => {
     await assertExportPermission(definition, row.raw, creator);
     ctx.query = await prepareExportQuery(definition, ctx.query, creator);
     const runtimeColumns = definition.resolveColumns ? await definition.resolveColumns(ctx.query, creator) : definition.columns;
     const leaves = leafColumns(runtimeColumns);
     if (row.columns?.some(key => !leaves.some(column => column.key === key)) || definitionHasSensitiveColumns({ ...definition, columns: runtimeColumns }, row.columns) !== row.sensitive) throw new HTTPException(409, { message: '导出字段或敏感策略已变更，请重新配置导出' });
+    const authorization: ExportAuthorization = { version: 1, scopeFingerprint: await exportScopeFingerprint(definition, creator) };
+    const keys = new Set<string>();
+    async function* authorizedRows(rows: AsyncIterable<Record<string, unknown>> | Iterable<Record<string, unknown>>) { for await (const source of rows) { keys.add(exportRowKey(source)); yield source; } }
 
     if (definition.withSnapshot) {
       const folder = await mkdtemp(join(tmpdir(), 'zenith-export-'));
@@ -277,9 +283,9 @@ async function renderJobFile(row: typeof exportJobs.$inferSelect, definition: An
         let rowCount = 0;
         await definition.withSnapshot(ctx, async (rows, total) => {
           if (ctx.rowLimit && total > ctx.rowLimit) throw new HTTPException(400, { message: `导出数据 ${total} 行，超过上限 ${ctx.rowLimit} 行，请收窄筛选条件` });
-          rowCount = await renderExportToPath(definition, rows, ctx, filePath, total);
+          rowCount = await renderExportToPath(definition, authorizedRows(rows), ctx, filePath, total);
         });
-        return { filePath, filename, rowCount, cleanup, mimeType: row.format === 'csv' ? 'text/csv; charset=utf-8' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
+        return { filePath, filename, rowCount, cleanup, authorization, mimeType: row.format === 'csv' ? 'text/csv; charset=utf-8' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
       } catch (error) { await cleanup(); throw error; }
     }
     if (definition.renderFile) {
@@ -288,6 +294,7 @@ async function renderJobFile(row: typeof exportJobs.$inferSelect, definition: An
       if (rendered.buffer.length > ctx.byteLimit!) throw new HTTPException(400, { message: '导出文件超过字节预算，请收窄条件' });
       await ctx.progress?.(rendered.rowCount ?? row.rowCount ?? 0, rendered.rowCount ?? row.rowCount);
       return {
+        authorization,
         buffer: rendered.buffer,
         mimeType: rendered.mimeType,
         filename: rendered.filename ?? filename,
@@ -301,22 +308,24 @@ async function renderJobFile(row: typeof exportJobs.$inferSelect, definition: An
       const cleanup = () => rm(folder, { recursive: true, force: true });
       try {
         async function* stream() {
-          yield* selectExportRows(rows, row.rowIds, async () => {
+          yield* authorizedRows(selectExportRows(rows, row.rowIds, async () => {
             if (task && await task.isCancelRequested()) throw new TaskCancelledError('导出已取消');
-          });
+          }));
         }
         if (row.splitRows > 0) {
           const result = await renderPartitionedExport(definition, stream(), ctx, folder, row.splitRows, row.rowCount ?? 0);
-          return { ...result, manifest: result.manifest, filename: filename.replace(/\.[^.]+$/u, '.zip'), cleanup, mimeType: 'application/zip' };
+          authorization.rowKeys = [...keys];
+          return { ...result, authorization, manifest: result.manifest, filename: filename.replace(/\.[^.]+$/u, '.zip'), cleanup, mimeType: 'application/zip' };
         }
         const rowCount = await renderExportToPath(definition, stream(), ctx, filePath, row.rowCount ?? 0);
-        return { filePath, filename, rowCount, cleanup, mimeType: row.format === 'csv' ? 'text/csv; charset=utf-8' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
+        authorization.rowKeys = [...keys];
+        return { filePath, filename, rowCount, cleanup, authorization, mimeType: row.format === 'csv' ? 'text/csv; charset=utf-8' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
       } catch (error) { await cleanup(); throw error; }
     }
     const buffer = await renderExportWorkbook(definition, rows, ctx);
     if (buffer.length > ctx.byteLimit!) throw new HTTPException(400, { message: '导出文件超过字节预算，请收窄条件' });
-    return { buffer, mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', filename };
-  });
+    return { buffer, authorization, mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', filename };
+  }));
 }
 
 async function executeExportJob(row: typeof exportJobs.$inferSelect, definition: AnyExportDefinition) {
@@ -354,6 +363,7 @@ async function executeExportJob(row: typeof exportJobs.$inferSelect, definition:
         fileSize: savedFile.size,
         sha256,
         manifest: rendered!.manifest ?? null,
+        authorization: rendered!.authorization,
         completedAt,
         expiresAt: calculateExpiresAt(definition, row.raw, row.sensitive),
         stage: 'completed',
@@ -501,7 +511,7 @@ export async function settleExportTask(tx: DbTransaction, task: typeof asyncTask
     const result = task.result;
     if (!result || typeof result.fileId !== 'string') throw new Error('导出任务缺少有效产物');
     await retainManagedFiles(tx, [result.fileId]);
-    await tx.update(exportJobs).set({ status: 'success', stage: 'completed', cancelRequested: false, fileId: result.fileId, filename: String(result.filename), fileSize: Number(result.fileSize), sha256: String(result.sha256), manifest: result.manifest && typeof result.manifest === 'object' ? result.manifest as Record<string, unknown> : null, rowCount: Number(result.rowCount), processedRows: Number(result.rowCount), totalRows: Number(result.rowCount), completedAt: task.completedAt, expiresAt: calculateExpiresAt(getExportDefinition(job.entity), job.raw, job.sensitive) }).where(eq(exportJobs.id, job.id));
+    await tx.update(exportJobs).set({ status: 'success', stage: 'completed', cancelRequested: false, fileId: result.fileId, filename: String(result.filename), fileSize: Number(result.fileSize), sha256: String(result.sha256), manifest: result.manifest && typeof result.manifest === 'object' ? result.manifest as Record<string, unknown> : null, authorization: result.authorization as ExportAuthorization, rowCount: Number(result.rowCount), processedRows: Number(result.rowCount), totalRows: Number(result.rowCount), completedAt: task.completedAt, expiresAt: calculateExpiresAt(getExportDefinition(job.entity), job.raw, job.sensitive) }).where(eq(exportJobs.id, job.id));
     rememberTransactionEffect(tx, `export-notify:${job.id}`, () => notifyExportFinished(job, '已完成', '，文件已生成'));
     return;
   }
@@ -512,7 +522,7 @@ export async function settleExportTask(tx: DbTransaction, task: typeof asyncTask
   }
   if (task.status === 'pending' && job.fileId) {
     await releaseManagedFiles(tx, [job.fileId]);
-    await tx.update(exportJobs).set({ fileId: null, filename: buildFilename(getExportDefinition(job.entity), job.id, job.format), fileSize: null, sha256: null, manifest: null, expiresAt: null, fileDeletedAt: null, deleteReason: null }).where(eq(exportJobs.id, job.id));
+    await tx.update(exportJobs).set({ fileId: null, filename: buildFilename(getExportDefinition(job.entity), job.id, job.format), fileSize: null, sha256: null, manifest: null, authorization: null, expiresAt: null, fileDeletedAt: null, deleteReason: null }).where(eq(exportJobs.id, job.id));
   }
   await tx.update(exportJobs).set({ status: task.status, stage: task.cancelRequested ? 'cancelling' : task.status === 'running' ? 'rendering' : 'pending', cancelRequested: task.cancelRequested, executionToken: task.dispatchToken, startedAt: task.startedAt, errorMessage: task.errorMessage, completedAt: null }).where(eq(exportJobs.id, job.id));
 }
@@ -532,7 +542,7 @@ async function runExportTask(task: TaskRunContext): Promise<Record<string, unkno
     await task.transaction(async tx => { await tx.update(exportJobs).set({ stage: 'uploading' }).where(runningAttempt(job)); });
     const file = await saveGeneratedManagedFile({ ...(rendered.filePath ? { filePath: rendered.filePath } : { buffer: rendered.buffer! }), filename: rendered.filename, mimeType: rendered.mimeType, tenantId: job.tenantId, createdBy: job.createdBy!, visibility: 'restricted' });
     if (await task.isCancelRequested()) throw new TaskCancelledError('上传完成前任务已取消，产物将自动回收');
-    return { fileId: file.id, filename: file.originalName, fileSize: file.size, sha256: hash.digest('hex'), rowCount: rendered.rowCount ?? job.rowCount ?? 0, manifest: rendered.manifest ?? null };
+    return { fileId: file.id, filename: file.originalName, fileSize: file.size, sha256: hash.digest('hex'), rowCount: rendered.rowCount ?? job.rowCount ?? 0, manifest: rendered.manifest ?? null, authorization: rendered.authorization };
   } catch (error) {
     if (error instanceof ExportCancelledError) throw new TaskCancelledError(error.message);
     if (error instanceof HTTPException && error.status < 500) throw new TaskNonRetryableError(error.message, { cause: error });
@@ -602,8 +612,23 @@ export async function getExportJobDownload(id: number, meta: { ip?: string | nul
     throw new HTTPException(410, { message: '导出文件已过期，请重新导出' });
   }
   const definition = getExportDefinition(job.entity);
-  await assertExportPermission(definition, job.raw, user);
-  await prepareExportQuery(definition, job.query, user);
+  const creator = await getCreatorPayload(job);
+  if (!job.authorization) throw new HTTPException(403, { message: '导出缺少可验证的授权证明，请重新导出' });
+  await runWithCurrentUser(creator, () => runWithOperationPermissions([definition.permissions.export], () => runWithFreshUserPermissions(creator.userId, async () => {
+    await assertExportPermission(definition, job.raw, creator);
+    if (await exportScopeFingerprint(definition, creator) !== job.authorization!.scopeFingerprint) throw new HTTPException(403, { message: '导出创建人的授权范围已变化，请重新导出' });
+    const query = await prepareExportQuery(definition, job.query, creator);
+    await definition.authorizeDownload?.(query, creator);
+    if (job.authorization!.rowKeys) await verifyExportRows(definition, { jobId: job.id, entity: job.entity, moduleName: job.moduleName, format: job.format, query, selectedColumns: job.columns, raw: job.raw, masked: job.masked, sensitive: job.sensitive, watermark: false, currentUser: creator, createdByName: null, exportedAt: job.createdAt, rowLimit: Math.min(normalizeExecution(definition).maxRows, (await getSettings('exports')).maxRows) }, job.authorization!.rowKeys);
+  })));
+  await runWithOperationPermissions([definition.permissions.export], () => runWithFreshUserPermissions(user.userId, async () => {
+    await assertExportPermission(definition, job.raw, user);
+    const query = await prepareExportQuery(definition, job.query, user);
+    await definition.authorizeDownload?.(query, user);
+    if (job.authorization!.rowKeys && user.userId !== creator.userId) {
+      await verifyExportRows(definition, { jobId: job.id, entity: job.entity, moduleName: job.moduleName, format: job.format, query, selectedColumns: job.columns, raw: job.raw, masked: job.masked, sensitive: job.sensitive, watermark: false, currentUser: user, createdByName: null, exportedAt: job.createdAt, rowLimit: Math.min(normalizeExecution(definition).maxRows, (await getSettings('exports')).maxRows) }, job.authorization!.rowKeys);
+    }
+  }));
   const stored = await getRestrictedFileForRead(job.fileId);
   const readable = await readStoredFile(stored.file, stored.storageConfig);
   await db.insert(exportJobDownloads).values({
@@ -666,6 +691,7 @@ export async function deleteExportJob(id: number) {
 }
 
 export async function cleanupExpiredExportFiles() {
+  await cleanupAbandonedExportTemps();
   const now = new Date();
   const usageCutoff = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(now.getTime() - 90 * 86400000));
   await db.delete(exportDailyUsage).where(lt(exportDailyUsage.period, usageCutoff));

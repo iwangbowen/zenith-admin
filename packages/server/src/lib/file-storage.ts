@@ -3,7 +3,7 @@ import type * as QiniuTypes from 'qiniu';
 import SftpClient from 'ssh2-sftp-client';
 import { createRequire } from 'node:module';
 import { randomUUID } from 'node:crypto';
-import { promises as fs, createWriteStream, createReadStream } from 'node:fs';
+import { promises as fs, createWriteStream } from 'node:fs';
 import { Readable, PassThrough } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
@@ -916,7 +916,13 @@ export async function readStoredFile(file: StoredObjectSource, config: FileStora
 
   if (effectiveConfig.provider === 'local') {
     const filePath = path.join(resolveLocalRoot(effectiveConfig), ...file.objectKey.split('/'));
-    const stream = Readable.toWeb(createReadStream(filePath, range ? { start: range.start, end: range.end } : undefined)) as ReadableStream<Uint8Array>;
+    let handle;
+    try { handle = await fs.open(filePath, 'r'); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new HTTPException(410, { message: '文件内容已不存在，请重新生成或上传' });
+      throw error;
+    }
+    const stream = Readable.toWeb(handle.createReadStream(range ? { start: range.start, end: range.end } : undefined)) as ReadableStream<Uint8Array>;
     return { stream, contentType, fileName };
   }
 

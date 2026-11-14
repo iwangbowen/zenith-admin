@@ -7,6 +7,7 @@ import { workflowBatchPrintQuerySchema } from '@zenith/shared/workflow';
 import type { WorkflowBatchPrintQueryInput } from '@zenith/shared/workflow';
 import { renderWorkflowInstancesBatchPdf } from '../workflow-print.service';
 import { defineExport } from '../../../lib/export-center/registry';
+import { getInstanceDetail } from '../instances/queries';
 
 function pickQuery(query: Record<string, unknown>): WorkflowBatchPrintQueryInput {
   const parsed = workflowBatchPrintQuerySchema.safeParse(query);
@@ -25,6 +26,7 @@ export const workflowApprovalSheetsExportDefinition = defineExport<WorkflowBatch
   // 一份审批单 = 一次完整渲染（表单 + 流转 + PDF）：少量同步返回，更多进后台任务
   execution: { mode: 'auto', syncMaxRows: 10, syncModeOverridesAsyncPolicies: false },
   columns: [],
+  authorizeDownload: async query => { for (const id of pickQuery(query).instanceIds) await getInstanceDetail(id); },
   countRows: async (query) => pickQuery(query).instanceIds.length,
   streamRows: () => [],
   renderFile: async (ctx) => {

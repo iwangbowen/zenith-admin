@@ -1,0 +1,1 @@
+ALTER TABLE "export_jobs" ADD COLUMN "authorization" jsonb;

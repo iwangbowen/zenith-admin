@@ -51,6 +51,7 @@ export const reportDatasetExportDefinition = defineExport<ReportDatasetExportQue
     syncMaxRows: EXPORT_MAX_ROWS,
   },
   columns: [],
+  authorizeDownload: async query => { await ensureDatasetExists(pickQuery(query).datasetId); },
   resolveColumns: async (query) => {
     const { datasetId, params, limit } = pickQuery(query);
     const row = await ensureDatasetExists(datasetId);

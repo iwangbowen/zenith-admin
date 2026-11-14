@@ -5,6 +5,7 @@ import { exportJobContract } from '@zenith/shared/tasks';
 import type { JwtPayload } from '../../middleware/auth';
 import { getUserPermissions, isSuperAdmin } from '../permissions';
 import { getSettings } from '../settings';
+import { runWithOperationPermissions } from '../context';
 import { getExportDefinition } from './registry';
 import { leafColumns } from './writer';
 import { DEFAULT_EXPORT_EXECUTION, type AnyExportDefinition } from './types';
@@ -28,6 +29,10 @@ export async function assertExportPermission(definition: AnyExportDefinition, ra
 
 /** The same authorized specification drives preview, admission and saved presets. */
 export async function prepareExport(input: ExportRequest, user: JwtPayload) {
+  const definition = getExportDefinition(input.entity);
+  return runWithOperationPermissions([definition.permissions.export], () => prepareExportWithin(input, user));
+}
+async function prepareExportWithin(input: ExportRequest, user: JwtPayload) {
   const definition = getExportDefinition(input.entity);
   const policy = await getSettings('exports');
   const format = input.format ?? 'xlsx';

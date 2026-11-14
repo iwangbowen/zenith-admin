@@ -15,7 +15,7 @@ afterAll(async () => { await client?.end(); });
 describe.skipIf(!connection)('CMS statistics export PostgreSQL snapshot', () => {
   it('keeps count, ordering and every batch stable when facts change during consumption', async () => {
     const target = new URL(connection!);
-    if (!['localhost', '127.0.0.1', '[::1]'].includes(target.hostname) || target.pathname !== '/zenith_review') throw new Error('Requires disposable local zenith_review database');
+    if (!['localhost', '127.0.0.1', '[::1]'].includes(target.hostname) || !['/zenith_review', '/zenith_export_qa'].includes(target.pathname)) throw new Error('Requires disposable local review database');
     const testDb = drizzle(client!, { schema, casing: 'snake_case' });
     const rollback = new Error('rollback CMS statistics export fixtures');
     try {

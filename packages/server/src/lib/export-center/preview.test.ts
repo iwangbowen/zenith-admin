@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 vi.mock('../../db', () => ({ db: {} }));
-vi.mock('../context', () => ({ currentUser: () => ({ userId: 1, username: 'test', roles: [], tenantId: null }) }));
+vi.mock('../context', () => ({ currentUser: () => ({ userId: 1, username: 'test', roles: [], tenantId: null }), runWithOperationPermissions: (_permissions: unknown, fn: () => unknown) => fn() }));
 vi.mock('../permissions', () => ({ getUserPermissions: async () => ['test:export'], isSuperAdmin: () => false }));
 vi.mock('../../services/platform/data-mask.service', () => ({ getExportMaskRuleMap: async () => new Map() }));
 vi.mock('../settings', () => ({ getSettings: async () => ({ maxRows: 500000, syncMaxRows: 5000, maxFileMb: 128, maxColumns: 256, dailyJobsPerUser: 100, schedulingEnabled: true }) }));

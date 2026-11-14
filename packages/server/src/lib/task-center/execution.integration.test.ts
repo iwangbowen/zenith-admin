@@ -14,12 +14,12 @@ integration('task business fences and domain settlement with real PostgreSQL', (
   const taskType = `execution-proof-${randomUUID()}`;
   beforeAll(async () => {
     const url = new URL(testDatabaseUrl!);
-    if (!['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) || url.pathname !== '/zenith_review') throw new Error('Requires a disposable local zenith_review database');
+    if (!['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) || !['/zenith_review', '/zenith_export_qa'].includes(url.pathname)) throw new Error('Requires a disposable local review database');
     vi.stubEnv('DATABASE_URL', testDatabaseUrl!);
     vi.resetModules();
     database = await import('../../db'); schema = await import('../../db/schema');
     execution = await import('./execution'); settlement = await import('./settlement');
-    const [user] = await database.db.insert(schema.users).values({ username: `fence-${randomUUID()}`, nickname: 'before', password: 'test-only' }).returning();
+    const [user] = await database.db.insert(schema.users).values({ username: `fence-${randomUUID().slice(0, 16)}`, nickname: 'before', password: 'test-only' }).returning();
     userId = user.id;
     const { registerTaskHandler } = await import('./registry');
     registerTaskHandler({ taskType, title: 'Fence proof', module: 'test', run: async () => {},
@@ -38,7 +38,7 @@ integration('task business fences and domain settlement with real PostgreSQL', (
     vi.unstubAllEnvs();
   });
   async function task(patch: Partial<typeof schema.asyncTasks.$inferInsert> = {}) {
-    const [row] = await database.db.insert(schema.asyncTasks).values({ taskType, title: 'Fence proof', status: 'running', heartbeatAt: new Date(), ...patch }).returning();
+    const [row] = await database.db.insert(schema.asyncTasks).values({ taskType, title: 'Fence proof', status: 'running', heartbeatAt: new Date(), retryDelayMs: 5000, ...patch }).returning();
     return row;
   }
   async function nickname() { return (await database.db.query.users.findFirst({ where: eq(schema.users.id, userId), columns: { nickname: true } }))!.nickname; }

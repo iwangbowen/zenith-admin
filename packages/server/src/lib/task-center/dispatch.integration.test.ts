@@ -10,7 +10,7 @@ integration('durable task-message identity with real pg-boss standard queues', (
   const queue = `dispatch-proof-${randomUUID()}`;
   beforeAll(async () => {
     const url = new URL(connectionString!);
-    if (!['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) || url.pathname !== '/zenith_review') throw new Error('Requires a disposable local zenith_review database');
+    if (!['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) || !['/zenith_review', '/zenith_export_qa'].includes(url.pathname)) throw new Error('Requires a disposable local review database');
     boss = new PgBoss({ connectionString, schedule: false, supervise: false, max: 2 });
     await boss.start(); await boss.createQueue(queue, { policy: 'standard' });
   });

@@ -1,0 +1,91 @@
+import '@hono/zod-openapi';
+import { eq } from 'drizzle-orm';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { createHash } from 'node:crypto';
+import { config } from '../src/config';
+import { db, closeDb } from '../src/db';
+import * as schema from '../src/db/schema';
+import { runWithCurrentUser, runWithOperationPermissions } from '../src/lib/context';
+import { registerExport } from '../src/lib/export-center/registry';
+import { usersExportDefinition } from '../src/services/identity/exports/users';
+import { createExportJob, getExportJobDownload, registerExportJobWorker, runExportJob } from '../src/services/tasks/export-jobs.service';
+import { runWithFreshUserPermissions } from '../src/lib/permissions';
+import { closeRedis } from '../src/lib/redis';
+const target = new URL(config.databaseUrl);
+if (target.hostname !== 'localhost' || target.pathname !== '/zenith_export_qa') throw new Error('Requires isolated localhost zenith_export_qa');
+const out = resolve('../../output/export-special');
+await mkdir(out, { recursive: true });
+const actorName = 'exportqa-admin';
+if (process.argv.includes('--verify')) {
+  const fixture = JSON.parse(await (await import('node:fs/promises')).readFile(resolve(out, 'runtime-initial.json'), 'utf8'));
+  const user = (await db.query.users.findFirst({ where: eq(schema.users.id, fixture.actor) }))!;
+  const principal = { userId: user.id, username: user.username, tenantId: fixture.tenantA, roles: ['exportqa-exporter'] };
+  const asActor = <T>(fn: () => Promise<T>) => runWithCurrentUser(principal, () => runWithOperationPermissions(['system:user:export'], () => runWithFreshUserPermissions(user.id, fn)));
+  registerExport(usersExportDefinition); registerExportJobWorker();
+  const checks: Array<Record<string, unknown>> = [];
+  await db.update(schema.users).set({ userDataScope: 'all' }).where(eq(schema.users.id, user.id));
+  const job = await asActor(() => createExportJob({ entity: 'system.users', format: 'csv', columns: ['id', 'username'], query: {}, executionMode: 'sync' }));
+  await db.update(schema.users).set({ userDataScope: 'self' }).where(eq(schema.users.id, user.id));
+  try { await asActor(() => getExportJobDownload(job.job.id, {})); throw new Error('Revoked scope unexpectedly downloaded'); }
+  catch (error) { if ((error as {status?:number}).status !== 403) throw error; checks.push({ name: 'scope-revoked', status: 403 }); }
+  const other = { userId: fixture.foreign, username: 'exportqa-b-peer', tenantId: fixture.tenantB, roles: [] };
+  try { await runWithCurrentUser(other, () => getExportJobDownload(job.job.id, {})); throw new Error('Cross-tenant downloaded'); }
+  catch (error) { if ((error as {status?:number}).status !== 403) throw error; checks.push({ name: 'cross-tenant', status: 403 }); }
+  const safe = await asActor(() => createExportJob({ entity: 'system.users', format: 'csv', columns: ['id', 'username'], query: {}, executionMode: 'sync' }));
+  if (safe.job.rowCount !== 1) throw new Error('Self scope did not restrict source');
+  checks.push({ name: 'self-scope', rows: safe.job.rowCount });
+  const [cfg] = await db.select().from(schema.fileStorageConfigs).limit(1);
+  await db.update(schema.fileStorageConfigs).set({ provider: 's3', s3Endpoint: 'http://127.0.0.1:19000', s3Region: 'us-east-1', s3Bucket: 'export-special', s3AccessKeyId: 'qa', s3SecretAccessKey: 'qa', s3ForcePathStyle: true }).where(eq(schema.fileStorageConfigs.id, cfg.id));
+  const cloud = await asActor(() => createExportJob({ entity: 'system.users', format: 'csv', columns: ['id', 'username'], query: {}, executionMode: 'async' }));
+  await runExportJob(cloud.job.id);
+  const completed = (await db.query.exportJobs.findFirst({ where: eq(schema.exportJobs.id, cloud.job.id) }))!;
+  if (completed.status !== 'success') throw new Error('S3 export failed: ' + completed.errorMessage);
+  const download = await asActor(() => getExportJobDownload(completed.id, {}));
+  const bytes = Buffer.from(await new Response(download.stream).arrayBuffer());
+  if (createHash('sha256').update(bytes).digest('hex') !== completed.sha256) throw new Error('S3 checksum mismatch');
+  checks.push({ name: 's3-roundtrip', jobId: completed.id, sha256: completed.sha256 });
+  await db.update(schema.fileStorageConfigs).set({ s3Bucket: 'missing-export-special' }).where(eq(schema.fileStorageConfigs.id, cfg.id));
+  const failure = await asActor(() => createExportJob({ entity: 'system.users', format: 'csv', columns: ['id'], query: {}, executionMode: 'async' }));
+  await runExportJob(failure.job.id);
+  const failed = (await db.query.exportJobs.findFirst({ where: eq(schema.exportJobs.id, failure.job.id) }))!;
+  if (failed.status !== 'pending' || failed.fileId) throw new Error('S3 failure published success');
+  const task = (await db.query.asyncTasks.findFirst({ where: eq(schema.asyncTasks.id, failed.taskId!) }))!;
+  checks.push({ name: 's3-missing-bucket', status: failed.status, attempts: task.attempts, nextRunAt: task.nextRunAt, fileId: failed.fileId });
+  await db.update(schema.fileStorageConfigs).set({ s3Bucket: 'export-special' }).where(eq(schema.fileStorageConfigs.id, cfg.id));
+  await db.update(schema.asyncTasks).set({ nextRunAt: new Date(Date.now() - 1000) }).where(eq(schema.asyncTasks.id, task.id));
+  await runExportJob(failed.id);
+  const retried = (await db.query.exportJobs.findFirst({ where: eq(schema.exportJobs.id, failed.id) }))!;
+  if (retried.status !== 'success') throw new Error('S3 retry not recovered');
+  checks.push({ name: 's3-recovered', status: retried.status });
+  await writeFile(resolve(out, 'runtime-checks.json'), JSON.stringify(checks, null, 2));
+  process.stdout.write(JSON.stringify(checks) + '\n');
+  await closeDb(); await closeRedis(); process.exit(0);
+}
+const existing = await db.query.users.findFirst({ where: eq(schema.users.username, actorName) });
+if (existing) throw new Error('Fixture already exists; inspect isolated DB before rerunning');
+const [tenantA] = await db.insert(schema.tenants).values({ name: 'Export QA A', code: 'exportqa-a' }).returning();
+const [tenantB] = await db.insert(schema.tenants).values({ name: 'Export QA B', code: 'exportqa-b' }).returning();
+const [admin] = await db.insert(schema.users).values({ username: actorName, nickname: 'Export QA Admin', password: 'not-a-login-hash', userDataScope: 'all' }).returning();
+const [adminRole] = await db.insert(schema.roles).values({ name: 'QA administrator', code: 'super_admin', permissionCodes: [], dataScope: 'all' }).returning();
+await db.insert(schema.userRoles).values({ userId: admin.id, roleId: adminRole.id });
+const [actor] = await db.insert(schema.users).values({ username: 'exportqa-a-owner', nickname: 'QA owner A', password: 'not-a-login-hash', tenantId: tenantA.id, userDataScope: 'all' }).returning();
+const [peer] = await db.insert(schema.users).values({ username: 'exportqa-a-peer', nickname: 'QA peer A', password: 'not-a-login-hash', tenantId: tenantA.id }).returning();
+const [foreign] = await db.insert(schema.users).values({ username: 'exportqa-b-peer', nickname: 'QA peer B', password: 'not-a-login-hash', tenantId: tenantB.id }).returning();
+const [role] = await db.insert(schema.roles).values({ name: 'QA exporter', code: 'exportqa-exporter', permissionCodes: ['system:user:export'], dataScope: 'self', tenantId: tenantA.id }).returning();
+await db.insert(schema.userRoles).values({ userId: actor.id, roleId: role.id });
+await db.insert(schema.fileStorageConfigs).values({ name: 'QA local files', provider: 'local', isDefault: true, localRootPath: resolve('../../output/export-special/local') });
+const principal = { userId: actor.id, username: actor.username, tenantId: tenantA.id, roles: [role.code] };
+const superUser = { userId: admin.id, username: admin.username, tenantId: null, roles: ['super_admin'] };
+registerExport(usersExportDefinition); registerExportJobWorker();
+const asActor = <T>(fn: () => Promise<T>) => runWithCurrentUser(principal, () => runWithOperationPermissions(['system:user:export'], () => runWithFreshUserPermissions(actor.id, fn)));
+const job = await asActor(() => createExportJob({ entity: 'system.users', format: 'csv', query: {}, columns: ['id', 'username'], executionMode: 'sync' }));
+const before = await asActor(() => getExportJobDownload(job.job.id, {}));
+await writeFile(resolve(out, 'tenant-before.csv'), Buffer.from(await new Response(before.stream).arrayBuffer()));
+await db.update(schema.users).set({ userDataScope: 'self' }).where(eq(schema.users.id, actor.id));
+let downloadAfterRevoke;
+try { const value = await asActor(() => getExportJobDownload(job.job.id, {})); const bytes = Buffer.from(await new Response(value.stream).arrayBuffer()); downloadAfterRevoke = { allowed: true, content: bytes.toString() }; }
+catch (error) { downloadAfterRevoke = { allowed: false, status: (error as {status?:number}).status }; }
+await writeFile(resolve(out, 'runtime-initial.json'), JSON.stringify({ tenantA: tenantA.id, tenantB: tenantB.id, actor: actor.id, peer: peer.id, foreign: foreign.id, admin: admin.id, jobId: job.job.id, beforeRows: job.job.rowCount, downloadAfterRevoke }, null, 2));
+process.stdout.write(JSON.stringify({ jobId: job.job.id, beforeRows: job.job.rowCount, downloadAfterRevoke }) + '\n');
+await closeDb(); await closeRedis();

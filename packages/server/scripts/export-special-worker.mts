@@ -1,0 +1,15 @@
+import '@hono/zod-openapi';
+import { setTimeout } from 'node:timers/promises';
+import { db, closeDb } from '../src/db';
+import { config } from '../src/config';
+import { registerExport, defineExport } from '../src/lib/export-center/registry';
+import { registerExportJobWorker } from '../src/services/tasks/export-jobs.service';
+import { runAsyncTask } from '../src/lib/task-center';
+import { closeRedis } from '../src/lib/redis';
+if (!['localhost', '127.0.0.1', '[::1]'].includes(new URL(config.databaseUrl).hostname) || new URL(config.databaseUrl).pathname !== '/zenith_export_qa') throw new Error('Requires isolated export QA DB');
+registerExport(defineExport({ entity: 'qa.slow', moduleName: 'QA', filenamePrefix: 'QA-slow', permissions: { export: 'system:user:export' }, columns: [{ key: 'id', header: 'ID' }, { key: 'text', header: '内容' }], countRows: async () => 5000, streamRows: async function* () { for (let id = 1; id <= 5000; id++) { if (id % 100 === 0) await setTimeout(20); yield { id, text: 'row-' + id }; } } }));
+registerExportJobWorker();
+await runAsyncTask(Number(process.argv[2]));
+await setTimeout(300);
+await closeDb(); await closeRedis();
+process.exit(0);

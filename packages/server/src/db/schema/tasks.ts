@@ -38,6 +38,7 @@ export const exportJobs = pgTable('export_jobs', {
   requestKey: varchar({ length: 128 }),
   splitRows: integer().notNull().default(0),
   manifest: jsonb().$type<Record<string, unknown>>(),
+  authorization: jsonb().$type<{ version: 1; scopeFingerprint: string; rowKeys?: string[] }>(),
   rowCount: integer(),
   processedRows: integer().notNull().default(0),
   totalRows: integer(),

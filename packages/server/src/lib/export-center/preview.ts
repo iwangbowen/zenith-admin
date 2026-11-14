@@ -1,5 +1,5 @@
 import { formatExportCell } from './formatter';
-import { currentUser } from '../context';
+import { currentUser, runWithOperationPermissions } from '../context';
 import { DEFAULT_EXPORT_RETENTION, type ExportRuntimeContext } from './types';
 import { getExportMaskRuleMap } from '../../services/platform/data-mask.service';
 import type { CreateExportJobInput } from '@zenith/shared/tasks';
@@ -10,6 +10,7 @@ import { selectExportRows } from './scope';
 export async function previewExport(input: CreateExportJobInput) {
   const user = currentUser();
   const spec = await prepareExport(input, user);
+  return runWithOperationPermissions([spec.definition.permissions.export], async () => {
   const { definition, query, columns, selectedColumns, sensitive, total, rowIds } = spec;
   const chosen = selectedColumns ? selectedColumns.map(key => columns.find(c => c.key === key)!) : columns;
   const sample: Array<Record<string, string | number | boolean | null>> = [];
@@ -25,4 +26,5 @@ export async function previewExport(input: CreateExportJobInput) {
   }
   const retention = { ...DEFAULT_EXPORT_RETENTION, ...definition.retention };
   return { entity: definition.entity, title: definition.filenamePrefix, formats: definition.formats ?? ['xlsx', 'csv'], columns: columns.map(c => ({ key: c.key ?? c.header, header: c.header, type: c.type, sensitive: !!c.sensitive, width: c.width })), sensitive, canExportRaw: spec.canExportRaw, maxRows: spec.execution.maxRows, syncMaxRows: spec.execution.syncMaxRows, estimatedRows: spec.rowCount, sample, retentionDays: spec.raw ? retention.rawDays : sensitive ? retention.sensitiveDays : retention.normalDays, executionMode: spec.executionMode, supportsRowScope: spec.supportsRowScope, supportsColumns: spec.supportsColumns, supportsPartition: spec.supportsPartition };
+  });
 }

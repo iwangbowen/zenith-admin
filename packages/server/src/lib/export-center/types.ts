@@ -150,6 +150,8 @@ export interface ExportDefinition<
   columns: ExportColumn<TRow>[];
   /** Validate/freeze parameters before enqueueing; never persist unvalidated report filters. */
   prepareQuery?: (query: TQuery, user: JwtPayload) => Promise<TQuery>;
+  /** Recheck resource-level access without rendering the document again. */
+  authorizeDownload?: (query: TQuery, user: JwtPayload) => Promise<void>;
   /**
    * Own the snapshot lifetime around row consumption. Providers may materialize once in a
    * transaction; the export center streams the result to disk before this callback ends.

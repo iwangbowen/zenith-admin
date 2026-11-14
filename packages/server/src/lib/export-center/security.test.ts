@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import ExcelJS from 'exceljs';
+import JSZip from 'jszip';
 import { formatExportCell } from './formatter';
 import { renderExportCsv, renderExportWorkbook } from './writer';
 import { defineExport } from './registry';
@@ -14,6 +15,15 @@ describe('export security boundaries', () => {
     book.eachSheet(sheet => sheet.eachRow(row => row.eachCell(cell => cells.push(cell.value))));
     expect(JSON.stringify(cells)).not.toContain('13812345678');
     expect(JSON.stringify(cells)).not.toContain('secret-token-value');
+  });
+  it('does not leak sensitive filter tokens into any workbook ZIP member', async () => {
+    const buffer = await renderExportWorkbook(definition, [{ name: 'safe' }], { ...context, query: { ...context.query, email: 'secret-email@example.invalid', idCard: '110101199001011234', params: { accessToken: 'nested-secret-token' } } });
+    const archive = await JSZip.loadAsync(buffer);
+    for (const entry of Object.values(archive.files)) {
+      if (entry.dir) continue;
+      const text = await entry.async('string');
+      for (const secret of ['13812345678', 'secret-token-value', 'secret-email@example.invalid', '110101199001011234', 'nested-secret-token']) expect(text).not.toContain(secret);
+    }
   });
   it('ordinary CSV uses the same literal formula protection', async () => {
     const text = (await renderExportCsv(definition, [{ name: '=1+1' }], { ...context, format: 'csv' })).toString();
