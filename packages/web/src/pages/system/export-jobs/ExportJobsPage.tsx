@@ -74,10 +74,7 @@ function renderProgress(record: ExportJob) {
 
 export default function ExportJobsPage() {
   const navigate = useNavigate();
-  const [detailId, setDetailId] = useState<number | undefined>(() => {
-    const id = Number(new URLSearchParams(location.search).get('jobId'));
-    return id > 0 ? id : undefined;
-  });
+  const [detailId, setDetailId] = useState<number | undefined>();
   const queryClient = useQueryClient();
   const [logsVisible, setLogsVisible] = useState(false);
   const [currentJob, setCurrentJob] = useState<ExportJob | null>(null);
@@ -89,7 +86,11 @@ export default function ExportJobsPage() {
     table: { rowSelection, empty: '暂无导出任务', loadingMode: 'initial' },
   });
   const { tableProps, listQuery } = page;
-  useListDeepLink(['status'], (params) => page.applySearch({ status: enumValueOf(EXPORT_JOB_STATUSES, params.status) }));
+  useListDeepLink(['status', 'jobId'], (params) => {
+    if (params.status) page.applySearch({ status: enumValueOf(EXPORT_JOB_STATUSES, params.status) });
+    const id = Number(params.jobId);
+    if (Number.isSafeInteger(id) && id > 0) setDetailId(id);
+  });
   const entitiesQuery = useExportEntities();
   const entities = entitiesQuery.data ?? EMPTY_ENTITIES;
 
@@ -128,14 +129,15 @@ export default function ExportJobsPage() {
       // 下载会写入该任务的下载记录（列表的下载次数列随之变化），不涉及可导出实体元数据
       void queryClient.invalidateQueries({ queryKey: exportJobKeys.lists });
       void queryClient.invalidateQueries({ queryKey: exportJobKeys.downloads(record.id) });
+      void queryClient.invalidateQueries({ queryKey: exportJobKeys.detail(record.id) });
     } finally {
       setDownloadLoadingId(null);
     }
   };
 
   const handleCancel = async (record: ExportJob) => {
-    await cancelMutation.mutateAsync({ params: { id: record.id } });
-    Toast.success('已取消');
+    const job = await cancelMutation.mutateAsync({ params: { id: record.id } });
+    Toast.success(job.status === 'cancelled' ? '已取消' : '已请求取消，正在停止处理');
   };
 
   const handleRetry = async (record: ExportJob) => {
@@ -280,13 +282,15 @@ export default function ExportJobsPage() {
           key: 'cancel',
           label: '取消',
           hidden: !['pending', 'running'].includes(record.status),
+          disabled: record.cancelRequested,
+          disabledReason: record.cancelRequested ? '正在停止处理' : undefined,
           loading: actionLoadingId === record.id,
           onClick: () => void handleCancel(record),
         },
         {
           key: 'retry',
           label: '重试',
-          hidden: record.status !== 'failed',
+          hidden: record.status !== 'failed' || !record.taskId,
           loading: actionLoadingId === record.id,
           onClick: () => void handleRetry(record),
         },

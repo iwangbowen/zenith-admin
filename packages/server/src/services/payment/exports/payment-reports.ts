@@ -1,4 +1,4 @@
-import { paymentReportSummaryQuery } from '@zenith/shared/payment';
+import { paymentReportExportQuerySchema } from '@zenith/shared/payment';
 import { getReportSummary } from '../payment-report.service';
 import { defineExport } from '../../../lib/export-center/registry';
 import type { ExportColumn } from '../../../lib/export-center/types';
@@ -10,10 +10,10 @@ const columns: ExportColumn[] = [
 ];
 export const paymentReportsExportDefinition = defineExport({
   entity: 'payment.reports', moduleName: '财务报表', filenamePrefix: '财务报表', sourcePath: '/payment/reports', permissions: { export: 'payment:report:view' }, columns,
-  prepareQuery: async query => paymentReportSummaryQuery.parse(query),
-  countRows: async query => (await getReportSummary(paymentReportSummaryQuery.parse(query))).rows.length + 1,
+  prepareQuery: async query => paymentReportExportQuerySchema.parse(query),
+  countRows: async query => (await getReportSummary(paymentReportExportQuerySchema.parse(query))).rows.length + 1,
   streamRows: async query => {
-    const summary = await getReportSummary(paymentReportSummaryQuery.parse(query));
+    const summary = await getReportSummary(paymentReportExportQuerySchema.parse(query));
     const prev = new Map(summary.prev?.rows.map(r => [r.key, r]) ?? []);
     const rows = [...summary.rows, { key: 'total', label: '合计', gross: summary.totalGross, fee: summary.totalFee, refund: summary.totalRefund, sharing: summary.totalSharing, net: summary.totalNet, count: summary.totalCount }];
     return rows.map(r => {

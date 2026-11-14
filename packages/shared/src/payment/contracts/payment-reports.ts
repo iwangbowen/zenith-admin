@@ -52,6 +52,9 @@ export const paymentReportSummaryQuery = z.object({
   compare: queryBool('环比：附带上一等长周期汇总（需提供时间范围）'),
 });
 
+/** JSON export specifications are already typed, unlike URL query strings. */
+export const paymentReportExportQuerySchema = paymentReportSummaryQuery.omit({ compare: true }).extend({ compare: z.boolean().optional() });
+
 export const paymentReportContract = defineContract('/api/payment/reports', {
   summary: op.get('/summary', { access: { permission: 'payment:report:view' }, query: paymentReportSummaryQuery, response: paymentReportSummarySchema, summary: '财务报表汇总（按日/应用/商户账户/币种/渠道）' }),
 }, { tags: ['支付中心-财务报表'] });

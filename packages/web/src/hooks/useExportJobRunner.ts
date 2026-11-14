@@ -24,6 +24,7 @@ export function useExportJobRunner() {
   const runExport = async (options: ExportJobRunOptions) => {
     const { entity, format, query, columns, scope, rowIds, idempotencyKey, splitRows, raw = false, watermark = true, executionMode = 'auto' } = options;
     const { job, mode } = await exportMutation.mutateAsync({ body: { entity, format, query, columns, scope, rowIds, idempotencyKey, splitRows, raw, watermark, executionMode } });
+    if (job.status === 'failed' || job.status === 'cancelled' || job.status === 'expired') throw new Error(job.errorMessage ?? '该任务已结束，请重新配置导出');
     if (job.status === 'success' && job.fileId) {
       await request.download(urlOf(exportJobContract.download, { params: { id: job.id } }), job.filename ?? `${entity}.${format}`);
       Toast.success('已开始下载');

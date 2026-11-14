@@ -56,7 +56,10 @@ const downloadsRoute = defineContractRoute(exportJobContract.downloads, {
 });
 
 const cancelRoute = defineContractRoute(exportJobContract.cancel, {
-  handler: async (c) => c.json(okBody(await cancelExportJob(c.req.valid('param').id), '已取消'), 200),
+  handler: async (c) => {
+    const job = await cancelExportJob(c.req.valid('param').id);
+    return c.json(okBody(job, job.status === 'cancelled' ? '已取消' : '已请求取消'), 200);
+  },
 });
 
 const retryRoute = defineContractRoute(exportJobContract.retry, {

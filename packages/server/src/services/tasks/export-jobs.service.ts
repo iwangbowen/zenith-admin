@@ -9,22 +9,24 @@ import { requireRow } from '../../lib/db-assert';
 import { and, desc, eq, gte, inArray, isNull, lt, lte, or, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { stableStringify, type QueryOutputOf } from '@zenith/shared/core';
-import { EXPORT_SCOPES, exportJobContract, type ExportScope } from '@zenith/shared/tasks';
+import { EXPORT_SCOPES, exportJobContract } from '@zenith/shared/tasks';
 import type { JobStuckItem } from '@zenith/shared/platform';
 import { db } from '../../db';
-import { exportJobDownloads, exportJobs, exportDailyUsage, asyncTasks, managedFiles, users } from '../../db/schema';
+import { exportJobDownloads, exportJobs, exportDailyUsage, asyncTasks, managedFiles, users, tenants } from '../../db/schema';
 import { pageOffset } from '../../lib/pagination';
 import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
 import { formatDateTime, formatFileTimestamp, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { currentUser, runWithCurrentUser } from '../../lib/context';
 import { getUserPermissions, isSuperAdmin } from '../../lib/permissions';
-import { exactTenantCondition, getCreateTenantId } from '../../lib/tenant';
+import { exactTenantCondition, getCreateTenantId, isTenantActive, tenantCondition } from '../../lib/tenant';
 import { getRestrictedFileForRead, saveGeneratedManagedFile, deleteGeneratedManagedFile } from '../files/files.service';
 import { readStoredFile } from '../../lib/file-storage';
 import { getExportDefinition, listExportDefinitions } from '../../lib/export-center/registry';
 import { leafColumns, renderExportWorkbook, renderExportToPath } from '../../lib/export-center/writer';
 import { renderPartitionedExport } from '../../lib/export-center/partition';
 import { selectExportRows } from '../../lib/export-center/scope';
+import { prepareExport, prepareExportQuery, assertExportPermission, type ExportRequest } from '../../lib/export-center/prepare';
+export { assertExportPermission } from '../../lib/export-center/prepare';
 import type { AnyExportDefinition, ExportExecutionMode, ExportFormat, ExportRequestMode, ExportRuntimeContext } from '../../lib/export-center/types';
 import { DEFAULT_EXPORT_EXECUTION, DEFAULT_EXPORT_RETENTION } from '../../lib/export-center/types';
 import { persistAsyncTask, runAsyncTask, requestCancelAsyncTask, restartAsyncTask, registerTaskHandler, TaskCancelledError, TaskNonRetryableError, type TaskRunContext } from '../../lib/task-center';
@@ -83,19 +85,7 @@ export async function listStuckExportJobs(limit: number): Promise<JobStuckItem[]
   }));
 }
 
-export interface CreateExportJobInput {
-  entity: string;
-  format: ExportFormat;
-  query?: Record<string, unknown>;
-  columns?: string[];
-  scope?: ExportScope;
-  rowIds?: Array<string | number>;
-  idempotencyKey?: string;
-  splitRows?: number;
-  raw?: boolean;
-  watermark?: boolean;
-  executionMode?: ExportRequestMode;
-}
+type CreateExportJobInput = ExportRequest;
 
 function normalizeExecution(definition: AnyExportDefinition) {
   return { ...DEFAULT_EXPORT_EXECUTION, ...definition.execution };
@@ -110,15 +100,6 @@ async function hasPermission(user: JwtPayload, permission?: string): Promise<boo
   if (isSuperAdmin(user)) return true;
   const permissions = await getUserPermissions(user.userId);
   return permissions.includes(permission);
-}
-
-export async function assertExportPermission(definition: AnyExportDefinition, raw: boolean, user: JwtPayload) {
-  if (!await hasPermission(user, definition.permissions.export)) {
-    throw new HTTPException(403, { message: '无导出权限' });
-  }
-  if (raw && (definition.permissions.requireExportRawPermission || definitionHasSensitiveColumns(definition, null) || definition.resolveColumns) && !await hasPermission(user, definition.permissions.exportRaw)) {
-    throw new HTTPException(403, { message: '无明文导出权限' });
-  }
 }
 
 async function canManageAllJobs(user: JwtPayload): Promise<boolean> {
@@ -227,6 +208,10 @@ async function getCreatorPayload(row: typeof exportJobs.$inferSelect): Promise<J
     with: { userRoles: { columns: {}, with: { role: { columns: { code: true, status: true } } } } },
   });
   if (!user || user.status !== 'enabled') throw new HTTPException(403, { message: '导出创建人已不存在或已停用' });
+  if (row.tenantId !== null) {
+    const tenant = await db.query.tenants.findFirst({ where: eq(tenants.id, row.tenantId), columns: { status: true, expireAt: true } });
+    if (!tenant || !isTenantActive(tenant)) throw new HTTPException(403, { message: '导出所属租户已停用或到期' });
+  }
   const roles = user.userRoles.filter(item => item.role.status === 'enabled').map(item => item.role.code);
   const payload: JwtPayload = { userId: user.id, username: user.username, roles, tenantId: user.tenantId };
   if (isSuperAdmin(payload)) return { ...payload, viewingTenantId: row.tenantId };
@@ -279,6 +264,10 @@ async function renderJobFile(row: typeof exportJobs.$inferSelect, definition: An
   };
   return runWithCurrentUser(creator, async () => {
     await assertExportPermission(definition, row.raw, creator);
+    ctx.query = await prepareExportQuery(definition, ctx.query, creator);
+    const runtimeColumns = definition.resolveColumns ? await definition.resolveColumns(ctx.query, creator) : definition.columns;
+    const leaves = leafColumns(runtimeColumns);
+    if (row.columns?.some(key => !leaves.some(column => column.key === key)) || definitionHasSensitiveColumns({ ...definition, columns: runtimeColumns }, row.columns) !== row.sensitive) throw new HTTPException(409, { message: '导出字段或敏感策略已变更，请重新配置导出' });
 
     if (definition.withSnapshot) {
       const folder = await mkdtemp(join(tmpdir(), 'zenith-export-'));
@@ -305,7 +294,7 @@ async function renderJobFile(row: typeof exportJobs.$inferSelect, definition: An
         rowCount: rendered.rowCount,
       };
     }
-    const rows = await definition.streamRows(row.query as Record<string, unknown>, creator, ctx);
+    const rows = await definition.streamRows(ctx.query, creator, ctx);
     if ((definition.renderMode ?? 'table') === 'table') {
       const folder = await mkdtemp(join(tmpdir(), 'zenith-export-'));
       const filePath = join(folder, `report.${row.format}`);
@@ -448,42 +437,9 @@ export async function listExportEntities() {
 }
 
 export async function createExportJob(input: CreateExportJobInput) {
-  const policy = await getSettings('exports');
   const user = currentUser();
-  const definition = getExportDefinition(input.entity);
-  if ((input.splitRows ?? 0) > 0 && (definition.withSnapshot || (definition.renderMode ?? 'table') !== 'table' || !['csv', 'xlsx'].includes(input.format))) throw new HTTPException(400, { message: '当前实体暂不支持分卷' });
-  const format = input.format;
-  if (!(definition.formats ?? ['xlsx', 'csv']).includes(format)) {
-    throw new HTTPException(400, { message: '该导出不支持所选格式' });
-  }
-  if (format === 'csv' && (definition.renderMode ?? 'table') !== 'table') {
-    throw new HTTPException(400, { message: '该导出包含复杂布局或自定义样式，仅支持 Excel' });
-  }
-  // 安全默认：未显式声明时按脱敏导出；明文导出需显式 raw=true 且通过 exportRaw 权限校验
-  const raw = input.raw ?? false;
-  await assertExportPermission(definition, raw, user);
-  const query = definition.prepareQuery ? await definition.prepareQuery(input.query ?? {}, user) : input.query ?? {};
-  const resolvedColumns = definition.resolveColumns ? await definition.resolveColumns(query, user) : definition.columns;
-  if ((input.columns?.length ?? leafColumns(resolvedColumns).length) > policy.maxColumns) throw new HTTPException(400, { message: '所选列数超过导出治理预算' });
-  const selectedColumns = input.columns ? [...new Set(input.columns)] : null;
-  if (selectedColumns) {
-    const available = new Set(leafColumns(resolvedColumns).map(column => column.key));
-    if (!selectedColumns.length || selectedColumns.some(key => !available.has(key))) throw new HTTPException(400, { message: '所选导出字段不存在或不可用' });
-  }
-  const sensitive = definitionHasSensitiveColumns({ ...definition, columns: resolvedColumns }, selectedColumns);
-  const scope = input.scope ?? 'filtered';
-  const rowIds = scope === 'filtered' ? null : input.rowIds ?? [];
-  if (scope !== 'filtered' && (!rowIds?.length || definition.withSnapshot || (definition.renderMode ?? 'table') !== 'table' || !leafColumns(resolvedColumns).some(column => column.key === 'id'))) throw new HTTPException(400, { message: '当前实体不支持所选范围，或范围内没有记录' });
-  const rowCount = rowIds ? rowIds.length : definition.withSnapshot ? null : await definition.countRows(query, user);
-  // 行数绝对上限（sync/async 通用）：exceljs 终局序列化与 CSV 全量累积都是主线程
-  // 连续 CPU/内存段，提交时快速失败;countRows 不准的定义由 writer 渲染兜底再拦一道
-  const maxRows = Math.min(normalizeExecution(definition).maxRows, policy.maxRows);
-  if (maxRows > 0 && rowCount !== null && rowCount > maxRows) {
-    throw new HTTPException(400, { message: `导出数据 ${rowCount} 行，超过上限 ${maxRows} 行，请收窄筛选条件或分批导出` });
-  }
-  const executionMode = resolveExecutionMode(input.executionMode, rowCount ?? 0, sensitive, raw, { ...definition, execution: { ...definition.execution, syncMaxRows: Math.min(normalizeExecution(definition).syncMaxRows, policy.syncMaxRows) } });
+  const { definition, policy, format, raw, query, selectedColumns, sensitive, scope, rowIds, rowCount, executionMode } = await prepareExport(input, user);
   const filename = buildFilename(definition, 0, format);
-  if (definition.renderMode === 'layout') throw new HTTPException(400, { message: '暂不支持 layout 导出，请使用自定义渲染器' });
   let committed: DbTransaction | undefined;
   const renamed = await runAsUser(user.userId, () => db.transaction(async tx => {
     const budgetKey = stableStringify(['export-daily-budget', getCreateTenantId(user), user.userId]);
@@ -585,11 +541,11 @@ async function runExportTask(task: TaskRunContext): Promise<Record<string, unkno
 }
 
 async function visibleJobWhere(user: JwtPayload): Promise<SQL | undefined> {
-  if (await canManageAllJobs(user)) return undefined;
+  if (await canManageAllJobs(user)) return tenantCondition(exportJobs, user);
   if (await canManageTenantJobs(user)) {
-    return exactTenantCondition(exportJobs.tenantId, user.tenantId);
+    return exactTenantCondition(exportJobs.tenantId, getCreateTenantId(user));
   }
-  return eq(exportJobs.createdBy, user.userId);
+  return buildWhere(eq(exportJobs.createdBy, user.userId), tenantCondition(exportJobs, user));
 }
 
 export async function listExportJobs(query: QueryOutputOf<typeof exportJobContract.list>) {
@@ -647,7 +603,7 @@ export async function getExportJobDownload(id: number, meta: { ip?: string | nul
   }
   const definition = getExportDefinition(job.entity);
   await assertExportPermission(definition, job.raw, user);
-  if (definition.prepareQuery) await definition.prepareQuery(job.query, user);
+  await prepareExportQuery(definition, job.query, user);
   const stored = await getRestrictedFileForRead(job.fileId);
   const readable = await readStoredFile(stored.file, stored.storageConfig);
   await db.insert(exportJobDownloads).values({

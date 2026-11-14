@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { lazy, Suspense, useState, useEffect } from 'react';
 import type React from 'react';
 import { Button, Checkbox, InputNumber, Popover, Radio, Select, Space, Tooltip, Typography } from '@douyinfe/semi-ui';
 import { Settings } from 'lucide-react';
-import { CronBuilderModal } from './CronBuilderModal';
+const CronBuilderModal = lazy(() => import('./CronBuilderModal').then(module => ({ default: module.CronBuilderModal })));
 
 const addWeekday = (day: string, set: React.Dispatch<React.SetStateAction<string[]>>) =>
   set((prev) => [...prev, day]);
@@ -326,12 +326,12 @@ export function CronBuilderPopover({ value, onApply }: CronBuilderPopoverProps) 
           </div>
         </Tooltip>
       </Popover>
-      <CronBuilderModal
+      {modalVisible && <Suspense fallback={null}><CronBuilderModal
         visible={modalVisible}
         value={isCustom ? (value ?? '') : expr}
         onClose={() => setModalVisible(false)}
         onApply={(e) => { onApply(e); setModalVisible(false); }}
-      />
+      /></Suspense>}
     </>
   );
 }

@@ -1,4 +1,4 @@
-import { Descriptions, SideSheet, Space, Tag, Typography } from '@douyinfe/semi-ui';
+import { Banner, Button, Descriptions, SideSheet, Space, Spin, Tag, Typography } from '@douyinfe/semi-ui';
 import { useExportJobDetail } from '@/hooks/queries/export-jobs';
 import { EXPORT_SCOPE_LABELS } from '@zenith/shared/tasks';
 import AsyncTaskProgress from '@/components/AsyncTaskProgress';
@@ -9,6 +9,8 @@ export default function ExportJobDetails({ id, onClose }: Readonly<{ id: number;
   const taskQuery = useAsyncTaskDetail(job?.taskId ?? undefined);
   const task = taskQuery.data;
   return <SideSheet title={'导出任务 #' + id} visible onCancel={onClose} width={720}>
+    {detail.isPending && <Spin tip="正在加载导出任务" />}
+    {detail.isError && <Banner type="danger" closeIcon={null} description={<Space vertical align="start"><Typography.Text>任务不存在、已删除或无权查看。</Typography.Text><Button onClick={() => void detail.refetch()}>重试</Button></Space>} />}
     {job && <Space vertical align="start" spacing={16} style={{ width: '100%' }}>
       <Tag>{job.status}</Tag>
       <Descriptions data={[
@@ -25,7 +27,8 @@ export default function ExportJobDetails({ id, onClose }: Readonly<{ id: number;
         { key: '执行次数', value: task ? task.attempts + ' / ' + task.maxAttempts : '—' },
         { key: '下次重试', value: task?.nextRunAt ?? '—' },
       ]} />
-      {task && <AsyncTaskProgress task={task} />}
+      {task && (job.status === 'pending' || job.status === 'running') && <AsyncTaskProgress task={task} />}
+      {job.status === 'success' && <Typography.Text type="success">文件已生成</Typography.Text>}
       <Typography.Text strong>SHA256</Typography.Text><Typography.Paragraph copyable style={{ wordBreak: 'break-all' }}>{job.sha256 ?? '尚未生成校验和'}</Typography.Paragraph>
       <Typography.Text strong>查询规格</Typography.Text><Typography.Paragraph style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{JSON.stringify(job.query, null, 2)}</Typography.Paragraph>
       {job.manifest && <><Typography.Text strong>分卷清单</Typography.Text><Typography.Paragraph style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{JSON.stringify(job.manifest, null, 2)}</Typography.Paragraph></>}

@@ -1,50 +1,28 @@
-import { HTTPException } from 'hono/http-exception';
-import { leafColumns } from './writer';
 import { formatExportCell } from './formatter';
-import { getExportDefinition } from './registry';
 import { currentUser } from '../context';
-import { getUserPermissions, isSuperAdmin } from '../permissions';
-import { DEFAULT_EXPORT_EXECUTION, DEFAULT_EXPORT_RETENTION, type ExportRuntimeContext } from './types';
+import { DEFAULT_EXPORT_RETENTION, type ExportRuntimeContext } from './types';
 import { getExportMaskRuleMap } from '../../services/platform/data-mask.service';
 import type { CreateExportJobInput } from '@zenith/shared/tasks';
-import { getSettings } from '../settings';
-/** Read-only configuration preparation. Samples always pass through export masking. */
+import { prepareExport } from './prepare';
+import { selectExportRows } from './scope';
+
+/** Read-only preparation shares admission checks; samples are always masked. */
 export async function previewExport(input: CreateExportJobInput) {
-  const policy = await getSettings('exports');
   const user = currentUser();
-  const definition = getExportDefinition(input.entity);
-  if (!(definition.formats ?? ['xlsx', 'csv']).includes(input.format)) throw new HTTPException(400, { message: '该实体不支持所选格式' });
-  const permissions = await getUserPermissions(user.userId);
-  const allowed = (permission?: string) => !!permission && (isSuperAdmin(user) || permissions.includes(permission));
-  if (!allowed(definition.permissions.export)) throw new HTTPException(403, { message: '无导出权限' });
-  const canExportRaw = allowed(definition.permissions.exportRaw);
-  if (input.raw && !canExportRaw) throw new HTTPException(403, { message: '无明文导出权限' });
-  const query = definition.prepareQuery ? await definition.prepareQuery(input.query, user) : input.query;
-  const columns = leafColumns(definition.resolveColumns ? await definition.resolveColumns(query, user) : definition.columns);
-  const chosen = input.columns ? input.columns.map(key => columns.find(c => c.key === key)).filter(c => c !== undefined) : columns;
-  if (chosen.length > policy.maxColumns) throw new HTTPException(400, { message: '所选列数超过导出治理预算' });
-  if (input.columns && chosen.length !== input.columns.length) throw new HTTPException(400, { message: '导出字段不存在' });
-  const sensitive = chosen.some(c => c.sensitive);
-  const total = definition.withSnapshot ? null : await definition.countRows(query, user);
-  const supportsRowScope = (definition.renderMode ?? 'table') === 'table' && !definition.withSnapshot && columns.some(c => c.key === 'id');
-  const rowIds = input.scope !== 'filtered' ? input.rowIds ?? [] : null;
-  if (rowIds && (!rowIds.length || !supportsRowScope)) throw new HTTPException(400, { message: '当前导出范围不可用' });
+  const spec = await prepareExport(input, user);
+  const { definition, query, columns, selectedColumns, sensitive, total, rowIds } = spec;
+  const chosen = selectedColumns ? selectedColumns.map(key => columns.find(c => c.key === key)!) : columns;
   const sample: Array<Record<string, string | number | boolean | null>> = [];
-  if ((definition.renderMode ?? 'table') === 'table' && !definition.withSnapshot && total !== null && total <= 5000) {
-    const ctx: ExportRuntimeContext = { jobId: 0, entity: definition.entity, moduleName: definition.moduleName, format: input.format, query, selectedColumns: input.columns ?? null, raw: false, masked: true, sensitive, watermark: false, currentUser: user, createdByName: null, exportedAt: new Date(), maskRules: await getExportMaskRuleMap() };
+  if (spec.supportsPartition && total !== null && total <= 5000) {
+    const ctx: ExportRuntimeContext = { jobId: 0, entity: definition.entity, moduleName: definition.moduleName, format: spec.format, query, selectedColumns, raw: false, masked: true, sensitive, watermark: false, currentUser: user, createdByName: null, exportedAt: new Date(), maskRules: await getExportMaskRuleMap() };
     const rows = await definition.streamRows(query, user, ctx);
-    for await (const row of rows) {
-      if (rowIds && !rowIds.some(id => String(id) === String(row.id))) continue;
-      sample.push(Object.fromEntries(chosen.map(column => { const value = formatExportCell(column, row, ctx); return [column.header, value == null ? null : typeof value === 'number' || typeof value === 'boolean' ? value : String(value).slice(0, 200)]; })));
-      if (sample.length >= 3) break;
+    let scanned = 0;
+    async function* bounded() { for await (const row of rows) { if (++scanned > 5000) return; yield row; } }
+    for await (const row of selectExportRows(bounded(), rowIds)) {
+      if (sample.length < 3) sample.push(Object.fromEntries(chosen.map(column => { const value = formatExportCell(column, row, ctx); return [column.header, value == null ? null : typeof value === 'number' || typeof value === 'boolean' ? value : String(value).slice(0, 200)]; })));
+      if (!rowIds && sample.length >= 3) break;
     }
   }
-  const execution = { ...DEFAULT_EXPORT_EXECUTION, ...definition.execution };
-  execution.maxRows = Math.min(execution.maxRows, policy.maxRows);
-  execution.syncMaxRows = Math.min(execution.syncMaxRows, policy.syncMaxRows);
   const retention = { ...DEFAULT_EXPORT_RETENTION, ...definition.retention };
-  const estimatedRows = rowIds ? rowIds.length : total;
-  const async = !!definition.withSnapshot || execution.mode === 'async' || input.executionMode === 'async' || (estimatedRows ?? 0) > execution.syncMaxRows || (sensitive && execution.forceAsyncWhenSensitive) || (input.raw && execution.forceAsyncWhenRaw);
-  return { entity: definition.entity, title: definition.filenamePrefix, formats: definition.formats ?? ['xlsx', 'csv'], columns: columns.map(c => ({ key: c.key ?? c.header, header: c.header, type: c.type, sensitive: !!c.sensitive, width: c.width })), sensitive, canExportRaw, maxRows: execution.maxRows, syncMaxRows: execution.syncMaxRows, estimatedRows, sample, retentionDays: input.raw ? retention.rawDays : sensitive ? retention.sensitiveDays : retention.normalDays, executionMode: async ? 'async' as const : 'sync' as const, supportsRowScope };
+  return { entity: definition.entity, title: definition.filenamePrefix, formats: definition.formats ?? ['xlsx', 'csv'], columns: columns.map(c => ({ key: c.key ?? c.header, header: c.header, type: c.type, sensitive: !!c.sensitive, width: c.width })), sensitive, canExportRaw: spec.canExportRaw, maxRows: spec.execution.maxRows, syncMaxRows: spec.execution.syncMaxRows, estimatedRows: spec.rowCount, sample, retentionDays: spec.raw ? retention.rawDays : sensitive ? retention.sensitiveDays : retention.normalDays, executionMode: spec.executionMode, supportsRowScope: spec.supportsRowScope, supportsColumns: spec.supportsColumns, supportsPartition: spec.supportsPartition };
 }
-

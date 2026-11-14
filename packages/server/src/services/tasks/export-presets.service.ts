@@ -8,7 +8,7 @@ import { exportPresets, users } from '../../db/schema';
 import { currentUser, hasPermission, runWithCurrentUser } from '../../lib/context';
 import { exactTenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
-import { previewExport } from '../../lib/export-center/preview';
+import { prepareExport } from '../../lib/export-center/prepare';
 import { createExportJob } from './export-jobs.service';
 import { getSettings } from '../../lib/settings';
 import type { JwtPayload } from '../../middleware/auth';
@@ -19,16 +19,17 @@ export function nextExportRun(cron: string, after = new Date()) {
   try { return CronExpressionParser.parse(cron, { currentDate: after, tz: 'Asia/Shanghai' }).next().toDate(); }
   catch { throw new HTTPException(400, { message: '定时表达式无效' }); }
 }
-function map(row: typeof exportPresets.$inferSelect) {
-  return { id: row.id, name: row.name, entity: row.entity, format: row.format, columns: row.columns ?? undefined, query: row.query, shared: row.shared, cron: row.cron, createdBy: row.createdBy, nextRunAt: formatNullableDateTime(row.nextRunAt), lastJobId: row.lastJobId, lastError: row.lastError, createdAt: formatDateTime(row.createdAt) };
+function map(row: typeof exportPresets.$inferSelect, canManage: boolean) {
+  return { id: row.id, name: row.name, entity: row.entity, format: row.format, columns: row.columns ?? undefined, query: row.query, shared: row.shared, cron: row.cron, createdBy: row.createdBy, nextRunAt: formatNullableDateTime(row.nextRunAt), lastJobId: row.lastJobId, lastError: row.lastError, createdAt: formatDateTime(row.createdAt), canManage };
 }
 export async function listExportPresets() {
   const user = currentUser();
   const permissions = await getUserPermissions(user.userId);
+  const canManageTeam = await hasPermission('system:export-preset:share');
   const allowed = new Set(listExportDefinitions().filter(def => isSuperAdmin(user) || permissions.includes(def.permissions.export)).map(def => def.entity));
   const rows = await db.select().from(exportPresets).where(and(exactTenantCondition(exportPresets.tenantId, getCreateTenantId(user)), or(eq(exportPresets.createdBy, user.userId), eq(exportPresets.shared, true)))).orderBy(exportPresets.name);
   return rows.filter(row => allowed.has(row.entity)).map(row => {
-    const visible = map(row);
+    const visible = map(row, row.createdBy === user.userId || canManageTeam);
     return row.createdBy === user.userId ? visible : { ...visible, query: {}, cron: null, nextRunAt: null, lastError: null, lastJobId: null };
   });
 }
@@ -37,9 +38,9 @@ export async function createExportPreset(input: z.output<typeof exportPresetInpu
   if (input.shared && !await hasPermission('system:export-preset:share')) throw new HTTPException(403, { message: '无权发布团队模板' });
   if (input.cron && !await hasPermission('system:export-preset:schedule')) throw new HTTPException(403, { message: '无定时导出权限' });
   if (input.cron && !(await getSettings('exports')).schedulingEnabled) throw new HTTPException(400, { message: '定时导出已由管理员暂停' });
-  await previewExport({ entity: input.entity, query: input.query, columns: input.columns, format: input.format, raw: false, watermark: true, executionMode: 'async', scope: 'filtered', splitRows: 0 });
-  const [row] = await db.insert(exportPresets).values({ ...input, tenantId: getCreateTenantId(user), nextRunAt: input.cron ? nextExportRun(input.cron) : null }).returning();
-  return map(row);
+  const prepared = await prepareExport({ entity: input.entity, query: input.query, columns: input.columns, format: input.format, raw: false, watermark: true, executionMode: 'async', scope: 'filtered', splitRows: 0 }, user);
+  const [row] = await db.insert(exportPresets).values({ ...input, columns: prepared.selectedColumns, query: prepared.query, tenantId: getCreateTenantId(user), nextRunAt: input.cron ? nextExportRun(input.cron) : null }).returning();
+  return map(row, true);
 }
 export async function deleteExportPreset(id: number) {
   const user = currentUser();

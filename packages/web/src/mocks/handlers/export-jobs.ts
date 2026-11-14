@@ -360,7 +360,7 @@ const presets: ExportPreset[] = [];
 export const exportJobsHandlers = [
   mock(exportPresetContract.listPresets, ({ ok }) => ok(presets)),
   mock(exportPresetContract.createPreset, ({ body, ok }) => {
-    const row: ExportPreset = { ...body, id: presets.length + 1, createdBy: 1, createdAt: mockDateTime(), nextRunAt: body.cron ? mockDateTimeOffset(86400000) : null, lastJobId: null, lastError: null };
+    const row: ExportPreset = { ...body, id: presets.length + 1, createdBy: 1, createdAt: mockDateTime(), nextRunAt: body.cron ? mockDateTimeOffset(86400000) : null, lastJobId: null, lastError: null, canManage: true };
     presets.push(row);
     return ok(row);
   }),
@@ -374,7 +374,7 @@ export const exportJobsHandlers = [
     if (!entity) return notFound('该实体尚未配置 Demo 导出', { status: 404 });
     const flatten = (columns: ExportEntityMeta['columns']): ExportEntityMeta['columns'] => columns.flatMap(c => c.children?.length ? flatten(c.children) : [c]);
     const columns = flatten(entity.columns);
-    return ok({ entity: entity.entity, title: entity.filenamePrefix, formats: entity.formats, columns, sensitive: entity.sensitive, canExportRaw: false, maxRows: entity.execution.maxRows, syncMaxRows: entity.execution.syncMaxRows, estimatedRows: body.scope === 'filtered' ? 42 : body.rowIds?.length ?? 0, sample: [], retentionDays: 7, executionMode: entity.execution.mode === 'async' ? 'async' : 'sync', supportsRowScope: columns.some(c => c.key === 'id') });
+    return ok({ entity: entity.entity, title: entity.filenamePrefix, formats: entity.formats, columns, sensitive: entity.sensitive, canExportRaw: false, maxRows: entity.execution.maxRows, syncMaxRows: entity.execution.syncMaxRows, estimatedRows: body.scope === 'filtered' ? 42 : new Set(body.rowIds?.map(String)).size, sample: [], retentionDays: 7, executionMode: entity.execution.mode === 'async' ? 'async' : 'sync', supportsRowScope: entity.renderMode === 'table' && columns.some(c => c.key === 'id'), supportsColumns: entity.renderMode === 'table', supportsPartition: entity.renderMode === 'table' && entity.entity !== 'cms.statistics' });
   }),
   mock(exportJobContract.entities, ({ ok }) => ok(entities)),
 

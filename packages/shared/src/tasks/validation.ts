@@ -17,6 +17,16 @@ export const createExportJobSchema = z.object({
 
 export type CreateExportJobInput = z.infer<typeof createExportJobSchema>;
 
+export const exportPresetInputSchema = z.object({
+  name: z.string().trim().min(1).max(64),
+  entity: z.string().min(1).max(128),
+  format: z.enum(EXPORT_JOB_FORMATS),
+  columns: z.array(z.string().min(1).max(128)).min(1).max(512).optional(),
+  query: z.record(z.string(), z.unknown()).default({}),
+  shared: z.boolean().default(false),
+  cron: z.string().trim().min(9).max(100).nullable().default(null),
+});
+
 export const submitImportJobSchema = z.object({
   entity: z.string().min(1).max(64),
   /** 文件中心 fileId（先经 `fileContract.upload` 上传） */

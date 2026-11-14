@@ -1,5 +1,6 @@
 // eslint-disable-next-line no-restricted-imports -- H5 保留：手写 useQuery / useMutation 的理由见本文件对应 hook 的注释；queryKey 仍由 contractKey 生成
 import { keepPreviousData, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Toast } from '@douyinfe/semi-ui';
 import type { BodyOf, InputOf, QueryOf } from '@zenith/shared/core';
 import { exportJobContract, type ExportJob } from '@zenith/shared/tasks';
 import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
@@ -10,6 +11,7 @@ export const exportJobKeys = {
   entities: contractKey(exportJobContract.entities),
   lists: contractKey(exportJobContract.list),
   list: (params: ExportJobListParams) => contractKey(exportJobContract.list, { query: params }),
+  detail: (id: number) => contractKey(exportJobContract.detail, { params: { id } }),
   downloads: (id: number) => contractKey(exportJobContract.downloads, { params: { id } }),
 };
 
@@ -45,7 +47,10 @@ export function useExportJobDownloads(id: number | undefined, enabled = true) {
 export function useCancelExportJob() {
   return useApiMutation(exportJobContract.cancel, {
     // 仅改任务状态；`entities`（可导出实体元数据）与本次操作无关
-    invalidate: (qc) => void qc.invalidateQueries({ queryKey: exportJobKeys.lists }),
+    invalidate: (qc, _output, { params }) => {
+      void qc.invalidateQueries({ queryKey: exportJobKeys.lists });
+      void qc.invalidateQueries({ queryKey: exportJobKeys.detail(params.id) });
+    },
   });
 }
 
@@ -55,6 +60,7 @@ export function useRetryExportJob() {
       void qc.invalidateQueries({ queryKey: exportJobKeys.lists });
       // 重试会重新产出文件，该任务的下载记录随之变化
       void qc.invalidateQueries({ queryKey: exportJobKeys.downloads(params.id) });
+      void qc.invalidateQueries({ queryKey: exportJobKeys.detail(params.id) });
     },
   });
 }
@@ -90,6 +96,7 @@ export function useDeleteExportJob() {
     invalidate: (qc, _output, { params }) => {
       // 任务已不存在，其下载记录必须移除而非失效，否则会去请求一个必然 404 的资源
       qc.removeQueries({ queryKey: exportJobKeys.downloads(params.id) });
+      qc.removeQueries({ queryKey: exportJobKeys.detail(params.id) });
       void qc.invalidateQueries({ queryKey: exportJobKeys.lists });
     },
   });
@@ -99,9 +106,18 @@ export function useDeleteExportJob() {
 export function useBatchDeleteExportJobs() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (ids: number[]) => Promise.all(ids.map((id) => api(exportJobContract.remove, { params: { id } }, { silent: true }))),
-    onSettled: (_data, _error, ids) => {
-      for (const id of ids) qc.removeQueries({ queryKey: exportJobKeys.downloads(id) });
+    mutationFn: async (ids: number[]) => {
+      const results = await Promise.allSettled(ids.map((id) => api(exportJobContract.remove, { params: { id } }, { silent: true })));
+      const deleted = ids.filter((_id, index) => results[index].status === 'fulfilled');
+      for (const id of deleted) {
+        qc.removeQueries({ queryKey: exportJobKeys.downloads(id) });
+        qc.removeQueries({ queryKey: exportJobKeys.detail(id) });
+      }
+      if (deleted.length !== ids.length) throw new Error('已删除 ' + deleted.length + ' 项，另有 ' + (ids.length - deleted.length) + ' 项失败，请刷新后重试');
+      return results;
+    },
+    onError: error => Toast.error(error instanceof Error ? error.message : '批量删除失败'),
+    onSettled: () => {
       void qc.invalidateQueries({ queryKey: exportJobKeys.lists });
     },
   });

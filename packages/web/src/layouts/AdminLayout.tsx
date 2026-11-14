@@ -1,6 +1,7 @@
 import { lazy, startTransition, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { RouteErrorBoundary } from '@/components/PageErrorBoundary';
+import ExportConfigHost from '@/components/ExportConfigHost';
 import { BackTop, Divider, SideSheet, Spin, Toast } from '@douyinfe/semi-ui';
 import { ChevronLeft, ChevronRight, Expand, Shrink } from 'lucide-react';
 import { ensurePinyin } from '@/utils/pinyin';
@@ -1217,6 +1218,7 @@ export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLa
       </Suspense>
 
       {/* ===== 消息详情 Modal ===== */}
+      <ExportConfigHost />
       <MessageDetailModal selectedMessage={selectedMessage} setSelectedMessage={setSelectedMessage} />
 
       {/* ===== 公告详情 Modal ===== */}

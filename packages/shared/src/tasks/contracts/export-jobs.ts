@@ -61,6 +61,7 @@ export const exportPreviewSchema = z.object({
   sensitive: z.boolean(), canExportRaw: z.boolean(), maxRows: z.int(), syncMaxRows: z.int(), estimatedRows: z.int().nullable(),
   sample: z.array(z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()]))),
   retentionDays: z.int(), executionMode: z.enum(EXPORT_JOB_EXECUTION_MODES), supportsRowScope: z.boolean(),
+  supportsColumns: z.boolean(), supportsPartition: z.boolean(),
 });
 export type ExportPreview = z.infer<typeof exportPreviewSchema>;
 

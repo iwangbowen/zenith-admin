@@ -20,3 +20,12 @@ it('checks cancellation during scanning even when no selected row has matched', 
   await expect(consume()).rejects.toThrow('cancelled');
   expect(read).toBe(250);
 });
+
+it('stops reading the authorized source as soon as the selected IDs are complete', async () => {
+  let consumed = 0;
+  async function* rows() { for (let id = 1; id <= 1000; id++) { consumed++; yield { id }; } }
+  const result = [];
+  for await (const row of selectExportRows(rows(), [2])) result.push(row.id);
+  expect(result).toEqual([2]);
+  expect(consumed).toBe(2);
+});
