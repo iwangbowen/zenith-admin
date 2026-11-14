@@ -8,6 +8,7 @@ import { definePermissions } from '../core/permissions';
 export const MEMBER_PERMISSIONS = definePermissions({
   'member:dashboard:view': { label: '查询', menu: 'MemberDashboard' },
   'member:member:list': { label: '查询', menu: 'MemberList' },
+  'member:member:export-raw': { label: '明文导出', menu: 'MemberList', riskLevel: 'critical', approvalPolicy: 'two_person', reviewIntervalDays: 30 },
   'member:member:create': { label: '新增会员', menu: 'MemberList' },
   'member:member:update': { label: '编辑会员', menu: 'MemberList' },
   'member:member:delete': { label: '删除会员', menu: 'MemberList' },
@@ -39,4 +40,5 @@ export const MEMBER_PERMISSIONS = definePermissions({
   'member:checkin:milestone:delete': { label: '删除里程碑', menu: 'CheckinMilestones' },
   'member:loginlog:list': { label: '查询', menu: 'MemberLoginLogs' },
   'member:recharge:list': { label: '查询', menu: 'MemberRecharges' },
+  'member:recharge:export-raw': { label: '明文导出', menu: 'MemberRecharges', riskLevel: 'critical', approvalPolicy: 'two_person', reviewIntervalDays: 30 },
 });

@@ -35,15 +35,20 @@ export async function listAllRoles() {
   return list.map((r) => mapRole(r));
 }
 
-export async function listRoles(q: QueryOutputOf<typeof roleContract.list>) {
-  const user = currentUser();
-  const { page, pageSize } = q;
-  const finalWhere = buildWhere(
+export type RolesListFilter = Omit<QueryOutputOf<typeof roleContract.list>, 'page' | 'pageSize'>;
+
+export function buildRolesWhere(q: RolesListFilter) {
+  return buildWhere(
     keywordCondition(q.keyword, [roles.name, roles.code]),
     q.status ? eq(roles.status, q.status) : undefined,
     ...dateRangeConditions(roles.createdAt, q.startTime, q.endTime),
-    tenantCondition(roles, user),
+    tenantCondition(roles, currentUser()),
   );
+}
+
+export async function listRoles(q: QueryOutputOf<typeof roleContract.list>) {
+  const { page, pageSize } = q;
+  const finalWhere = buildRolesWhere(q);
   return buildListResult({
     page,
     pageSize,

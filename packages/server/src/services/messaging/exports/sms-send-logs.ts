@@ -26,7 +26,7 @@ export const smsSendLogsExportDefinition = defineExport<SmsSendLogListFilter & R
   filenamePrefix: '短信发送记录',
   sourcePath: '/system/sms-send-logs',
   sheetName: '短信发送记录',
-  permissions: { export: 'system:sms-send-log:export' },
+  permissions: { export: 'system:sms-send-log:export', exportRaw: 'system:sms-send-log:export-raw', requireExportRawPermission: true },
   execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
   retention: RETENTION_7_DAYS,
   columns,

@@ -116,7 +116,7 @@ export default function ExportJobsPage() {
     setDownloadLoadingId(record.id);
     try {
       await request.download(urlOf(exportJobContract.download, { params: { id: record.id } }), record.filename ?? `export-${record.id}.${record.format}`);
-      Toast.success('下载完成');
+      Toast.success('已开始下载');
       // 下载会写入该任务的下载记录（列表的下载次数列随之变化），不涉及可导出实体元数据
       void queryClient.invalidateQueries({ queryKey: exportJobKeys.lists });
       void queryClient.invalidateQueries({ queryKey: exportJobKeys.downloads(record.id) });

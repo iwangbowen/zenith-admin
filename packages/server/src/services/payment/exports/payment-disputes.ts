@@ -34,7 +34,7 @@ export const paymentDisputesExportDefinition = defineExport<ListDisputesQuery & 
   execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
   retention: RETENTION_7_DAYS,
   columns,
-  countRows: async (query) => Math.min(await db.$count(paymentDisputes, await buildDisputesWhere(query)), EXPORT_LIMIT),
+  countRows: async (query) => await db.$count(paymentDisputes, await buildDisputesWhere(query)),
   streamRows: async (query) =>
-    db.select().from(paymentDisputes).where(await buildDisputesWhere(query)).orderBy(desc(paymentDisputes.id)).limit(EXPORT_LIMIT),
+    db.select().from(paymentDisputes).where(await buildDisputesWhere(query)).orderBy(desc(paymentDisputes.id)).limit(EXPORT_LIMIT + 1),
 });

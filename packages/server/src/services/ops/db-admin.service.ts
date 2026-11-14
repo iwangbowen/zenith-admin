@@ -1,3 +1,4 @@
+import { csvCell } from '@zenith/shared/core';
 /**
  * 数据库管理（DB Inspector）服务层。
  *
@@ -1668,21 +1669,7 @@ function serializeCell(value: unknown): unknown {
   return value;
 }
 
-function csvEscape(value: unknown): string {
-  if (value == null) return '';
-  let str: string;
-  if (typeof value === 'string') {
-    str = value;
-  } else if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
-    str = String(value);
-  } else {
-    str = JSON.stringify(value);
-  }
-  if (/[",\n\r]/.test(str)) {
-    return `"${str.replaceAll('"', '""')}"`;
-  }
-  return str;
-}
+const csvEscape = csvCell;
 
 async function recordHistory(params: {
   sqlText: string; durationMs: number; rowCount: number;

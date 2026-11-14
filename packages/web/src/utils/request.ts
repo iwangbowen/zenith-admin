@@ -78,7 +78,8 @@ class Request extends HttpClient {
   /** Download a file (binary response) - used for Excel export */
   async download(url: string, filename: string): Promise<void> {
     const blob = await this.getBlob(url);
-    if (blob) downloadBlob(blob, filename);
+    if (!blob) throw new Error('下载失败，请重试或在导出中心重新获取文件');
+    downloadBlob(blob, filename);
   }
 }
 

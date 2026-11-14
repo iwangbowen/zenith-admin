@@ -1,3 +1,4 @@
+import { csvCell } from '@zenith/shared/core';
 import { useState, useMemo } from 'react';
 import { confirmAndDelete, ListSearchToolbar } from '@/components/list-page';
 import { Button, Checkbox, DatePicker, Input, InputNumber, Select, Space, Tag, Modal, Form, TextArea, Toast, Typography, SideSheet, List, Empty } from '@douyinfe/semi-ui';
@@ -115,10 +116,7 @@ function pickJsonFile(onLoad: (text: string) => void): void {
   input.click();
 }
 
-const csvEscape = (v: unknown): string => {
-  const s = v == null ? '' : String(v);
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-};
+const csvEscape = csvCell;
 
 /** 字典绑定输入的测试/用例控件（组件封装保证 hooks 数量稳定） */
 function DictValueSelect({ dictCode, value, onChange, placeholder, size }: Readonly<{ dictCode: string; value: unknown; onChange: (v: string | undefined) => void; placeholder?: string; size?: 'small' | 'default' }>) {

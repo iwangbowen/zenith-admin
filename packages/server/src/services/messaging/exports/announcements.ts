@@ -1,7 +1,10 @@
+import { announcementListQuery } from '@zenith/shared/messaging';
+import { db } from '../../../db';
+import { buildAnnouncementsWhere } from '../announcements.service';
 import { desc } from 'drizzle-orm';
 import { announcements } from '../../../db/schema';
 import { defineExport } from '../../../lib/export-center/registry';
-import { RETENTION_7_DAYS, tenantScopedTableSource } from '../../../lib/export-center/presets';
+import { RETENTION_7_DAYS } from '../../../lib/export-center/presets';
 import type { ExportColumn } from '../../../lib/export-center/types';
 
 const columns: ExportColumn[] = [
@@ -24,5 +27,7 @@ export const announcementsExportDefinition = defineExport({
   execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
   retention: RETENTION_7_DAYS,
   columns,
-  ...tenantScopedTableSource(announcements, desc(announcements.id)),
+  prepareQuery: async (query) => announcementListQuery.omit({ page: true, pageSize: true }).parse(query),
+  countRows: async (query) => db.$count(announcements, buildAnnouncementsWhere(query)),
+  streamRows: async (query) => db.select().from(announcements).where(buildAnnouncementsWhere(query)).orderBy(desc(announcements.createdAt), desc(announcements.id)),
 });

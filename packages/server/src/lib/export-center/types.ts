@@ -173,7 +173,7 @@ export interface ExportDefinition<
 export type AnyExportDefinition = ExportDefinition<Record<string, unknown>, Record<string, unknown>>;
 
 export const DEFAULT_EXPORT_EXECUTION: ExportExecutionPolicy = {
-  mode: 'sync',
+  mode: 'auto',
   syncMaxRows: 5000,
   maxRows: 50_000,
   forceAsyncWhenSensitive: false,

@@ -9,7 +9,7 @@ export function formatExportValue<TRow extends Record<string, unknown>>(
   const raw = column.key ? row[column.key] : undefined;
   const value = column.transform ? column.transform(raw, row) : raw;
   if (value == null) return '';
-  if (column.enumMap && typeof value === 'string') return column.enumMap[value] ?? value;
+  if (column.enumMap) return column.enumMap[String(value)] ?? value;
   if ((column.type === 'date' || column.type === 'datetime') && typeof value === 'string' && value.trim() === '') return '';
   if (column.type === 'datetime') return formatDateTime(value as Date | string | number);
   if (column.type === 'date') return formatDate(value as Date | string | number);
@@ -44,12 +44,13 @@ export function formatExportCell<TRow extends Record<string, unknown>>(
 ): unknown {
   const value = formatExportValue(column, row);
   if (ctx.raw || !column.sensitive) return value;
-  if (typeof value !== 'string' || value === '') return value;
+  if (value === '') return value;
+  const text = typeof value === 'object' ? JSON.stringify(value) : String(value);
   if (column.maskKey && ctx.maskRules) {
     const rule = ctx.maskRules.get(column.maskKey);
     // 有策略映射但该字段不在其中 = 策略已停用，按页面口径放行
-    return rule ? applyMask(value, rule.maskType, rule.customRule) : value;
+    return rule ? applyMask(text, rule.maskType, rule.customRule) : value;
   }
   const maskType = typeof column.sensitive === 'string' ? column.sensitive : inferMaskType(column.key ?? '');
-  return applyMask(value, maskType, maskType === 'custom' ? { prefixKeep: 1, suffixKeep: 1 } : null);
+  return applyMask(text, maskType, maskType === 'custom' ? { prefixKeep: 1, suffixKeep: 1 } : null);
 }

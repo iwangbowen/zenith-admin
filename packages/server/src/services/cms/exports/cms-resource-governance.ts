@@ -61,7 +61,7 @@ async function loadRows(query: Record<string, unknown>): Promise<GovernanceExpor
     .innerJoin(asyncTasks, eq(asyncTaskItems.taskId, asyncTasks.id))
     .where(where)
     .orderBy(desc(asyncTasks.id), asyncTaskItems.id)
-    .limit(50_000);
+    .limit(50_001);
   return rows.map(({ task, item }) => ({
     taskId: task.id,
     taskTitle: task.title,

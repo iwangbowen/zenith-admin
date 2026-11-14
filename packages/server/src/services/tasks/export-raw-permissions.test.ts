@@ -12,7 +12,7 @@ vi.mock('../../lib/permissions', () => ({
   isSuperAdmin: vi.fn(() => false),
 }));
 
-import { assertExportPermission } from './export-jobs.service';
+import { assertExportPermission, resolveExecutionMode } from './export-jobs.service';
 
 const user = {
   userId: 8,
@@ -57,4 +57,22 @@ describe('CMS raw export permissions', () => {
     permissionMock.values.push(raw);
     await expect(assertExportPermission(definition(normal, raw), true, user)).resolves.toBeUndefined();
   });
+});
+
+it('fails closed when sensitive export has no raw permission configured', async () => {
+  permissionMock.values = ['test:export'];
+  const d = definition('test:export', 'test:raw');
+  d.permissions = { export: 'test:export' };
+  d.columns = [{ key: 'phone', header: 'Phone', sensitive: true }];
+  await expect(assertExportPermission(d, true, user)).rejects.toMatchObject({ status: 403 });
+  await expect(assertExportPermission(d, false, user)).resolves.toBeUndefined();
+});
+
+it('server budget overrides explicit sync and entity auto stays authoritative', () => {
+  const d = definition('test', 'test:raw');
+  d.execution = { mode: 'auto', syncMaxRows: 10, maxRows: 50000 };
+  expect(resolveExecutionMode('sync', 11, false, false, d)).toBe('async');
+  expect(resolveExecutionMode(undefined, 5, false, false, d)).toBe('sync');
+  d.execution = { ...d.execution, mode: 'async' };
+  expect(resolveExecutionMode('sync', 1, false, false, d)).toBe('async');
 });

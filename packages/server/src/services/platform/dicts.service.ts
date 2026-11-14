@@ -1,6 +1,7 @@
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { eq, asc, desc, and, inArray } from 'drizzle-orm';
 import { dictContract, dictSchema } from '@zenith/shared/platform';
-import { keywordCondition, dateRangeConditions } from '../../lib/where-helpers';
+import { buildWhere, keywordCondition, dateRangeConditions } from '../../lib/where-helpers';
 import { db } from '../../db';
 import { dicts, dictItems } from '../../db/schema';
 import { tenantCondition } from '../../lib/tenant';
@@ -21,6 +22,16 @@ export function mapDictItem(row: typeof dictItems.$inferSelect) {
   };
 }
 
+export type DictListFilter = Omit<QueryOutputOf<typeof dictContract.list>, 'page' | 'pageSize'>;
+export function buildDictsWhere(q: DictListFilter) {
+  return buildWhere(
+    keywordCondition(q.keyword, [dicts.name, dicts.code]),
+    q.status ? eq(dicts.status, q.status) : undefined,
+    ...dateRangeConditions(dicts.createdAt, q.startDate, q.endDate),
+    tenantCondition(dicts, currentUser()),
+  );
+}
+
 export const dictService = defineCrudService(dictContract, {
   table: dicts,
   map: mapDict,
@@ -28,11 +39,7 @@ export const dictService = defineCrudService(dictContract, {
   unique: '字典编码已存在',
   tenant: true,
   list: (q) => ({
-    where: [
-      keywordCondition(q.keyword, [dicts.name, dicts.code]),
-      q.status ? eq(dicts.status, q.status) : undefined,
-      ...dateRangeConditions(dicts.createdAt, q.startDate, q.endDate),
-    ],
+    where: [buildDictsWhere(q)],
     orderBy: [desc(dicts.createdAt)],
   }),
 });

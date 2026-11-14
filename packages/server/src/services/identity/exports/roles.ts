@@ -1,7 +1,10 @@
+import { roleListQuery } from '@zenith/shared/identity';
+import { db } from '../../../db';
+import { buildRolesWhere } from '../roles.service';
 import { asc } from 'drizzle-orm';
 import { roles } from '../../../db/schema';
 import { defineExport } from '../../../lib/export-center/registry';
-import { RETENTION_7_DAYS, STATUS_ENUM_MAP, tenantScopedTableSource } from '../../../lib/export-center/presets';
+import { RETENTION_7_DAYS, STATUS_ENUM_MAP } from '../../../lib/export-center/presets';
 import type { ExportColumn } from '../../../lib/export-center/types';
 
 const columns: ExportColumn[] = [
@@ -23,5 +26,7 @@ export const rolesExportDefinition = defineExport({
   execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
   retention: RETENTION_7_DAYS,
   columns,
-  ...tenantScopedTableSource(roles, asc(roles.id)),
+  prepareQuery: async (query) => roleListQuery.omit({ page: true, pageSize: true }).parse(query),
+  countRows: async (query) => db.$count(roles, buildRolesWhere(query)),
+  streamRows: async (query) => db.select().from(roles).where(buildRolesWhere(query)).orderBy(asc(roles.id)),
 });

@@ -1,7 +1,10 @@
+import { positionListQuery } from '@zenith/shared/identity';
+import { db } from '../../../db';
+import { buildPositionsWhere } from '../positions.service';
 import { asc } from 'drizzle-orm';
 import { positions } from '../../../db/schema';
 import { defineExport } from '../../../lib/export-center/registry';
-import { RETENTION_7_DAYS, STATUS_ENUM_MAP, tenantScopedTableSource } from '../../../lib/export-center/presets';
+import { RETENTION_7_DAYS, STATUS_ENUM_MAP } from '../../../lib/export-center/presets';
 import type { ExportColumn } from '../../../lib/export-center/types';
 
 const columns: ExportColumn[] = [
@@ -24,5 +27,7 @@ export const positionsExportDefinition = defineExport({
   execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
   retention: RETENTION_7_DAYS,
   columns,
-  ...tenantScopedTableSource(positions, asc(positions.sort)),
+  prepareQuery: async (query) => positionListQuery.omit({ page: true, pageSize: true }).parse(query),
+  countRows: async (query) => db.$count(positions, buildPositionsWhere(query)),
+  streamRows: async (query) => db.select().from(positions).where(buildPositionsWhere(query)).orderBy(asc(positions.sort), asc(positions.id)),
 });

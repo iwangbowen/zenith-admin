@@ -32,7 +32,7 @@ export const paymentRefundsExportDefinition = defineExport<PaymentRefundListFilt
   execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
   retention: RETENTION_7_DAYS,
   columns,
-  countRows: async (query) => Math.min(await db.$count(paymentRefunds, buildRefundsWhere(query)), EXPORT_LIMIT),
+  countRows: async (query) => await db.$count(paymentRefunds, buildRefundsWhere(query)),
   streamRows: async (query) =>
-    db.select().from(paymentRefunds).where(buildRefundsWhere(query)).orderBy(desc(paymentRefunds.id)).limit(EXPORT_LIMIT),
+    db.select().from(paymentRefunds).where(buildRefundsWhere(query)).orderBy(desc(paymentRefunds.id)).limit(EXPORT_LIMIT + 1),
 });

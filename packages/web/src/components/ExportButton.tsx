@@ -31,7 +31,7 @@ export function ExportButton({
   // 安全默认：脱敏导出。明文导出需显式传 raw，且服务端校验 export-raw 权限
   raw = false,
   watermark = true,
-  executionMode = 'sync',
+  executionMode = 'auto',
   variant = 'primary',
   permission,
 }: Readonly<ExportButtonProps>) {

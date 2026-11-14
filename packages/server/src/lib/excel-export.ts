@@ -1,3 +1,4 @@
+import { csvCell } from '@zenith/shared/core';
 import { createRequire } from 'node:module';
 import { formatDateTime } from './datetime';
 
@@ -19,14 +20,7 @@ export interface ExcelColumn {
 }
 
 /** Escape a cell value for CSV output. Wraps in double-quotes when necessary. */
-export function csvEscapeCell(value: unknown): string {
-  if (value == null || typeof value === 'object') return '';
-  const str = `${value as string | number | boolean}`;
-  if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-    return `"${str.replaceAll('"', '""')}"`;
-  }
-  return str;
-}
+export const csvEscapeCell = csvCell;
 
 // 每个流式导出已写的数据行数（不含表头）：由 streamToExcel / streamToCsv 边消费边累加，
 // 排空后经 getStreamRowCount 读取；WeakMap 持有计数，不阻止流被回收。

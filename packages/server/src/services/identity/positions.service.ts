@@ -33,14 +33,20 @@ export async function listAllPositions() {
   return list.map(mapPosition);
 }
 
-export async function listPositions(q: QueryOutputOf<typeof positionContract.list>) {
-  const { page, pageSize } = q;
-  const finalWhere = buildWhere(
+export type PositionsListFilter = Omit<QueryOutputOf<typeof positionContract.list>, 'page' | 'pageSize'>;
+
+export function buildPositionsWhere(q: PositionsListFilter) {
+  return buildWhere(
     keywordCondition(q.keyword, [positions.name, positions.code]),
     q.status ? eq(positions.status, q.status) : undefined,
     ...dateRangeConditions(positions.createdAt, q.startTime, q.endTime),
     tenantCondition(positions, currentUser()),
   );
+}
+
+export async function listPositions(q: QueryOutputOf<typeof positionContract.list>) {
+  const { page, pageSize } = q;
+  const finalWhere = buildPositionsWhere(q);
 
   return buildListResult({
     page,

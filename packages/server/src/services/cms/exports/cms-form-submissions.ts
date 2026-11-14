@@ -18,15 +18,17 @@ async function resolveFormColumns(query: Record<string, unknown>): Promise<Expor
   const base: ExportColumn[] = [
     { key: 'id', header: '提交ID', width: 10, type: 'number' },
     { key: 'createdAt', header: '提交时间', width: 22, type: 'datetime' },
-    { key: 'ip', header: 'IP', width: 16 },
+    { key: 'ip', header: 'IP', width: 16, sensitive: true },
   ];
   const formId = asPositive(query.formId);
   if (!formId) return base;
   const form = await ensureCmsFormExists(formId);
+  await assertSiteAccess(form.siteId);
   const fieldColumns: ExportColumn[] = (form.fields ?? []).map((f) => ({
     key: `field_${f.name}`,
     header: f.label,
     width: 24,
+    sensitive: true,
   }));
   return [base[0], ...fieldColumns, base[1], base[2]];
 }
@@ -39,7 +41,7 @@ async function loadRows(query: Record<string, unknown>): Promise<Record<string, 
   const rows = await db.select().from(cmsFormSubmissions)
     .where(eq(cmsFormSubmissions.formId, formId))
     .orderBy(desc(cmsFormSubmissions.id))
-    .limit(50_000);
+    .limit(50_001);
   return rows.map((row) => {
     const flat: Record<string, unknown> = {
       id: row.id,
@@ -60,18 +62,20 @@ export const cmsFormSubmissionsExportDefinition = defineExport<Record<string, un
   sourcePath: '/cms/forms',
   sheetName: '提交数据',
   formats: ['xlsx', 'csv'],
-  permissions: { export: 'cms:form:manage' },
+  permissions: { export: 'cms:form:manage', exportRaw: 'cms:form:export-raw', requireExportRawPermission: true },
   execution: { mode: 'sync', syncMaxRows: 5000, syncModeOverridesAsyncPolicies: true },
   retention: RETENTION_7_DAYS,
   columns: [
     { key: 'id', header: '提交ID', width: 10, type: 'number' },
     { key: 'createdAt', header: '提交时间', width: 22, type: 'datetime' },
-    { key: 'ip', header: 'IP', width: 16 },
+    { key: 'ip', header: 'IP', width: 16, sensitive: true },
   ],
   resolveColumns: (query) => resolveFormColumns(query),
   countRows: async (query) => {
     const formId = asPositive(query.formId);
     if (!formId) return 0;
+    const form = await ensureCmsFormExists(formId);
+    await assertSiteAccess(form.siteId);
     return db.$count(cmsFormSubmissions, eq(cmsFormSubmissions.formId, formId));
   },
   streamRows: async (query) => loadRows(query),

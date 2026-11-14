@@ -1,7 +1,10 @@
-import { asc } from 'drizzle-orm';
+import { dictListQuery } from '@zenith/shared/platform';
+import { db } from '../../../db';
+import { buildDictsWhere } from '../dicts.service';
+import { desc } from 'drizzle-orm';
 import { dicts } from '../../../db/schema';
 import { defineExport } from '../../../lib/export-center/registry';
-import { RETENTION_7_DAYS, STATUS_ENUM_MAP, tenantScopedTableSource } from '../../../lib/export-center/presets';
+import { RETENTION_7_DAYS, STATUS_ENUM_MAP } from '../../../lib/export-center/presets';
 import type { ExportColumn } from '../../../lib/export-center/types';
 
 const columns: ExportColumn[] = [
@@ -23,5 +26,7 @@ export const dictsExportDefinition = defineExport({
   execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
   retention: RETENTION_7_DAYS,
   columns,
-  ...tenantScopedTableSource(dicts, asc(dicts.id)),
+  prepareQuery: async (query) => dictListQuery.omit({ page: true, pageSize: true }).parse(query),
+  countRows: async (query) => db.$count(dicts, buildDictsWhere(query)),
+  streamRows: async (query) => db.select().from(dicts).where(buildDictsWhere(query)).orderBy(desc(dicts.createdAt), desc(dicts.id)),
 });

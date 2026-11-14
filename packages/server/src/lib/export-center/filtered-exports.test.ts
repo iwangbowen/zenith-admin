@@ -21,6 +21,10 @@ vi.mock('../context', async (importOriginal) => ({
   currentUserOrNull: vi.fn(() => null),
 }));
 
+import { buildPositionsWhere } from '../../services/identity/positions.service';
+import { buildRolesWhere } from '../../services/identity/roles.service';
+import { buildDictsWhere } from '../../services/platform/dicts.service';
+import { buildAnnouncementsWhere } from '../../services/messaging/announcements.service';
 import { buildTenantsWhere } from '../../services/identity/tenants.service';
 import { buildCronJobsWhere } from '../../services/tasks/cron-jobs.service';
 import { buildFileStorageConfigsWhere } from '../../services/files/file-storage-configs.service';
@@ -32,6 +36,7 @@ const render = (condition: SQL | undefined) => (condition ? dialect.sqlToQuery(c
 
 describe('导出定义消费页面筛选', () => {
   const definitions = [
+    ['identity', 'positions'], ['identity', 'roles'], ['platform', 'dicts'], ['messaging', 'announcements'],
     ['identity', 'tenants'], ['tasks', 'cron-jobs'], ['identity', 'departments'],
     ['files', 'file-storage-configs'], ['identity', 'login-logs'], ['ops', 'processes'],
     ['platform', 'regions'], ['short-link', 'short-links'], ['platform', 'user-feedbacks'],
@@ -82,4 +87,15 @@ describe('列表 / 导出共用的 where 构造器', () => {
     expect(matchesDepartmentFilter(node, { status: 'disabled' })).toBe(false);
     expect(matchesDepartmentFilter(node, {})).toBe(true);
   });
+});
+
+it('positions, roles, dictionaries and announcements preserve submitted filters', () => {
+  for (const build of [buildPositionsWhere, buildRolesWhere, buildDictsWhere]) {
+    const q = render(build({ keyword: 'review', status: 'disabled' }));
+    expect(q?.params).toContain('%review%');
+    expect(q?.params).toContain('disabled');
+  }
+  const q = render(buildAnnouncementsWhere({ title: 'review', publishStatus: 'draft' }));
+  expect(q?.params).toContain('%review%');
+  expect(q?.params).toContain('draft');
 });

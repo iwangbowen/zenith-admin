@@ -49,6 +49,7 @@ export const IDENTITY_PERMISSIONS = definePermissions({
   'system:access-governance:policy': { label: '策略配置', menu: 'SystemAccessGovernance', riskLevel: 'critical', approvalPolicy: 'two_person', reviewIntervalDays: 30, selfRequestable: false },
   'system:api-catalog:view': { label: '查询', menu: 'SystemApiCatalog' },
   'system:tenant:list': { label: '查询', menu: 'SystemTenants' },
+  'system:tenant:export-raw': { label: '明文导出', menu: 'SystemTenants', riskLevel: 'critical', approvalPolicy: 'two_person', reviewIntervalDays: 30 },
   'system:tenant:create': { label: '新增租户', menu: 'SystemTenants', uiOnly: true },
   'system:tenant:update': { label: '编辑租户', menu: 'SystemTenants', uiOnly: true },
   'system:tenant:delete': { label: '删除租户', menu: 'SystemTenants', uiOnly: true },

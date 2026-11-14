@@ -118,3 +118,10 @@ describe('request.postForm headers', () => {
       .toEqual(['Bearer admin-token', 'Bearer new-admin-token', null]);
   });
 });
+
+describe('download outcomes', () => {
+  it.each([403, 404, 410, 500])('rejects HTTP %s instead of reporting success', async status => {
+    fetchMock.mockResolvedValueOnce(Response.json({ message: 'file unavailable' }, { status }));
+    await expect(request.download('/file', 'file.csv')).rejects.toThrow('下载失败');
+  });
+});

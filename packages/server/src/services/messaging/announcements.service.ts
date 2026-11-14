@@ -196,17 +196,20 @@ export async function getInbox(q: QueryOutputOf<typeof announcementContract.inbo
   });
 }
 
-export async function listAnnouncements(q: QueryOutputOf<typeof announcementContract.list>) {
-  const user = currentUser();
-  const { page, pageSize, title, type, publishStatus, startTime, endTime } = q;
-  const where = buildWhere(
-    keywordCondition(title, [announcements.title]),
-    type ? eq(announcements.type, type) : undefined,
-    publishStatus ? eq(announcements.publishStatus, publishStatus) : undefined,
-    ...dateRangeConditions(announcements.createdAt, startTime, endTime),
+export type AnnouncementListFilter = Omit<QueryOutputOf<typeof announcementContract.list>, 'page' | 'pageSize'>;
+export function buildAnnouncementsWhere(q: AnnouncementListFilter) {
+  return buildWhere(
+    keywordCondition(q.title, [announcements.title]),
+    q.type ? eq(announcements.type, q.type) : undefined,
+    q.publishStatus ? eq(announcements.publishStatus, q.publishStatus) : undefined,
+    ...dateRangeConditions(announcements.createdAt, q.startTime, q.endTime),
+    tenantCondition(announcements, currentUser()),
   );
-  const tc = tenantCondition(announcements, user);
-  const finalWhere = buildWhere(where, tc);
+}
+
+export async function listAnnouncements(q: QueryOutputOf<typeof announcementContract.list>) {
+  const { page, pageSize } = q;
+  const finalWhere = buildAnnouncementsWhere(q);
   return buildListResult({
     page,
     pageSize,

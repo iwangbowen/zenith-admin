@@ -33,7 +33,7 @@ export const memberRechargesExportDefinition = defineExport<Query & Record<strin
   filenamePrefix: '充值记录',
   sourcePath: '/member/recharges',
   sheetName: '充值记录',
-  permissions: { export: 'member:recharge:list' },
+  permissions: { export: 'member:recharge:list', exportRaw: 'member:recharge:export-raw', requireExportRawPermission: true },
   execution: { mode: 'auto' },
   retention: RETENTION_7_DAYS,
   columns,

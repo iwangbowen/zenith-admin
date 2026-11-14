@@ -32,7 +32,7 @@ export const membersExportDefinition = defineExport<MembersExportQuery & Record<
   filenamePrefix: '会员列表',
   sourcePath: '/member/members',
   sheetName: '会员列表',
-  permissions: { export: 'member:member:list' },
+  permissions: { export: 'member:member:list', exportRaw: 'member:member:export-raw', requireExportRawPermission: true },
   execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
   retention: RETENTION_7_DAYS,
   columns,

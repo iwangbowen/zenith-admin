@@ -24,7 +24,7 @@ export const emailSendLogsExportDefinition = defineExport<EmailSendLogListFilter
   filenamePrefix: '邮件发送记录',
   sourcePath: '/system/email-send-logs',
   sheetName: '邮件发送记录',
-  permissions: { export: 'system:email-send-log:export' },
+  permissions: { export: 'system:email-send-log:export', exportRaw: 'system:email-send-log:export-raw', requireExportRawPermission: true },
   execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
   retention: RETENTION_7_DAYS,
   columns,

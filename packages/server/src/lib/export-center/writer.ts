@@ -214,7 +214,7 @@ function metadataRows(ctx: ExportRuntimeContext): Array<Array<string | number>> 
     ['是否明文', ctx.raw ? '是' : '否'],
     ['是否脱敏', ctx.masked ? '是' : '否'],
     ['是否包含敏感字段', ctx.sensitive ? '是' : '否'],
-    ['筛选条件', JSON.stringify(ctx.query)],
+    ['筛选条件', '详细条件仅在受控任务详情中查看'],
     ['字段', ctx.selectedColumns?.join(', ') ?? '全部字段'],
   ];
 }
@@ -311,14 +311,8 @@ export async function renderExportToPath(
     if (ctx.format === 'csv') {
       const columns = leafColumns(selectedColumns(await resolveDefinitionColumns(definition, ctx), ctx.selectedColumns));
       const write = async (line: string) => { if (!output.write(line)) await once(output, 'drain'); };
-      // Reader-controlled keywords must remain literal values in spreadsheets.
-      const safeCell = (value: unknown) => {
-        if (typeof value !== 'string') return csvEscapeCell(value);
-        const literal = /^[\s]*[=+\-@\t\r]/u.test(value) ? `'${value}` : value;
-        return `"${literal.replaceAll('"', '""')}"`;
-      };
-      await write('\uFEFF' + columns.map((column) => safeCell(column.header)).join(',') + '\r\n');
-      for await (const row of countedRows()) await write(columns.map((column) => safeCell(formatExportCell(column, row, ctx))).join(',') + '\r\n');
+      await write('\uFEFF' + columns.map((column) => csvEscapeCell(column.header)).join(',') + '\r\n');
+      for await (const row of countedRows()) await write(columns.map((column) => csvEscapeCell(formatExportCell(column, row, ctx))).join(',') + '\r\n');
       output.end();
     } else {
       const workbook = new (loadExcelJS().stream.xlsx.WorkbookWriter)({ stream: output, useStyles: true });

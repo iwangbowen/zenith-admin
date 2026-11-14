@@ -5,10 +5,10 @@ export const createExportJobSchema = z.object({
   entity: z.string().min(1, '导出实体不能为空').max(128),
   format: z.enum(EXPORT_JOB_FORMATS).default('xlsx'),
   query: z.record(z.string(), z.unknown()).default({}),
-  columns: z.array(z.string().min(1).max(128)).optional(),
+  columns: z.array(z.string().min(1).max(128)).min(1).max(512).optional(),
   raw: z.boolean().default(false),
   watermark: z.boolean().default(true),
-  executionMode: z.enum(EXPORT_JOB_REQUEST_MODES).default('sync'),
+  executionMode: z.enum(EXPORT_JOB_REQUEST_MODES).default('auto'),
 });
 
 export type CreateExportJobInput = z.infer<typeof createExportJobSchema>;

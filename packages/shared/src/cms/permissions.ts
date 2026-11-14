@@ -60,6 +60,7 @@ export const CMS_PERMISSIONS = definePermissions({
   'cms:ad-event:export-raw': { label: '导出广告原始明细', menu: 'CmsAds' },
   'cms:form:list': { label: '查询', menu: ['CmsForms', 'CmsWorkspace'] },
   'cms:form:manage': { label: '管理表单', menu: 'CmsForms' },
+  'cms:form:export-raw': { label: '明文导出', menu: 'CmsForms', riskLevel: 'critical', approvalPolicy: 'two_person', reviewIntervalDays: 30 },
   'cms:feedback:manage': { label: '办理读者反馈', menu: 'CmsForms' },
   'cms:editorial-task:manage': { label: '管理编辑事项', menu: 'CmsWorkspace' },
   'cms:sensitive:list': { label: '查询', menu: 'CmsSensitiveWords' },

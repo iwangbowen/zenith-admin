@@ -25,7 +25,7 @@ export const tenantsExportDefinition = defineExport<TenantListFilter & Record<st
   filenamePrefix: '租户列表',
   sourcePath: '/system/tenants',
   sheetName: '租户列表',
-  permissions: { export: 'system:tenant:list' },
+  permissions: { export: 'system:tenant:list', exportRaw: 'system:tenant:export-raw', requireExportRawPermission: true },
   execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
   retention: RETENTION_7_DAYS,
   columns,

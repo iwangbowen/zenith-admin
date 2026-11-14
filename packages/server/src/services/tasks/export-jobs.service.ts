@@ -104,7 +104,7 @@ export async function assertExportPermission(definition: AnyExportDefinition, ra
   if (!await hasPermission(user, definition.permissions.export)) {
     throw new HTTPException(403, { message: '无导出权限' });
   }
-  if (raw && definition.permissions.requireExportRawPermission && !await hasPermission(user, definition.permissions.exportRaw)) {
+  if (raw && (definition.permissions.requireExportRawPermission || definitionHasSensitiveColumns(definition, null) || definition.resolveColumns) && !await hasPermission(user, definition.permissions.exportRaw)) {
     throw new HTTPException(403, { message: '无明文导出权限' });
   }
 }
@@ -125,7 +125,7 @@ function definitionHasSensitiveColumns(definition: AnyExportDefinition, selected
   });
 }
 
-function resolveExecutionMode(
+export function resolveExecutionMode(
   requested: ExportRequestMode | undefined,
   rowCount: number,
   sensitive: boolean,
@@ -133,13 +133,9 @@ function resolveExecutionMode(
   definition: AnyExportDefinition,
 ): ExportExecutionMode {
   const policy = normalizeExecution(definition);
-  if (definition.withSnapshot) return 'async';
-  const mode = requested ?? policy.mode;
-  if (mode === 'sync' && policy.syncModeOverridesAsyncPolicies) return 'sync';
+  if (definition.withSnapshot || policy.mode === 'async' || requested === 'async') return 'async';
   if (policy.forceAsyncWhenRaw && raw) return 'async';
   if (policy.forceAsyncWhenSensitive && sensitive) return 'async';
-  if (mode === 'sync') return 'sync';
-  if (mode === 'async') return 'async';
   return rowCount <= policy.syncMaxRows ? 'sync' : 'async';
 }
 
@@ -203,30 +199,19 @@ function mapExportJobDownload(row: typeof exportJobDownloads.$inferSelect & { us
   };
 }
 
-function userFromJob(row: typeof exportJobs.$inferSelect): JwtPayload {
-  if (!row.createdBy) throw new HTTPException(400, { message: '导出任务缺少创建人' });
-  return {
-    userId: row.createdBy,
-    username: `user:${row.createdBy}`,
-    roles: [],
-    tenantId: row.tenantId ?? null,
-  };
-}
-
 async function getCreatorPayload(row: typeof exportJobs.$inferSelect): Promise<JwtPayload> {
-  if (!row.createdBy) return userFromJob(row);
+  if (!row.createdBy) throw new HTTPException(403, { message: '导出任务缺少有效创建人' });
   const user = await db.query.users.findFirst({
     where: eq(users.id, row.createdBy),
-    columns: { id: true, username: true, tenantId: true },
-    with: { userRoles: { columns: {}, with: { role: { columns: { code: true } } } } },
+    columns: { id: true, username: true, tenantId: true, status: true },
+    with: { userRoles: { columns: {}, with: { role: { columns: { code: true, status: true } } } } },
   });
-  if (!user) return userFromJob(row);
-  return {
-    userId: user.id,
-    username: user.username,
-    roles: user.userRoles.map((item) => item.role.code),
-    tenantId: user.tenantId,
-  };
+  if (!user || user.status !== 'enabled') throw new HTTPException(403, { message: '导出创建人已不存在或已停用' });
+  const roles = user.userRoles.filter(item => item.role.status === 'enabled').map(item => item.role.code);
+  const payload: JwtPayload = { userId: user.id, username: user.username, roles, tenantId: user.tenantId };
+  if (isSuperAdmin(payload)) return { ...payload, viewingTenantId: row.tenantId };
+  if (user.tenantId !== row.tenantId) throw new HTTPException(403, { message: '导出创建人的租户已变更，请重新提交' });
+  return payload;
 }
 
 class ExportCancelledError extends Error {}
@@ -268,7 +253,7 @@ async function renderJobFile(row: typeof exportJobs.$inferSelect, definition: An
   };
   return runWithCurrentUser(creator, async () => {
     await assertExportPermission(definition, row.raw, creator);
-    if (creator.tenantId !== row.tenantId) throw new HTTPException(403, { message: '导出创建人的租户已变更，请重新提交' });
+
     if (definition.withSnapshot) {
       const folder = await mkdtemp(join(tmpdir(), 'zenith-export-'));
       const filePath = join(folder, `report.${row.format}`);
@@ -426,9 +411,14 @@ export async function createExportJob(input: CreateExportJobInput) {
   // 安全默认：未显式声明时按脱敏导出；明文导出需显式 raw=true 且通过 exportRaw 权限校验
   const raw = input.raw ?? false;
   await assertExportPermission(definition, raw, user);
-  const selectedColumns = input.columns?.length ? [...new Set(input.columns)] : null;
-  const sensitive = definitionHasSensitiveColumns(definition, selectedColumns);
   const query = definition.prepareQuery ? await definition.prepareQuery(input.query ?? {}, user) : input.query ?? {};
+  const resolvedColumns = definition.resolveColumns ? await definition.resolveColumns(query, user) : definition.columns;
+  const selectedColumns = input.columns ? [...new Set(input.columns)] : null;
+  if (selectedColumns) {
+    const available = new Set(leafColumns(resolvedColumns).map(column => column.key));
+    if (!selectedColumns.length || selectedColumns.some(key => !available.has(key))) throw new HTTPException(400, { message: '所选导出字段不存在或不可用' });
+  }
+  const sensitive = definitionHasSensitiveColumns({ ...definition, columns: resolvedColumns }, selectedColumns);
   const rowCount = definition.withSnapshot ? null : await definition.countRows(query, user);
   // 行数绝对上限（sync/async 通用）：exceljs 终局序列化与 CSV 全量累积都是主线程
   // 连续 CPU/内存段，提交时快速失败;countRows 不准的定义由 writer 渲染兜底再拦一道
@@ -567,7 +557,7 @@ export async function getExportJobDownload(id: number, meta: { ip?: string | nul
     userAgent: meta.userAgent?.slice(0, 512) ?? null,
   });
   await db.update(exportJobs).set({
-    downloadCount: job.downloadCount + 1,
+    downloadCount: sql`${exportJobs.downloadCount} + 1`,
     lastDownloadedAt: new Date(),
   }).where(eq(exportJobs.id, job.id));
   return {

@@ -35,7 +35,7 @@ export const paymentContractsExportDefinition = defineExport<ListContractsQuery 
   execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
   retention: RETENTION_7_DAYS,
   columns,
-  countRows: async (query) => Math.min(await db.$count(paymentContracts, await buildContractsWhere(query)), EXPORT_LIMIT),
+  countRows: async (query) => await db.$count(paymentContracts, await buildContractsWhere(query)),
   streamRows: async (query) =>
-    db.select().from(paymentContracts).where(await buildContractsWhere(query)).orderBy(desc(paymentContracts.id)).limit(EXPORT_LIMIT),
+    db.select().from(paymentContracts).where(await buildContractsWhere(query)).orderBy(desc(paymentContracts.id)).limit(EXPORT_LIMIT + 1),
 });

@@ -34,7 +34,7 @@ export const paymentOrdersExportDefinition = defineExport<PaymentOrderListFilter
   execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
   retention: RETENTION_7_DAYS,
   columns,
-  countRows: async (query) => Math.min(await db.$count(paymentOrders, await buildOrdersWhere(query)), EXPORT_LIMIT),
+  countRows: async (query) => await db.$count(paymentOrders, await buildOrdersWhere(query)),
   streamRows: async (query) =>
-    db.select().from(paymentOrders).where(await buildOrdersWhere(query)).orderBy(desc(paymentOrders.id)).limit(EXPORT_LIMIT),
+    db.select().from(paymentOrders).where(await buildOrdersWhere(query)).orderBy(desc(paymentOrders.id)).limit(EXPORT_LIMIT + 1),
 });

@@ -1619,12 +1619,12 @@ export async function listEventsForExport(q: EventListFilter, max = 50_000) {
     .from(userEvents)
     .where(where)
     .orderBy(desc(userEvents.createdAt))
-    .limit(max);
+    .limit(max + 1);
   return rows.map((r) => ({ ...r, createdAt: formatDateTime(r.createdAt) }));
 }
 
-export async function countEventsForExport(q: EventListFilter, max = 50_000): Promise<number> {
-  return Math.min(await db.$count(userEvents, buildEventListWhere(q)), max);
+export async function countEventsForExport(q: EventListFilter): Promise<number> {
+  return db.$count(userEvents, buildEventListWhere(q));
 }
 
 export async function cleanAnalyticsEvents(days: number): Promise<number> {

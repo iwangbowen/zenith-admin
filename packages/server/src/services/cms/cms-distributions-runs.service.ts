@@ -163,7 +163,7 @@ export async function loadCmsDistributionExportRows(query: Record<string, unknow
     .innerJoin(asyncTasks, eq(asyncTaskItems.taskId, asyncTasks.id))
     .where(where)
     .orderBy(desc(asyncTasks.id), asc(asyncTaskItems.id))
-    .limit(50_000);
+    .limit(50_001);
   const mappedRuns = await mapRuns([...new Map(rows.map(({ task }) => [task.id, task])).values()]);
   const runById = new Map(mappedRuns.map((run) => [run.id, run]));
   return rows.map(({ task, item }) => {
