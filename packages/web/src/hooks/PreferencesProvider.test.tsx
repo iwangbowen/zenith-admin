@@ -85,10 +85,13 @@ describe('PreferencesProvider', () => {
   it('persists explicit equal-to-default choices and merges terminal leaf changes', async () => {
     document = { overrides: { terminal: { cursorBlink: false } } };
     const { hook } = await setup();
+    vi.useFakeTimers();
     act(() => {
       hook.result.current.setPreferences({ colorMode: 'light' });
       hook.result.current.setPreferences({ terminal: { fontSize: 18 } });
     });
+    await act(async () => { await vi.advanceTimersByTimeAsync(600); });
+    vi.useRealTimers();
     await waitFor(() => expect(api.countOf('PUT', authContract.savePreferences.fullPath)).toBe(1));
     expect(document.overrides).toEqual({ colorMode: 'light', terminal: { fontSize: 18, cursorBlink: false } });
     expect(hook.result.current.isPreferenceOverridden('colorMode')).toBe(true);
@@ -167,7 +170,10 @@ describe('PreferencesProvider', () => {
   ] as const)('turns off editable $previous when only $next is explicitly enabled', async ({ previous, next }) => {
     document = { overrides: { [previous]: true } };
     const { hook } = await setup();
+    vi.useFakeTimers();
     act(() => hook.result.current.setPreferences({ [next]: true }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(600); });
+    vi.useRealTimers();
     await waitFor(() => expect(api.countOf('PUT')).toBe(1));
     expect(document.overrides).toEqual({ [previous]: false, [next]: true });
     expect(hook.result.current.preferences).toMatchObject({ [previous]: false, [next]: true });
@@ -181,10 +187,12 @@ describe('PreferencesProvider', () => {
     policy.allowUserOverride[forced] = false;
     const { hook } = await setup();
     let change;
+    vi.useFakeTimers();
     act(() => { change = hook.result.current.setPreferences({ [requested]: true }); });
     expect(change).toEqual({ applied: 0, skipped: 1 });
     // 越过保存防抖窗口，确保不是仅在请求尚未发出时断言。
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 650)); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(650); });
+    vi.useRealTimers();
     expect(api.countOf('PUT')).toBe(0);
     expect(document.overrides).toEqual({});
     expect(hook.result.current.preferences).toMatchObject({ [forced]: true, [requested]: false });
@@ -210,7 +218,9 @@ describe('PreferencesProvider', () => {
     const { hook } = await setup();
     act(() => hook.result.current.resetPreference(['terminal.fontSize', 'terminal.cursorBlink']));
     await waitFor(() => expect(api.countOf('PUT')).toBe(1));
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 650)); });
+    vi.useFakeTimers();
+    await act(async () => { await vi.advanceTimersByTimeAsync(650); });
+    vi.useRealTimers();
     expect(api.countOf('PUT')).toBe(1);
     expect(document.overrides).toEqual({
       tableStriped: true,
@@ -225,8 +235,11 @@ describe('PreferencesProvider', () => {
       throw new Error('管理员已锁定此字段');
     });
     const { hook } = await setup();
+    vi.useFakeTimers();
     act(() => hook.result.current.setPreferences({ tableStriped: true }));
     expect(hook.result.current.preferences.tableStriped).toBe(true);
+    await act(async () => { await vi.advanceTimersByTimeAsync(600); });
+    vi.useRealTimers();
     await waitFor(() => {
       expect(hook.result.current.canOverridePreference('tableStriped')).toBe(false);
       expect(hook.result.current.preferences.tableStriped).toBe(false);
