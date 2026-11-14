@@ -7,6 +7,7 @@
 > 完整文档：[docs/backend/task-center.md](../../../../docs/backend/task-center.md)；可运行示例：`packages/server/src/routes/tasks/task-demo.ts` + `packages/web/src/pages/biz/task-demo/TaskDemoPage.tsx`。
 >
 > 提交任务的业务接口本身仍是常规路由，写法见 [crud-backend.md](./crud-backend.md)。
+> Excel / CSV 导入直接按[导入中心接入流程](./import-center.md)声明 `ImportDefinition`，复用 `data-import-preview` / `data-import`，不按下文通用示例另建文件导入 handler。
 
 ---
 
@@ -136,6 +137,7 @@ const { tasks, loading, refresh } = useMyAsyncTasks({ taskTypes: ['xxx-batch-imp
 | --- | --- |
 | 用户在页面提交的长耗时业务操作（要进度/取消/续跑） | **任务中心**（本文档） |
 | 数据导出（配置/脱敏/文件/受控下载） | [导出中心接入流程](./export-center.md)；异步执行复用本文任务中心的 `data-export` 类型 |
+| CSV / XLSX 导入（检查/映射/预检/错误回导） | [导入中心接入流程](./import-center.md)；复用 `data-import-preview` / `data-import` 类型 |
 | 系统级周期任务（清理/扫描/采集，cron 触发） | `registerSystemRecurringJob`（`bootstrap/system-tasks.ts`） |
 | 用户可自定义 cron 的定时任务 | 定时任务模块（`cron_jobs`） |
 | 工作流节点的延迟/补偿/外呼作业 | `workflow_jobs`（`lib/workflow-jobs/`） |
