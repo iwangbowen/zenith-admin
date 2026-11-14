@@ -484,6 +484,22 @@
 - **导出列**绑定契约字段：`{ key, sensitive: true, maskKey: 'User.phone' }`，**禁止**再写 `maskEntity` / `maskField` 或在导出定义里手工打码
 - 策略只保存覆盖记录（`data_mask_policies`），**禁止**为脱敏另建规则表、扫描数据库列名或按角色 code 豁免（豁免只认权限码）
 
+### 数据导出
+
+- **统一接入**：业务数据文件导出必须声明 `defineExport` 并在 `bootstrap/export-definitions.ts` 注册；
+  预检、创建和模板保存复用 `prepareExport`，异步执行使用 `data-export` 任务类型，禁止另建导出队列或页内拼装第二套取数规则。
+- **查询与完整性**：`countRows`、`streamRows` 复用列表的授权过滤，时间边界、租户与数据范围一致；
+  `prepareQuery` 必须可重复调用，按 JSON 入参校验布尔/数字，禁止把解析后的值反复送入只接受字符串的 URL query schema。
+  超出行/列/字节预算必须明确失败，禁止静默截断后标成功；需同一统计时点的结果使用 `withSnapshot`。
+- **敏感数据**：默认 `raw=false`、`executionMode=auto`；敏感或动态列的明文导出必须配置并验证独立 `exportRaw` 权限，
+  预览即便请求明文也必须脱敏。CSV 统一使用安全单元格编码，文件/隐藏元信息/分卷清单不得写入原始敏感筛选值。
+- **执行与产物**：不得通过显式 `sync` 绕过实体策略或平台预算；统一 writer/renderer 汇报真实写入数与协作取消，
+  文件只能由当前执行轮次结算发布。禁止绕过任务中心事务结算、文件引用计数和 GC；异常退出的临时文件使用统一回收。
+- **下载授权**：必须经受控下载链路验证创建人和下载人的当前身份、有效租户、功能/数据范围及授权证明；
+  有资源 ACL 的定义必须实现 `authorizeDownload` 并复验依赖资源，禁止只检查文件归属或任务可见性就发放文件。
+  缺授权证明、撤权或资源不可访问时拒绝下载并要求重新导出，不增加历史产物兼容兜底。
+- 接入步骤与专项验证按[export-center.md](./export-center.md)；能力边界、运行时设置和字段语义见[导出中心](../../../../docs/backend/export-center.md)。
+
 ### 分页格式
 
 - 列表接口返回 `{ list, total, page, pageSize }`：契约用 `paginated(xxxSchema)` 声明，查询参数 `paginationQuery.extend({...})`

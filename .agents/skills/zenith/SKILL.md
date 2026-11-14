@@ -1,6 +1,6 @@
 ---
 name: zenith
-description: "Zenith Admin 项目专属开发辅助。Use when: 开发新模块、实现 CRUD、新增页面、配置菜单权限、增删改查、新建后台功能、新增管理功能、异步任务、批量操作、任务进度、发通知、通知事件、消息提醒、订阅通知、发布新版本、db migration、seed data、MSW mock、修改现有模块、添加字段、系统设置、运行时设置、加开关、加配置项、新增设置模块。包含完整的 CRUD 代码生成流程（Step 0-11）、异步任务接入、通知中心接入、运行时设置接入、模块修改流程与版本发布流程。"
+description: "Zenith Admin 项目专属开发辅助。Use when: 开发新模块、实现 CRUD、新增页面、配置菜单权限、增删改查、新建后台功能、新增管理功能、数据导出、导出中心、异步任务、批量操作、任务进度、发通知、通知事件、消息提醒、订阅通知、发布新版本、db migration、seed data、MSW mock、修改现有模块、添加字段、系统设置、运行时设置、加开关、加配置项、新增设置模块。包含完整的 CRUD 代码生成流程（Step 0-11）、导出中心接入、异步任务接入、通知中心接入、运行时设置接入、模块修改流程与版本发布流程。"
 argument-hint: "部门管理 CRUD | 公告管理（含 MSW Mock）| 发布 v1.2.0 | 给用户表加字段"
 user-invocable: true
 ---
@@ -25,12 +25,13 @@ Zenith Admin 是基于 **Hono + React + Drizzle ORM** 的全栈后台管理系�
 | CRUD 开发 | 实现 XXX CRUD、新增 XXX 模块、开发 XXX 功能、新增管理页面 | 本文件 Step 0 → Step 11 |
 | 修改已有模块 | 给 XXX 加字段、修改 XXX 接口、XXX 添加关联、改枚举、删字段 | [module-modification.md](./references/module-modification.md)：各场景的步骤序列 |
 | 后端测试 | 新增 test、领域契约、跨域回归、affected 测试、测试基准 | [testing.md](./references/testing.md)：测试归属、验证范围、领域快照和基准采集 |
-| 领域事件 / 持久化 Outbox | 事件发布、消费者、Webhook 交接、失败重试、租约恢复 | [domain-events.md](./references/domain-events.md) 与 [文档站领域事件规范](../../../docs/backend/domain-events.md) |
+| 领域事件 / 持久化 Outbox | 事件发布、消费者、Webhook 交接、失败重试、租约恢复 | [领域事件规范](../../../docs/backend/domain-events.md) |
 | 多选下拉展示 | Select / TreeSelect 多选、标签折叠、选择时换行 | [前端约束 → 表单与展示组件](./references/constraints-frontend.md#表单与展示组件) 与 [多选下拉展示](./references/crud-frontend.md#多选下拉展示) |
 | 跨对象关联视图 | 关联信息、对象详情关联、反查来源、关联分组、对象时间线、关系下钻 | [entity-relations.md](./references/entity-relations.md)：锚点、Provider、权限、摘要状态、详情下钻和验收 |
 | 业务模块接入审批 | 业务系统主导流程、业务表单内查看流程、审批预览 / 轮次 | [业务模块接入工作流](../../../docs/workflow/business-integration.md)：业务契约、公共流程容器、seed 与 Demo 的接入规范 |
 | 发送通知 / 新增通知事件 | 发通知、通知用户、订阅提醒、接入通知中心、加通知事件 | [notifications.md](./references/notifications.md)：事件注册、`notify()` 调用、渠道策略 |
 | 异步任务 / 大批量作业 | 批量导入、大数据量处理、后台任务、任务进度、长耗时操作 | [async-tasks.md](./references/async-tasks.md)：任务中心接入与选型对照 |
+| 数据导出 | 列表导出、导出中心、选列、脱敏、分卷、导出模板、定时导出 | [export-center.md](./references/export-center.md)：接入流程与验证；能力说明见[导出中心](../../../docs/backend/export-center.md) |
 | 业务编号 / 流水号 | 单据编号、编号规则、业务编号接入、自动编号、统一取号 | [numbering.md](./references/numbering.md)：场景注册、规则绑定、事务取号、幂等、发布快照与验收 |
 | 运行时设置 / 系统开关 | 加一个开关、可配置阈值、系统设置项、新增设置模块、读取系统设置 | [settings.md](./references/settings.md)：加字段 / 新模块 / 服务端读取 / 前端读取 / Mock |
 | 发布新版本 | 发布 vX.Y.Z、准备发布、release X.Y.Z | [release.md](./references/release.md) |

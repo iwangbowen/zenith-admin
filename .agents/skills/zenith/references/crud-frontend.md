@@ -196,7 +196,7 @@ export default function XxxPage() {
         // overrides={{ deptId: (p) => <DeptPicker {...p.bind('deptId')} /> }}
         create={<CreateButton permission="system:xxx:create" onClick={modal.openCreate} />}
         {/* 导出：query 直接给 page.filterQuery（与列表同源）；权限门交给组件的 permission，不再手写 hasPermission ? : null */}
-        actions={<ExportButton entity="system.xxxs" query={page.filterQuery} permission="system:xxx:export" />}
+        actions={<ExportButton entity="system.xxxs" query={page.filterQuery} permission="system:xxx:export" pageIds={tableProps.dataSource?.map(row => row.id)} />}
       />
 
       {/* 数据源 / loading / 刷新 / 分页（/ 多选）由 useListPage 的 tableProps 接好；默认 rowKey id · size small · bordered；

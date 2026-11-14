@@ -174,7 +174,11 @@ const modal = useEditModal<Xxx, Partial<CreateXxxInput>>({
 - **上传进度**：`request.postForm(url, formData, { onProgress })` 包进 `mutationFn`，变量形如 `{ formData, onProgress }`
 - **二进制读取 / 下载**：后台使用 `request.getBlob` / `request.download`；文件预览使用 `fetchManagedFileBlob`
 - **流式 / SSE**：`request.fetchRaw` 拿原生 Response，再经 `utils/streaming.ts` 的 `streamText` / `readSseStream` 读取
-- **导出**：列表导出优先使用 `ExportButton`，由 `useExportJobRunner` 接入导出任务
+- **导出**：列表复用 `ExportButton`，参数取 `page.filterQuery` 或 `useFilterQuery` 的已提交结果；
+  当前页/多选传真实 `pageIds` / `selectedIds`，能力以服务端预检为准。`ExportConfigHost` 稳定承载配置侧栏，
+  `useExportJobRunner` 提交，同步成功后等待获取文件并触发下载再提示。`cancel` / `retry` 更新目标详情与列表，删除移除对应详情/日志缓存，
+  批量删除等待所有请求结束后按成功项清缓存；查询键取 `hooks/queries/export-jobs.ts` 的契约派生 key。
+  配置交互、下载授权及模板语义见[导出中心](../backend/export-center.md)。
 
 ## 会员端（member SPA）
 

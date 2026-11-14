@@ -131,6 +131,18 @@
   **禁止** polyfill——残缺对象会误导 `@univerjs/ui` 等库的特征检测，读文本 / 写图片由调用方降级；
   `getUserMedia`、Service Worker、Notification 无法兜底，需 HTTPS 或浏览器策略 `OverrideSecurityRestrictionsOnInsecureOrigin`
 
+## 导出配置
+
+- 列表导出复用 `ExportButton` 与 `useExportJobRunner`；参数遵守上表「列表 / 导出 / 深链的查询参数」，
+  仅实际提供且服务端支持时开放 `pageIds` / `selectedIds`，禁止客户端勾选绕过原授权筛选范围。
+- 配置侧栏由稳定的 `ExportConfigHost` 承载，禁止把它挂在会随移动菜单关闭而卸载的按钮下。
+  首屏保留范围、格式、数量/脱敏/留存摘要；字段、预览、分卷/安全选项、模板/定时默认折叠，关键警告与空字段校验不能折叠隐藏。
+- 格式选择使用 Semi `RadioGroup type="button"`；能力取预检的 `supportsColumns` / `supportsRowScope` / `supportsPartition`，
+  禁止提供服务端不支持的选列、范围和分卷。规格变化自动重新预检，旧样例不能冒充当前配置，未校验或校验失败时禁止提交。
+- 下载必须等待 `request.download` 成功后提示；运行中取消显示「已请求取消」，仅终态显示「已取消」。
+  详情/列表/下载日志按实际副作用精确更新，批量删除等待全部 settled 后逐项处理，禁止部分失败时提前刷新或误报全部成功。
+- 模板删除使用服务端 `canManage` 和标准删除确认；保存/应用/定时语义见[导出中心](../../../../docs/backend/export-center.md#模板与定时导出)，不另写一套权限与调度模型。
+
 ## 缓存与 query key
 
 判定推论、策略表与 key 树设计见 [query-cache.md](./query-cache.md)，硬约束：
@@ -185,7 +197,7 @@
   批量删除用 `BatchDeleteButton`（`count` 拼进文案，是否渲染仍由调用方按「有选中 && 有权限」判断）。
   **例外**：仅复用同一图标的独立操作（「测试发送」「生成链接」）及视觉本就不同的写法保持原生 `Button`
 - **移动端更多菜单**：`actions` 缺省即进更多菜单，**不要**为了换视觉再传一份 `mobileActions`——菜单容器样式已把按钮
-  平铺为无边框整行，`ExportButton` / `ClearLogsButtons` 进菜单后自动按格式 / 档位平铺（`variant="flat"` 不必写）。
+  平铺为无边框整行；`ExportButton` 保留单一配置入口，`ClearLogsButtons` 按档位平铺（`variant="flat"` 不必写）。
   只有内容真的不同（移动端补「重置」「分类」入口、去掉自动刷新选择器、`Dropdown` 需展开为多个按钮）才传 `mobileActions`；
   危险操作保留 `type="danger"`。日志 / 录屏类清除入口统一 `components/logs/ClearLogsControl` 的
   `ClearLogsButtons({ loading, onClear(days), label? })`（天数档位取 `CLEAR_LOGS_DAYS`，**禁止**手写 `SplitButtonGroup` + 档位下拉）
