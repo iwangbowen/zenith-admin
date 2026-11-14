@@ -38,6 +38,7 @@ export function registerDictItemsImport(): void {
       { key: 'status', header: '状态', enumValues: ['enabled', 'disabled'], example: 'enabled' },
       { key: 'remark', header: '备注' },
     ],
+    duplicateKey: (row) => `${row.dictId}:${row.value}`,
     async prepare() {
       const user = currentUser();
       const [allDicts, allItems] = await Promise.all([

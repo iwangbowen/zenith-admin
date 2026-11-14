@@ -8,12 +8,13 @@
  * dryRun 预检模式：仅逐行校验不落库，输出同款行级报告与错误文件。
  */
 import { registerTaskHandler } from '../task-center';
-import { readFileContent, saveGeneratedManagedFile } from '../../services/files/files.service';
+import { readGeneratedManagedFile, saveGeneratedManagedFile } from '../../services/files/files.service';
+import { releaseManagedFiles } from '../../services/files/file-gc.service';
 import { currentUser } from '../context';
 import { getImportDefinition } from './registry';
 import { parseImportWorkbook, type ParsedImportRow } from './parser';
 import { DEFAULT_MAX_ROWS, IMPORT_TASK_TYPE, IMPORT_PREVIEW_TASK_TYPE } from './types';
-import type { ImportColumnMeta } from '@zenith/shared/tasks';
+import { isAsyncTaskTerminal, type ImportColumnMeta } from '@zenith/shared/tasks';
 
 interface FailedRow {
   rowNum: number;
@@ -62,8 +63,8 @@ export function registerImportTaskHandler(): void {
       allowConcurrent: preview,
       maxAttempts: 1,
       async run(ctx) {
-        const { entity, fileId, context, filename } = ctx.payload as {
-          entity?: string; fileId?: string; dryRun?: boolean;
+        const { entity, fileId, context, filename, fieldMapping, duplicateMode } = ctx.payload as {
+          entity?: string; fileId?: string; dryRun?: boolean; fieldMapping?: Record<string, string>; duplicateMode?: 'error' | 'skip';
           context?: Record<string, unknown>; filename?: string | null;
         };
         const dryRun = preview;
@@ -71,9 +72,9 @@ export function registerImportTaskHandler(): void {
         const def = getImportDefinition(entity);
         const parsedContext = def.contextSchema ? def.contextSchema.parse(context ?? {}) as Record<string, unknown> : (context ?? {});
 
-        const stored = await readFileContent(fileId);
+        const stored = await readGeneratedManagedFile(fileId, ctx.tenantId);
         const buffer = await new Response(stored.stream).arrayBuffer();
-        const rows: ParsedImportRow[] = await parseImportWorkbook(buffer, def.columns, def.maxRows ?? DEFAULT_MAX_ROWS, filename);
+        const rows: ParsedImportRow[] = await parseImportWorkbook(buffer, def.columns, def.maxRows ?? DEFAULT_MAX_ROWS, filename, fieldMapping);
         if (rows.length === 0) throw new Error('文件中没有可导入的数据行');
 
         const prepared = await def.prepare(parsedContext);
@@ -84,12 +85,24 @@ export function registerImportTaskHandler(): void {
         let succeeded = Number(ctx.checkpoint?.succeeded ?? 0);
         let failed = Number(ctx.checkpoint?.failed ?? 0);
         const failedRows: FailedRow[] = [];
+        const seenKeys = new Set<string>();
 
         for (let i = processed; i < rows.length; i++) {
           const { rowNum, cells } = rows[i];
           const fallbackLabel = cells[firstKey] || `第 ${rowNum} 行`;
           try {
             const row = await def.parseRow(cells, prepared, rowNum);
+            const duplicateKey = def.duplicateKey?.(row);
+            if (duplicateKey) {
+              if (seenKeys.has(duplicateKey)) {
+                if (duplicateMode === 'skip') {
+                  await ctx.reportItems([{ key: `row-${rowNum}`, label: fallbackLabel.slice(0, 100), status: 'skipped', message: '与文件内前序记录重复，已跳过' }]);
+                  continue;
+                }
+                throw new Error('与文件内前序记录重复');
+              }
+              seenKeys.add(duplicateKey);
+            }
             if (!dryRun) await def.insertRow(row, prepared);
             succeeded += 1;
             await ctx.reportItems([{
@@ -99,8 +112,12 @@ export function registerImportTaskHandler(): void {
               message: dryRun ? '校验通过' : null,
             }]);
           } catch (err) {
-            failed += 1;
             const message = (err instanceof Error ? err.message : `${modeNote}失败`).slice(0, 200);
+            if (duplicateMode === 'skip' && /重复|已存在|已占用|已被占用/u.test(message)) {
+              await ctx.reportItems([{ key: `row-${rowNum}`, label: fallbackLabel.slice(0, 100), status: 'skipped', message: `重复记录，已跳过：${message}` }]);
+              continue;
+            }
+            failed += 1;
             failedRows.push({ rowNum, cells, error: message });
             await ctx.reportItems([{
               key: `row-${rowNum}`,
@@ -137,11 +154,17 @@ export function registerImportTaskHandler(): void {
             mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             tenantId: user.tenantId ?? null,
             createdBy: user.userId,
+            visibility: 'restricted',
           });
           errorFileId = saved.id;
         }
 
         return { total: rows.length, succeeded, failed, dryRun: dryRun ?? false, errorFileId, errorFileName };
+      },
+      settleInTransaction: async (tx, task) => {
+        if (!isAsyncTaskTerminal(task.status)) return;
+        const fileId = typeof task.payload?.fileId === 'string' ? task.payload.fileId : null;
+        if (fileId) await releaseManagedFiles(tx, [fileId]);
       },
     });
   }

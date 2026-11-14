@@ -41,11 +41,12 @@ export function registerUsersImport(): void {
     permission: 'system:user:import',
     description: '批量创建基础账号；组织调整与授权请使用独立管理操作',
     columns: [
-      { key: 'username', header: '用户名', required: true, example: 'zhangsan' },
-      { key: 'nickname', header: '昵称', required: true, example: '张三' },
-      { key: 'email', header: '邮箱', example: 'zhangsan@example.com' },
-      { key: 'password', header: '密码', required: true, note: '按平台密码策略校验，每行独立加密' },
+      { key: 'username', header: '用户名', aliases: ['账号', '登录名'], required: true, example: 'zhangsan' },
+      { key: 'nickname', header: '昵称', aliases: ['姓名', '显示名称'], required: true, example: '张三' },
+      { key: 'email', header: '邮箱', aliases: ['邮箱地址'], example: 'zhangsan@example.com' },
+      { key: 'password', header: '密码', aliases: ['初始密码', '登录密码'], required: true, note: '按平台密码策略校验，每行独立加密' },
     ],
+    duplicateKey: (row) => `username:${row.username}`,
     async prepare() {
       const user = currentUser();
       const [existing, policy] = await Promise.all([

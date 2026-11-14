@@ -63,6 +63,10 @@ export const IMPORT_TASK_TYPE = 'data-import';
 export const IMPORT_PREVIEW_TASK_TYPE = 'data-import-preview';
 export const IMPORT_TASK_TYPES = [IMPORT_TASK_TYPE, IMPORT_PREVIEW_TASK_TYPE] as const;
 
+/** 导入遇到重复业务键时的处理方式；更新不是默认行为，业务定义需显式支持。 */
+export const IMPORT_DUPLICATE_MODES = ['error', 'skip'] as const;
+export type ImportDuplicateMode = (typeof IMPORT_DUPLICATE_MODES)[number];
+
 export type AsyncTaskItemStatus = (typeof ASYNC_TASK_ITEM_STATUSES)[number];
 
 // ─── 演示任务 ────────────────────────────────────────────────────────────────

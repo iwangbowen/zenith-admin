@@ -91,7 +91,8 @@ const uploadRoute = defineContractRoute(fileContract.upload, {
   handler: async (c) => {
     const body = await c.req.parseBody({ all: true });
     const fileValues = Array.isArray(body.file) ? body.file : [body.file];
-    const results = await Promise.all(fileValues.map((f) => uploadManagedFileFromBody(f)));
+    const visibility = body.visibility === 'restricted' ? 'restricted' as const : undefined;
+    const results = await Promise.all(fileValues.map((f) => uploadManagedFileFromBody(f, { visibility })));
     return c.json(okBody(results, `成功上传 ${results.length} 个文件`), 200);
   },
 });

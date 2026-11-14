@@ -147,6 +147,7 @@ const batchDownloadBody = z.object({
 
 const uploadBody = multipart(z.object({
   file: z.unknown().meta({ type: 'array', items: { type: 'string', format: 'binary' }, description: '文件，可多选' }),
+  visibility: z.enum(FILE_VISIBILITIES).optional(),
 }));
 
 const uploadOneBody = multipart(z.object({

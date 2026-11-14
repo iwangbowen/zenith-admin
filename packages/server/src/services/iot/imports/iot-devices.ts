@@ -44,6 +44,7 @@ export function registerIotDevicesImport(): void {
       { key: 'status', header: '状态', enumValues: ['enabled', 'disabled'], example: 'enabled' },
       { key: 'remark', header: '备注' },
     ],
+    duplicateKey: (row) => row.sn,
     async prepare() {
       const user = currentUser();
       const [products, groups, existingSns] = await Promise.all([

@@ -4,7 +4,7 @@ import { IMPORT_PREVIEW_TASK_TYPE, IMPORT_TASK_TYPE } from '@zenith/shared/tasks
 
 const mocks = vi.hoisted(() => ({ register: vi.fn(), insert: vi.fn(), finalize: vi.fn() }));
 vi.mock('../task-center', () => ({ registerTaskHandler: mocks.register }));
-vi.mock('../../services/files/files.service', () => ({ readFileContent: vi.fn(async () => ({ stream: new ReadableStream({ start(controller) { controller.close(); } }) })) }));
+vi.mock('../../services/files/files.service', () => ({ readFileContent: vi.fn(async () => ({ stream: new ReadableStream({ start(controller) { controller.close(); } }) })), readGeneratedManagedFile: vi.fn(async () => ({ stream: new ReadableStream({ start(controller) { controller.close(); } }) })), saveGeneratedManagedFile: vi.fn(async () => ({ id: 'error-file' })) }));
 vi.mock('../context', () => ({ currentUser: vi.fn(() => ({ userId: 1 })) }));
 vi.mock('./parser', () => ({ parseImportWorkbook: vi.fn(async () => [{ rowNum: 2, cells: { title: '正文' } }]) }));
 vi.mock('./registry', () => ({ getImportDefinition: vi.fn(() => ({ columns: [{ key: 'title' }], prepare: async () => ({}), parseRow: (cells: unknown) => cells, insertRow: mocks.insert, finalize: mocks.finalize })) }));

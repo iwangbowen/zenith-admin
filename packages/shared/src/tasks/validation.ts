@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { EXPORT_JOB_FORMATS, EXPORT_JOB_REQUEST_MODES, EXPORT_SCOPES, TASK_DEMO_TYPES } from './constants';
+import { EXPORT_JOB_FORMATS, EXPORT_JOB_REQUEST_MODES, EXPORT_SCOPES, IMPORT_DUPLICATE_MODES, TASK_DEMO_TYPES } from './constants';
 
 export const createExportJobSchema = z.object({
   entity: z.string().min(1, '导出实体不能为空').max(128),
@@ -35,6 +35,9 @@ export const submitImportJobSchema = z.object({
   dryRun: z.boolean().optional(),
   /** 实体上下文参数（如 CMS 内容导入的 siteId/channelId），由实体的 contextSchema 校验 */
   context: z.record(z.string(), z.unknown()).optional(),
+  /** target column key -> uploaded file header; omitted fields use normalized header matching */
+  fieldMapping: z.record(z.string().min(1).max(128), z.string().min(1).max(128)).optional(),
+  duplicateMode: z.enum(IMPORT_DUPLICATE_MODES).default('error'),
 });
 
 export type SubmitImportJobInput = z.infer<typeof submitImportJobSchema>;

@@ -51,6 +51,7 @@ export function registerMembersImport(): void {
       { key: 'status', header: '状态', enumValues: Object.values(MEMBER_STATUS_LABELS), example: '正常' },
       { key: 'remark', header: '备注' },
     ],
+    duplicateKey: (row) => row.phone ? `phone:${row.phone}` : row.email ? `email:${row.email}` : row.username ? `username:${row.username}` : null,
     async prepare() {
       const [levels, existing] = await Promise.all([
         db.select({ id: memberLevels.id, name: memberLevels.name }).from(memberLevels),
