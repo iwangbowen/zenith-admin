@@ -5,10 +5,10 @@ import { useAuth } from '@/hooks/useAuth';
 const ExportConfigPanel = lazy(() => import('./ExportConfigPanel'));
 /** Remains mounted when the toolbar dropdown closes. */
 export default function ExportConfigHost() {
-  const initial = useSyncExternalStore(exportConfigStore.subscribe, exportConfigStore.getSnapshot);
+  const session = useSyncExternalStore(exportConfigStore.subscribe, exportConfigStore.getSnapshot);
   const { pathname } = useLocation();
   const { user } = useAuth();
   useEffect(() => { exportConfigStore.close(); }, [pathname, user?.id]);
   useEffect(() => () => exportConfigStore.close(), []);
-  return initial ? <Suspense fallback={null}><ExportConfigPanel initial={initial} onClose={exportConfigStore.close} /></Suspense> : null;
+  return session ? <Suspense fallback={null}><ExportConfigPanel key={session.id} initial={session.configuration} onClose={exportConfigStore.close} /></Suspense> : null;
 }

@@ -3,6 +3,7 @@ import { createWriteStream } from 'node:fs';
 import { once } from 'node:events';
 import { PassThrough } from 'node:stream';
 import { finished } from 'node:stream/promises';
+import { HTTPException } from 'hono/http-exception';
 import type ExcelJS from 'exceljs';
 import { csvEscapeCell } from '../excel-export';
 import { formatDateTime } from '../datetime';
@@ -168,7 +169,7 @@ async function writeTableSheetStreaming(
   for await (const sourceRow of rows) {
     // 渲染兜底：countRows 不准或恒为 0 的定义在此拦截，防止无界行数
     if (ctx.rowLimit && ctx.rowLimit > 0 && ++written > ctx.rowLimit) {
-      throw new Error(`导出行数超过上限 ${ctx.rowLimit} 行，请收窄筛选条件或分批导出`);
+      throw new HTTPException(400, { message: `导出行数超过上限 ${ctx.rowLimit} 行，请收窄筛选条件或分批导出` });
     }
     const excelRow = sheet.addRow(leaves.map((column) => excelExportCell(column, sourceRow, ctx)));
     rowIndex++;
@@ -265,14 +266,14 @@ export async function renderExportCsv(
   ctx: ExportRuntimeContext,
 ): Promise<Buffer> {
   if (definition.renderMode !== 'table') {
-    throw new Error('该导出包含复杂布局或自定义样式，仅支持 Excel 格式');
+    throw new HTTPException(400, { message: '该导出包含复杂布局或自定义样式，仅支持 Excel 格式' });
   }
   const columns = leafColumns(selectedColumns(await resolveDefinitionColumns(definition, ctx), ctx.selectedColumns));
   const lines = [columns.map((column) => csvEscapeCell(column.header)).join(',')];
   let written = 0;
   for await (const row of rows) {
     if (ctx.rowLimit && ctx.rowLimit > 0 && ++written > ctx.rowLimit) {
-      throw new Error(`导出行数超过上限 ${ctx.rowLimit} 行，请收窄筛选条件或分批导出`);
+      throw new HTTPException(400, { message: `导出行数超过上限 ${ctx.rowLimit} 行，请收窄筛选条件或分批导出` });
     }
     lines.push(columns.map((column) => csvEscapeCell(formatExportCell(column, row, ctx))).join(','));
   }
@@ -295,8 +296,8 @@ export async function renderExportToPath(
   async function* countedRows() {
     await ctx.progress?.(0, total);
     for await (const row of rows) {
-      if (ctx.rowLimit && written >= ctx.rowLimit) throw new Error(`导出行数超过上限 ${ctx.rowLimit} 行，请收窄筛选条件`);
-      if (output.bytesWritten > (ctx.byteLimit ?? 128 * 1024 * 1024)) throw new Error('导出文件超过字节预算，请收窄条件');
+      if (ctx.rowLimit && written >= ctx.rowLimit) throw new HTTPException(400, { message: `导出行数超过上限 ${ctx.rowLimit} 行，请收窄筛选条件` });
+      if (output.bytesWritten > (ctx.byteLimit ?? 128 * 1024 * 1024)) throw new HTTPException(400, { message: '导出文件超过字节预算，请收窄条件' });
       yield row;
       written += 1;
       if (written % 250 === 0) await ctx.progress?.(written, total);
@@ -318,7 +319,7 @@ export async function renderExportToPath(
       await workbook.commit();
     }
     await done;
-    if (output.bytesWritten > (ctx.byteLimit ?? 128 * 1024 * 1024)) throw new Error('导出文件超过字节预算，请收窄条件');
+    if (output.bytesWritten > (ctx.byteLimit ?? 128 * 1024 * 1024)) throw new HTTPException(400, { message: '导出文件超过字节预算，请收窄条件' });
     await ctx.progress?.(written, total);
     return written;
   } catch (error) {

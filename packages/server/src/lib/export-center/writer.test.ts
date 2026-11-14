@@ -125,6 +125,13 @@ describe('导出行数兜底上限（ExportRuntimeContext.rowLimit）', () => {
 
 
 describe('disk-backed snapshot exports', () => {
+  it.each(['csv', 'xlsx'] as const)('treats %s row and byte budget failures as non-retryable input errors', async (format) => {
+    const folder = await mkdtemp(join(tmpdir(), 'export-writer-test-'));
+    try {
+      await expect(renderExportToPath(definition, rowsOf(3), ctx(format, 2), join(folder, 'rows.' + format), 3)).rejects.toMatchObject({ status: 400, message: expect.stringContaining('行数超过上限') });
+      await expect(renderExportToPath(definition, rowsOf(1), { ...ctx(format, 10), byteLimit: 1 }, join(folder, 'bytes.' + format), 1)).rejects.toMatchObject({ status: 400, message: expect.stringContaining('字节预算') });
+    } finally { await rm(folder, { recursive: true, force: true }); }
+  });
   it.each(['csv', 'xlsx'] as const)('writes %s with accurate progress and no full output buffer', async (format) => {
     const folder = await mkdtemp(join(tmpdir(), 'export-writer-test-'));
     try {

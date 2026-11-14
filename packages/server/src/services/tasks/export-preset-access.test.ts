@@ -20,6 +20,11 @@ it('does not list a template when its business export permission was withdrawn',
   state.permissions = [];
   expect(await listExportPresets()).toEqual([]);
 });
+it('does not allow a team template manager to delete another creator private template', async () => {
+  state.permissions.push('system:export-preset:share');
+  state.rows[0].shared = false;
+  await expect(deleteExportPreset(1)).rejects.toMatchObject({ status: 404 });
+});
 it('rejects unauthorized sharing and scheduling before any insert', async () => {
   const input = { name: 'test', entity: 'test', format: 'csv' as const, query: {}, shared: true, cron: null };
   await expect(createExportPreset(input)).rejects.toMatchObject({ status: 403 });

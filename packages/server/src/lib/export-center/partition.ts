@@ -3,6 +3,7 @@ import { stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { pipeline } from 'node:stream/promises';
+import { HTTPException } from 'hono/http-exception';
 import { buildZipStream } from '../zip';
 import { leafColumns, renderExportToPath } from './writer';
 import type { AnyExportDefinition, ExportRuntimeContext } from './types';
@@ -17,14 +18,14 @@ export async function renderPartitionedExport(definition: AnyExportDefinition, r
   let bytes = 0;
   try {
     do {
-      if (parts.length >= 200) throw new Error('分卷数量超过200，请增大每卷行数');
+      if (parts.length >= 200) throw new HTTPException(400, { message: '分卷数量超过200，请增大每卷行数' });
       const name = 'part-' + String(parts.length + 1).padStart(4, '0') + '.' + ctx.format;
       const path = join(folder, name);
       const offset = processed;
       async function* partRows() {
         let count = 0;
         while (!next.done && count < rowsPerPart) {
-          if (ctx.rowLimit && processed >= ctx.rowLimit) throw new Error('导出总行数超过上限，请收窄条件');
+          if (ctx.rowLimit && processed >= ctx.rowLimit) throw new HTTPException(400, { message: '导出总行数超过上限，请收窄条件' });
           const row = next.value;
           processed++; count++;
           yield row;
@@ -37,7 +38,7 @@ export async function renderPartitionedExport(definition: AnyExportDefinition, r
       }, path, Math.min(rowsPerPart, Math.max(0, total - offset)));
       const info = await stat(path);
       bytes += info.size;
-      if (bytes > budget) throw new Error('分卷总大小超过导出字节预算');
+      if (bytes > budget) throw new HTTPException(400, { message: '分卷总大小超过导出字节预算' });
       const digest = createHash('sha256');
       for await (const chunk of createReadStream(path)) digest.update(chunk);
       parts.push({ name, rowCount, bytes: info.size, sha256: digest.digest('hex') });
@@ -52,7 +53,7 @@ export async function renderPartitionedExport(definition: AnyExportDefinition, r
       { name: 'manifest.json', open: async () => createReadStream(manifestPath) },
     ], { onEntry: async () => { await ctx.progress?.(processed, total); } });
     await pipeline(archive, createWriteStream(zipPath, { flags: 'wx' }));
-    if ((await stat(zipPath)).size > budget) throw new Error('分卷压缩包超过导出字节预算');
+    if ((await stat(zipPath)).size > budget) throw new HTTPException(400, { message: '分卷压缩包超过导出字节预算' });
     return { filePath: zipPath, rowCount: processed, manifest };
   } finally { await iterator.return?.(); }
 }

@@ -57,5 +57,7 @@ export function formatExportCell<TRow extends Record<string, unknown>>(
 
 export function excelExportCell<TRow extends Record<string, unknown>>(column: ExportColumn<TRow>, row: TRow, ctx: ExportRuntimeContext): unknown {
   const value = formatExportCell(column, row, ctx);
+  // ExcelJS interprets object values as formulas or hyperlinks; source data stays literal.
+  if (value !== null && typeof value === 'object' && !(value instanceof Date)) return JSON.stringify(value);
   return column.type === 'money' && !column.sensitive && typeof value === 'string' && /^-?\d+\.\d{2}$/u.test(value) ? Number(value) : value;
 }

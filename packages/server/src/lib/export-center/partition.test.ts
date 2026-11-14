@@ -25,6 +25,13 @@ it('partitions one complete result and verifies manifest counts, field order, ha
   } finally { await rm(folder, { recursive: true, force: true }); }
 });
 describe('partition failure budgets', () => {
+  it('rejects a total row budget overflow across partitions without retrying', async () => {
+    const folder = await mkdtemp(join(tmpdir(), 'export-partition-test-'));
+    try {
+      async function* rows() { for (let id = 1; id <= 5; id++) yield { id }; }
+      await expect(renderPartitionedExport(definition, rows(), { ...ctx, rowLimit: 3 }, folder, 2, 5)).rejects.toMatchObject({ status: 400, message: expect.stringContaining('总行数超过上限') });
+    } finally { await rm(folder, { recursive: true, force: true }); }
+  });
   it('propagates cancellation before consuming later partitions', async () => {
     const folder = await mkdtemp(join(tmpdir(), 'export-partition-test-'));
     let consumed = 0;

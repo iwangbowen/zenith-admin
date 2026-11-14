@@ -29,6 +29,14 @@ describe('export security boundaries', () => {
     const text = (await renderExportCsv(definition, [{ name: '=1+1' }], { ...context, format: 'csv' })).toString();
     expect(text).toContain("'=1+1");
   });
+  it('keeps untrusted object values literal instead of interpreting Excel formula or hyperlink objects', async () => {
+    const malicious = [{ name: { formula: '1+1', result: 2 } }, { name: { text: 'click', hyperlink: 'https://untrusted.invalid' } }];
+    const book = new ExcelJS.Workbook();
+    await book.xlsx.load(await renderExportWorkbook(definition, malicious, { ...context, watermark: false }) as never);
+    const values: unknown[] = [];
+    book.worksheets[0].eachRow(row => { if (row.number > 1) values.push(row.getCell(1).value); });
+    expect(values).toEqual(malicious.map(row => JSON.stringify(row.name)));
+  });
   it('masks numeric sensitive identifiers', () => {
     expect(formatExportCell({ key: 'id', header: '编号', sensitive: true }, { id: 123456 }, context)).not.toBe(123456);
     expect(formatExportCell({ key: 'id', header: '编号', sensitive: true }, { id: 123456 }, context)).not.toBe('123456');

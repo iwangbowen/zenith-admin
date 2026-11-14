@@ -45,7 +45,7 @@ export async function createExportPreset(input: z.output<typeof exportPresetInpu
 export async function deleteExportPreset(id: number) {
   const user = currentUser();
   const [row] = await db.select().from(exportPresets).where(and(eq(exportPresets.id, id), exactTenantCondition(exportPresets.tenantId, getCreateTenantId(user)))).limit(1);
-  if (!row || (row.createdBy !== user.userId && !await hasPermission('system:export-preset:share'))) throw new HTTPException(404, { message: '模板不存在或无权管理' });
+  if (!row || (row.createdBy !== user.userId && (!row.shared || !await hasPermission('system:export-preset:share')))) throw new HTTPException(404, { message: '模板不存在或无权管理' });
   await db.delete(exportPresets).where(eq(exportPresets.id, id));
 }
 export async function dispatchExportPresets() {

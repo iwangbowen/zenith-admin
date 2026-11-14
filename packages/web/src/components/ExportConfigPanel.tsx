@@ -8,6 +8,7 @@ import { useExportPreview } from '@/hooks/queries/export-jobs';
 import { useExportJobRunner } from '@/hooks/useExportJobRunner';
 import { useExportPresets, useSaveExportPreset, useDeleteExportPreset } from '@/hooks/queries/export-presets';
 import { usePermission } from '@/hooks/usePermission';
+import { resolveExportPreset } from '@/utils/export-configuration';
 import './export-config-panel.css';
 const CronBuilderPopover = lazy(() => import('@/components/CronBuilderPopover').then(module => ({ default: module.CronBuilderPopover })));
 export interface ExportConfiguration {
@@ -136,7 +137,7 @@ export default function ExportConfigPanel({ initial, onClose }: Readonly<{ initi
       <Collapse.Panel itemKey="presets" header={<span className="export-config-heading"><span>模板与定时导出</span><span className="export-config-summary">{entityPresets.length ? entityPresets.length + ' 个模板' : '可选'}</span></span>}>
         <Space vertical align="start" spacing={12} style={{ width: '100%' }}>
       {entityPresets.map(p => <div key={p.id} className="export-config-preset"><Space wrap>
-        <Button onClick={() => { setColumns(meta.supportsColumns ? (p.columns ?? meta.columns.map(c => c.key)).filter(key => meta.columns.some(c => c.key === key)) : []); setFormat(p.format); }}>{p.shared ? '团队 · ' : ''}{p.name}</Button>
+        <Button onClick={() => { try { const next = resolveExportPreset(p, meta, initial.formats); setColumns(next.columns); setFormat(next.format); setError(null); } catch (e) { setError(e instanceof Error ? e.message : '模板不可用'); } }}>{p.shared ? '团队 · ' : ''}{p.name}</Button>
         {p.canManage && <Button theme="borderless" type="danger" loading={deletePreset.isPending} onClick={() => confirmAndDelete({ title: '删除导出模板', content: p.cron ? '删除后停止后续定时生成，已生成任务仍保留。' : '确认删除此导出模板？', run: () => deletePreset.mutateAsync({ params: { id: p.id } }), successMessage: '模板已删除' })}>删除</Button>}
       </Space><Typography.Text type="tertiary" size="small">{p.cron ? '定时：' + p.cron + '；下次：' + p.nextRunAt : '手动模板'}</Typography.Text>{p.lastError && <Typography.Text type="danger">{p.lastError}</Typography.Text>}</div>)}
       <Input aria-label="模板名称" value={presetName} onChange={setPresetName} placeholder="模板名称" />

@@ -45,7 +45,7 @@
 
 修改 API 字段时同步 Shared 契约、Service、Web hooks、MSW；修改列/范围/格式时检查预检和生成一致。
 修改驱动项同时检查 `export_jobs`、关联 `async_tasks`、`managed_files`、下载日志、托盘与详情深链。
-模板/调度权限沿用现有权限目录，预算设置沿用 `exports` 模块；通知使用 `platform.export.finished`。
+模板/调度权限沿用现有权限目录，团队管理权限不授予他人私有模板的删除能力；应用模板验证当前入口格式与完整字段集合。预算设置沿用 `exports` 模块；通知使用 `platform.export.finished`。
 
 ## 验证清单
 
