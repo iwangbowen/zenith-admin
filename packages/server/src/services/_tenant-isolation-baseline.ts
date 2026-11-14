@@ -152,7 +152,6 @@ export const tenantIsolationBaseline: readonly TenantIsolationBaselineEntry[] = 
   { file: 'services/tasks/async-tasks.service.ts', fn: 'ensureTaskAccessible', table: 'asyncTasks', reason: '任务中心为平台级（任务表无租户列表过滤）：待复核' },
   { file: 'services/tasks/export-jobs.service.ts', fn: 'deleteExportJobFile', table: 'managedFiles', reason: '后台作业 / 系统或公开上下文，无请求租户；id 来自内部记录' },
   { file: 'services/tasks/export-jobs.service.ts', fn: 'runExportJob', table: 'exportJobs', reason: '后台作业 / 系统或公开上下文，无请求租户；id 来自内部记录' },
-  { file: 'services/tasks/import-jobs.service.ts', fn: 'submitImportJob', table: 'managedFiles', reason: '后台作业 / 系统或公开上下文，无请求租户；id 来自内部记录' },
   { file: 'services/wiki/ai-sync.service.ts', fn: 'syncPublishedWikiDocToAiKb', table: 'wikiDocs', reason: '按所属空间校验（父节点 spaceId 比对 / ensureSpaceRole）' },
   { file: 'services/wiki/docs.service.ts', fn: 'ensureParentValid', table: 'wikiDocs', reason: '按所属空间校验（父节点 spaceId 比对 / ensureSpaceRole）' },
   { file: 'services/wiki/governance.service.ts', fn: 'importWikiDocs', table: 'wikiDocs', reason: '按所属空间校验（父节点 spaceId 比对 / ensureSpaceRole）' },

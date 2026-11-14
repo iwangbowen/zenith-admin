@@ -49,6 +49,7 @@ interface UploadVariables {
   formData: FormData;
   onProgress?: (percent: number) => void;
   signal?: AbortSignal;
+  visibility?: 'public' | 'restricted';
 }
 
 /** 多文件上传（进入文件管理列表）；带上传进度，故走 XHR 表单通道而非 api()（H5：带进度回调的上传）。
@@ -56,8 +57,10 @@ interface UploadVariables {
 export function useUploadFile() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ formData, onProgress, signal }: UploadVariables) =>
-      request.postForm<OutputOf<typeof fileContract.upload>>(urlOf(fileContract.upload), formData, { onProgress, signal }).then(unwrap),
+    mutationFn: ({ formData, onProgress, signal, visibility }: UploadVariables) => {
+      if (visibility) formData.append('visibility', visibility);
+      return request.postForm<OutputOf<typeof fileContract.upload>>(urlOf(fileContract.upload), formData, { onProgress, signal }).then(unwrap);
+    },
     onSuccess: () => invalidateAfterFilesAdded(qc),
   });
 }

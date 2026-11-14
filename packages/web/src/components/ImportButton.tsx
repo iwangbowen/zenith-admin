@@ -14,7 +14,7 @@ import { ChevronDown, Upload } from 'lucide-react';
 import { isAsyncTaskTerminal, type AsyncTaskItem } from '@zenith/shared/tasks';
 import AsyncTaskProgress from '@/components/AsyncTaskProgress';
 import { useAsyncTaskItems } from '@/hooks/queries/async-tasks';
-import { downloadImportTemplate, useImportTaskPolling } from '@/hooks/queries/import-jobs';
+import { downloadImportErrorFile, downloadImportTemplate, useConfirmImportJob, useImportTaskPolling } from '@/hooks/queries/import-jobs';
 import { useImportUpload } from '@/hooks/useImportUpload';
 
 const { Text } = Typography;
@@ -37,26 +37,29 @@ interface ImportProgressModalProps {
 
 /** 导入任务进度弹窗：轮询任务 + 行级明细 + 错误行文件下载 */
 export function ImportProgressModal({ taskId, title, onClose, onFinished }: Readonly<ImportProgressModalProps>) {
+  const [activeTaskId, setActiveTaskId] = useState<number | null>(taskId);
   const [itemPage, setItemPage] = useState(1);
   const finishedNotified = useRef(false);
 
-  const taskQuery = useImportTaskPolling(taskId);
+  const confirmMutation = useConfirmImportJob();
+  useEffect(() => setActiveTaskId(taskId), [taskId]);
+  const taskQuery = useImportTaskPolling(activeTaskId);
   const task = taskQuery.data ?? null;
   const isTerminal = task ? isAsyncTaskTerminal(task.status) : false;
-  const itemsQuery = useAsyncTaskItems({ taskId: taskId ?? 0, page: itemPage, pageSize: 8 }, taskId !== null);
+  const itemsQuery = useAsyncTaskItems({ taskId: activeTaskId ?? 0, page: itemPage, pageSize: 8 }, activeTaskId !== null);
 
   // 行级明细跟随任务进度刷新（items 查询本身无轮询）
   const processedCount = task?.processedCount ?? 0;
   const refetchItems = itemsQuery.refetch;
   useEffect(() => {
-    if (taskId !== null) void refetchItems();
-  }, [taskId, processedCount, refetchItems]);
+    if (activeTaskId !== null) void refetchItems();
+  }, [activeTaskId, processedCount, refetchItems]);
 
   // 换任务时重置分页与终态通知标记
   useEffect(() => {
     setItemPage(1);
     finishedNotified.current = false;
-  }, [taskId]);
+  }, [activeTaskId]);
 
   // 终态回调（一次性）：调用方借此刷新业务列表
   useEffect(() => {
@@ -68,11 +71,9 @@ export function ImportProgressModal({ taskId, title, onClose, onFinished }: Read
 
   /** 错误行文件下载（handler 生成，含错误原因列，修正后可回导） */
   async function downloadErrorFile() {
-    const result = task?.result as { errorFileId?: string | null } | null;
+    const result = task?.result as { errorFileId?: string | null; errorFileName?: string | null } | null;
     if (!result?.errorFileId) return;
-    const { getFileAccessUrl } = await import('@/hooks/queries/files');
-    const access = await getFileAccessUrl(result.errorFileId, 'download');
-    globalThis.open(access.url, '_blank');
+    await downloadImportErrorFile(activeTaskId!, String(result.errorFileName ?? '导入错误行.xlsx'));
   }
 
   const itemColumns: ColumnProps<AsyncTaskItem>[] = [
@@ -94,15 +95,16 @@ export function ImportProgressModal({ taskId, title, onClose, onFinished }: Read
   return (
     <Modal
       title={`${title}导入`}
-      visible={taskId !== null}
+      visible={activeTaskId !== null}
       onCancel={onClose}
       footer={<Button type="primary" onClick={onClose}>{isTerminal ? '完成' : '后台运行'}</Button>}
       width={640}
       maskClosable={false}
     >
       {task && (() => {
-        const result = task.result as { errorFileId?: string | null } | null;
+        const result = task.result as { errorFileId?: string | null; errorFileName?: string | null; failed?: number } | null;
         const isDryRun = Boolean((task.payload as { dryRun?: boolean } | null)?.dryRun);
+        const canConfirm = isDryRun && task.status === 'success' && Number(result?.failed ?? 0) === 0;
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingBottom: 8 }}>
             {isDryRun && <Text type="warning" size="small">预检模式：仅校验数据，不写入任何记录。</Text>}
@@ -113,6 +115,7 @@ export function ImportProgressModal({ taskId, title, onClose, onFinished }: Read
                 下载错误行文件（修正后可重新上传）
               </Button>
             )}
+            {canConfirm && <Button type="primary" loading={confirmMutation.isPending} onClick={() => void confirmMutation.mutateAsync({ params: { id: task.id } }).then(next => setActiveTaskId(next.id))}>确认正式导入</Button>}
             <Table
               columns={itemColumns}
               dataSource={itemsQuery.data?.list ?? []}

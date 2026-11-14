@@ -32,6 +32,7 @@ Zenith Admin 是基于 **Hono + React + Drizzle ORM** 的全栈后台管理系�
 | 发送通知 / 新增通知事件 | 发通知、通知用户、订阅提醒、接入通知中心、加通知事件 | [notifications.md](./references/notifications.md)：事件注册、`notify()` 调用、渠道策略 |
 | 异步任务 / 大批量作业 | 批量导入、大数据量处理、后台任务、任务进度、长耗时操作 | [async-tasks.md](./references/async-tasks.md)：任务中心接入与选型对照 |
 | 数据导出 | 列表导出、导出中心、选列、脱敏、分卷、导出模板、定时导出 | [export-center.md](./references/export-center.md)：接入流程与验证；能力说明见[导出中心](../../../docs/backend/export-center.md) |
+| 数据导入 | Excel/CSV 导入、预检、字段映射、重复策略、错误修正与任务重试 | [import-center.md](./references/import-center.md)：接入流程与验证；能力说明见[导入中心](../../../docs/backend/import-center.md) |
 | 业务编号 / 流水号 | 单据编号、编号规则、业务编号接入、自动编号、统一取号 | [numbering.md](./references/numbering.md)：场景注册、规则绑定、事务取号、幂等、发布快照与验收 |
 | 运行时设置 / 系统开关 | 加一个开关、可配置阈值、系统设置项、新增设置模块、读取系统设置 | [settings.md](./references/settings.md)：加字段 / 新模块 / 服务端读取 / 前端读取 / Mock |
 | 发布新版本 | 发布 vX.Y.Z、准备发布、release X.Y.Z | [release.md](./references/release.md) |

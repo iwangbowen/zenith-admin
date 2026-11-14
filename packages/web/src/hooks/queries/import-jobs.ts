@@ -1,5 +1,6 @@
 import { resourceKeyOf } from '@zenith/shared/core';
 import { asyncTaskContract, importJobContract } from '@zenith/shared/tasks';
+import type { InputOf } from '@zenith/shared/core';
 import { contractKey, urlOf, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { request } from '@/utils/request';
 import { asyncTaskKeys } from './async-tasks';
@@ -25,6 +26,18 @@ export function useSubmitImportJob() {
   });
 }
 
+export function useInspectImportJob() {
+  return useApiMutation(importJobContract.inspect);
+}
+
+export function useConfirmImportJob() {
+  return useApiMutation(importJobContract.confirm, {
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: asyncTaskKeys.lists }),
+  });
+}
+
+export type ImportInspectionInput = InputOf<typeof importJobContract.inspect>;
+
 /** 导入任务详情轮询（运行期 1s 一拉，终态停止） */
 export function useImportTaskPolling(taskId: number | null) {
   return useApiQuery(asyncTaskContract.detail, { params: { id: taskId ?? 0 } }, {
@@ -40,4 +53,8 @@ export function useImportTaskPolling(taskId: number | null) {
 /** 下载导入模板（带鉴权的二进制下载） */
 export function downloadImportTemplate(entity: string, title: string) {
   return request.download(urlOf(importJobContract.template, { params: { entity } }), `${title}导入模板.xlsx`);
+}
+
+export function downloadImportErrorFile(taskId: number, filename = '导入错误行.xlsx') {
+  return request.download(urlOf(importJobContract.errorFile, { params: { id: taskId } }), filename);
 }

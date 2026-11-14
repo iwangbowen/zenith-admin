@@ -532,6 +532,9 @@ server 启动时加载全部路由 / 服务模块图，任何模块顶层静态 
   用户已选中且可在正常 HTTP 请求窗口内快速完成的有界表格批量操作可以使用同步 `/batch`；
   **禁止**自建任务表、后台轮询线程或 `setInterval` 驱动的作业。见 [async-tasks.md](./async-tasks.md)
 
+- Excel / CSV 导入必须经 `lib/import-center/` 和 `data-import` / `data-import-preview` 任务类型；文件上传使用 `restricted` 可见性，提交和执行都复验文件租户、实体权限、上下文与字段映射。
+  预检不落库，只有成功且无失败行的预检可以确认正式导入；错误行文件也必须受控下载。重复处理只使用契约声明的 `error` / `skip` 策略，禁止静默覆盖业务记录。
+
 ### Outbox / 兜底扫描的排空
 
 面向外部 I/O（邮件、短信、Webhook、第三方 API）的 outbox 补投与重试扫描，**禁止**「`SELECT id … LIMIT n` 后 `for … await` 逐条处理」：

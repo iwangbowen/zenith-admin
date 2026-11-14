@@ -90,6 +90,7 @@ export function registerImportTaskHandler(): void {
         for (let i = processed; i < rows.length; i++) {
           const { rowNum, cells } = rows[i];
           const fallbackLabel = cells[firstKey] || `第 ${rowNum} 行`;
+          let skipped = false;
           try {
             const row = await def.parseRow(cells, prepared, rowNum);
             const duplicateKey = def.duplicateKey?.(row);
@@ -97,34 +98,36 @@ export function registerImportTaskHandler(): void {
               if (seenKeys.has(duplicateKey)) {
                 if (duplicateMode === 'skip') {
                   await ctx.reportItems([{ key: `row-${rowNum}`, label: fallbackLabel.slice(0, 100), status: 'skipped', message: '与文件内前序记录重复，已跳过' }]);
-                  continue;
+                  skipped = true;
                 }
-                throw new Error('与文件内前序记录重复');
+                if (!skipped) throw new Error('与文件内前序记录重复');
               }
               seenKeys.add(duplicateKey);
             }
-            if (!dryRun) await def.insertRow(row, prepared);
-            succeeded += 1;
-            await ctx.reportItems([{
-              key: `row-${rowNum}`,
-              label: (def.rowLabel?.(row) ?? fallbackLabel).slice(0, 100),
-              status: 'success',
-              message: dryRun ? '校验通过' : null,
-            }]);
+            if (!skipped) {
+              if (!dryRun) await def.insertRow(row, prepared);
+              succeeded += 1;
+              await ctx.reportItems([{
+                key: `row-${rowNum}`,
+                label: (def.rowLabel?.(row) ?? fallbackLabel).slice(0, 100),
+                status: 'success',
+                message: dryRun ? '校验通过' : null,
+              }]);
+            }
           } catch (err) {
             const message = (err instanceof Error ? err.message : `${modeNote}失败`).slice(0, 200);
             if (duplicateMode === 'skip' && /重复|已存在|已占用|已被占用/u.test(message)) {
               await ctx.reportItems([{ key: `row-${rowNum}`, label: fallbackLabel.slice(0, 100), status: 'skipped', message: `重复记录，已跳过：${message}` }]);
-              continue;
+            } else {
+              failed += 1;
+              failedRows.push({ rowNum, cells, error: message });
+              await ctx.reportItems([{
+                key: `row-${rowNum}`,
+                label: fallbackLabel.slice(0, 100),
+                status: 'failed',
+                message,
+              }]);
             }
-            failed += 1;
-            failedRows.push({ rowNum, cells, error: message });
-            await ctx.reportItems([{
-              key: `row-${rowNum}`,
-              label: fallbackLabel.slice(0, 100),
-              status: 'failed',
-              message,
-            }]);
           }
           processed = i + 1;
           if (processed % 10 === 0 || processed === rows.length) {

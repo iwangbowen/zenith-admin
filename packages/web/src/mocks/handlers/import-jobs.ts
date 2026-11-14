@@ -87,6 +87,11 @@ const entities: ImportEntityMeta[] = [
 
 export const importJobsHandlers = [
   mock(importJobContract.entities, ({ ok }) => ok(entities)),
+  mock(importJobContract.inspect, ({ body, ok }) => {
+    const entity = entities.find(item => item.entity === body.entity);
+    const headers = entity?.columns.map(column => column.header) ?? [];
+    return ok({ entity: body.entity, filename: 'demo-import.xlsx', headers, rowCount: 1, sample: [Object.fromEntries(headers.map(header => [header, '示例值']))], suggestedMapping: Object.fromEntries(entity?.columns.map(column => [column.key, column.header]) ?? []) });
+  }),
   mock(importJobContract.submit, ({ body, ok }) => {
     const dryRun = body.dryRun ?? false;
     const title = entities.find((entity) => entity.entity === body.entity)?.title ?? '数据';
@@ -96,5 +101,10 @@ export const importJobsHandlers = [
     });
     task.result = { total: 1, succeeded: 1, failed: 0, dryRun, errorFileId: null, errorFileName: null };
     return ok(task, '任务已完成，可查看处理结果');
+  }),
+  mock(importJobContract.confirm, ({ params, ok }) => {
+    const task = createImmediateMockTask({ taskType: IMPORT_TASK_TYPE, title: '数据导入', module: '导入中心', payload: { previewTaskId: params.id }, allowConcurrent: false });
+    task.result = { total: 1, succeeded: 1, failed: 0, dryRun: false, errorFileId: null, errorFileName: null };
+    return ok(task, '正式导入任务已提交');
   }),
 ];
