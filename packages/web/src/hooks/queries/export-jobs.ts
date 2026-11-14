@@ -68,6 +68,7 @@ export function rerunExportJobBody(record: ExportJob): NonNullable<BodyOf<typeof
     columns: record.columns ?? undefined,
     scope: record.scope,
     rowIds: record.rowIds ?? undefined,
+    splitRows: record.splitRows,
     raw: record.raw,
     watermark: record.watermark,
     executionMode: record.executionMode,
@@ -99,7 +100,7 @@ export function useBatchDeleteExportJobs() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (ids: number[]) => Promise.all(ids.map((id) => api(exportJobContract.remove, { params: { id } }, { silent: true }))),
-    onSuccess: (_data, ids) => {
+    onSettled: (_data, _error, ids) => {
       for (const id of ids) qc.removeQueries({ queryKey: exportJobKeys.downloads(id) });
       void qc.invalidateQueries({ queryKey: exportJobKeys.lists });
     },

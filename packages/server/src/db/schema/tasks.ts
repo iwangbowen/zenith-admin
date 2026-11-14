@@ -36,6 +36,8 @@ export const exportJobs = pgTable('export_jobs', {
   scope: varchar({ length: 16 }).notNull().default('filtered'),
   rowIds: jsonb().$type<Array<string | number>>(),
   requestKey: varchar({ length: 128 }),
+  splitRows: integer().notNull().default(0),
+  manifest: jsonb().$type<Record<string, unknown>>(),
   rowCount: integer(),
   processedRows: integer().notNull().default(0),
   totalRows: integer(),
@@ -230,3 +232,19 @@ export const exportJobDownloads = pgTable('export_job_downloads', {
 export type ExportJobDownloadRow = typeof exportJobDownloads.$inferSelect;
 
 export type NewExportJobDownload = typeof exportJobDownloads.$inferInsert;
+
+export const exportPresets = pgTable('export_presets', {
+  id: idColumn(), name: varchar({ length: 64 }).notNull(), entity: varchar({ length: 128 }).notNull(), format: exportJobFormatEnum().notNull(),
+  columns: jsonb().$type<string[]>(), query: jsonb().$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+  shared: boolean().notNull().default(false), cron: varchar({ length: 100 }), nextRunAt: timestamptz(), leaseUntil: timestamptz(),
+  lastJobId: integer().references(() => exportJobs.id, { onDelete: 'set null' }), lastError: text(),
+  tenantId: tenantIdColumn(), ...auditColumns(), ...timestampColumns(),
+}, t => [index('export_presets_due_idx').on(t.nextRunAt), index('export_presets_owner_idx').on(t.createdBy)]);
+
+/** Admission counters outlive deleted job rows; deleting an export cannot reset its daily quota. */
+export const exportDailyUsage = pgTable('export_daily_usage', {
+  key: varchar({ length: 128 }).primaryKey(),
+  period: varchar({ length: 10 }).notNull(),
+  jobCount: integer().notNull().default(0),
+  ...timestampColumns(),
+}, t => [index('export_daily_usage_period_idx').on(t.period)]);

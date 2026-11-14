@@ -54,3 +54,8 @@ export function formatExportCell<TRow extends Record<string, unknown>>(
   const maskType = typeof column.sensitive === 'string' ? column.sensitive : inferMaskType(column.key ?? '');
   return applyMask(text, maskType, maskType === 'custom' ? { prefixKeep: 1, suffixKeep: 1 } : null);
 }
+
+export function excelExportCell<TRow extends Record<string, unknown>>(column: ExportColumn<TRow>, row: TRow, ctx: ExportRuntimeContext): unknown {
+  const value = formatExportCell(column, row, ctx);
+  return column.type === 'money' && !column.sensitive && typeof value === 'string' && /^-?\d+\.\d{2}$/u.test(value) ? Number(value) : value;
+}

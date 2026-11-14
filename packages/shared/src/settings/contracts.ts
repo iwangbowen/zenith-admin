@@ -103,6 +103,7 @@ const analytics = moduleOps('analytics');
 const identitySecurity = moduleOps('identitySecurity');
 const ui = moduleOps('ui');
 const files = moduleOps('files');
+const exportsPolicy = moduleOps('exports');
 const terminal = moduleOps('terminal');
 const member = moduleOps('member');
 const ai = moduleOps('ai');
@@ -127,6 +128,7 @@ export const settingsContract = defineContract('/api/settings', {
   getIdentitySecurity: identitySecurity.get, updateIdentitySecurity: identitySecurity.update,
   getUi: ui.get, updateUi: ui.update,
   getFiles: files.get, updateFiles: files.update,
+  getExports: exportsPolicy.get, updateExports: exportsPolicy.update,
   getTerminal: terminal.get, updateTerminal: terminal.update,
   getMember: member.get, updateMember: member.update,
   getAi: ai.get, updateAi: ai.update,

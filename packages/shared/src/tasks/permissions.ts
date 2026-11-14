@@ -19,6 +19,8 @@ export const TASKS_PERMISSIONS = definePermissions({
   'system:scheduler:alert': { label: '确认告警', menu: 'SystemScheduler' },
   'system:export-job:list': { label: '查询', menu: 'SystemExportJobs', uiOnly: true },
   'system:export-job:download': { label: '下载文件', menu: 'SystemExportJobs', uiOnly: true },
+  'system:export-preset:share': { label: '管理团队导出模板', menu: 'SystemExportJobs' },
+  'system:export-preset:schedule': { label: '定时导出', menu: 'SystemExportJobs' },
   'system:export-job:manage': { label: '管理全部', menu: 'SystemExportJobs' },
   'system:export-job:tenant-manage': { label: '管理租户', menu: 'SystemExportJobs' },
   'system:export-job:delete': { label: '删除任务', menu: 'SystemExportJobs', uiOnly: true },

@@ -12,6 +12,7 @@ interface ExportJobRunOptions {
   scope?: 'filtered' | 'page' | 'selected';
   rowIds?: Array<string | number>;
   idempotencyKey?: string;
+  splitRows?: number;
   raw?: boolean;
   watermark?: boolean;
   executionMode?: ExportJobRequestMode;
@@ -21,8 +22,8 @@ export function useExportJobRunner() {
   const exportMutation = useApiMutation(exportJobContract.create, { invalidate: (qc) => void qc.invalidateQueries({ queryKey: exportJobKeys.lists }) });
 
   const runExport = async (options: ExportJobRunOptions) => {
-    const { entity, format, query, columns, scope, rowIds, idempotencyKey, raw = false, watermark = true, executionMode = 'auto' } = options;
-    const { job, mode } = await exportMutation.mutateAsync({ body: { entity, format, query, columns, scope, rowIds, idempotencyKey, raw, watermark, executionMode } });
+    const { entity, format, query, columns, scope, rowIds, idempotencyKey, splitRows, raw = false, watermark = true, executionMode = 'auto' } = options;
+    const { job, mode } = await exportMutation.mutateAsync({ body: { entity, format, query, columns, scope, rowIds, idempotencyKey, splitRows, raw, watermark, executionMode } });
     if (job.status === 'success' && job.fileId) {
       await request.download(urlOf(exportJobContract.download, { params: { id: job.id } }), job.filename ?? `${entity}.${format}`);
       Toast.success('已开始下载');

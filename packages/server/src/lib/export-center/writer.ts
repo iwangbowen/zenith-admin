@@ -6,7 +6,7 @@ import { finished } from 'node:stream/promises';
 import type ExcelJS from 'exceljs';
 import { csvEscapeCell } from '../excel-export';
 import { formatDateTime } from '../datetime';
-import { formatExportCell } from './formatter';
+import { formatExportCell, excelExportCell } from './formatter';
 import type { AnyExportDefinition, ExportColumn, ExportRuntimeContext, ExportStyleSet } from './types';
 
 // 惰性加载：exceljs 模块图大（实测 ~2.4s），仅在执行导出任务时加载
@@ -170,9 +170,13 @@ async function writeTableSheetStreaming(
     if (ctx.rowLimit && ctx.rowLimit > 0 && ++written > ctx.rowLimit) {
       throw new Error(`导出行数超过上限 ${ctx.rowLimit} 行，请收窄筛选条件或分批导出`);
     }
-    const excelRow = sheet.addRow(leaves.map((column) => formatExportCell(column, sourceRow, ctx)));
+    const excelRow = sheet.addRow(leaves.map((column) => excelExportCell(column, sourceRow, ctx)));
     rowIndex++;
-    leaves.forEach((_column, index) => applyCellStyle(excelRow.getCell(index + 1), bodyStyles[index]));
+    leaves.forEach((column, index) => {
+      const cell = excelRow.getCell(index + 1);
+      applyCellStyle(cell, bodyStyles[index]);
+      if (column.type === 'money' && typeof cell.value === 'number') cell.numFmt = '#,##0.00';
+    });
     excelRow.commit();
   }
 

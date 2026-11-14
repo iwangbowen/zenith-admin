@@ -9,6 +9,8 @@ import { registerSystemRecurringJob } from '../lib/pg-boss-scheduler';
  * 不要为单张日志表新增独立清理任务。
  */
 export async function registerSystemTasks(): Promise<void> {
+  const { dispatchExportPresets } = await import('../services/tasks/export-presets.service');
+  await registerSystemRecurringJob({ name: 'export-preset-dispatch', title: '定时导出调度', module: '导出中心', cronExpression: '* * * * *', allowManualRun: true, description: '按创建人当前权限生成脱敏导出，结果通过任务通知触达；不发送文件附件。', run: dispatchExportPresets });
   const { dispatchCmsDeploymentRetention } = await import('../services/cms/cms-deployment-retention-tasks');
   await registerSystemRecurringJob({ name: 'cms-deployment-retention', title: 'CMS 部署存储保留治理', module: 'CMS内容管理', cronExpression: '30 3 * * *', allowManualRun: true,
     description: '对启用自动回收的站点（默认启用，可在发布中心「部署容量」按站点关闭）提交存储治理任务，执行时重新保护在线、重要、构建基础及交付引用的代次。', run: dispatchCmsDeploymentRetention });

@@ -33,3 +33,5 @@ export * from './registry';
 export * from './resolve';
 
 export { settingsProjectionContract } from './projections';
+
+export * from './modules/exports';

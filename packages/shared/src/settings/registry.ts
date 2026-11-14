@@ -1,3 +1,4 @@
+import { exportsSettingsModule } from './modules/exports';
 import type * as z from 'zod';
 import { SETTINGS_RESERVED_MODULE_NAMES } from './constants';
 import type { SettingsModuleDef } from './module-def';
@@ -27,6 +28,7 @@ export const SETTINGS_MODULES = {
   identitySecurity: identitySecuritySettingsModule,
   ui: uiSettingsModule,
   files: filesSettingsModule,
+  exports: exportsSettingsModule,
   terminal: terminalSettingsModule,
   member: memberSettingsModule,
   ai: aiSettingsModule,
@@ -54,6 +56,7 @@ export const SETTINGS_MODULE_PATHS = {
   identitySecurity: '/identity-security',
   ui: '/ui',
   files: '/files',
+  exports: '/exports',
   terminal: '/terminal',
   member: '/member',
   ai: '/ai',

@@ -1,6 +1,7 @@
 import { OpenAPIHono } from '@hono/zod-openapi';
 import { previewExport } from '../../lib/export-center/preview';
-import { exportJobContract } from '@zenith/shared/tasks';
+import { exportJobContract, exportPresetContract } from '@zenith/shared/tasks';
+import { listExportPresets, createExportPreset, deleteExportPreset } from '../../services/tasks/export-presets.service';
 import { defineContractRoute } from '../../lib/contract-route';
 import { okBody, validationHook } from '../../lib/openapi-schemas';
 import {
@@ -19,6 +20,11 @@ import { attachmentDisposition } from '../../lib/content-disposition';
 import { mountCrud } from '../_crud';
 
 const exportJobsRoute = new OpenAPIHono({ defaultHook: validationHook });
+exportJobsRoute.openapiRoutes([
+  defineContractRoute(exportPresetContract.listPresets, { handler: async c => c.json(okBody(await listExportPresets()), 200) }),
+  defineContractRoute(exportPresetContract.createPreset, { handler: async c => c.json(okBody(await createExportPreset(c.req.valid('json'))), 200) }),
+  defineContractRoute(exportPresetContract.removePreset, { handler: async c => { await deleteExportPreset(c.req.valid('param').id); return c.json(okBody(null, '已删除'), 200); } }),
+]);
 const previewRoute = defineContractRoute(exportJobContract.preview, {
   handler: async c => c.json(okBody(await previewExport(c.req.valid('json'))), 200),
 });

@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react';
-import { Banner, Button, Checkbox, Radio, RadioGroup, Select, SideSheet, Space, Spin, Typography } from '@douyinfe/semi-ui';
+import { useEffect, useRef, useState } from 'react';
+import { Banner, Button, Checkbox, Input, InputNumber, Radio, RadioGroup, Select, SideSheet, Space, Spin, Toast, Typography } from '@douyinfe/semi-ui';
 import { ArrowDown, ArrowUp } from 'lucide-react';
 import { EXPORT_SCOPE_LABELS, type ExportJobFormat, type ExportJobRequestMode, type ExportPreview, type ExportScope } from '@zenith/shared/tasks';
 import { useExportPreview } from '@/hooks/queries/export-jobs';
 import { useExportJobRunner } from '@/hooks/useExportJobRunner';
+import { useExportPresets, useSaveExportPreset, useDeleteExportPreset } from '@/hooks/queries/export-presets';
+import { usePermission } from '@/hooks/usePermission';
 export interface ExportConfiguration {
   entity: string;
   query: Record<string, unknown>;
@@ -23,7 +25,15 @@ export default function ExportConfigPanel({ initial, onClose }: Readonly<{ initi
   const [watermark, setWatermark] = useState(initial.watermark);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [requestKey] = useState(() => crypto.randomUUID());
+  const requestKeys = useRef(new Map<string, string>());
+  const [presetName, setPresetName] = useState('');
+  const [cron, setCron] = useState('');
+  const [shared, setShared] = useState(false);
+  const [splitRows, setSplitRows] = useState(0);
+  const presets = useExportPresets();
+  const savePreset = useSaveExportPreset();
+  const deletePreset = useDeleteExportPreset();
+  const { hasPermission } = usePermission();
   const preview = useExportPreview();
   const { mutateAsync } = preview;
   const runner = useExportJobRunner();
@@ -31,7 +41,7 @@ export default function ExportConfigPanel({ initial, onClose }: Readonly<{ initi
     let active = true;
     void mutateAsync({ body: { entity: initial.entity, query: initial.query, format: initial.formats[0] ?? 'xlsx', raw: initial.raw, watermark: initial.watermark, executionMode: initial.executionMode } }).then(result => {
       if (!active) return;
-      setMeta(result); setColumns(result.columns.map(c => c.key));
+      setMeta(result); setError(null); setColumns(result.columns.map(c => c.key));
       setFormat(initial.formats.find(f => result.formats.includes(f)) ?? result.formats[0]);
     }).catch(e => { if (active) setError(e instanceof Error ? e.message : '预检失败'); });
     return () => { active = false; };
@@ -47,7 +57,13 @@ export default function ExportConfigPanel({ initial, onClose }: Readonly<{ initi
   };
   const submit = async () => {
     setBusy(true); setError(null);
-    try { await runner.runExport({ entity: initial.entity, query: initial.query, format, scope, rowIds, columns: columns.length ? columns : undefined, raw, watermark, executionMode: initial.executionMode, idempotencyKey: requestKey }); onClose(); }
+    try {
+      const spec = { entity: initial.entity, query: initial.query, format, scope, rowIds, columns: columns.length ? columns : undefined, raw, watermark, splitRows, executionMode: initial.executionMode };
+      const key = JSON.stringify(spec);
+      const requestKey = requestKeys.current.get(key) ?? crypto.randomUUID();
+      requestKeys.current.set(key, requestKey);
+      await runner.runExport({ ...spec, idempotencyKey: requestKey }); onClose();
+    }
     catch (e) { setError(e instanceof Error ? e.message : '导出失败'); }
     finally { setBusy(false); }
   };
@@ -55,6 +71,18 @@ export default function ExportConfigPanel({ initial, onClose }: Readonly<{ initi
     {error && <Banner type="danger" description={error} closeIcon={null} />}
     {!meta ? <Spin tip="正在校验权限和导出规格" /> : <Space vertical align="start" spacing={16} style={{ width: '100%' }}>
       <Typography.Title heading={5}>{meta.title}</Typography.Title>
+      <Typography.Text strong>个人与团队模板</Typography.Text>
+      {(presets.data ?? []).filter(p => p.entity === initial.entity).map(p => <Space key={p.id}>
+        <Button onClick={() => { setColumns(p.columns ?? meta.columns.map(c => c.key)); setFormat(p.format); }}>{p.shared ? '团队 · ' : ''}{p.name}</Button>
+        <Typography.Text type="tertiary">{p.cron ? '定时：' + p.cron + '；下次：' + p.nextRunAt : '手动模板'}</Typography.Text>
+        {p.lastError && <Typography.Text type="danger">{p.lastError}</Typography.Text>}
+        <Button theme="borderless" type="danger" loading={deletePreset.isPending} onClick={() => void deletePreset.mutateAsync({ params: { id: p.id } }).catch(e => setError(e instanceof Error ? e.message : '删除失败'))}>删除</Button>
+      </Space>)}
+      <Input aria-label="模板名称" value={presetName} onChange={setPresetName} placeholder="模板名称" />
+      {hasPermission('system:export-preset:share') && <Checkbox checked={shared} onChange={e => setShared(!!e.target.checked)}>作为本租户团队模板</Checkbox>}
+      {hasPermission('system:export-preset:schedule') && <Input aria-label="定时表达式" value={cron} onChange={setCron} placeholder="可选：例如 0 9 * * 1，每周一9点生成（上海时区）" />}
+      <Typography.Text type="tertiary">模板应用字段与格式，保留本页筛选；定时任务使用保存时的筛选条件，始终脱敏生成并通知创建人。</Typography.Text>
+      <Button loading={savePreset.isPending} disabled={!presetName.trim() || (meta.columns.length > 0 && !columns.length)} onClick={() => void savePreset.mutateAsync({ body: { name: presetName, entity: initial.entity, format, columns: columns.length ? columns : undefined, query: initial.query, shared, cron: cron.trim() || null } }).then(() => { Toast.success('模板已保存；定时结果通过导出通知查看'); setPresetName(''); }).catch(e => setError(e instanceof Error ? e.message : '保存失败'))}>保存模板/定时导出</Button>
       <Typography.Text strong>数据范围</Typography.Text>
       <RadioGroup value={scope} direction="vertical" onChange={e => setScope(e.target.value as ExportScope)}>
         <Radio value="filtered">{EXPORT_SCOPE_LABELS.filtered}</Radio>
@@ -65,6 +93,10 @@ export default function ExportConfigPanel({ initial, onClose }: Readonly<{ initi
       <Typography.Paragraph style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{Object.keys(initial.query).length ? JSON.stringify(initial.query, null, 2) : '未设置额外筛选条件'}</Typography.Paragraph>
       <Typography.Text strong>文件格式</Typography.Text>
       <Select aria-label="导出格式" value={format} onChange={v => setFormat(v as ExportJobFormat)} optionList={meta.formats.filter(f => initial.formats.includes(f)).map(f => ({ value: f, label: f.toUpperCase() }))} style={{ width: 180 }} />
+      {meta.supportsRowScope && (format === 'csv' || format === 'xlsx') && <Space>
+        <Typography.Text>每卷行数（0 为单文件，分卷生成 ZIP + 校验清单）</Typography.Text>
+        <InputNumber aria-label="每卷行数" min={0} max={50000} step={1000} value={splitRows} onChange={value => setSplitRows(typeof value === 'number' ? value : 0)} />
+      </Space>}
       {meta.columns.length > 0 && <>
         <Space><Typography.Text strong>字段与顺序（{columns.length}/{meta.columns.length}）</Typography.Text><Button theme="borderless" onClick={() => setColumns(meta.columns.map(c => c.key))}>恢复默认</Button><Button theme="borderless" onClick={() => setColumns([])}>清空</Button></Space>
         {meta.columns.filter(c => !columns.includes(c.key)).map(c => <Checkbox key={c.key} checked={false} onChange={() => setColumns(old => [...old, c.key])}>{c.header}{c.sensitive ? ' · 敏感' : ''}</Checkbox>)}

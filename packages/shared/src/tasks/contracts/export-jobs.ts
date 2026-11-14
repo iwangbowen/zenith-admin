@@ -79,6 +79,8 @@ export const exportJobSchema = z.object({
   columns: z.array(z.string()).nullable(),
   scope: z.enum(EXPORT_SCOPES).optional(),
   rowIds: z.array(z.union([z.number(), z.string()])).nullable().optional(),
+  splitRows: z.int().optional(),
+  manifest: z.record(z.string(), z.unknown()).nullable().optional(),
   rowCount: z.int().nullable(),
   processedRows: z.int(),
   totalRows: z.int().nullable(),

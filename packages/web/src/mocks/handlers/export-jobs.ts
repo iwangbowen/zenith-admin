@@ -1,5 +1,5 @@
 import type { QueryOf } from '@zenith/shared/core';
-import { exportJobContract } from '@zenith/shared/tasks';
+import { exportJobContract, exportPresetContract, type ExportPreset } from '@zenith/shared/tasks';
 import { CMS_STAT_METRIC_LABELS, CMS_STAT_REPORT_VERSION, cmsStatExportQuerySchema, isCmsStatMetricAvailable, type CmsStatReportRow } from '@zenith/shared/cms';
 import { getMockCmsStatsReportRows } from './cms-stats';
 import { mockTableFile } from '../utils/export-table';
@@ -356,7 +356,19 @@ async function makeDownloadResponse(job: ExportJob) {
   });
 }
 
+const presets: ExportPreset[] = [];
 export const exportJobsHandlers = [
+  mock(exportPresetContract.listPresets, ({ ok }) => ok(presets)),
+  mock(exportPresetContract.createPreset, ({ body, ok }) => {
+    const row: ExportPreset = { ...body, id: presets.length + 1, createdBy: 1, createdAt: mockDateTime(), nextRunAt: body.cron ? mockDateTimeOffset(86400000) : null, lastJobId: null, lastError: null };
+    presets.push(row);
+    return ok(row);
+  }),
+  mock(exportPresetContract.removePreset, ({ params, ok }) => {
+    const index = presets.findIndex(p => p.id === params.id);
+    if (index >= 0) presets.splice(index, 1);
+    return ok(null);
+  }),
   mock(exportJobContract.preview, ({ body, ok }) => {
     const entity = entities.find(item => item.entity === body.entity);
     if (!entity) return notFound('该实体尚未配置 Demo 导出', { status: 404 });

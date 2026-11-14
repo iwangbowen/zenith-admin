@@ -8,6 +8,7 @@ export const createExportJobSchema = z.object({
   scope: z.enum(EXPORT_SCOPES).default('filtered'),
   rowIds: z.array(z.union([z.int().positive(), z.string().min(1).max(128)])).max(50000).optional(),
   idempotencyKey: z.string().min(8).max(128).optional(),
+  splitRows: z.int().min(0).max(50000).default(0),
   columns: z.array(z.string().min(1).max(128)).min(1).max(512).optional(),
   raw: z.boolean().default(false),
   watermark: z.boolean().default(true),

@@ -28,6 +28,7 @@ export default function ExportJobDetails({ id, onClose }: Readonly<{ id: number;
       {task && <AsyncTaskProgress task={task} />}
       <Typography.Text strong>SHA256</Typography.Text><Typography.Paragraph copyable style={{ wordBreak: 'break-all' }}>{job.sha256 ?? '尚未生成校验和'}</Typography.Paragraph>
       <Typography.Text strong>查询规格</Typography.Text><Typography.Paragraph style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{JSON.stringify(job.query, null, 2)}</Typography.Paragraph>
+      {job.manifest && <><Typography.Text strong>分卷清单</Typography.Text><Typography.Paragraph style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{JSON.stringify(job.manifest, null, 2)}</Typography.Paragraph></>}
       {job.errorMessage && <Typography.Paragraph type="danger" style={{ whiteSpace: 'pre-wrap' }}>{job.errorMessage}</Typography.Paragraph>}
     </Space>}
   </SideSheet>;
