@@ -302,6 +302,7 @@ export async function renderExportToPath(
     await ctx.progress?.(0, total);
     for await (const row of rows) {
       if (ctx.rowLimit && written >= ctx.rowLimit) throw new Error(`导出行数超过上限 ${ctx.rowLimit} 行，请收窄筛选条件`);
+      if (output.bytesWritten > (ctx.byteLimit ?? 128 * 1024 * 1024)) throw new Error('导出文件超过字节预算，请收窄条件');
       yield row;
       written += 1;
       if (written % 250 === 0) await ctx.progress?.(written, total);
@@ -323,6 +324,7 @@ export async function renderExportToPath(
       await workbook.commit();
     }
     await done;
+    if (output.bytesWritten > (ctx.byteLimit ?? 128 * 1024 * 1024)) throw new Error('导出文件超过字节预算，请收窄条件');
     await ctx.progress?.(written, total);
     return written;
   } catch (error) {

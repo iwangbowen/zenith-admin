@@ -118,6 +118,7 @@ export interface ExportRuntimeContext<TQuery extends Record<string, unknown> = R
   rowLimit?: number | null;
   /** Persist progress and stop promptly when the owning export job was cancelled. */
   progress?: (processed: number, total: number | null) => Promise<void>;
+  byteLimit?: number;
 }
 
 export interface ExportRenderedFile {

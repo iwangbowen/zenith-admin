@@ -24,4 +24,3 @@ describe('export security boundaries', () => {
     expect(formatExportCell({ key: 'id', header: '编号', sensitive: true }, { id: 123456 }, context)).not.toBe('123456');
   });
 });
-

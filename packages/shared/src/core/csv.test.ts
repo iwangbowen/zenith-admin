@@ -10,4 +10,3 @@ describe('spreadsheet CSV values', () => {
     expect(csvCell(null)).toBe('');
   });
 });
-

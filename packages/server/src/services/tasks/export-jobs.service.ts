@@ -1,3 +1,5 @@
+import { createReadStream } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
 import { buildListResult } from '../../lib/list-query';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -9,20 +11,23 @@ import type { QueryOutputOf } from '@zenith/shared/core';
 import { exportJobContract } from '@zenith/shared/tasks';
 import type { JobStuckItem } from '@zenith/shared/platform';
 import { db } from '../../db';
-import { exportJobDownloads, exportJobs, fileStorageConfigs, managedFiles, users } from '../../db/schema';
+import { exportJobDownloads, exportJobs, asyncTasks, managedFiles, users } from '../../db/schema';
 import { pageOffset } from '../../lib/pagination';
 import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
 import { formatDateTime, formatFileTimestamp, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { currentUser, runWithCurrentUser } from '../../lib/context';
 import { getUserPermissions, isSuperAdmin } from '../../lib/permissions';
 import { exactTenantCondition, getCreateTenantId } from '../../lib/tenant';
-import { getRestrictedFileForRead, saveGeneratedManagedFile } from '../files/files.service';
-import { deleteStoredFile, readStoredFile } from '../../lib/file-storage';
+import { getRestrictedFileForRead, saveGeneratedManagedFile, deleteGeneratedManagedFile } from '../files/files.service';
+import { readStoredFile } from '../../lib/file-storage';
 import { getExportDefinition, listExportDefinitions } from '../../lib/export-center/registry';
-import { leafColumns, renderExportCsv, renderExportWorkbook, renderExportToPath } from '../../lib/export-center/writer';
+import { leafColumns, renderExportWorkbook, renderExportToPath } from '../../lib/export-center/writer';
 import type { AnyExportDefinition, ExportExecutionMode, ExportFormat, ExportRequestMode, ExportRuntimeContext } from '../../lib/export-center/types';
 import { DEFAULT_EXPORT_EXECUTION, DEFAULT_EXPORT_RETENTION } from '../../lib/export-center/types';
-import { registerSystemQueueWorker, sendSystemJob } from '../../lib/pg-boss-scheduler';
+import { persistAsyncTask, runAsyncTask, requestCancelAsyncTask, restartAsyncTask, registerTaskHandler, TaskCancelledError, TaskNonRetryableError, type TaskRunContext } from '../../lib/task-center';
+import { retainManagedFiles, releaseManagedFiles } from '../files/file-gc.service';
+import { rememberTransactionEffect, flushTransactionEffects } from '../../lib/transaction-effects';
+import type { DbTransaction } from '../../db/types';
 import { runAsUser } from '../../lib/audit-context';
 import { getExportMaskRuleMap } from '../platform/data-mask.service';
 import { notify } from '../messaging/notification-outbox.service';
@@ -30,7 +35,7 @@ import logger from '../../lib/logger';
 import type { JwtPayload } from '../../middleware/auth';
 import type { JobSourceRawSummary } from '../../lib/job-monitor/registry';
 
-export const EXPORT_JOB_QUEUE = 'export-jobs';
+export const EXPORT_TASK_TYPE = 'data-export';
 export const EXPORT_JOB_STUCK_MS = 30 * 60_000;
 
 export function stuckExportJobCondition(asOf = new Date()) {
@@ -50,7 +55,7 @@ export async function getExportJobHealth(): Promise<JobSourceRawSummary> {
     succeeded24h: sql<number>`count(*) filter (where ${exportJobs.status} = 'success' and ${exportJobs.completedAt} >= ${sql.param(since, exportJobs.createdAt)})::int`,
     failed1h: sql<number>`count(*) filter (where ${exportJobs.status} = 'failed' and ${exportJobs.completedAt} >= ${sql.param(hour, exportJobs.createdAt)})::int`,
     oldestPendingAgeSec: sql<number | null>`floor(extract(epoch from (${sql.param(now, exportJobs.createdAt)}::timestamptz - min(${exportJobs.createdAt}) filter (where ${exportJobs.status} = 'pending'))))::int`,
-  }).from(exportJobs).where(or(inArray(exportJobs.status, ['pending', 'running']), and(inArray(exportJobs.status, ['success', 'failed']), gte(exportJobs.completedAt, since))));
+  }).from(exportJobs).where(or(eq(exportJobs.status, 'pending'), and(inArray(exportJobs.status, ['success', 'failed']), gte(exportJobs.completedAt, since))));
   return {
     counts: { pending: row?.pending ?? 0, running: row?.running ?? 0, stuck: row?.stuck ?? 0, dead: null, failed24h: row?.failed24h ?? 0, succeeded24h: row?.succeeded24h ?? 0 },
     oldestPendingAgeSec: row?.oldestPendingAgeSec ?? null,
@@ -159,6 +164,10 @@ function mapExportJob(row: typeof exportJobs.$inferSelect & { createdByUser?: { 
     format: row.format,
     status: row.status,
     executionMode: row.executionMode,
+    taskId: row.taskId,
+    cancelRequested: row.cancelRequested,
+    stage: row.stage,
+    sha256: row.sha256,
     query: row.query ?? {},
     columns: row.columns ?? null,
     rowCount: row.rowCount ?? null,
@@ -217,7 +226,7 @@ async function getCreatorPayload(row: typeof exportJobs.$inferSelect): Promise<J
 class ExportCancelledError extends Error {}
 
 function runningAttempt(row: typeof exportJobs.$inferSelect) {
-  return buildWhere(eq(exportJobs.id, row.id), eq(exportJobs.status, 'running'), row.startedAt ? eq(exportJobs.startedAt, row.startedAt) : undefined);
+  return buildWhere(eq(exportJobs.id, row.id), eq(exportJobs.status, 'running'), eq(exportJobs.cancelRequested, false), row.executionToken ? eq(exportJobs.executionToken, row.executionToken) : undefined);
 }
 
 async function updateExportProgress(row: typeof exportJobs.$inferSelect, processedRows: number, totalRows: number | null) {
@@ -228,7 +237,7 @@ async function updateExportProgress(row: typeof exportJobs.$inferSelect, process
 type RenderedJobFile = { mimeType: string; filename: string; rowCount?: number | null; cleanup?: () => Promise<void> }
   & ({ buffer: Buffer; filePath?: never } | { buffer?: never; filePath: string });
 
-async function renderJobFile(row: typeof exportJobs.$inferSelect, definition: AnyExportDefinition): Promise<RenderedJobFile> {
+async function renderJobFile(row: typeof exportJobs.$inferSelect, definition: AnyExportDefinition, task?: TaskRunContext): Promise<RenderedJobFile> {
   const creator = await getCreatorPayload(row);
   const filename = row.filename ?? buildFilename(definition, row.id, row.format);
   // 脱敏导出：预加载数据脱敏中心规则，敏感列渲染时统一打码
@@ -249,7 +258,10 @@ async function renderJobFile(row: typeof exportJobs.$inferSelect, definition: An
     exportedAt: new Date(),
     maskRules,
     rowLimit: normalizeExecution(definition).maxRows,
-    progress: (processed, total) => updateExportProgress(row, processed, total),
+    progress: async (processed, total) => {
+      if (task && (await task.progress({ processed, total, note: `导出 ${processed}/${total ?? '?'} 行` })).cancelRequested) throw new TaskCancelledError('导出已请求取消');
+      await updateExportProgress(row, processed, total);
+    },
   };
   return runWithCurrentUser(creator, async () => {
     await assertExportPermission(definition, row.raw, creator);
@@ -268,7 +280,9 @@ async function renderJobFile(row: typeof exportJobs.$inferSelect, definition: An
       } catch (error) { await cleanup(); throw error; }
     }
     if (definition.renderFile) {
+      await ctx.progress?.(0, row.rowCount);
       const rendered = await definition.renderFile(ctx);
+      await ctx.progress?.(rendered.rowCount ?? row.rowCount ?? 0, rendered.rowCount ?? row.rowCount);
       return {
         buffer: rendered.buffer,
         mimeType: rendered.mimeType,
@@ -277,20 +291,23 @@ async function renderJobFile(row: typeof exportJobs.$inferSelect, definition: An
       };
     }
     const rows = await definition.streamRows(row.query as Record<string, unknown>, creator, ctx);
-    if (row.format === 'csv') {
-      return { buffer: await renderExportCsv(definition, rows, ctx), mimeType: 'text/csv; charset=utf-8', filename };
+    if ((definition.renderMode ?? 'table') === 'table') {
+      const folder = await mkdtemp(join(tmpdir(), 'zenith-export-'));
+      const filePath = join(folder, `report.${row.format}`);
+      const cleanup = () => rm(folder, { recursive: true, force: true });
+      try {
+        async function* stream() { yield* rows; }
+        const rowCount = await renderExportToPath(definition, stream(), ctx, filePath, row.rowCount ?? 0);
+        return { filePath, filename, rowCount, cleanup, mimeType: row.format === 'csv' ? 'text/csv; charset=utf-8' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
+      } catch (error) { await cleanup(); throw error; }
     }
-    return {
-      buffer: await renderExportWorkbook(definition, rows, ctx),
-      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      filename,
-    };
+    return { buffer: await renderExportWorkbook(definition, rows, ctx), mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', filename };
   });
 }
 
 async function executeExportJob(row: typeof exportJobs.$inferSelect, definition: AnyExportDefinition) {
   const startedAt = new Date();
-  const [claimed] = await db.update(exportJobs).set({ status: 'running', startedAt, errorMessage: null, processedRows: 0, totalRows: null })
+  const [claimed] = await db.update(exportJobs).set({ status: 'running', stage: 'rendering', executionToken: randomUUID(), startedAt, errorMessage: null, processedRows: 0, totalRows: null })
     .where(buildWhere(eq(exportJobs.id, row.id), inArray(exportJobs.status, ['pending', 'running']))).returning();
   if (!claimed) return requireRow(await db.query.exportJobs.findFirst({ where: eq(exportJobs.id, row.id) }), '导出任务不存在');
   row = claimed;
@@ -318,14 +335,15 @@ async function executeExportJob(row: typeof exportJobs.$inferSelect, definition:
         filename: rendered!.filename,
         fileSize: savedFile.size,
         completedAt,
-        expiresAt: row.expiresAt ?? calculateExpiresAt(definition, row.raw, row.sensitive),
+        expiresAt: calculateExpiresAt(definition, row.raw, row.sensitive),
+        stage: 'completed',
         // 渲染阶段回读到的真实写入行数（legacy 导出的 countRows 恒为 0，此处回写修正「进度」列）
         ...(rendered!.rowCount !== undefined ? { rowCount: rendered!.rowCount } : {}),
       })
       .where(runningAttempt(row))
       .returning();
       if (!result) throw new ExportCancelledError('导出任务已取消或已被新的执行替换');
-      await tx.update(managedFiles).set({ gcState: 'live', orphanedAt: null, refCount: 1 }).where(eq(managedFiles.id, savedFile.id));
+      await retainManagedFiles(tx, [savedFile.id]);
       return result;
     });
     savedFileId = undefined;
@@ -428,59 +446,90 @@ export async function createExportJob(input: CreateExportJobInput) {
   }
   const executionMode = resolveExecutionMode(input.executionMode, rowCount ?? 0, sensitive, raw, definition);
   const filename = buildFilename(definition, 0, format);
-  const [job] = await runAsUser(user.userId, () =>
-    db.insert(exportJobs).values({
-      entity: definition.entity,
-      moduleName: definition.moduleName,
-      format,
-      status: executionMode === 'sync' ? 'running' : 'pending',
-      executionMode,
-      query,
-      columns: selectedColumns,
-      rowCount,
-      filename,
-      raw,
-      masked: !raw,
-      sensitive,
-      watermark: input.watermark ?? true,
-      expiresAt: calculateExpiresAt(definition, raw, sensitive),
-      tenantId: getCreateTenantId(user),
-    }).returning(),
-  );
-  const realFilename = buildFilename(definition, job.id, format);
-  const [renamed] = await db.update(exportJobs).set({ filename: realFilename }).where(eq(exportJobs.id, job.id)).returning();
-  if (executionMode === 'sync') {
-    const updated = await executeExportJob(renamed, definition);
-    return { mode: executionMode, job: mapExportJob(updated) };
-  }
-  await enqueueExportJob(job.id);
+  if (definition.renderMode === 'layout') throw new HTTPException(400, { message: '暂不支持 layout 导出，请使用自定义渲染器' });
+  let committed: DbTransaction | undefined;
+  const renamed = await runAsUser(user.userId, () => db.transaction(async tx => {
+    const [job] = await tx.insert(exportJobs).values({
+      entity: definition.entity, moduleName: definition.moduleName, format, status: 'pending', executionMode,
+      query, columns: selectedColumns, rowCount, filename, raw, masked: !raw, sensitive,
+      watermark: input.watermark ?? true, expiresAt: null, tenantId: getCreateTenantId(user),
+    }).returning();
+    let taskId: number | null = null;
+    if (executionMode === 'async') {
+      const task = await persistAsyncTask(tx, { taskType: EXPORT_TASK_TYPE, title: `${definition.moduleName} · ${format.toUpperCase()} 导出`, payload: { jobId: job.id }, idempotencyKey: `export:${job.id}`, tenantId: job.tenantId });
+      taskId = task.id;
+    }
+    const [result] = await tx.update(exportJobs).set({ filename: buildFilename(definition, job.id, format), taskId }).where(eq(exportJobs.id, job.id)).returning();
+    committed = tx;
+    return result;
+  }));
+  await flushTransactionEffects(committed!);
+  if (executionMode === 'sync') return { mode: executionMode, job: mapExportJob(await executeExportJob(renamed, definition)) };
+  // Commit hints are best effort; the task center rescans durable pending tasks.
   return { mode: executionMode, job: mapExportJob(renamed) };
 }
 
-async function enqueueExportJob(jobId: number) {
-  await sendSystemJob(EXPORT_JOB_QUEUE, { jobId }, { retryLimit: 1 });
-}
-
 export async function runExportJob(jobId: number) {
-  const [job] = await db.select().from(exportJobs).where(eq(exportJobs.id, jobId)).limit(1);
-  requireRow(job, '导出任务不存在');
-  if (job.status !== 'pending' && job.status !== 'running') return;
-  const definition = getExportDefinition(job.entity);
-  await executeExportJob(job, definition);
+  const job = requireRow(await db.query.exportJobs.findFirst({ where: eq(exportJobs.id, jobId) }), '导出任务不存在');
+  if (job.taskId) return runAsyncTask(job.taskId);
 }
 
-export async function registerExportJobWorker() {
-  await registerSystemQueueWorker<{ jobId: number }>({
-    name: EXPORT_JOB_QUEUE,
-    title: '导出任务执行 Worker',
-    module: '导出中心',
-    description: '消费异步导出任务队列，生成 Excel/CSV 文件并更新导出中心任务状态。',
-    handler: async ({ jobId }) => {
-      await runExportJob(jobId);
-      return `导出任务 ${jobId} 执行完成`;
-    },
-    queueOptions: { retentionSeconds: 60 * 60 * 24 * 7 },
+export function registerExportJobWorker() {
+  registerTaskHandler({
+    taskType: EXPORT_TASK_TYPE, title: '数据导出', module: '导出中心', allowConcurrent: false, maxAttempts: 3, retryDelayMs: 5000, retentionDays: 180,
+    settleInTransaction: settleExportTask, run: runExportTask,
   });
+}
+
+export async function settleExportTask(tx: DbTransaction, task: typeof asyncTasks.$inferSelect) {
+  const [job] = await tx.select().from(exportJobs).where(eq(exportJobs.taskId, task.id)).for('update').limit(1);
+  if (!job || job.status === 'expired') return;
+  if (task.status === 'success') {
+    if (job.status === 'success') return;
+    const result = task.result;
+    if (!result || typeof result.fileId !== 'string') throw new Error('导出任务缺少有效产物');
+    await retainManagedFiles(tx, [result.fileId]);
+    await tx.update(exportJobs).set({ status: 'success', stage: 'completed', cancelRequested: false, fileId: result.fileId, filename: String(result.filename), fileSize: Number(result.fileSize), sha256: String(result.sha256), rowCount: Number(result.rowCount), processedRows: Number(result.rowCount), totalRows: Number(result.rowCount), completedAt: task.completedAt, expiresAt: calculateExpiresAt(getExportDefinition(job.entity), job.raw, job.sensitive) }).where(eq(exportJobs.id, job.id));
+    rememberTransactionEffect(tx, `export-notify:${job.id}`, () => notifyExportFinished(job, '已完成', '，文件已生成'));
+    return;
+  }
+  if (task.status === 'failed' || task.status === 'cancelled') {
+    if (task.status === 'pending' && job.fileId) {
+    await releaseManagedFiles(tx, [job.fileId]);
+    await tx.update(exportJobs).set({ fileId: null, filename: buildFilename(getExportDefinition(job.entity), job.id, job.format), fileSize: null, sha256: null, expiresAt: null, fileDeletedAt: null, deleteReason: null }).where(eq(exportJobs.id, job.id));
+  }
+  await tx.update(exportJobs).set({ status: task.status, stage: task.status, cancelRequested: task.cancelRequested, errorMessage: task.errorMessage, completedAt: task.completedAt }).where(eq(exportJobs.id, job.id));
+    rememberTransactionEffect(tx, `export-notify:${job.id}`, () => notifyExportFinished(job, task.status === 'failed' ? '失败' : '已取消', task.errorMessage ?? ''));
+    return;
+  }
+  if (task.status === 'pending' && job.fileId) {
+    await releaseManagedFiles(tx, [job.fileId]);
+    await tx.update(exportJobs).set({ fileId: null, filename: buildFilename(getExportDefinition(job.entity), job.id, job.format), fileSize: null, sha256: null, expiresAt: null, fileDeletedAt: null, deleteReason: null }).where(eq(exportJobs.id, job.id));
+  }
+  await tx.update(exportJobs).set({ status: task.status, stage: task.cancelRequested ? 'cancelling' : task.status === 'running' ? 'rendering' : 'pending', cancelRequested: task.cancelRequested, executionToken: task.dispatchToken, startedAt: task.startedAt, errorMessage: task.errorMessage, completedAt: null }).where(eq(exportJobs.id, job.id));
+}
+
+async function runExportTask(task: TaskRunContext): Promise<Record<string, unknown>> {
+  const job = await db.query.exportJobs.findFirst({ where: eq(exportJobs.taskId, task.taskId) });
+  if (!job) throw new TaskCancelledError('导出任务已删除');
+  const definition = getExportDefinition(job.entity);
+  let rendered: RenderedJobFile | undefined;
+  try {
+    rendered = await renderJobFile(job, definition, task);
+    if (await task.isCancelRequested()) throw new TaskCancelledError('导出已取消');
+    const hash = createHash('sha256');
+    if (rendered.filePath) for await (const chunk of createReadStream(rendered.filePath)) hash.update(chunk);
+    else hash.update(rendered.buffer!);
+    await task.progress({ note: '正在上传导出文件' });
+    await task.transaction(async tx => { await tx.update(exportJobs).set({ stage: 'uploading' }).where(runningAttempt(job)); });
+    const file = await saveGeneratedManagedFile({ ...(rendered.filePath ? { filePath: rendered.filePath } : { buffer: rendered.buffer! }), filename: rendered.filename, mimeType: rendered.mimeType, tenantId: job.tenantId, createdBy: job.createdBy!, visibility: 'restricted' });
+    if (await task.isCancelRequested()) throw new TaskCancelledError('上传完成前任务已取消，产物将自动回收');
+    return { fileId: file.id, filename: file.originalName, fileSize: file.size, sha256: hash.digest('hex'), rowCount: rendered.rowCount ?? job.rowCount ?? 0 };
+  } catch (error) {
+    if (error instanceof ExportCancelledError) throw new TaskCancelledError(error.message);
+    if (error instanceof HTTPException && error.status < 500) throw new TaskNonRetryableError(error.message, { cause: error });
+    throw error;
+  } finally { await rendered?.cleanup?.(); }
 }
 
 async function visibleJobWhere(user: JwtPayload): Promise<SQL | undefined> {
@@ -580,36 +629,31 @@ export async function listExportJobDownloads(jobId: number) {
 }
 
 export async function cancelExportJob(id: number) {
-  const user = currentUser();
-  const visibleWhere = await visibleJobWhere(user);
-  const where = visibleWhere ? and(eq(exportJobs.id, id), visibleWhere, inArray(exportJobs.status, ['pending', 'running'])) : and(eq(exportJobs.id, id), inArray(exportJobs.status, ['pending', 'running']));
-  const [job] = await db.update(exportJobs).set({ status: 'cancelled', completedAt: new Date() }).where(where).returning();
-  return mapExportJob(requireRow(job, '可取消的导出任务不存在'));
+  const job = await getExportJob(id);
+  if (job.taskId) { await requestCancelAsyncTask(job.taskId); return getExportJob(id); }
+  const [updated] = await db.update(exportJobs).set({ status: 'cancelled', stage: 'cancelled', cancelRequested: true, completedAt: new Date() }).where(buildWhere(eq(exportJobs.id, id), inArray(exportJobs.status, ['pending', 'running']))).returning();
+  return mapExportJob(requireRow(updated, '可取消的导出任务不存在'));
 }
 
 export async function retryExportJob(id: number) {
-  const user = currentUser();
-  const visibleWhere = await visibleJobWhere(user);
-  const where = visibleWhere ? and(eq(exportJobs.id, id), visibleWhere, eq(exportJobs.status, 'failed')) : and(eq(exportJobs.id, id), eq(exportJobs.status, 'failed'));
-  const [job] = await db.update(exportJobs)
-    .set({ status: 'pending', errorMessage: null, startedAt: null, completedAt: null, processedRows: 0, totalRows: null })
-    .where(where)
-    .returning();
-  requireRow(job, '可重试的导出任务不存在');
-  await enqueueExportJob(job.id);
-  return mapExportJob(job);
+  const job = await getExportJob(id);
+  if (job.status !== 'failed') throw new HTTPException(400, { message: '仅失败任务可重试' });
+  if (!job.taskId) throw new HTTPException(400, { message: '请使用重新导出创建新任务' });
+  await restartAsyncTask(job.taskId);
+  return getExportJob(id);
 }
 
 export async function deleteExportJob(id: number) {
   const user = currentUser();
   const visibleWhere = await visibleJobWhere(user);
   const where = visibleWhere ? and(eq(exportJobs.id, id), visibleWhere) : eq(exportJobs.id, id);
+  const jobToDelete = await getExportJob(id);
+  if (jobToDelete.taskId && ['pending', 'running'].includes(jobToDelete.status)) await requestCancelAsyncTask(jobToDelete.taskId);
   await db.transaction(async (tx) => {
     const [deleted] = await tx.delete(exportJobs).where(where).returning();
     const job = requireRow(deleted, '导出任务不存在');
     // Restricted export files have exactly one owning job; GC can reclaim them after deletion.
-    if (job.fileId) await tx.update(managedFiles).set({ refCount: 0, gcState: 'orphan', orphanedAt: new Date() })
-      .where(buildWhere(eq(managedFiles.id, job.fileId), eq(managedFiles.visibility, 'restricted')));
+    if (job.fileId) await releaseManagedFiles(tx, [job.fileId]);
   });
 }
 
@@ -637,9 +681,8 @@ export async function cleanupExpiredExportFiles() {
 async function deleteExportJobFile(fileId: string): Promise<void> {
   const [file] = await db.select().from(managedFiles).where(eq(managedFiles.id, fileId)).limit(1);
   if (!file) return;
-  const [storageConfig] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.id, file.storageConfigId)).limit(1);
-  if (storageConfig) await deleteStoredFile(file, storageConfig);
-  await db.delete(managedFiles).where(eq(managedFiles.id, fileId));
+  await db.update(managedFiles).set({ refCount: 0, gcState: 'deleting', orphanedAt: new Date() }).where(eq(managedFiles.id, fileId));
+  await deleteGeneratedManagedFile(fileId, file.tenantId);
 }
 
 /**

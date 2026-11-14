@@ -29,7 +29,7 @@ export const workflowApprovalSheetsExportDefinition = defineExport<WorkflowBatch
   streamRows: () => [],
   renderFile: async (ctx) => {
     const { instanceIds } = pickQuery(ctx.query);
-    const { buffer, count } = await renderWorkflowInstancesBatchPdf(instanceIds);
+    const { buffer, count } = await renderWorkflowInstancesBatchPdf(instanceIds, ctx.progress);
     return { buffer, mimeType: 'application/pdf', rowCount: count, filename: `${ctx.moduleName}_${ctx.jobId}.pdf` };
   },
 });

@@ -637,6 +637,7 @@ export const uploadChunksRelations = relations(uploadChunks, ({ one }) => ({
 }));
 
 export const exportJobsRelations = relations(exportJobs, ({ one, many }) => ({
+  task: one(asyncTasks, { fields: [exportJobs.taskId], references: [asyncTasks.id] }),
   file: one(managedFiles, { fields: [exportJobs.fileId], references: [managedFiles.id] }),
   tenant: one(tenants, { fields: [exportJobs.tenantId], references: [tenants.id] }),
   createdByUser: one(users, { fields: [exportJobs.createdBy], references: [users.id] }),

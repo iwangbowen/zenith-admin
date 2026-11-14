@@ -15,6 +15,13 @@
       "when": 1794024137526,
       "tag": "0001_extensions",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794627389206,
+      "tag": "0002_daily_snowbird",
+      "breakpoints": true
     }
   ]
 }

@@ -25,7 +25,7 @@ export async function assertTaskExecution(tx: DbTransaction, execution: TaskExec
     eq(asyncTasks.id, execution.taskId), eq(asyncTasks.status, 'running'),
     eq(asyncTasks.dispatchToken, execution.dispatchToken), eq(asyncTasks.cancelRequested, false),
     gt(asyncTasks.heartbeatAt, sql`clock_timestamp() - ${HEARTBEAT_STALE_MS} * interval '1 millisecond'`),
-    sql`clock_timestamp() < ${execution.deadline}`,
+    sql`clock_timestamp() < ${execution.deadline.toISOString()}::timestamptz`,
   )).for('update').limit(1);
   if (!owned) throw new TaskExecutionLostError();
 }

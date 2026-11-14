@@ -295,9 +295,13 @@ export async function renderWorkflowInstancePdf(id: number, query: QueryOutputOf
 }
 
 /** 批量：多份审批单合并为一个 PDF（顺序拼页，各自水印）；无权查看的实例按 403 中止整批 */
-export async function renderWorkflowInstancesBatchPdf(ids: number[]): Promise<{ buffer: Buffer; count: number }> {
+export async function renderWorkflowInstancesBatchPdf(ids: number[], progress?: (processed: number, total: number) => Promise<void>): Promise<{ buffer: Buffer; count: number }> {
   const docs: WorkflowPrintDocument[] = [];
-  for (const id of ids) docs.push(await renderWorkflowInstancePrintDocument(id));
+  for (const id of ids) {
+    await progress?.(docs.length, ids.length);
+    docs.push(await renderWorkflowInstancePrintDocument(id));
+  }
+  await progress?.(docs.length, ids.length);
   const { renderPrintDocumentsToPdf } = await import('../../lib/report-print-export');
   const buffer = await renderPrintDocumentsToPdf(docs.map((doc) => ({ result: doc.result, options: { watermark: doc.watermark } })));
   return { buffer, count: docs.length };

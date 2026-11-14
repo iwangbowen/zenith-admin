@@ -55,7 +55,7 @@ function startAsyncTaskHeartbeat(taskId: number, dispatchToken: string, deadline
     inFlight = true;
     const heartbeat = withoutDbExecutor(() => db.update(asyncTasks)
       .set({ heartbeatAt: new Date() })
-      .where(and(eq(asyncTasks.id, taskId), eq(asyncTasks.status, 'running'), eq(asyncTasks.dispatchToken, dispatchToken), eq(asyncTasks.cancelRequested, false), gt(asyncTasks.heartbeatAt, sql`clock_timestamp() - ${HEARTBEAT_STALE_MS} * interval '1 millisecond'`), sql`clock_timestamp() < ${deadline}`))
+      .where(and(eq(asyncTasks.id, taskId), eq(asyncTasks.status, 'running'), eq(asyncTasks.dispatchToken, dispatchToken), eq(asyncTasks.cancelRequested, false), gt(asyncTasks.heartbeatAt, sql`clock_timestamp() - ${HEARTBEAT_STALE_MS} * interval '1 millisecond'`), sql`clock_timestamp() < ${deadline.toISOString()}::timestamptz`))
       .returning({ id: asyncTasks.id }));
     void heartbeat.then(([row]) => {
       if (!row) clearInterval(timer);
@@ -294,7 +294,7 @@ async function applyProgress(taskId: number, dispatchToken: string, deadline: Da
   if (update.note !== undefined) set.progressNote = update.note?.slice(0, 256) ?? null;
   if (update.checkpoint !== undefined) set.checkpoint = update.checkpoint;
   const [row] = await db.update(asyncTasks).set(set)
-    .where(and(eq(asyncTasks.id, taskId), eq(asyncTasks.status, 'running'), eq(asyncTasks.dispatchToken, dispatchToken), eq(asyncTasks.cancelRequested, false), gt(asyncTasks.heartbeatAt, sql`clock_timestamp() - ${HEARTBEAT_STALE_MS} * interval '1 millisecond'`), sql`clock_timestamp() < ${deadline}`))
+    .where(and(eq(asyncTasks.id, taskId), eq(asyncTasks.status, 'running'), eq(asyncTasks.dispatchToken, dispatchToken), eq(asyncTasks.cancelRequested, false), gt(asyncTasks.heartbeatAt, sql`clock_timestamp() - ${HEARTBEAT_STALE_MS} * interval '1 millisecond'`), sql`clock_timestamp() < ${deadline.toISOString()}::timestamptz`))
     .returning();
   // 行已不是 running（被取消/被兜底回收）→ 通知 handler 尽快退出
   if (!row) return { cancelRequested: true };
