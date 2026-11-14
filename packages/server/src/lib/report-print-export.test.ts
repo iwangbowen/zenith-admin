@@ -101,8 +101,19 @@ describe('report-print-export', () => {
     expect(documentXml).toContain('w:w="16838"');
     expect(documentXml).toContain('w:h="11906"');
     expect(documentXml).toContain('<w:gridSpan w:val="2"');
+    expect(documentXml).toContain('w:fill="EEEEEE"');
+    expect(documentXml).toContain('w:val="clear"');
     expect(documentXml).toContain('<w:vMerge w:val="restart"');
     expect(Object.keys(archive.files).some((name) => name.startsWith('word/media/'))).toBe(true);
+  });
+
+  it('keeps QR graphics square in a wide Word table cell', async () => {
+    const value = renderPrintContent('QR aspect', { grid: { rows: 1, cols: 1, colWidths: [400], rowHeights: [40], cells: [{ row: 0, col: 0, v: '${QRCODE(code)}' }] } }, [{ code: 'test' }]);
+    const archive = await JSZip.loadAsync(await renderPrintResultToDocx(value));
+    const xml = await archive.file('word/document.xml')!.async('string');
+    const extent = /<wp:extent cx="(\d+)" cy="(\d+)"/u.exec(xml);
+    expect(extent).not.toBeNull();
+    expect(extent![1]).toBe(extent![2]);
   });
 
   it('DOCX 图片总量超限时明确拒绝', async () => {

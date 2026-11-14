@@ -427,8 +427,13 @@ async function buildDocxTable(page: ReportPrintRenderPage, budget: { imageBytes:
           Array.from({ length: merge?.rowSpan ?? 1 }, (_, offset) => page.grid.rowHeights?.[row + offset] ?? 24)
             .reduce((sum, item) => sum + item, 0),
         );
-        const width = Math.max(1, Math.min(1024, Math.round(cell?.image?.width ?? availableWidth), availableWidth));
-        const height = Math.max(1, Math.min(1024, Math.round(cell?.image?.height ?? availableHeight), availableHeight));
+        const targetWidth = Math.max(1, Math.min(1024, Math.round(cell?.image?.width ?? availableWidth), availableWidth));
+        const targetHeight = Math.max(1, Math.min(1024, Math.round(cell?.image?.height ?? availableHeight), availableHeight));
+        const source = graphic.extension === 'png' && graphic.buffer.length >= 24
+          ? { width: graphic.buffer.readUInt32BE(16), height: graphic.buffer.readUInt32BE(20) } : null;
+        const scale = source?.width && source.height ? Math.min(targetWidth / source.width, targetHeight / source.height) : null;
+        const width = scale && source ? Math.max(1, Math.round(source.width * scale)) : targetWidth;
+        const height = scale && source ? Math.max(1, Math.round(source.height * scale)) : targetHeight;
         image = new ImageRun({
           type: graphic.extension === 'jpeg' ? 'jpg' : 'png',
           data: graphic.buffer,
@@ -446,7 +451,7 @@ async function buildDocxTable(page: ReportPrintRenderPage, budget: { imageBytes:
         },
         verticalAlign: toDocxVerticalAlignment(cell?.s?.valign),
         shading: cell?.s?.background ? {
-          type: ShadingType.SOLID,
+          type: ShadingType.CLEAR,
           fill: toDocxColor(cell.s.background),
           color: 'auto',
         } : undefined,
