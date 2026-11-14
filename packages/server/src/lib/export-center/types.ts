@@ -101,6 +101,7 @@ export interface ExportRuntimeContext<TQuery extends Record<string, unknown> = R
   format: ExportFormat;
   query: TQuery;
   selectedColumns: string[] | null;
+  rowIds?: Array<string | number> | null;
   raw: boolean;
   masked: boolean;
   sensitive: boolean;

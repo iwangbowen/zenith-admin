@@ -330,6 +330,9 @@ function advanceExportJobs() {
   }
 }
 async function makeDownloadResponse(job: ExportJob) {
+  if (job.entity !== 'cms.statistics' && (job.format === 'csv' || job.format === 'xlsx')) {
+    return mockTableFile([['ID', '用户名', '昵称'], [1, 'admin', '管理员']], job.format, job.filename ?? 'export.' + job.format);
+  }
   if (job.entity === 'cms.statistics') {
     const metricKeys = Object.keys(CMS_STAT_METRIC_LABELS) as (keyof typeof CMS_STAT_METRIC_LABELS)[];
     const table = [['分组名称', ...metricKeys.map(key => CMS_STAT_METRIC_LABELS[key]), '统计时区', '口径版本'],
@@ -354,6 +357,13 @@ async function makeDownloadResponse(job: ExportJob) {
 }
 
 export const exportJobsHandlers = [
+  mock(exportJobContract.preview, ({ body, ok }) => {
+    const entity = entities.find(item => item.entity === body.entity);
+    if (!entity) return notFound('该实体尚未配置 Demo 导出', { status: 404 });
+    const flatten = (columns: ExportEntityMeta['columns']): ExportEntityMeta['columns'] => columns.flatMap(c => c.children?.length ? flatten(c.children) : [c]);
+    const columns = flatten(entity.columns);
+    return ok({ entity: entity.entity, title: entity.filenamePrefix, formats: entity.formats, columns, sensitive: entity.sensitive, canExportRaw: false, maxRows: entity.execution.maxRows, syncMaxRows: entity.execution.syncMaxRows, estimatedRows: body.scope === 'filtered' ? 42 : body.rowIds?.length ?? 0, sample: [], retentionDays: 7, executionMode: entity.execution.mode === 'async' ? 'async' : 'sync', supportsRowScope: columns.some(c => c.key === 'id') });
+  }),
   mock(exportJobContract.entities, ({ ok }) => ok(entities)),
 
   mock(exportJobContract.list, ({ query, ok, paginate }) => { advanceExportJobs(); return ok(paginate(filterJobs(query).sort((a, b) => b.id - a.id))); }),
@@ -381,7 +391,9 @@ export const exportJobsHandlers = [
       status: forceAsync ? 'pending' : 'success',
       executionMode: forceAsync ? 'async' : 'sync',
       query,
-      columns: null,
+      columns: body.columns ?? null,
+      scope: body.scope,
+      rowIds: body.rowIds ?? null,
       rowCount: forceAsync ? null : 42, processedRows: forceAsync ? 0 : 42, totalRows: rows?.length ?? 42,
       fileId: forceAsync ? null : '018f6f8a-0005-7000-8000-000000000005',
       filename: `${entity.filenamePrefix}_${id}.${format}`,

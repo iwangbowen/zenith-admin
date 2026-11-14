@@ -1,10 +1,13 @@
 import * as z from 'zod';
-import { EXPORT_JOB_FORMATS, EXPORT_JOB_REQUEST_MODES, TASK_DEMO_TYPES } from './constants';
+import { EXPORT_JOB_FORMATS, EXPORT_JOB_REQUEST_MODES, EXPORT_SCOPES, TASK_DEMO_TYPES } from './constants';
 
 export const createExportJobSchema = z.object({
   entity: z.string().min(1, '导出实体不能为空').max(128),
   format: z.enum(EXPORT_JOB_FORMATS).default('xlsx'),
   query: z.record(z.string(), z.unknown()).default({}),
+  scope: z.enum(EXPORT_SCOPES).default('filtered'),
+  rowIds: z.array(z.union([z.int().positive(), z.string().min(1).max(128)])).max(50000).optional(),
+  idempotencyKey: z.string().min(8).max(128).optional(),
   columns: z.array(z.string().min(1).max(128)).min(1).max(512).optional(),
   raw: z.boolean().default(false),
   watermark: z.boolean().default(true),

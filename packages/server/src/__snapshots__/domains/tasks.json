@@ -43,6 +43,7 @@
   "POST /api/export-jobs",
   "POST /api/export-jobs/:id/cancel",
   "POST /api/export-jobs/:id/retry",
+  "POST /api/export-jobs/preview",
   "POST /api/import-jobs",
   "POST /api/system-scheduler/runs/:id/ack-alert",
   "POST /api/system-scheduler/runs/cleanup",

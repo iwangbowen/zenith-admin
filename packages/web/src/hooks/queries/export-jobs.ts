@@ -17,6 +17,17 @@ export function useExportEntities() {
   return useApiQuery(exportJobContract.entities, { requestOptions: { silent: true } });
 }
 
+export function useExportPreview() {
+  return useApiMutation(exportJobContract.preview);
+}
+
+export function useExportJobDetail(id: number | undefined) {
+  return useApiQuery(exportJobContract.detail, { params: { id: id ?? 0 } }, {
+    enabled: id !== undefined,
+    refetchInterval: q => q.state.data && ['pending', 'running'].includes(q.state.data.status) ? 3000 : false,
+  });
+}
+
 export function useExportJobList(params: ExportJobListParams) {
   return useApiQuery(exportJobContract.list, { query: params }, {
     placeholderData: keepPreviousData,
@@ -55,6 +66,8 @@ export function rerunExportJobBody(record: ExportJob): NonNullable<BodyOf<typeof
     format: record.format,
     query: record.query ?? {},
     columns: record.columns ?? undefined,
+    scope: record.scope,
+    rowIds: record.rowIds ?? undefined,
     raw: record.raw,
     watermark: record.watermark,
     executionMode: record.executionMode,

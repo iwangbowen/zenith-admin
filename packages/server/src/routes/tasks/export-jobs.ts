@@ -1,4 +1,5 @@
 import { OpenAPIHono } from '@hono/zod-openapi';
+import { previewExport } from '../../lib/export-center/preview';
 import { exportJobContract } from '@zenith/shared/tasks';
 import { defineContractRoute } from '../../lib/contract-route';
 import { okBody, validationHook } from '../../lib/openapi-schemas';
@@ -18,6 +19,9 @@ import { attachmentDisposition } from '../../lib/content-disposition';
 import { mountCrud } from '../_crud';
 
 const exportJobsRoute = new OpenAPIHono({ defaultHook: validationHook });
+const previewRoute = defineContractRoute(exportJobContract.preview, {
+  handler: async c => c.json(okBody(await previewExport(c.req.valid('json'))), 200),
+});
 
 const entitiesRoute = defineContractRoute(exportJobContract.entities, {
   handler: async (c) => c.json(okBody(await listExportEntities()), 200),
@@ -58,7 +62,7 @@ mountCrud(exportJobsRoute, exportJobContract,
   {
     messages: { create: '导出任务已创建', remove: '已删除' },
   },
-  [entitiesRoute, downloadRoute, downloadsRoute, cancelRoute, retryRoute],
+  [entitiesRoute, previewRoute, downloadRoute, downloadsRoute, cancelRoute, retryRoute],
 );
 
 export default exportJobsRoute;

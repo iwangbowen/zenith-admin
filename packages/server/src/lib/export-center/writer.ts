@@ -113,18 +113,8 @@ function selectedColumns<TRow extends Record<string, unknown>>(
   selected: string[] | null,
 ): ExportColumn<TRow>[] {
   if (!selected?.length) return columns;
-  const selectedSet = new Set(selected);
-  const filter = (items: ExportColumn<TRow>[]): ExportColumn<TRow>[] =>
-    items
-      .map((item) => {
-        if (item.children?.length) {
-          const children = filter(item.children);
-          return children.length > 0 ? { ...item, children } : null;
-        }
-        return item.key && selectedSet.has(item.key) ? item : null;
-      })
-      .filter((item): item is ExportColumn<TRow> => item != null);
-  return filter(columns);
+  const leaves = leafColumns(columns);
+  return selected.flatMap(key => { const column = leaves.find(item => item.key === key); return column ? [column] : []; });
 }
 
 async function writeTableSheetStreaming(

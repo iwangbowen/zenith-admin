@@ -1,5 +1,9 @@
 // ─── 导出中心 ────────────────────────────────────────────────────────────────
 
+export const EXPORT_SCOPES = ['filtered', 'page', 'selected'] as const;
+export type ExportScope = (typeof EXPORT_SCOPES)[number];
+export const EXPORT_SCOPE_LABELS: Record<ExportScope, string> = { filtered: '当前筛选的全部结果', page: '当前页', selected: '已勾选记录' };
+
 export const EXPORT_JOB_FORMATS = ['xlsx', 'csv', 'pdf', 'docx'] as const;
 
 export type ExportJobFormat = (typeof EXPORT_JOB_FORMATS)[number];

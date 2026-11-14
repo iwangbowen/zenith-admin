@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import ExportJobDetails from '@/components/ExportJobDetails';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, Descriptions, Modal, SideSheet, Space, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -46,6 +47,8 @@ const statusOptions: Array<{ value: ExportJobStatus; label: string }> = [
 const formatOptions: Array<{ value: ExportJobFormat; label: string }> = [
   { value: 'xlsx', label: 'Excel' },
   { value: 'csv', label: 'CSV' },
+  { value: 'pdf', label: 'PDF' },
+  { value: 'docx', label: 'Word' },
 ];
 
 const statusTagMap = {
@@ -58,6 +61,7 @@ const statusTagMap = {
 } as const satisfies Record<ExportJobStatus, { color: 'blue' | 'cyan' | 'green' | 'red' | 'grey' | 'orange'; label: string }>;
 
 function renderProgress(record: ExportJob) {
+  if (record.cancelRequested && record.status === 'running') return <Typography.Text type="warning">取消中</Typography.Text>;
   if (record.status === 'pending') return <Typography.Text type="tertiary">排队中</Typography.Text>;
   if (record.status === 'running') return record.totalRows == null
     ? <Space><Spin size="small" /><Typography.Text type="secondary">准备导出</Typography.Text></Space>
@@ -70,6 +74,10 @@ function renderProgress(record: ExportJob) {
 
 export default function ExportJobsPage() {
   const navigate = useNavigate();
+  const [detailId, setDetailId] = useState<number | undefined>(() => {
+    const id = Number(new URLSearchParams(location.search).get('jobId'));
+    return id > 0 ? id : undefined;
+  });
   const queryClient = useQueryClient();
   const [logsVisible, setLogsVisible] = useState(false);
   const [currentJob, setCurrentJob] = useState<ExportJob | null>(null);
@@ -103,7 +111,7 @@ export default function ExportJobsPage() {
   const batchDeleting = batchDeleteMutation.isPending;
 
   const entityOptions = useMemo(
-    () => entities.map((item) => ({ value: item.entity, label: item.moduleName })),
+    () => entities.map((item) => ({ value: item.entity, label: item.filenamePrefix })),
     [entities],
   );
   const entityMap = useMemo(() => new Map(entities.map((item) => [item.entity, item])), [entities]);
@@ -198,7 +206,7 @@ export default function ExportJobsPage() {
         // 脱敏/明文仅对含敏感列的导出有实际意义，无敏感数据的任务不展示
         const items: OverflowTagItem[] = [];
         if (record.sensitive) items.push({ key: 'raw', label: record.raw ? '明文' : '脱敏', color: record.raw ? 'red' : 'green' });
-        if (record.watermark) items.push({ key: 'watermark', label: '水印', color: 'blue' });
+        if (record.watermark && record.format === 'xlsx' && entityMap.get(record.entity)?.renderMode === 'table') items.push({ key: 'watermark', label: '元信息', color: 'blue' });
         if (record.sensitive) items.push({ key: 'sensitive', label: '敏感', color: 'orange' });
         return items;
       },
@@ -237,6 +245,7 @@ export default function ExportJobsPage() {
       width: 210,
       desktopInlineKeys: ['download', 'logs'],
       actions: (record) => [
+        { key: 'details', label: '详情', onClick: () => setDetailId(record.id) },
         {
           key: 'download',
           label: '下载',
@@ -343,6 +352,7 @@ export default function ExportJobsPage() {
         {...tableProps}
       />
 
+      {detailId !== undefined && <ExportJobDetails id={detailId} onClose={() => setDetailId(undefined)} />}
       <SideSheet
         title="下载日志"
         visible={logsVisible}

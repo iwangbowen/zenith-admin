@@ -1,4 +1,6 @@
 import { registerExport } from '../lib/export-center/registry';
+import { aiFeedbackExportDefinition } from '../services/ai/exports/ai-feedback';
+import { paymentReportsExportDefinition } from '../services/payment/exports/payment-reports';
 import type { AnyExportDefinition } from '../lib/export-center/types';
 import { usersExportDefinition } from '../services/identity/exports/users';
 import { reportDatasetExportDefinition } from '../services/report/exports/report-dataset';
@@ -60,6 +62,8 @@ let registered = false;
 
 // 各业务域的导出定义（原生 defineExport，含真实 countRows / streamRows / 结构化 columns）
 const definitions = [
+  aiFeedbackExportDefinition,
+  paymentReportsExportDefinition,
   usersExportDefinition,
   reportDatasetExportDefinition,
   reportPrintExportDefinition,

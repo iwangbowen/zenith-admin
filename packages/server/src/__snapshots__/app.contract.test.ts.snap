@@ -1926,6 +1926,7 @@ exports[`路由表快照 > 完整路由表保持不变 1`] = `
   "POST /api/export-jobs",
   "POST /api/export-jobs/:id/cancel",
   "POST /api/export-jobs/:id/retry",
+  "POST /api/export-jobs/preview",
   "POST /api/feedbacks",
   "POST /api/file-storage-configs",
   "POST /api/file-storage-configs/:id/test",

@@ -354,7 +354,7 @@ describe('export-jobs rerun', () => {
     await waitFor(() => expect(fetches.countOf(exportJobKeys.lists)).toBe(1));
 
     // sourceId 只供页面标记行级忙碌态，不进请求体
-    expect(api.calls.find((c) => c.method === 'POST')?.body).toEqual({ entity: 'users', format: 'csv', query: { keyword: 'a' }, columns: undefined, raw: false, watermark: true, executionMode: 'sync' });
+    expect(api.calls.find((c) => c.method === 'POST')?.body).toEqual({ entity: 'users', format: 'csv', query: { keyword: 'a' }, columns: undefined, scope: undefined, rowIds: undefined, raw: false, watermark: true, executionMode: 'sync' });
     expect(fetches.countOf(exportJobKeys.entities)).toBe(0);
     expect(fetches.countOf(exportJobKeys.downloads(9))).toBe(0);
     expect(isFresh(qc, exportJobKeys.downloads(9))).toBe(true);

@@ -1,14 +1,13 @@
 import { useMemo } from 'react';
 import { formatYuan } from '@/utils/payment';
-import { Banner, Button, Checkbox, Select, Spin, Typography } from '@douyinfe/semi-ui';
-import { Download } from 'lucide-react';
+import { Banner, Checkbox, Select, Spin, Typography } from '@douyinfe/semi-ui';
+import ExportButton from '@/components/ExportButton';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { AreaChart, BarChart, PieChart, chartOptions, makeAreaSpec, makeBarSpec, makePieSpec, useChartPalette, StatCard, StatGrid } from '@/components/charts';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { listTableProps } from '@/components/list-page';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { formatDateRangeForApi } from '@/utils/date';
-import { downloadBlob } from '@/utils/download';
 import { usePermission } from '@/hooks/usePermission';
 import { paymentReportKeys, usePaymentReportSummary } from '@/hooks/queries/payment-reports';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -28,22 +27,6 @@ function calcDelta(cur: number, prev: number | undefined | null): number | null 
 }
 
 /** 导出当前聚合结果为 CSV（含 BOM，Excel 直接打开不乱码） */
-function exportReportCsv(dimensionTitle: string, rows: PaymentReportRow[]): void {
-  const esc = (v: string | number) => {
-    const raw = String(v);
-    // Excel 会把这些前缀解释为公式；仅处理文本维度，数值列保持可计算格式。
-    const s = typeof v === 'string' && /^[\t\r ]*[=+\-@]/.test(raw) ? `'${raw}` : raw;
-    return /[",\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
-  };
-  const toYuan = (cents: number) => (cents / 100).toFixed(2);
-  const header = [dimensionTitle, '收款(元)', '手续费(元)', '退款(元)', '分账(元)', '净额(元)', '成功笔数'];
-  const lines = rows.map((r) => [r.label, toYuan(r.gross), toYuan(r.fee), toYuan(r.refund), toYuan(r.sharing), toYuan(r.net), r.count].map(esc).join(','));
-  const csv = `\uFEFF${header.map(esc).join(',')}\n${lines.join('\n')}`;
-  const stamp = new Date().toISOString().slice(0, 10);
-  downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8' }), `财务报表_${dimensionTitle}_${stamp}.csv`);
-}
-
-/** 行级环比涨跌展示 */
 function DeltaText({ cur, prev }: Readonly<{ cur: number; prev: number | undefined }>) {
   const delta = calcDelta(cur, prev);
   if (delta == null) return <Typography.Text type="tertiary">—</Typography.Text>;
@@ -182,7 +165,6 @@ export default function PaymentReportsPage() {
     ] : []),
   ];
 
-  const dimensionTitle = PAYMENT_REPORT_GROUP_BY_LABELS[summary?.groupBy ?? 'day'];
 
   const groupByFilter = (
     <Select
@@ -206,9 +188,7 @@ export default function PaymentReportsPage() {
   );
   const searchButton = <SearchButton onClick={handleSearch} disabled={!canView} />;
   const exportButton = (
-    <Button icon={<Download size={14} />} disabled={!canView || !summary?.rows.length} onClick={() => summary && exportReportCsv(dimensionTitle, summary.rows)}>
-      导出 CSV
-    </Button>
+    <ExportButton entity="payment.reports" permission="payment:report:view" query={{ groupBy: submittedParams.groupBy, ...formatDateRangeForApi(submittedParams.timeRange), compare: submittedParams.compare && !!submittedParams.timeRange }} />
   );
 
   return (

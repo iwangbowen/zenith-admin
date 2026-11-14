@@ -767,7 +767,7 @@ export default function UsersPage() {
           <>
             {renderDepartmentButton()}
             {renderBatchActions()}
-            <ExportButton entity="system.users" query={filterQuery} watermark={false} permission="system:user:export" />
+            <ExportButton entity="system.users" query={filterQuery} selectedIds={selectedRowKeys} pageIds={userList.map(user => user.id)} watermark={false} permission="system:user:export" />
             {renderImportButton()}
           </>
         )}

@@ -7,8 +7,8 @@ import { join } from 'node:path';
 import { requireRow } from '../../lib/db-assert';
 import { and, desc, eq, gte, inArray, isNull, lt, lte, or, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import type { QueryOutputOf } from '@zenith/shared/core';
-import { exportJobContract } from '@zenith/shared/tasks';
+import { stableStringify, type QueryOutputOf } from '@zenith/shared/core';
+import { EXPORT_SCOPES, exportJobContract, type ExportScope } from '@zenith/shared/tasks';
 import type { JobStuckItem } from '@zenith/shared/platform';
 import { db } from '../../db';
 import { exportJobDownloads, exportJobs, asyncTasks, managedFiles, users } from '../../db/schema';
@@ -85,6 +85,9 @@ export interface CreateExportJobInput {
   format: ExportFormat;
   query?: Record<string, unknown>;
   columns?: string[];
+  scope?: ExportScope;
+  rowIds?: Array<string | number>;
+  idempotencyKey?: string;
   raw?: boolean;
   watermark?: boolean;
   executionMode?: ExportRequestMode;
@@ -170,6 +173,8 @@ function mapExportJob(row: typeof exportJobs.$inferSelect & { createdByUser?: { 
     sha256: row.sha256,
     query: row.query ?? {},
     columns: row.columns ?? null,
+    scope: EXPORT_SCOPES.find(scope => scope === row.scope) ?? 'filtered',
+    rowIds: row.rowIds,
     rowCount: row.rowCount ?? null,
     processedRows: row.processedRows,
     totalRows: row.totalRows,
@@ -249,6 +254,7 @@ async function renderJobFile(row: typeof exportJobs.$inferSelect, definition: An
     format: row.format,
     query: row.query as Record<string, unknown>,
     selectedColumns: row.columns ?? null,
+    rowIds: row.rowIds,
     raw: row.raw,
     masked: row.masked,
     sensitive: row.sensitive,
@@ -296,7 +302,14 @@ async function renderJobFile(row: typeof exportJobs.$inferSelect, definition: An
       const filePath = join(folder, `report.${row.format}`);
       const cleanup = () => rm(folder, { recursive: true, force: true });
       try {
-        async function* stream() { yield* rows; }
+        async function* stream() {
+          const selected = row.rowIds ? new Set(row.rowIds.map(String)) : null;
+          let scanned = 0;
+          for await (const source of rows) {
+            if (++scanned % 250 === 0 && task && await task.isCancelRequested()) throw new TaskCancelledError('导出已取消');
+            if (!selected || selected.has(String(source.id))) yield source;
+          }
+        }
         const rowCount = await renderExportToPath(definition, stream(), ctx, filePath, row.rowCount ?? 0);
         return { filePath, filename, rowCount, cleanup, mimeType: row.format === 'csv' ? 'text/csv; charset=utf-8' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
       } catch (error) { await cleanup(); throw error; }
@@ -369,7 +382,7 @@ async function notifyExportFinished(row: typeof exportJobs.$inferSelect, resultT
       recipients: [{ type: 'user', id: row.createdBy }],
       vars: { jobId: row.id, moduleName: row.moduleName, resultText, detail },
       tenantId: row.tenantId ?? null,
-      link: '/system/export-jobs',
+      link: `/system/export-jobs?jobId=${row.id}`,
     });
   } catch (err) {
     logger.warn('[export-jobs] 导出结果通知发送失败', { jobId: row.id, err });
@@ -437,7 +450,10 @@ export async function createExportJob(input: CreateExportJobInput) {
     if (!selectedColumns.length || selectedColumns.some(key => !available.has(key))) throw new HTTPException(400, { message: '所选导出字段不存在或不可用' });
   }
   const sensitive = definitionHasSensitiveColumns({ ...definition, columns: resolvedColumns }, selectedColumns);
-  const rowCount = definition.withSnapshot ? null : await definition.countRows(query, user);
+  const scope = input.scope ?? 'filtered';
+  const rowIds = scope === 'filtered' ? null : input.rowIds ?? [];
+  if (scope !== 'filtered' && (!rowIds?.length || definition.withSnapshot || (definition.renderMode ?? 'table') !== 'table' || !leafColumns(resolvedColumns).some(column => column.key === 'id'))) throw new HTTPException(400, { message: '当前实体不支持所选范围，或范围内没有记录' });
+  const rowCount = rowIds ? rowIds.length : definition.withSnapshot ? null : await definition.countRows(query, user);
   // 行数绝对上限（sync/async 通用）：exceljs 终局序列化与 CSV 全量累积都是主线程
   // 连续 CPU/内存段，提交时快速失败;countRows 不准的定义由 writer 渲染兜底再拦一道
   const { maxRows } = normalizeExecution(definition);
@@ -449,9 +465,19 @@ export async function createExportJob(input: CreateExportJobInput) {
   if (definition.renderMode === 'layout') throw new HTTPException(400, { message: '暂不支持 layout 导出，请使用自定义渲染器' });
   let committed: DbTransaction | undefined;
   const renamed = await runAsUser(user.userId, () => db.transaction(async tx => {
+    if (input.idempotencyKey) {
+      const lockKey = stableStringify(['export-admission', getCreateTenantId(user), user.userId, input.idempotencyKey]);
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
+      const existing = await tx.query.exportJobs.findFirst({ where: buildWhere(eq(exportJobs.createdBy, user.userId), exactTenantCondition(exportJobs.tenantId, getCreateTenantId(user)), eq(exportJobs.requestKey, input.idempotencyKey)) });
+      if (existing) {
+        if (stableStringify([existing.entity, existing.format, existing.query, existing.columns, existing.rowIds, existing.raw, existing.scope]) !== stableStringify([input.entity, format, query, selectedColumns, rowIds, raw, scope])) throw new HTTPException(409, { message: '相同幂等键不能用于不同导出规格' });
+        committed = tx;
+        return existing;
+      }
+    }
     const [job] = await tx.insert(exportJobs).values({
       entity: definition.entity, moduleName: definition.moduleName, format, status: 'pending', executionMode,
-      query, columns: selectedColumns, rowCount, filename, raw, masked: !raw, sensitive,
+      query, columns: selectedColumns, scope, rowIds, requestKey: input.idempotencyKey, rowCount, filename, raw, masked: !raw, sensitive,
       watermark: input.watermark ?? true, expiresAt: null, tenantId: getCreateTenantId(user),
     }).returning();
     let taskId: number | null = null;
@@ -464,6 +490,7 @@ export async function createExportJob(input: CreateExportJobInput) {
     return result;
   }));
   await flushTransactionEffects(committed!);
+  if (renamed.status === 'success') return { mode: renamed.executionMode, job: mapExportJob(renamed) };
   if (executionMode === 'sync') return { mode: executionMode, job: mapExportJob(await executeExportJob(renamed, definition)) };
   // Commit hints are best effort; the task center rescans durable pending tasks.
   return { mode: executionMode, job: mapExportJob(renamed) };
@@ -494,11 +521,7 @@ export async function settleExportTask(tx: DbTransaction, task: typeof asyncTask
     return;
   }
   if (task.status === 'failed' || task.status === 'cancelled') {
-    if (task.status === 'pending' && job.fileId) {
-    await releaseManagedFiles(tx, [job.fileId]);
-    await tx.update(exportJobs).set({ fileId: null, filename: buildFilename(getExportDefinition(job.entity), job.id, job.format), fileSize: null, sha256: null, expiresAt: null, fileDeletedAt: null, deleteReason: null }).where(eq(exportJobs.id, job.id));
-  }
-  await tx.update(exportJobs).set({ status: task.status, stage: task.status, cancelRequested: task.cancelRequested, errorMessage: task.errorMessage, completedAt: task.completedAt }).where(eq(exportJobs.id, job.id));
+    await tx.update(exportJobs).set({ status: task.status, stage: task.status, cancelRequested: task.cancelRequested, errorMessage: task.errorMessage, completedAt: task.completedAt }).where(eq(exportJobs.id, job.id));
     rememberTransactionEffect(tx, `export-notify:${job.id}`, () => notifyExportFinished(job, task.status === 'failed' ? '失败' : '已取消', task.errorMessage ?? ''));
     return;
   }

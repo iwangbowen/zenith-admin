@@ -105,4 +105,5 @@ export const REPORT_PERMISSIONS = definePermissions({
   'report:fill:record:cancel': { label: '撤回填报记录', menu: 'ReportFillRecords' },
   'report:fill:record:review': { label: '审核填报记录', menu: 'ReportFillRecords' },
   'report:fill:record:export': { label: '导出填报记录', menu: 'ReportFillRecords' },
+  'report:fill:record:export-raw': { label: '明文导出填报业务数据', menu: 'ReportFillRecords', riskLevel: 'critical', approvalPolicy: 'two_person', reviewIntervalDays: 30 },
 });

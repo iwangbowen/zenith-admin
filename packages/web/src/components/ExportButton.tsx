@@ -1,12 +1,12 @@
-import { useContext } from 'react';
-import { Button, Dropdown, Space, SplitButtonGroup } from '@douyinfe/semi-ui';
-import { ChevronDown, Download } from 'lucide-react';
+import { lazy, Suspense, useContext, useState } from 'react';
+import { Button } from '@douyinfe/semi-ui';
+import { Download } from 'lucide-react';
 import type { Permission } from '@zenith/shared/core';
 import type { ExportJobFormat, ExportJobRequestMode } from '@zenith/shared/tasks';
 import { ToolbarSlotContext } from '@/components/toolbar-slot-context';
-import { useExportJobRunner } from '@/hooks/useExportJobRunner';
 import { usePermission } from '@/hooks/usePermission';
-
+import type { ExportConfiguration } from './ExportConfigPanel';
+const ExportConfigPanel = lazy(() => import('./ExportConfigPanel'));
 interface ExportButtonProps {
   entity: string;
   query?: Record<string, unknown>;
@@ -16,120 +16,29 @@ interface ExportButtonProps {
   raw?: boolean;
   watermark?: boolean;
   executionMode?: ExportJobRequestMode;
-  /** `flat` 为逐格式平铺按钮；放进工具栏移动端「更多操作」菜单时自动切换，无需显式传 */
   variant?: 'primary' | 'flat';
-  /** Optional capability gate; omitted for non-CMS/shared callers. */
   permission?: Permission;
+  selectedIds?: Array<string | number>;
+  pageIds?: Array<string | number>;
 }
-
-export function ExportButton({
-  entity,
-  query,
-  resolveQuery,
-  label = '导出',
-  formats = ['xlsx', 'csv'],
-  // 安全默认：脱敏导出。明文导出需显式传 raw，且服务端校验 export-raw 权限
-  raw = false,
-  watermark = true,
-  executionMode = 'auto',
-  variant = 'primary',
-  permission,
-}: Readonly<ExportButtonProps>) {
-  const exportRunner = useExportJobRunner();
+export function ExportButton({ entity, query, resolveQuery, label = '导出', formats = ['xlsx', 'csv'], raw = false, watermark = true, executionMode = 'auto', variant = 'primary', permission, selectedIds, pageIds }: Readonly<ExportButtonProps>) {
   const { hasPermission } = usePermission();
-  const toolbarSlot = useContext(ToolbarSlotContext);
+  const slot = useContext(ToolbarSlotContext);
+  const [initial, setInitial] = useState<ExportConfiguration | null>(null);
+  const [resolving, setResolving] = useState(false);
   if (permission && !hasPermission(permission)) return null;
-  const isFlat = variant === 'flat' || toolbarSlot === 'mobile-actions';
-  const buttonTheme = isFlat ? 'borderless' : undefined;
-  const rootClassName = `export-button${isFlat ? ' export-button--flat' : ''}`;
-
-  const runExport = async (format: ExportJobFormat) => {
-    const resolvedQuery = resolveQuery ? await resolveQuery(format) : (query ?? {});
-    if (resolvedQuery == null) return;
-    await exportRunner.runExport({
-      entity,
-      format,
-      query: resolvedQuery,
-      raw,
-      watermark,
-      executionMode,
-    });
+  const flat = variant === 'flat' || slot === 'mobile-actions';
+  const open = async () => {
+    setResolving(true);
+    try {
+      const resolved = resolveQuery ? await resolveQuery(formats[0] ?? 'xlsx') : query ?? {};
+      if (resolved) setInitial({ entity, query: resolved, formats, raw, watermark, executionMode, selectedIds, pageIds });
+    } finally { setResolving(false); }
   };
-
-  if (formats.length <= 1) {
-    const format = formats[0] ?? 'xlsx';
-    return (
-      <Button
-        className={rootClassName}
-        type="primary"
-        theme={buttonTheme}
-        icon={<Download size={14} />}
-        loading={exportRunner.isPending && exportRunner.pendingFormat === format}
-        onClick={() => void runExport(format)}
-      >
-        {label}
-      </Button>
-    );
-  }
-
-  if (isFlat) {
-    return (
-      <Space vertical align="start" spacing={8} className={rootClassName} style={{ width: '100%' }}>
-        {formats.map((format) => (
-          <Button
-            key={format}
-            className="export-button__flat-item"
-            type="primary"
-            theme="borderless"
-            icon={<Download size={14} />}
-            loading={exportRunner.isPending && exportRunner.pendingFormat === format}
-            onClick={() => void runExport(format)}
-          >
-            {label} {format.toUpperCase()}
-          </Button>
-        ))}
-      </Space>
-    );
-  }
-
-  return (
-    <span className={rootClassName}>
-      <SplitButtonGroup>
-        <Button
-          className="export-button__main"
-          type="primary"
-          theme={buttonTheme}
-          icon={<Download size={14} />}
-          loading={exportRunner.isPending && exportRunner.pendingFormat === 'xlsx'}
-          onClick={() => void runExport('xlsx')}
-        >
-          {label}
-        </Button>
-        <Dropdown
-          trigger="click"
-          position="bottomRight"
-          clickToHide
-          render={(
-            <Dropdown.Menu>
-              {formats.map((format) => (
-                <Dropdown.Item key={format} onClick={() => void runExport(format)}>
-                  导出 {format.toUpperCase()}
-                </Dropdown.Item>
-              ))}
-            </Dropdown.Menu>
-          )}
-        >
-          <Button
-            className="export-button__trigger"
-            type="primary"
-            theme={buttonTheme}
-            icon={<ChevronDown size={14} />}
-            loading={exportRunner.isPending && exportRunner.pendingFormat !== 'xlsx'}
-          />
-        </Dropdown>
-      </SplitButtonGroup>
-    </span>
-  );
+  return <>
+    <Button className={flat ? 'export-button export-button--flat' : 'export-button'} type="primary" theme={flat ? 'borderless' : undefined} icon={<Download size={14} />} loading={resolving} onClick={() => void open()}>{label}</Button>
+    {initial && <Suspense fallback={null}><ExportConfigPanel initial={initial} onClose={() => setInitial(null)} /></Suspense>}
+  </>;
 }
-
 export default ExportButton;
+

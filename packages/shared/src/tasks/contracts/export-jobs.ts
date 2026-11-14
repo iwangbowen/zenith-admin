@@ -9,6 +9,7 @@ import {
   EXPORT_JOB_REQUEST_MODES,
   EXPORT_JOB_STATUSES,
   EXPORT_RENDER_MODES,
+  EXPORT_SCOPES,
 } from '../constants';
 import { createExportJobSchema } from '../validation';
 
@@ -55,6 +56,14 @@ export const exportEntityMetaSchema = z.object({
 
 export type ExportEntityMeta = z.infer<typeof exportEntityMetaSchema>;
 
+export const exportPreviewSchema = z.object({
+  entity: z.string(), title: z.string(), formats: z.array(z.enum(EXPORT_JOB_FORMATS)), columns: z.array(exportColumnMetaSchema),
+  sensitive: z.boolean(), canExportRaw: z.boolean(), maxRows: z.int(), syncMaxRows: z.int(), estimatedRows: z.int().nullable(),
+  sample: z.array(z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()]))),
+  retentionDays: z.int(), executionMode: z.enum(EXPORT_JOB_EXECUTION_MODES), supportsRowScope: z.boolean(),
+});
+export type ExportPreview = z.infer<typeof exportPreviewSchema>;
+
 export const exportJobSchema = z.object({
   id: z.int(),
   entity: z.string(),
@@ -68,6 +77,8 @@ export const exportJobSchema = z.object({
   sha256: z.string().nullable().optional(),
   query: z.record(z.string(), z.unknown()),
   columns: z.array(z.string()).nullable(),
+  scope: z.enum(EXPORT_SCOPES).optional(),
+  rowIds: z.array(z.union([z.number(), z.string()])).nullable().optional(),
   rowCount: z.int().nullable(),
   processedRows: z.int(),
   totalRows: z.int().nullable(),
@@ -127,6 +138,7 @@ export const exportJobListQuery = paginationQuery.extend({
 
 export const exportJobContract = defineContract('/api/export-jobs', {
   entities: op.get('/entities', { access: 'authenticated', response: z.array(exportEntityMetaSchema), summary: '可导出实体列表' }),
+  preview: op.post('/preview', { access: 'authenticated', body: createExportJobSchema, response: exportPreviewSchema, summary: '导出规格预检与脱敏样例' }),
   create: op.post('/', { access: 'authenticated', audit: { description: '创建导出任务', recordResponseBody: false }, body: createExportJobSchema, response: exportJobCreateResultSchema, summary: '创建导出任务' }),
   list: op.get('/', { access: 'authenticated', query: exportJobListQuery, response: paginated(exportJobSchema), summary: '导出任务列表' }),
   detail: op.get('/{id}', { access: 'authenticated', params: idParam, response: exportJobSchema, summary: '导出任务详情' }),

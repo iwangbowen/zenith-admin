@@ -313,7 +313,8 @@
       "dependsOn": [
         "biz-demo",
         "files",
-        "iot"
+        "iot",
+        "tasks"
       ]
     },
     "short-link": {

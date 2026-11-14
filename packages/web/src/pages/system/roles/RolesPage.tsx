@@ -229,7 +229,7 @@ export default function RolesPage() {
           startTime: (p) => <DateRangeFilter placeholder={["开始时间", "结束时间"]} {...p.bindRange(['startTime', 'endTime'])} />,
         }}
         create={<CreateButton permission="system:role:create" onClick={roleModal.openCreate} />}
-        actions={<ExportButton entity="system.roles" query={filterQuery} />}
+        actions={<ExportButton entity="system.roles" query={filterQuery} pageIds={tableProps.dataSource?.map(row => row.id)} />}
         filterTitle="角色筛选"
         actionTitle="角色操作"
       />

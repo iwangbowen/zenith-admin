@@ -141,7 +141,7 @@ export default function PositionsPage() {
         create={<CreateButton permission="system:position:create" onClick={positionModal.openCreate} />}
         actions={(
           <>
-            <ExportButton entity="system.positions" query={filterQuery} />
+            <ExportButton entity="system.positions" query={filterQuery} selectedIds={selectedRowKeys} pageIds={tableProps.dataSource?.map(row => row.id)} />
             {selectedRowKeys.length > 0 && hasPermission('system:position:delete') && <BatchDeleteButton count={selectedRowKeys.length} onClick={handleBatchDelete} />}
           </>
         )}

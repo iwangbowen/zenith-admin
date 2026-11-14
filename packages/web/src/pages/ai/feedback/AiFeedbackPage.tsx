@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
-import { Button, Form, Tag, Toast } from '@douyinfe/semi-ui';
-import { Download, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { Form, Tag, Toast } from '@douyinfe/semi-ui';
+import { ThumbsUp, ThumbsDown } from 'lucide-react';
+import ExportButton from '@/components/ExportButton';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { AiFeedbackItem, AiFeedbackStatus, AiMessage } from '@zenith/shared/ai';
@@ -13,7 +14,7 @@ import { useDictItems } from '@/hooks/useDictItems';
 import { usePermission } from '@/hooks/usePermission';
 import AppModal from '@/components/AppModal';
 import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
-import { aiFeedbackKeys, downloadAiFeedbackCsv, useAiFeedbackContext, useAiFeedbackList, useHandleAiFeedback } from '@/hooks/queries/ai-feedback';
+import { aiFeedbackKeys, useAiFeedbackContext, useAiFeedbackList, useHandleAiFeedback } from '@/hooks/queries/ai-feedback';
 import { DateRangeFilter, FilterSelect } from '@/components/search-filters';
 import { abortSubmit } from '@/lib/abort-submit';
 import AiConversationContextModal from '../components/AiConversationContextModal';
@@ -93,9 +94,7 @@ export default function AiFeedbackPage() {
   const modelOptions = Array.from(new Set((data?.list ?? []).map((m) => m.model).filter((m): m is string => !!m)))
     .map((m) => ({ value: m, label: m }));
 
-  const handleExport = () => {
-    void downloadAiFeedbackCsv(filterQuery);
-  };
+
 
   function openHandleModal(record: AiFeedbackItem) {
     setHandlingMessage(record);
@@ -213,7 +212,7 @@ export default function AiFeedbackPage() {
   ];
 
   const renderExportButton = () => (
-    <Button type="primary" icon={<Download size={14} />} onClick={handleExport}>导出</Button>
+    <ExportButton entity="ai.feedback" query={filterQuery} permission="ai:feedback:view" />
   );
 
   return (
