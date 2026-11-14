@@ -9,7 +9,7 @@
  */
 import { registerTaskHandler } from '../task-center';
 import { readGeneratedManagedFile, saveGeneratedManagedFile } from '../../services/files/files.service';
-import { releaseManagedFiles } from '../../services/files/file-gc.service';
+import { releaseManagedFiles, retainManagedFiles } from '../../services/files/file-gc.service';
 import { currentUser } from '../context';
 import { getImportDefinition } from './registry';
 import { parseImportWorkbook, type ParsedImportRow } from './parser';
@@ -168,6 +168,8 @@ export function registerImportTaskHandler(): void {
         if (!isAsyncTaskTerminal(task.status)) return;
         const fileId = typeof task.payload?.fileId === 'string' ? task.payload.fileId : null;
         if (fileId) await releaseManagedFiles(tx, [fileId]);
+        const errorFileId = typeof task.result?.errorFileId === 'string' ? task.result.errorFileId : null;
+        if (errorFileId) await retainManagedFiles(tx, [errorFileId]);
       },
     });
   }

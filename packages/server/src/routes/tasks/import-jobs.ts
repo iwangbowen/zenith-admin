@@ -7,6 +7,7 @@ import { importJobContract } from '@zenith/shared/tasks';
 import { defineContractRoute } from '../../lib/contract-route';
 import { okBody, validationHook } from '../../lib/openapi-schemas';
 import { mapAsyncTask } from '../../lib/task-center/map';
+import { getAsyncTask } from '../../services/tasks/async-tasks.service';
 import { confirmImportPreview, getImportTemplate, inspectImportFile, listImportEntities, submitImportJob } from '../../services/tasks/import-jobs.service';
 import { attachmentDisposition } from '../../lib/content-disposition';
 

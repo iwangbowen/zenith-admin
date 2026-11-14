@@ -110,17 +110,21 @@ export async function inspectImportWorkbook(
   filename?: string | null,
 ): Promise<ImportInspection> {
   const sheet = await loadImportWorksheet(buffer, filename);
-  const headers = [...new Set(sheet.getRow(1).values.slice(1).map(value => cellToText(value).replace(/\*$/, '').trim()).filter(Boolean))];
+  const headerValues = sheet.getRow(1).values as unknown[];
+  const headers = [...new Set(headerValues.slice(1)
+    .map((value: unknown) => cellToText(value).replace(/\*$/, '').trim())
+    .filter((value): value is string => Boolean(value)))];
   const normalized = new Map(headers.map(header => [normalizeHeader(header), header]));
-  const suggestedMapping = Object.fromEntries(columns.map(column => {
+  const suggestedMapping: Record<string, string | null> = Object.fromEntries(columns.map(column => {
     const candidates = [column.header, ...(column.aliases ?? [])].map(normalizeHeader);
-    return [column.key, candidates.map(candidate => normalized.get(candidate)).find(Boolean) ?? null];
+    const match = candidates.map(candidate => normalized.get(candidate)).find((value): value is string => Boolean(value)) ?? null;
+    return [column.key, match] as const;
   }));
   const sample: Record<string, string>[] = [];
   let rowCount = 0;
   for (let rowNum = 2; rowNum <= sheet.rowCount; rowNum++) {
     const row = sheet.getRow(rowNum);
-    const values = Object.fromEntries(headers.map((header, index) => [header, cellToText(row.getCell(index + 1).value)]));
+    const values: Record<string, string> = Object.fromEntries(headers.map((header, index) => [header, cellToText(row.getCell(index + 1).value)]));
     if (Object.values(values).some(Boolean)) {
       rowCount += 1;
       if (sample.length < 5) sample.push(values);
