@@ -46,12 +46,13 @@ export function registerMembersImport(): void {
       { key: 'phone', header: '手机号', example: '13800001111', note: '11 位大陆手机号' },
       { key: 'email', header: '邮箱', example: 'zhangsan@example.com' },
       { key: 'username', header: '用户名', example: 'zhangsan', note: '4-32 位字母数字下划线' },
-      { key: 'password', header: '初始密码', note: '留空则仅能通过验证码登录' },
+      { key: 'password', header: '初始密码', sensitive: true, note: '留空则仅能通过验证码登录' },
       { key: 'level', header: '等级名称', example: '普通会员', note: '留空按成长值自动匹配初始等级' },
       { key: 'status', header: '状态', enumValues: Object.values(MEMBER_STATUS_LABELS), example: '正常' },
       { key: 'remark', header: '备注' },
     ],
     duplicateKey: (row) => row.phone ? `phone:${row.phone}` : row.email ? `email:${row.email}` : row.username ? `username:${row.username}` : null,
+    duplicateKeys: (row) => [row.phone ? `phone:${row.phone}` : null, row.email ? `email:${row.email}` : null, row.username ? `username:${row.username}` : null].filter((key): key is string => Boolean(key)),
     async prepare() {
       const [levels, existing] = await Promise.all([
         db.select({ id: memberLevels.id, name: memberLevels.name }).from(memberLevels),

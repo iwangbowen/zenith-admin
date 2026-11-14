@@ -1,5 +1,6 @@
 export * from './types';
 export { taskTransaction, TaskExecutionLostError } from './execution';
+export { cleanupTaskState, resetTaskState } from './settlement';
 export { registerTaskHandler, getTaskHandler, getTaskTypeMeta, listTaskHandlers, buildTaskTypeMeta, registrationDefaults } from './registry';
 export { ensureTaskTypeConfig, getTaskTypePolicy, listTaskTypeConfigs, updateTaskTypePolicy, type UpdateTaskTypePolicyInput } from './config';
 export { mapAsyncTask, mapAsyncTaskItem, pushTaskProgress } from './map';
@@ -10,6 +11,7 @@ export {
   type SystemTaskKey,
   submitAsyncTask,
   persistAsyncTask,
+  persistAsyncTaskWithResult,
   persistSystemAsyncTask,
   enqueueAsyncTask,
   runAsyncTask,

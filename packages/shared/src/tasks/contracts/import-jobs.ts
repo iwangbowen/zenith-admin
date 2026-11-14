@@ -1,5 +1,6 @@
 import * as z from 'zod';
 import { defineContract, op } from '../../core/contract';
+import { idParam } from '../../core/api-schemas';
 import { submitImportJobSchema } from '../validation';
 import { asyncTaskSchema } from './async-tasks';
 
@@ -13,6 +14,7 @@ export const importColumnMetaSchema = z.object({
   example: z.string().optional().meta({ description: '示例值（模板示例行）' }),
   enumValues: z.array(z.string()).optional().meta({ description: '枚举可选值（模板做数据验证下拉）' }),
   aliases: z.array(z.string()).optional().meta({ description: '用户常用表头别名（用于自动映射）' }),
+  sensitive: z.boolean().optional().meta({ description: '预览样例中脱敏显示' }),
   note: z.string().optional().meta({ description: '补充说明（如格式要求）' }),
 }).meta({ id: 'ImportColumnMeta' });
 
@@ -46,7 +48,7 @@ export type ImportInspection = z.infer<typeof importInspectionSchema>;
 export const importEntityParam = z.object({
   entity: z.string().min(1).max(64).meta({ description: '导入实体标识', example: 'member.members' }),
 });
-export const importTaskParam = z.object({ id: z.coerce.number().int().positive() });
+export const importTaskParam = idParam;
 
 /**
  * 导入中心：历史 / 进度 / 行级明细复用任务中心接口（taskType `data-import`）。
@@ -55,7 +57,7 @@ export const importTaskParam = z.object({ id: z.coerce.number().int().positive()
 export const importJobContract = defineContract('/api/import-jobs', {
   entities: op.get('/entities', { access: 'authenticated', response: z.array(importEntityMetaSchema), summary: '可导入实体列表（按权限过滤）' }),
   template: op.get('/{entity}/template', { access: 'authenticated', params: importEntityParam, kind: 'file', summary: '下载导入模板' }),
-  inspect: op.post('/inspect', { access: 'authenticated', audit: { description: '预览导入文件', recordBody: false }, body: submitImportJobSchema.pick({ entity: true, fileId: true, context: true }), response: importInspectionSchema, summary: '读取导入文件表头与样例（不创建任务）' }),
+  inspect: op.post('/inspect', { access: 'authenticated', audit: { description: '预览导入文件', recordBody: false, recordResponseBody: false }, body: submitImportJobSchema.pick({ entity: true, fileId: true, context: true }), response: importInspectionSchema, summary: '读取导入文件表头与脱敏样例（不创建任务）' }),
   submit: op.post('/', { access: 'authenticated', audit: '提交数据导入任务', body: submitImportJobSchema, response: asyncTaskSchema, summary: '提交导入任务（文件先经 /api/files/upload 上传）' }),
   confirm: op.post('/{id}/confirm', { access: 'authenticated', audit: '确认导入预检结果', params: importTaskParam, response: asyncTaskSchema, summary: '将通过预检的任务转为正式导入' }),
   errorFile: op.get('/{id}/error-file', { access: 'authenticated', params: importTaskParam, kind: 'file', summary: '下载导入错误行文件' }),

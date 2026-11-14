@@ -16,6 +16,9 @@ vi.mock('../../db', () => ({
     select: () => ({ from: () => ({ where: async () => mocks.overrides }) }),
     delete: () => ({ where: (w: SQL) => { mocks.deleted.push(w); return { returning: async () => [{ id: 1 }, { id: 2 }] }; } }),
     $count: async (_t: unknown, w: SQL) => { mocks.counted.push(w); return 3; },
+    transaction: async (fn: (tx: unknown) => unknown) => fn({
+      delete: () => ({ where: (w: SQL) => { mocks.deleted.push(w); return { returning: async () => [{ id: 1 }, { id: 2 }] }; } }),
+    }),
   },
 }));
 vi.mock('../context', () => ({

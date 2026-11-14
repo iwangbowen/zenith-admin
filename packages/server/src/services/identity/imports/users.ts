@@ -44,9 +44,10 @@ export function registerUsersImport(): void {
       { key: 'username', header: '用户名', aliases: ['账号', '登录名'], required: true, example: 'zhangsan' },
       { key: 'nickname', header: '昵称', aliases: ['姓名', '显示名称'], required: true, example: '张三' },
       { key: 'email', header: '邮箱', aliases: ['邮箱地址'], example: 'zhangsan@example.com' },
-      { key: 'password', header: '密码', aliases: ['初始密码', '登录密码'], required: true, note: '按平台密码策略校验，每行独立加密' },
+      { key: 'password', header: '密码', aliases: ['初始密码', '登录密码'], required: true, sensitive: true, note: '按平台密码策略校验，每行独立加密' },
     ],
     duplicateKey: (row) => `username:${row.username}`,
+    duplicateKeys: (row) => [`username:${row.username}`, ...(row.email ? [`email:${row.email}`] : [])],
     async prepare() {
       const user = currentUser();
       const [existing, policy] = await Promise.all([

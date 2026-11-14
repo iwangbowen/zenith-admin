@@ -7,8 +7,7 @@ import { importJobContract } from '@zenith/shared/tasks';
 import { defineContractRoute } from '../../lib/contract-route';
 import { okBody, validationHook } from '../../lib/openapi-schemas';
 import { mapAsyncTask } from '../../lib/task-center/map';
-import { getAsyncTask } from '../../services/tasks/async-tasks.service';
-import { confirmImportPreview, getImportTemplate, inspectImportFile, listImportEntities, submitImportJob } from '../../services/tasks/import-jobs.service';
+import { confirmImportPreview, getImportTaskForCreator, getImportTemplate, inspectImportFile, listImportEntities, submitImportJob } from '../../services/tasks/import-jobs.service';
 import { attachmentDisposition } from '../../lib/content-disposition';
 
 const importJobsRoute = new OpenAPIHono({ defaultHook: validationHook });
@@ -52,7 +51,7 @@ const confirmRoute = defineContractRoute(importJobContract.confirm, {
 
 const errorFileRoute = defineContractRoute(importJobContract.errorFile, {
   handler: async (c) => {
-    const task = await getAsyncTask(c.req.valid('param').id);
+    const task = await getImportTaskForCreator(c.req.valid('param').id);
     const errorFileId = typeof task.result?.errorFileId === 'string' ? task.result.errorFileId : null;
     if (!errorFileId) return new Response('错误文件不存在', { status: 404 });
     const { readGeneratedManagedFile } = await import('../../services/files/files.service');

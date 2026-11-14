@@ -101,6 +101,10 @@ export interface TaskHandlerRegistration {
   executionTimeoutMs?: number;
   /** Must only perform bounded local work; task state and domain state commit together. */
   settleInTransaction?: (tx: DbTransaction, task: AsyncTaskRow) => Promise<void>;
+  /** Release business references when a terminal task record is manually/automatically removed. */
+  cleanupInTransaction?: (tx: DbTransaction, task: AsyncTaskRow) => Promise<void>;
+  /** Release attempt-scoped references before a terminal task is restarted from zero. */
+  resetInTransaction?: (tx: DbTransaction, task: AsyncTaskRow) => Promise<void>;
   /** 任务执行体；返回值写入 result 字段。抛错 → 自动重试或 failed；期间应周期调用 ctx.progress() */
   run(ctx: TaskRunContext): Promise<Record<string, unknown> | void>;
 }

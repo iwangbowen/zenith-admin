@@ -52,12 +52,16 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
 });
 
 describe('PreferencesProvider', () => {
   it('persists personal overrides across remounts and removes them when reset', async () => {
     const { hook } = await setup();
+    vi.useFakeTimers();
     act(() => hook.result.current.setPreferences({ multiSelectLayout: 'wrap' }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(600); });
+    vi.useRealTimers();
     await waitFor(() => expect(document.overrides.multiSelectLayout).toBe('wrap'));
     hook.unmount();
 
@@ -96,7 +100,10 @@ describe('PreferencesProvider', () => {
     document = { overrides: { colorMode: 'dark' } };
     const { hook } = await setup();
     let change;
+    vi.useFakeTimers();
     act(() => { change = hook.result.current.setPreferences({ colorMode: 'system', tableStriped: true }); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(600); });
+    vi.useRealTimers();
     expect(change).toEqual({ applied: 1, skipped: 1 });
     expect(hook.result.current.preferences.colorMode).toBe('light');
     await waitFor(() => expect(api.countOf('PUT', authContract.savePreferences.fullPath)).toBe(1));
@@ -145,7 +152,10 @@ describe('PreferencesProvider', () => {
     document = { overrides: { grayscale: true } };
     const { hook } = await setup();
     expect(hook.result.current.canEditPreference('colorBlind')).toBe(true);
+    vi.useFakeTimers();
     act(() => hook.result.current.setPreferences({ colorBlind: true, grayscale: false }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(600); });
+    vi.useRealTimers();
     await waitFor(() => expect(api.countOf('PUT')).toBe(1));
     expect(document.overrides).toEqual({ grayscale: true, colorBlind: true });
     expect(hook.result.current.preferences).toMatchObject({ grayscale: false, colorBlind: true });

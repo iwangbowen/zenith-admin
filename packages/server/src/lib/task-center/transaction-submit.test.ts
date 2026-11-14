@@ -20,7 +20,7 @@ vi.mock('./registry', async (original) => ({
 vi.mock('./map', () => ({ pushTaskProgress: mocks.push }));
 
 import { getTaskTypePolicy } from './config';
-import { persistAsyncTask, restartAsyncTask, restartAsyncTaskInTransaction, submitAsyncTask } from './runner';
+import { persistAsyncTask, persistAsyncTaskWithResult, restartAsyncTask, restartAsyncTaskInTransaction, submitAsyncTask } from './runner';
 
 const policy = { enabled: true, allowConcurrent: true, maxAttempts: 3, retryDelayMs: 7300, retentionDays: 30 };
 const row = { dispatchToken: '00000000-0000-4000-8000-000000000042', id: 42, taskType: 'cms-publish-build', status: 'pending', createdBy: 7, tenantId: null };
@@ -80,6 +80,13 @@ describe('task-center transaction ownership and policy snapshots', () => {
     expect(mocks.select).not.toHaveBeenCalled();
     expect(mocks.send).not.toHaveBeenCalled();
     expect(mocks.push).not.toHaveBeenCalled();
+  });
+  it('distinguishes task creation from replay for transactional file reference ownership', async () => {
+    const fresh = fixture();
+    expect(await persistAsyncTaskWithResult(fresh.tx, { taskType: 'cms-publish-build', idempotencyKey: 'intent' })).toMatchObject({ created: true, row: { id: 42 } });
+    const replay = fixture({ existing: row });
+    expect(await persistAsyncTaskWithResult(replay.tx, { taskType: 'cms-publish-build', idempotencyKey: 'intent' })).toEqual({ created: false, row });
+    expect(replay.insert).not.toHaveBeenCalled();
   });
 
   it('rejects malformed subjects before task admission or persistence', async () => {

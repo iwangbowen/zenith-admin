@@ -17,6 +17,12 @@ export async function commitTaskStateTransaction<T>(fn: (tx: DbTransaction) => P
 export async function settleTaskState(tx: DbTransaction, rows: readonly AsyncTaskRow[]): Promise<void> {
   for (const row of rows) await getTaskHandler(row.taskType)?.settleInTransaction?.(tx, row);
 }
+export async function cleanupTaskState(tx: DbTransaction, rows: readonly AsyncTaskRow[]): Promise<void> {
+  for (const row of rows) await getTaskHandler(row.taskType)?.cleanupInTransaction?.(tx, row);
+}
+export async function resetTaskState(tx: DbTransaction, row: AsyncTaskRow): Promise<void> {
+  await getTaskHandler(row.taskType)?.resetInTransaction?.(tx, row);
+}
 export async function transitionAsyncTasks(values: PgUpdateSetSource<typeof asyncTasks>, where: SQL | undefined): Promise<AsyncTaskRow[]> {
   if (!where) throw new Error('Task state transition requires a condition');
   return commitTaskStateTransaction(async tx => {

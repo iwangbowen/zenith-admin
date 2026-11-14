@@ -39,11 +39,22 @@ export async function buildImportTemplate(title: string, columns: ImportColumnMe
     }
   });
 
-  const exampleRow = sheet.getRow(2);
-  columns.forEach((col, i) => {
-    if (col.example) exampleRow.getCell(i + 1).value = col.example;
+  const noteSheet = workbook.addWorksheet('填写说明');
+  noteSheet.getCell('A1').value = `${title}导入填写说明`;
+  noteSheet.getCell('A1').font = { bold: true, size: 14 };
+  noteSheet.getCell('A3').value = '字段';
+  noteSheet.getCell('B3').value = '示例值';
+  noteSheet.getCell('C3').value = '说明';
+  noteSheet.getRow(3).font = { bold: true };
+  columns.forEach((col, index) => {
+    const row = noteSheet.getRow(index + 4);
+    row.getCell(1).value = col.header;
+    row.getCell(2).value = col.example ?? '';
+    row.getCell(3).value = [col.required ? '必填' : '选填', col.sensitive ? '敏感值只在当前上传文件中使用，预览样例会脱敏' : null, col.note ?? null, col.enumValues?.length ? `可选值：${col.enumValues.join(' / ')}` : null].filter(Boolean).join('；');
   });
-  exampleRow.font = { color: { argb: 'FF999999' } };
+  noteSheet.getColumn(1).width = 22;
+  noteSheet.getColumn(2).width = 28;
+  noteSheet.getColumn(3).width = 70;
 
   return workbook.xlsx.writeBuffer();
 }

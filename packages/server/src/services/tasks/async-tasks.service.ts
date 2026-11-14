@@ -11,9 +11,12 @@ import { asyncTaskItems, asyncTasks, users } from '../../db/schema';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { APP_TIME_ZONE } from '../../lib/datetime';
 import { localDate, localFormat } from '../../lib/datetime-sql';
+import { exactTenantCondition, getCreateTenantId } from '../../lib/tenant';
+import { currentUser } from '../../lib/context';
 import {
   buildTaskTypeMeta,
   cleanupAsyncTasks,
+  cleanupTaskState,
   getTaskTypePolicy,
   listTaskHandlers,
   listTaskTypeConfigs,
@@ -46,6 +49,14 @@ export async function getAsyncTask(id: number) {
   return mapAsyncTask(requireRow(row, '任务不存在'));
 }
 
+export async function getAsyncTaskForCreator(id: number) {
+  const user = currentUser();
+  const [row] = await db.select().from(asyncTasks).where(and(
+    eq(asyncTasks.id, id), eq(asyncTasks.createdBy, user.userId), exactTenantCondition(asyncTasks.tenantId, getCreateTenantId(user)),
+  )).limit(1);
+  return mapAsyncTask(requireRow(row, '任务不存在或无权访问'));
+}
+
 export async function cancelTask(id: number) {
   await ensureTaskAccessible(id, 'system:async-task:manage');
   return mapAsyncTask(await requestCancelAsyncTask(id));
@@ -66,7 +77,10 @@ export async function deleteAsyncTask(id: number) {
   if (!isAsyncTaskTerminal(row.status)) {
     throw new HTTPException(400, { message: '进行中的任务不能删除，请先取消' });
   }
-  await db.delete(asyncTasks).where(and(eq(asyncTasks.id, id), inArray(asyncTasks.status, ASYNC_TASK_TERMINAL_STATUSES)));
+  await db.transaction(async tx => {
+    const [deleted] = await tx.delete(asyncTasks).where(and(eq(asyncTasks.id, id), inArray(asyncTasks.status, ASYNC_TASK_TERMINAL_STATUSES))).returning();
+    await cleanupTaskState(tx, deleted ? [deleted] : []);
+  });
   return mapAsyncTask(row);
 }
 
@@ -86,10 +100,13 @@ export async function batchCancelTasks(ids: number[]) {
 
 /** 批量删除（仅已结束的任务），返回删除数 */
 export async function batchDeleteTasks(ids: number[]) {
-  const rows = await db.delete(asyncTasks)
-    .where(and(inArray(asyncTasks.id, ids), inArray(asyncTasks.status, ASYNC_TASK_TERMINAL_STATUSES)))
-    .returning({ id: asyncTasks.id });
-  return { affected: rows.length };
+  return db.transaction(async tx => {
+    const rows = await tx.delete(asyncTasks)
+      .where(and(inArray(asyncTasks.id, ids), inArray(asyncTasks.status, ASYNC_TASK_TERMINAL_STATUSES)))
+      .returning();
+    await cleanupTaskState(tx, rows);
+    return { affected: rows.length };
+  });
 }
 
 export async function cleanupFinishedTasks() {

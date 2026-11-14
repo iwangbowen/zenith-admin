@@ -8,13 +8,13 @@
  * ImportProgressModal 为独立受控组件，导入中心页复用它展示任意导入任务详情。
  */
 import { useEffect, useRef, useState } from 'react';
-import { Button, Dropdown, Modal, Table, Tag, Typography } from '@douyinfe/semi-ui';
+import { Banner, Button, Dropdown, Modal, Radio, RadioGroup, Select, Table, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ChevronDown, Upload } from 'lucide-react';
 import { isAsyncTaskTerminal, type AsyncTaskItem } from '@zenith/shared/tasks';
 import AsyncTaskProgress from '@/components/AsyncTaskProgress';
 import { useAsyncTaskItems } from '@/hooks/queries/async-tasks';
-import { downloadImportErrorFile, downloadImportTemplate, useConfirmImportJob, useImportTaskPolling } from '@/hooks/queries/import-jobs';
+import { downloadImportErrorFile, downloadImportTemplate, useConfirmImportJob, useImportEntities, useInspectImportJob, useImportTaskPolling } from '@/hooks/queries/import-jobs';
 import { useImportUpload } from '@/hooks/useImportUpload';
 
 const { Text } = Typography;
@@ -156,9 +156,23 @@ interface ImportButtonProps {
 
 export function ImportButton({ entity, title, label = '导入', context, beforeSubmit, onFinished }: Readonly<ImportButtonProps>) {
   const [taskId, setTaskId] = useState<number | null>(null);
-  const { fileInput, pickFile, submitting } = useImportUpload({
+  const [prepared, setPrepared] = useState<{ fileId: string; dryRun: boolean; fileName: string; entity: string; context?: Record<string, unknown> } | null>(null);
+  const [mapping, setMapping] = useState<Record<string, string | null>>({});
+  const [duplicateMode, setDuplicateMode] = useState<'error' | 'skip'>('error');
+  const entitiesQuery = useImportEntities();
+  const inspectMutation = useInspectImportJob();
+  const entityMeta = entitiesQuery.data?.find(item => item.entity === entity);
+  const { fileInput, pickFile, submitting, submitPrepared } = useImportUpload({
     resolveTarget: () => (beforeSubmit && !beforeSubmit() ? null : { entity, context }),
     onSubmitted: (task) => setTaskId(task.id),
+    inspectBeforeSubmit: true,
+    onPrepared: (value) => {
+      inspectMutation.reset();
+      setPrepared(value);
+      void inspectMutation.mutateAsync({ body: { entity: value.entity, fileId: value.fileId, ...(value.context ? { context: value.context } : {}) } }).then(result => {
+        setMapping(Object.fromEntries(Object.entries(result.suggestedMapping).flatMap(([key, header]) => header ? [[key, header]] : [])));
+      }).catch(() => undefined);
+    },
   });
 
   return (
@@ -184,6 +198,34 @@ export function ImportButton({ entity, title, label = '导入', context, beforeS
           {label} <ChevronDown size={12} style={{ verticalAlign: 'middle' }} />
         </Button>
       </Dropdown>
+
+      <Modal title={`${title}导入配置`} visible={prepared !== null} footer={null} width={620} onCancel={() => { setPrepared(null); inspectMutation.reset(); }}>
+        {prepared && <>
+          <Banner
+            type={inspectMutation.isError ? 'danger' : 'info'}
+            closeIcon={null}
+            description={inspectMutation.isPending
+              ? `正在读取「${prepared.fileName}」的表头和样例…`
+              : inspectMutation.isError
+                ? `读取失败：${inspectMutation.error instanceof Error ? inspectMutation.error.message : '接口暂不可用'}`
+                : inspectMutation.data ? `已读取「${prepared.fileName}」，共 ${inspectMutation.data.rowCount} 行。` : '等待读取文件…'}
+          />
+          {inspectMutation.isError && <Button onClick={() => void inspectMutation.mutateAsync({ body: { entity, fileId: prepared.fileId, ...(context ? { context } : {}) } }).then(result => setMapping(Object.fromEntries(Object.entries(result.suggestedMapping).flatMap(([key, header]) => header ? [[key, header]] : []))))}>重试读取</Button>}
+          {inspectMutation.data && entityMeta && <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
+            {entityMeta.columns.map(column => <div key={column.key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Typography.Text strong style={{ width: 120 }}>{column.header}{column.required ? '*' : ''}</Typography.Text>
+              <Select value={mapping[column.key] || undefined} placeholder="选择文件列" style={{ flex: 1 }} onChange={value => setMapping(old => ({ ...old, [column.key]: value == null || value === '' ? null : String(value) }))}>
+                {inspectMutation.data.headers.map(header => <Select.Option key={header} value={header} disabled={Object.values(mapping).includes(header) && mapping[column.key] !== header}>{header}</Select.Option>)}
+              </Select>
+            </div>)}
+            <Typography.Text strong>重复记录</Typography.Text>
+            <RadioGroup value={duplicateMode} onChange={event => setDuplicateMode(event.target.value as 'error' | 'skip')}>
+              <Radio value="error">报错并保留错误行</Radio><Radio value="skip">跳过重复行并继续</Radio>
+            </RadioGroup>
+            <Button type="primary" loading={submitting} disabled={inspectMutation.isPending || inspectMutation.data.rowCount === 0 || entityMeta.columns.some(column => column.required && !mapping[column.key])} onClick={() => void submitPrepared(prepared, { fieldMapping: mapping, duplicateMode }).then(() => setPrepared(null)).catch(() => undefined)}>{prepared.dryRun ? '提交预检' : '提交导入'}</Button>
+          </div>}
+        </>}
+      </Modal>
 
       <ImportProgressModal taskId={taskId} title={title} onClose={() => setTaskId(null)} onFinished={onFinished} />
     </>

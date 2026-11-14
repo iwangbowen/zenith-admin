@@ -32,19 +32,20 @@ export function useImportUpload({ resolveTarget, onSubmitted, onPrepared, inspec
   async function handleFileSelected(file: File) {
     const target = resolveTarget();
     if (!target) return;
+    const dryRun = dryRunRef.current;
     const formData = new FormData();
     formData.append('file', file);
     const uploaded = await uploadMutation.mutateAsync({ formData, visibility: 'restricted' });
     const fileId = uploaded[0]?.id;
     if (!fileId) return;
     if (inspectBeforeSubmit) {
-      onPrepared?.({ fileId, dryRun: dryRunRef.current, fileName: file.name, entity: target.entity, context: target.context });
+      onPrepared?.({ fileId, dryRun, fileName: file.name, entity: target.entity, context: target.context });
       return;
     }
     const row = await submitMutation.mutateAsync({
-      body: { entity: target.entity, fileId, dryRun: dryRunRef.current, ...(target.context === undefined ? {} : { context: target.context }) },
+      body: { entity: target.entity, fileId, dryRun, ...(target.context === undefined ? {} : { context: target.context }) },
     });
-    onSubmitted(row, dryRunRef.current);
+    onSubmitted(row, dryRun);
   }
 
   function pickFile(dryRun: boolean) {
@@ -61,7 +62,7 @@ export function useImportUpload({ resolveTarget, onSubmitted, onPrepared, inspec
       onChange={(e) => {
         const file = e.target.files?.[0];
         e.target.value = '';
-        if (file) void handleFileSelected(file);
+        if (file) void handleFileSelected(file).catch(() => undefined);
       }}
     />
   );
@@ -72,7 +73,7 @@ export function useImportUpload({ resolveTarget, onSubmitted, onPrepared, inspec
     submitting: uploadMutation.isPending || submitMutation.isPending,
     /** 当前这次选择是否为预检 */
     isDryRun: () => dryRunRef.current,
-    submitPrepared: async (prepared: { fileId: string; entity: string; context?: Record<string, unknown>; dryRun: boolean }, options?: { fieldMapping?: Record<string, string>; duplicateMode?: 'error' | 'skip' }) => {
+    submitPrepared: async (prepared: { fileId: string; entity: string; context?: Record<string, unknown>; dryRun: boolean }, options?: { fieldMapping?: Record<string, string | null>; duplicateMode?: 'error' | 'skip' }) => {
       const row = await submitMutation.mutateAsync({ body: { entity: prepared.entity, fileId: prepared.fileId, dryRun: prepared.dryRun, duplicateMode: options?.duplicateMode ?? 'error', ...(prepared.context === undefined ? {} : { context: prepared.context }), ...(options?.fieldMapping ? { fieldMapping: options.fieldMapping } : {}) } });
       onSubmitted(row, prepared.dryRun);
     },

@@ -147,7 +147,6 @@ export const tenantIsolationBaseline: readonly TenantIsolationBaselineEntry[] = 
   { file: 'services/report/report-resource.service.ts', fn: 'setReportResourceOwner', table: 'reportPrintTemplates', reason: '报表按资源 ACL / 目录范围校验（ensureReportResourceAccess 等）' },
   { file: 'services/report/report-subscription.service.ts', fn: 'processScheduledRun', table: 'reportDeliveryRuns', reason: '后台作业 / 系统或公开上下文，无请求租户；id 来自内部记录' },
   { file: 'services/short-link/short-link-redirect.service.ts', fn: 'getLiveVisitCount', table: 'shortLinks', reason: '后台作业 / 系统或公开上下文，无请求租户；id 来自内部记录' },
-  { file: 'services/tasks/async-tasks.service.ts', fn: 'batchDeleteTasks', table: 'asyncTasks', reason: '任务中心为平台级（任务表无租户列表过滤）：待复核' },
   { file: 'services/tasks/async-tasks.service.ts', fn: 'deleteAsyncTask', table: 'asyncTasks', reason: '任务中心为平台级（任务表无租户列表过滤）：待复核' },
   { file: 'services/tasks/async-tasks.service.ts', fn: 'ensureTaskAccessible', table: 'asyncTasks', reason: '任务中心为平台级（任务表无租户列表过滤）：待复核' },
   { file: 'services/tasks/export-jobs.service.ts', fn: 'deleteExportJobFile', table: 'managedFiles', reason: '后台作业 / 系统或公开上下文，无请求租户；id 来自内部记录' },

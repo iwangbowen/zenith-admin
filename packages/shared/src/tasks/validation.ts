@@ -36,7 +36,7 @@ export const submitImportJobSchema = z.object({
   /** 实体上下文参数（如 CMS 内容导入的 siteId/channelId），由实体的 contextSchema 校验 */
   context: z.record(z.string(), z.unknown()).optional(),
   /** target column key -> uploaded file header; omitted fields use normalized header matching */
-  fieldMapping: z.record(z.string().min(1).max(128), z.string().min(1).max(128)).optional(),
+  fieldMapping: z.record(z.string().min(1).max(128), z.string().min(1).max(128).nullable()).optional(),
   duplicateMode: z.enum(IMPORT_DUPLICATE_MODES).default('error'),
 });
 

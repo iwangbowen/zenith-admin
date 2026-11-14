@@ -44,6 +44,7 @@ export interface ImportDefinition<TRow = unknown, TPrepared = unknown> {
   insertRow(row: TRow, prepared: TPrepared): Promise<void>;
   /** Optional stable key for duplicate rows within the uploaded file. */
   duplicateKey?(row: TRow): string | null;
+  duplicateKeys?(row: TRow): readonly string[];
   /** 行标签（行级报告的 label，默认取第一列的值） */
   rowLabel?(row: TRow): string;
   /** 全部行处理完后的收尾钩子（如动态组同步、缓存失效） */

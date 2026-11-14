@@ -41,7 +41,7 @@ import { isCanonicalEntityType } from '@zenith/shared/platform';
 import { recordDomainEvent } from '../../services/platform/relations/events.service';
 import { completeAsyncTasks } from './terminal-events';
 import { taskTransaction, runWithTaskExecution, TaskExecutionLostError } from './execution';
-import { settleTaskState, transitionAsyncTasks } from './settlement';
+import { cleanupTaskState, resetTaskState, settleTaskState, transitionAsyncTasks } from './settlement';
 import { rememberTransactionEffect } from '../transaction-effects';
 import { currentPersistedOtelContext, runWithPersistedOtelContext, withAsyncSpan } from '../telemetry-context';
 
@@ -89,6 +89,13 @@ export async function submitAsyncTask(input: SubmitAsyncTaskInput): Promise<Asyn
   return row;
 }
 
+/** Transactional submit result for callers that must atomically attach domain references. */
+export async function persistAsyncTaskWithResult(executor: DbTransaction, input: SubmitAsyncTaskInput): Promise<{ row: AsyncTaskRow; created: boolean }> {
+  const user = currentUser();
+  if (input.subjectRefs?.length && input.tenantId === undefined) throw new Error('Task subjects require their business tenant');
+  return persistTaskForPrincipalWithResult(executor, input, { userId: user.userId, tenantId: input.tenantId !== undefined ? input.tenantId : getCreateTenantId(user) });
+}
+
 /** 事务内入口：全部读取和写入共用 tx，调用方提交后再投递。 */
 export async function persistAsyncTask(
   executor: DbTransaction,
@@ -96,20 +103,20 @@ export async function persistAsyncTask(
 ): Promise<AsyncTaskRow> {
   const user = currentUser();
   if (input.subjectRefs?.length && input.tenantId === undefined) throw new Error('Task subjects require their business tenant');
-  return persistTaskForPrincipal(executor, input, { userId: user.userId, tenantId: input.tenantId !== undefined ? input.tenantId : getCreateTenantId(user) });
+  return (await persistTaskForPrincipalWithResult(executor, input, { userId: user.userId, tenantId: input.tenantId !== undefined ? input.tenantId : getCreateTenantId(user) })).row;
 }
 
 /** Periodic business scanners submit jobs with an explicit tenant and system actor. */
 export async function persistSystemAsyncTask(
   executor: DbTransaction, input: SubmitAsyncTaskInput, tenantId: number | null,
 ): Promise<AsyncTaskRow> {
-  return persistTaskForPrincipal(executor, input, { userId: null, tenantId });
+  return (await persistTaskForPrincipalWithResult(executor, input, { userId: null, tenantId })).row;
 }
 
-async function persistTaskForPrincipal(
+async function persistTaskForPrincipalWithResult(
   executor: DbTransaction, input: SubmitAsyncTaskInput,
   principal: { userId: number | null; tenantId: number | null },
-): Promise<AsyncTaskRow> {
+): Promise<{ row: AsyncTaskRow; created: boolean }> {
   const subjects = normalizeAuditSubjects(input.subjectRefs ?? []);
   if (subjects.some((subject) => !isCanonicalEntityType(subject.type))) throw new Error('Task has an unregistered subject type');
   const handler = getTaskHandler(input.taskType);
@@ -125,7 +132,7 @@ async function persistTaskForPrincipal(
   if (idempotencyKey) {
     const [existing] = await executor.select().from(asyncTasks)
       .where(and(scope, eq(asyncTasks.idempotencyKey, idempotencyKey))).limit(1);
-    if (existing) { rememberTransactionEffect(executor, `task-pickup:${existing.id}`, () => enqueueCommittedTask(existing)); return existing; }
+    if (existing) { rememberTransactionEffect(executor, `task-pickup:${existing.id}`, () => enqueueCommittedTask(existing)); return { row: existing, created: false }; }
   }
   const policy = await getTaskTypePolicy(executor, input.taskType);
   if (!policy.enabled) {
@@ -175,7 +182,7 @@ async function persistTaskForPrincipal(
           exactTenantCondition(asyncTasks.tenantId, tenantId),
         ))
         .limit(1);
-      if (existing) { rememberTransactionEffect(executor, `task-pickup:${existing.id}`, () => enqueueCommittedTask(existing)); return existing; }
+      if (existing) { rememberTransactionEffect(executor, `task-pickup:${existing.id}`, () => enqueueCommittedTask(existing)); return { row: existing, created: false }; }
       throw new HTTPException(500, { message: '任务提交异常，请重试' });
     }
   } else {
@@ -201,7 +208,7 @@ async function persistTaskForPrincipal(
     });
   }
   rememberTransactionEffect(executor, `task-pickup:${row.id}`, () => enqueueCommittedTask(row));
-  return row;
+  return { row, created: true };
 }
 
 /** 同一提交作用域串行准入，保护 allowConcurrent 的 count + insert。 */
@@ -518,7 +525,7 @@ export async function restartAsyncTask(taskId: number): Promise<AsyncTaskRow> {
 }
 
 export async function restartAsyncTaskInTransaction(executor: DbTransaction, taskId: number): Promise<AsyncTaskRow> {
-  const [maybeExisting] = await executor.select({ taskType: asyncTasks.taskType, createdBy: asyncTasks.createdBy, tenantId: asyncTasks.tenantId }).from(asyncTasks)
+  const [maybeExisting] = await executor.select().from(asyncTasks)
     .where(eq(asyncTasks.id, taskId)).limit(1);
   const existing = requireRow(maybeExisting, '任务不存在');
   await lockTaskAdmission(executor, existing.taskType, existing.createdBy, existing.tenantId);
@@ -555,6 +562,7 @@ export async function restartAsyncTaskInTransaction(executor: DbTransaction, tas
     .where(and(eq(asyncTasks.id, taskId), inArray(asyncTasks.status, TERMINAL_STATUSES)))
     .returning();
   const row = requireRow(maybeRow, '仅已结束的任务可以重新开始', 400);
+  await resetTaskState(executor, existing);
   await settleTaskState(executor, [row]);
   await executor.delete(asyncTaskItems).where(eq(asyncTaskItems.taskId, taskId));
   return row;
@@ -660,7 +668,11 @@ async function cleanableTaskWheres(retentionDays: number): Promise<SQL[]> {
 export async function cleanupAsyncTasks(retentionDays = ASYNC_TASK_RETENTION_DAYS): Promise<number> {
   let cleaned = 0;
   for (const where of await cleanableTaskWheres(retentionDays)) {
-    const rows = await db.delete(asyncTasks).where(where).returning({ id: asyncTasks.id });
+    const rows = await db.transaction(async tx => {
+      const deleted = await tx.delete(asyncTasks).where(where).returning();
+      await cleanupTaskState(tx, deleted);
+      return deleted;
+    });
     cleaned += rows.length;
   }
   return cleaned;

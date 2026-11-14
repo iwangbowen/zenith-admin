@@ -24,7 +24,7 @@ interface NewImportModalProps {
 export default function NewImportModal({ visible, entities, entitiesLoading, onClose, onSubmitted }: Readonly<NewImportModalProps>) {
   const [selectedEntity, setSelectedEntity] = useState<string>('');
   const [prepared, setPrepared] = useState<{ fileId: string; dryRun: boolean; fileName: string; entity: string; context?: Record<string, unknown> } | null>(null);
-  const [mapping, setMapping] = useState<Record<string, string>>({});
+  const [mapping, setMapping] = useState<Record<string, string | null>>({});
   const [duplicateMode, setDuplicateMode] = useState<'error' | 'skip'>('error');
 
   const entity = entities.find((e) => e.entity === selectedEntity) ?? null;
@@ -35,10 +35,11 @@ export default function NewImportModal({ visible, entities, entitiesLoading, onC
     onSubmitted: (task) => { if (entity) onSubmitted(task.id, entity.title); },
     inspectBeforeSubmit: true,
     onPrepared: (value) => {
+      inspect.reset();
       setPrepared(value);
       void inspect.mutateAsync({ body: { entity: value.entity, fileId: value.fileId, ...(value.context ? { context: value.context } : {}) } }).then(result => {
         setMapping(Object.fromEntries(Object.entries(result.suggestedMapping).flatMap(([key, header]) => header ? [[key, header]] : [])));
-      });
+      }).catch(() => undefined);
     },
   });
 
@@ -149,11 +150,12 @@ export default function NewImportModal({ visible, entities, entitiesLoading, onC
             {inspect.isPending && <Spin tip="正在读取表头和样例" />}
             {inspect.isError && <Button onClick={retryInspection} loading={inspect.isPending}>重试读取</Button>}
             {inspect.data && <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {inspect.data.rowCount === 0 && <Banner type="warning" closeIcon={null} description="文件没有可导入的数据行，请填写数据后重新上传。" />}
               <Text type="tertiary" size="small">样例（最多展示 5 行）：{inspect.data.sample.length ? JSON.stringify(inspect.data.sample) : '无有效数据行'}</Text>
               {entity.columns.map(column => <div key={column.key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Text strong style={{ width: 120 }}>{column.header}{column.required ? '*' : ''}</Text>
-                <Select value={mapping[column.key] || undefined} placeholder="选择文件列（可留空）" style={{ flex: 1 }} onChange={value => setMapping(old => ({ ...old, [column.key]: String(value ?? '') }))}>
-                  {inspect.data.headers.map(header => <Select.Option key={header} value={header}>{header}</Select.Option>)}
+                <Select value={mapping[column.key] || undefined} placeholder="选择文件列（可留空）" style={{ flex: 1 }} onChange={value => setMapping(old => ({ ...old, [column.key]: value == null || value === '' ? null : String(value) }))}>
+                  {inspect.data.headers.map(header => <Select.Option key={header} value={header} disabled={Object.values(mapping).includes(header) && mapping[column.key] !== header}>{header}</Select.Option>)}
                 </Select>
               </div>)}
               <Text strong>重复记录</Text>
@@ -162,7 +164,7 @@ export default function NewImportModal({ visible, entities, entitiesLoading, onC
               </RadioGroup>
               <div style={{ display: 'flex', gap: 8 }}>
                 <Button onClick={() => { setPrepared(null); inspect.reset(); }}>重新选择</Button>
-                <Button type="primary" loading={submitting} disabled={!inspect.data || inspect.isPending || missingRequiredMapping} onClick={() => void submitPrepared(prepared, { fieldMapping: mapping, duplicateMode })}>{prepared.dryRun ? '提交预检' : '确认导入'}</Button>
+                <Button type="primary" loading={submitting} disabled={!inspect.data || inspect.data.rowCount === 0 || inspect.isPending || missingRequiredMapping} onClick={() => void submitPrepared(prepared, { fieldMapping: mapping, duplicateMode }).catch(() => undefined)}>{prepared.dryRun ? '提交预检' : '确认导入'}</Button>
               </div>
             </div>}
           </>
