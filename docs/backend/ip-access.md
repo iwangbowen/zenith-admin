@@ -62,11 +62,19 @@ IP 访问控制是平台级 API 接入策略，管理页面为 `/system/ip-acces
 仍可访问后台时使用版本历史或“停用访问控制”：停用操作先填入关闭草稿，保存后才生效，未提交前不会改变运行策略。
 版本恢复需要预览、填写说明并确认，保存执行相同的自锁检查。
 
-来源变更导致无法访问时，在项目根目录、使用目标服务的数据库与运行环境执行：
+来源变更导致无法访问时，使用目标服务的数据库与运行环境执行恢复入口。源码仓库的开发环境执行：
 
 ```bash
-npm run ip-access:recover -w @zenith/server -- --actor-id 1 --reason "来源网络调整，恢复管理访问" --confirm-disable
+npm run ip-access:recover:dev -w @zenith/server -- --actor-id 1 --reason "来源网络调整，恢复管理访问" --confirm-disable
 ```
+
+使用 Release 后端包或容器时，在包含 `package.json` 和 `dist/` 的服务器部署目录执行：
+
+```bash
+npm run ip-access:recover -- --actor-id 1 --reason "来源网络调整，恢复管理访问" --confirm-disable
+```
+
+恢复命令使用 `dist/bootstrap/recover-ip-access.js`，随后端构建产物发布，不依赖 TypeScript 源码或开发工具。
 
 `--actor-id` 必须替换为实际操作者的平台超级管理员 ID；示例中的 `1` 不是默认授权。
 
