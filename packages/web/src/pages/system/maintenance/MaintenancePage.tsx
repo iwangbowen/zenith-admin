@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Banner, Button, Collapse, DatePicker, Descriptions, Input, InputNumber, Modal, Select, SideSheet, Space, Spin, Switch, TabPane, Tabs, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { maintenanceContract, MAINTENANCE_LOG_STATUS_OPTIONS, type MaintenanceLog, type MaintenanceStatus } from '@zenith/shared/ops';
+import { maintenanceContract, MAINTENANCE_LOG_STATUS_OPTIONS, MAINTENANCE_ACTION_LABELS, type MaintenanceLog, type MaintenanceStatus } from '@zenith/shared/ops';
 import { maintenanceContentSchema, maintenancePlanSchema } from '@zenith/shared/ops/maintenance-validation';
 import { useMaintenanceAccess, useMaintenanceStatus, useMaintenanceLogs, useMaintenancePlan, useMaintenanceStart, useMaintenanceCancel, useMaintenanceDiagnosis, useUpdateMaintenanceStatus, useMaintenanceRecipients } from '@/hooks/queries/maintenance';
 import { ListSearchToolbar } from '@/components/list-page';
@@ -80,8 +80,8 @@ function MaintenanceEditor({ status, reload }: { readonly status: MaintenanceSta
     ]} />
     <Text type="tertiary">维护控制 API 与实时业务入口；后台任务、支付结果回调、已有 HTTP 请求可能继续执行，不提供数据库停写保证。</Text>
     {stale ? <Banner type="warning" closeIcon={null} description="服务端状态已变化，当前草稿保留。请重载后重新编辑，旧版本不能提交。" /> : null}
-    <label>维护提示<TextArea aria-label="维护提示" rows={3} maxLength={512} value={value.message} onChange={(message) => edit({ message })} disabled={!canManage || pending} /></label>
-    <label>预计结束时间<DatePicker type="dateTime" value={parseDateTimeParam(value.estimatedEndAt) ?? undefined} onChange={(date) => edit({ estimatedEndAt: format(date) })} disabled={!canManage || pending} /></label>
+    <label>维护提示<TextArea aria-label="维护提示" rows={3} maxLength={512} value={value.message} onChange={(message) => edit({ message })} disabled={!canManage || pending || status.current?.status === 'scheduled'} /></label>
+    <label>预计结束时间<DatePicker type="dateTime" value={parseDateTimeParam(value.estimatedEndAt) ?? undefined} onChange={(date) => edit({ estimatedEndAt: format(date) })} disabled={!canManage || pending || status.current?.status === 'scheduled'} /></label>
     {status.enabled ? <label>自动恢复时间（清空即关闭）<DatePicker type="dateTime" value={parseDateTimeParam(value.autoEndAt) ?? undefined} onChange={(date) => edit({ autoEndAt: format(date) })} disabled={!canManage || pending} /></label> : null}
     {canManage ? <label>操作原因<Input aria-label="操作原因" value={value.reason} maxLength={500} onChange={(reason) => edit({ reason })} disabled={pending} placeholder="保存、开启、延长或结束维护的原因" /></label> : null}
     {status.current?.status === 'scheduled' ? <Space wrap>
@@ -102,7 +102,7 @@ function MaintenanceEditor({ status, reload }: { readonly status: MaintenanceSta
       <Button disabled={stale || pending} loading={plan.isPending} onClick={() => void submitPlan()}>提交维护计划</Button>
     </section> : null}
     <Collapse>
-      <Collapse.Panel header="访问诊断与影响范围" itemKey="diagnosis">
+      <Collapse.Panel header="访问诊断与影响范围" itemKey="diagnosis" reCalcKey={String(diagnosis.submittedAt) + ':' + diagnosis.isPending}>
         <Space wrap><Select value={testMethod} optionList={['GET','POST','PUT','PATCH','DELETE'].map((method) => ({ value: method, label: method }))} onChange={(method) => setTestMethod(String(method))} style={{ width: 110 }} />
           <Input aria-label="诊断接口路径" value={testPath} onChange={setTestPath} style={{ width: 300 }} />
           <Button loading={diagnosis.isPending} onClick={async () => { try { await diagnosis.mutateAsync({ body: { method: testMethod, path: testPath, version: status.version } }); setDiagnosisKey(key); } catch { /* Request feedback. */ } }}>诊断当前身份</Button></Space>
@@ -124,9 +124,9 @@ function MaintenanceHistory() {
     createOperationColumn({ width: 80, actions: (row) => [{ key: 'detail', label: '详情', onClick: () => setDetail(row) }] }),
   ];
   return <><ListSearchToolbar page={page} filters={['keyword','status',['startTime','endTime']]} /><ConfigurableTable columns={columns} {...page.tableProps} />
-    <SideSheet title="维护详情" visible={!!detail} onCancel={() => setDetail(null)} width={680}>{detail ? <>
+    <SideSheet title="维护详情" visible={!!detail} onCancel={() => setDetail(null)} width="min(680px, 100vw)">{detail ? <>
       <Descriptions data={[{ key: '原因', value: detail.reason },{ key: '结束原因', value: detail.endReason ?? '—' },{ key: '提示', value: detail.message }]} />
-      {detail.changes.map((change, index) => <div key={index} style={{ marginTop: 16 }}><Text strong>{change.action} · {change.actor}</Text><div><DateTimeText value={change.at} mode="absolute" /> · {change.reason}</div><Text type="tertiary">{change.message}</Text></div>)}
+      {detail.changes.map((change, index) => <div key={index} style={{ marginTop: 16, overflowWrap: 'anywhere' }}><Text strong>{MAINTENANCE_ACTION_LABELS[change.action] ?? change.action} · {change.actor}</Text><div><DateTimeText value={change.at} mode="absolute" /> · {change.reason}</div><Text type="tertiary">{change.message}</Text><div>预计结束：<DateTimeText value={change.estimatedEndAt} mode="absolute" />；自动恢复：<DateTimeText value={change.autoEndAt} mode="absolute" /></div></div>)}
     </> : null}</SideSheet></>;
 }
 export default function MaintenancePage() {

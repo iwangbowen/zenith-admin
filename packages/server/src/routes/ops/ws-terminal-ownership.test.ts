@@ -8,6 +8,8 @@
  * 防止同名 ID 覆盖造成 PTY 泄漏或输入串线，以及被拒连接通过 onClose / terminal:close 销毁他人会话。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+const maintenance = vi.hoisted(() => ({ allowed: true }));
+vi.mock('../../lib/maintenance-realtime', () => ({ maintenanceRealtimeAllowed: async () => maintenance.allowed }));
 
 vi.mock('node-pty', () => ({ spawn: vi.fn() }));
 vi.mock('ssh2', () => ({ Client: vi.fn() }));
@@ -107,8 +109,18 @@ function makeVictimSession(victimWs: FakeWs): { session: TerminalSession; proces
 
 describe('terminal websocket session ownership', () => {
   beforeEach(() => {
+    maintenance.allowed = true;
     endSession(VICTIM_SESSION_ID, 'client_closed');
     handlerFactory = null;
+  });
+
+  it('blocks input on an existing terminal after maintenance begins', async () => {
+    const { process: proc } = makeVictimSession(makeWs());
+    const { handlers, ws } = await connect({ token: 'user-1', sessionId: VICTIM_SESSION_ID, shell: 'bash' });
+    maintenance.allowed = false;
+    await handlers.onMessage?.({ data: JSON.stringify({ type: 'terminal:input', data: 'echo denied' }) }, ws);
+    expect(proc.write).not.toHaveBeenCalled();
+    expect(ws.closed).toContainEqual({ code: 1013 });
   });
 
   it('refuses to register over an existing session id', () => {

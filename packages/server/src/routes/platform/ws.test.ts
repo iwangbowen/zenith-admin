@@ -2,10 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Context } from 'hono';
 import { WSContext, type UpgradeWebSocket, type WSEvents } from 'hono/ws';
 
-const identity = vi.hoisted(() => ({ memberIds: [1, 2] }));
+const identity = vi.hoisted(() => ({ memberIds: [1, 2], passage: true, members: vi.fn() }));
+vi.mock('../../lib/maintenance-realtime', () => ({ maintenanceRealtimeAllowed: async () => identity.passage }));
 vi.mock('../../lib/ws-auth', () => ({ authenticateAdminWs: async () => ({ payload: { userId: 1, jti: 'ws-test' }, nickname: '测试用户' }) }));
 vi.mock('../../lib/request-helpers', () => ({ getClientIp: () => '127.0.0.1' }));
-vi.mock('../../lib/chat-member-cache', () => ({ getConversationMemberIds: async () => identity.memberIds }));
+vi.mock('../../lib/chat-member-cache', () => ({ getConversationMemberIds: identity.members }));
 vi.mock('../../lib/rtc-manager', () => ({ getCallConversation: () => null, joinRoom: () => null, leaveAllRooms: () => [], leaveRoom: vi.fn() }));
 
 let events: WSEvents;
@@ -18,6 +19,8 @@ beforeEach(async () => {
   vi.setSystemTime(1000);
   vi.resetModules();
   identity.memberIds = [1, 2];
+  identity.passage = true;
+  identity.members.mockReset().mockImplementation(async () => identity.memberIds);
   manager = await import('../../lib/ws-manager');
   const { createWsRoute } = await import('./ws');
   const upgrade = ((createEvents: (c: Context) => WSEvents | Promise<WSEvents>) => async (c: Context) => {
@@ -37,6 +40,16 @@ afterEach(() => {
 const receive = async (data: string) => events.onMessage?.({ data } as MessageEvent, socket);
 
 describe('WS 入站协议采样', () => {
+  it('维护门禁拒绝业务帧，同时保留控制心跳', async () => {
+    identity.passage = false;
+    await receive(JSON.stringify({ type: 'chat:typing', payload: { conversationId: 10 } }));
+    expect(identity.members).not.toHaveBeenCalled();
+    await receive(JSON.stringify({ type: 'ping' }));
+    expect(send.mock.calls[0]?.[0]).toBe(JSON.stringify({ type: 'pong' }));
+    identity.passage = true;
+    await receive(JSON.stringify({ type: 'chat:typing', payload: { conversationId: 10 } }));
+    expect(identity.members).toHaveBeenCalledWith(10);
+  });
   it('ping / pong 保活成功，畸形JSON、未知类型与非法业务payload如实标记拒绝', async () => {
     await receive('{broken-json');
     await receive('{}');

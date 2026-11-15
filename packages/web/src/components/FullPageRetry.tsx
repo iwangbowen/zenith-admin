@@ -29,7 +29,7 @@ function useOnline(): boolean {
   );
 }
 
-type FailureKind = 'offline' | 'network' | 'server' | 'maintenance';
+type FailureKind = 'offline' | 'network' | 'server';
 
 interface Reason {
   kind: FailureKind;
@@ -61,13 +61,6 @@ function resolveReason(params: {
   // code=-1 是 http-client 统一的连接层失败（fetch 抛错 / 响应无法解析），仍按调用方文案展示；
   // 正数业务码说明服务端已经应答，属于另一类故障
   if (error instanceof ApiError) {
-    if (error.code === 503) {
-      return {
-        kind: 'maintenance',
-        title: '系统维护中',
-        description: error.message || '服务正在维护升级，恢复后会自动重连。',
-      };
-    }
     if (error.code > 0) {
       return {
         kind: 'server',

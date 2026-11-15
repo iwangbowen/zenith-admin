@@ -31,6 +31,8 @@ describe('maintenance enforcement', () => {
   it('uses method-aware complete exceptions rather than raw prefixes', async () => {
     for (const path of ['/api/settings/public', '/api/auth/captcha', '/api/maintenance/status']) expect((await app().request(path)).status).toBe(200);
     for (const path of ['/api/auth/profile', '/api/ws-other', '/api/maintenance/status-evil']) expect((await app().request(path)).status).toBe(503);
+    expect((await app().request('/api/auth/oauth/accounts')).status).toBe(503);
+    expect((await app().request('/api/auth/enterprise/saml/exchange', { method: 'POST' })).status).toBe(200);
     expect((await app().request('/api/public/payment/notify/wechat/token', { method: 'POST' })).status).toBe(200);
     expect((await app().request('/api/public/payment/notify/wechat/token')).status).toBe(503);
   });

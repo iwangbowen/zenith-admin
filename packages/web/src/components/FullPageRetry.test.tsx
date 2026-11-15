@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, render } from '@testing-library/react';
-import {} from '@/lib/query';
+import { act, render, screen } from '@testing-library/react';
+import { ApiError } from '@/lib/query';
 import FullPageRetry from './FullPageRetry';
 
 function setOnline(value: boolean) {
@@ -29,6 +29,11 @@ afterEach(() => {
 });
 
 describe('FullPageRetry', () => {
+  it('does not classify an arbitrary 503 as planned maintenance', () => {
+    render(<FullPageRetry {...baseProps} error={new ApiError(503, '维护状态暂不可用')} onRetry={vi.fn()} />);
+    expect(screen.getByText('服务器返回异常')).toBeTruthy();
+    expect(screen.queryByText('系统维护中')).toBeNull();
+  });
   it('pauses the countdown while a retry is in flight', () => {
     const onRetry = vi.fn();
     render(<FullPageRetry {...baseProps} retrying onRetry={onRetry} />);

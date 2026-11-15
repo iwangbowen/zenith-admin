@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { maintenanceKeys, usePublicMaintenanceStatus } from '@/hooks/queries/maintenance';
 import Overlay from './MaintenanceOverlay';
 
-/** Lightweight cross-entry gate; only its active maintenance view loads the illustration. */
+/** Cross-entry gate: preserve credentials while ordinary entry points are paused. */
 export function MaintenanceBoundary({ children }: { readonly children: ReactNode }) {
   const client = useQueryClient();
   const { data, isPending, isError, refetch } = usePublicMaintenanceStatus({ refetchInterval: 30_000 });

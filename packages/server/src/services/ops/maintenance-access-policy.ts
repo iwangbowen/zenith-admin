@@ -1,9 +1,10 @@
+import { OAUTH_PROVIDERS } from '@zenith/shared/identity';
 /** Method + complete route patterns, never broad URL-prefix exemptions. */
 export const MAINTENANCE_EXCEPTIONS = [
   ...['/api/health', '/api/health/livez', '/api/health/readyz', '/api/health/startupz', '/api/maintenance/status', '/api/settings/public'].map((path) => ({ method: 'GET', path, reason: '状态探测或认证所需公开配置' })),
-  ...['/api/auth/login', '/api/auth/refresh', '/api/auth/logout', '/api/auth/mfa/verify', '/api/auth/session-conflict/resolve', '/api/auth/forgot-password', '/api/auth/reset-password', '/api/auth/enterprise/ldap/login', '/api/auth/enterprise/callback', '/api/auth/enterprise/saml/acs'].map((path) => ({ method: 'POST', path, reason: '认证或账号恢复，仍执行原有验证' })),
-  ...['/api/auth/me', '/api/auth/captcha', '/api/auth/oauth/providers', '/api/auth/oauth/{provider}', '/api/auth/enterprise/providers', '/api/auth/enterprise/{id}'].map((path) => ({ method: 'GET', path, reason: '认证与当前身份' })),
-  { method: 'POST', path: '/api/auth/oauth/{provider}/callback', reason: '第三方登录，仍校验 OAuth 状态与凭证' },
+  ...['/api/auth/login', '/api/auth/refresh', '/api/auth/logout', '/api/auth/logout-by-refresh', '/api/auth/mfa/verify', '/api/auth/session-conflict/resolve', '/api/auth/forgot-password', '/api/auth/reset-password', '/api/auth/enterprise/ldap/login', '/api/auth/enterprise/callback', '/api/auth/enterprise/saml/acs', '/api/auth/enterprise/saml/exchange'].map((path) => ({ method: 'POST', path, reason: '认证或账号恢复，仍执行原有验证' })),
+  ...['/api/auth/me', '/api/auth/captcha', '/api/auth/oauth/providers', '/api/auth/enterprise/providers', '/api/auth/enterprise/{id}'].map((path) => ({ method: 'GET', path, reason: '认证与当前身份' })),
+  ...OAUTH_PROVIDERS.flatMap((provider) => [{ method: 'GET', path: '/api/auth/oauth/' + provider, reason: '第三方认证授权入口' }, { method: 'POST', path: '/api/auth/oauth/' + provider + '/callback', reason: '第三方登录，仍校验 OAuth 状态与凭证' }]),
   { method: 'GET', path: '/api/maintenance/access', reason: '当前主体维护能力，仍执行认证' },
   { method: 'GET', path: '/api/ws', reason: '控制通道保留，业务帧另行检查维护策略' },
   { method: 'POST', path: '/api/public/payment/notify/{channel}/{callbackToken}', reason: '支付结果接收，仍执行验签与幂等' },

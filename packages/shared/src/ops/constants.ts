@@ -16,6 +16,7 @@ export const CONSOLE_LOG_ROLE_OPTIONS = createLabelOptions(CONSOLE_LOG_ROLES, CO
 export const MAINTENANCE_LOG_STATUSES = ['scheduled', 'ongoing', 'completed', 'cancelled'] as const;
 export type MaintenanceLogStatus = (typeof MAINTENANCE_LOG_STATUSES)[number];
 export const MAINTENANCE_LOG_STATUS_OPTIONS = createLabelOptions(MAINTENANCE_LOG_STATUSES, { scheduled: '待开始', ongoing: '维护中', completed: '已结束', cancelled: '已取消' });
+export const MAINTENANCE_ACTION_LABELS: Record<string, string> = { plan: '安排计划', start: '开始维护', update: '更新维护', finish: '结束维护', cancel: '取消计划' };
 
 // ─── SSL 证书 ────────────────────────────────────────────────────────────────
 
