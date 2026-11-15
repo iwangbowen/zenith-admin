@@ -28,5 +28,5 @@ export const ipAccessLogListQuery = paginationQuery.extend({
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 
 export const ipAccessLogContract = defineContract('/api/ip-access-logs', {
-  list: op.get('/', { access: { permission: 'system:ip-access:log' }, query: ipAccessLogListQuery, response: paginated(ipAccessLogSchema), summary: 'IP 访问控制拦截日志分页查询' }),
+  list: op.get('/', { access: { permission: 'system:ip-access:log', platformOnly: 'multi-tenant' }, query: ipAccessLogListQuery, response: paginated(ipAccessLogSchema), summary: 'IP 访问控制拦截日志分页查询' }),
 }, { tags: ['IpAccessLogs'] });

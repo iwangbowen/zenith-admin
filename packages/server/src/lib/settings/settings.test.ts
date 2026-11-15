@@ -79,7 +79,7 @@ vi.mock('../ws-manager', () => ({ scheduleBroadcast: vi.fn(), onBroadcastMessage
 
 import { db } from '../../db';
 import { dispatchInvalidation, resetInvalidationBusForTest } from '../invalidation-bus';
-import { getPublicSettings, getSettings, getSettingsEnvelope, invalidateSettings, resetSettingsCache, saveSettings } from './index';
+import { getPublicSettings, getSettings, getSettingsEnvelope, invalidateSettings, resetSettingsCache, saveSettings, restoreSettings, settingsReadScope } from './index';
 import { scheduleBroadcast, onBroadcastMessage } from '../ws-manager';
 
 const handleBroadcast = vi.mocked(onBroadcastMessage).mock.calls[0][0];
@@ -185,6 +185,14 @@ describe('getSettings', () => {
 });
 
 describe('getSettingsEnvelope', () => {
+  it('rejects tenant reads of the platform IP policy, including history scope', () => {
+    configState.multiTenantMode = true;
+    expect(() => settingsReadScope('ipAccess', tenantAdmin)).toThrow(/平台管理员/);
+  });
+  it('does not use disabled defaults when stored IP policy is invalid', async () => {
+    dbState.selectResults.push([row('ipAccess', null, { blacklistEnabled: true, blacklist: [':::'] })]);
+    await expect(getSettings('ipAccess')).rejects.toMatchObject({ status: 503 });
+  });
   it('返回生效值、上级值、覆盖路径与版本', async () => {
     ctx.user = platformAdmin;
     dbState.selectResults.push([row('ui', null, { watermark: { enabled: true } }, 4)]);
@@ -199,6 +207,19 @@ describe('getSettingsEnvelope', () => {
 });
 
 describe('saveSettings', () => {
+  it.each(['save', 'restore'] as const)('cannot bypass source safety through %s', async (operation) => {
+    const current = row('ipAccess', null, {});
+    dbState.selectResults.push([current]);
+    const before = await getSettingsEnvelope('ipAccess');
+    dbState.selectResults.push([current], [{ id: 100 }]);
+    if (operation === 'restore') dbState.selectResults.push([{ overrides: { blacklistEnabled: true } }]);
+    const attempt = operation === 'save'
+      ? saveSettings('ipAccess', platformAdmin, { baseToken: before.baseToken, overrides: { blacklistEnabled: true } })
+      : restoreSettings('ipAccess', platformAdmin, 1, { baseToken: before.baseToken, note: '恢复测试' });
+    await expect(attempt).rejects.toMatchObject({ status: 400 });
+    expect(dbState.inserts).toEqual([]);
+    expect(dbState.updates).toEqual([]);
+  });
   it('本层或继承来源的指纹不一致 → 409，不写库', async () => {
     dbState.selectResults.push([]);
     await expect(saveSettings('ui', platformAdmin, { baseToken: 'stale', overrides: {} }))

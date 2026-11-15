@@ -44,6 +44,7 @@ import { getTenantPackageFeatureSet } from '../tenant-package';
 import { TtlCache } from '../ttl-cache';
 import { onBroadcastMessage, scheduleBroadcast } from '../ws-manager';
 import type { JwtPayload } from '../../middleware/auth';
+import { assertIpAccessChange } from './ip-access-guard';
 
 /**
  * 运行时设置读取 / 写入的唯一入口。
@@ -66,6 +67,7 @@ export type SettingsTenantOptions = {
 };
 
 export interface SettingsEntry<M extends SettingsModuleKey = SettingsModuleKey> {
+  readonly degraded: boolean;
   readonly module: M;
   readonly tenantId: number | null;
   readonly effective: SettingsOf<M>;
@@ -177,6 +179,7 @@ function buildEntry<M extends SettingsModuleKey>(module: M, tenantId: number | n
   })).digest('hex');
   return {
     module, tenantId, own, currentRevisionId, inheritedVersion, definitionHash, baseToken,
+    degraded: resolveSettings(module, tenantId === null ? [own] : [platformData, own]).degraded,
     effective: resolveLogged(module, tenantId, tenantId === null ? [own] : [platformData, own]),
     inherited, version: ownRow?.version ?? 0, updatedAt: ownRow?.updatedAt ?? null,
   };
@@ -233,6 +236,7 @@ export function settingsWriteScope(module: SettingsModuleKey, user: JwtPayload):
 /** 模块生效文档（命中副本零查询）。 */
 export async function getSettings<M extends SettingsModuleKey>(module: M, options?: SettingsTenantOptions): Promise<SettingsOf<M>> {
   const entry = await loadEntry(module, readTenantId(module, options));
+  if (module === 'ipAccess' && entry.degraded) throw new HTTPException(503, { message: 'IP 访问策略无效，请通过受控运维流程恢复' });
   return entry.effective;
 }
 
@@ -263,6 +267,7 @@ export async function getSettingsEnvelope<M extends SettingsModuleKey>(module: M
 
 /** 管理界面读的是「我保存时会写到哪一行」；租户管理员越权读平台级模块时按读取语义降级（页面只读） */
 export function settingsReadScope(module: SettingsModuleKey, user: JwtPayload): number | null {
+  if (SETTINGS_MODULES[module].platformOnly && config.multiTenantMode && !isPlatformAdmin(user)) throw new HTTPException(403, { message: '该设置仅平台管理员可访问' });
   try {
     return settingsWriteScope(module, user);
   } catch {
@@ -312,6 +317,7 @@ async function writeSettings<M extends SettingsModuleKey>(module: M, user: JwtPa
       }
       throw error;
     }
+    if (module === 'ipAccess') assertIpAccessChange(effective as SettingsOf<'ipAccess'>);
     if (stableSettingsSerialize(own) === stableSettingsSerialize(before.own)) return { saved: toSettingsEnvelope(before), changed: false };
     const settingsId = head?.id ?? requireRow((await tx.insert(systemSettings).values({ module, tenantId }).returning({ id: systemSettings.id }))[0], '创建设置失败').id;
     const definition = settingsDefinition(module);
@@ -390,6 +396,7 @@ export async function getMySettings(): Promise<MySettings> {
 // ─── 模块清单 ────────────────────────────────────────────────────────────────
 
 async function canRead(def: SettingsModuleDef, user: JwtPayload, permissions: string[] | null): Promise<boolean> {
+  if (def.platformOnly && config.multiTenantMode && !isPlatformAdmin(user)) return false;
   if (def.readPermission === null || isSuperAdmin(user)) return true;
   return (permissions ?? []).includes(def.readPermission);
 }

@@ -13,6 +13,7 @@ export * from './overrides';
 export * from './history';
 export * from './history-contracts';
 export * from './module-def';
+export * from './ip-access-policy';
 export * from './modules/ai';
 export * from './modules/analytics';
 export * from './modules/auth';

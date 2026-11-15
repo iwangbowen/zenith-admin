@@ -2,7 +2,7 @@
  * IP 访问控制中间件单测（黑/白名单，访问层安全关键）。
  *
  * 覆盖要点：
- *  1. 免检路径（登录/验证码/OAuth）直接放行
+ *  1. 登录、公开接口和 WebSocket 握手均执行策略
  *  2. 黑白名单均未启用 → 快速路径放行
  *  3. 黑名单命中（单 IP / CIDR 段）→ 403 + 写拦截日志
  *  4. 白名单启用且 IP 不在名单 → 403；在名单（CIDR）→ 放行
@@ -55,17 +55,18 @@ beforeEach(() => {
   mockConfig({});
 });
 
-describe('ipAccessMiddleware - 免检路径', () => {
-  it.each(['/api/auth/login', '/api/auth/captcha', '/api/auth/refresh'])('免检路径 %s 直接放行（不读配置）', async (path) => {
-    const res = await buildApp().request(path);
-    expect(res.status).toBe(200);
-    expect(settingsMock).not.toHaveBeenCalled();
+describe('ipAccessMiddleware - API entry coverage', () => {
+  it.each(['/api/auth/login', '/api/auth/captcha', '/api/auth/refresh', '/api/oauth/github/callback', '/api/public/payment/link/secret', '/api/ws'])('enforces policy on %s', async (path) => {
+    mockConfig({ blacklistEnabled: true, blacklist: ['203.0.113.10'] });
+    expect((await buildApp().request(path)).status).toBe(403);
   });
-
-  it('OAuth 前缀路径放行', async () => {
-    const res = await buildApp().request('/api/oauth/github/callback');
-    expect(res.status).toBe(200);
-    expect(settingsMock).not.toHaveBeenCalled();
+  it('fails closed when policy cannot load', async () => {
+    settingsMock.mockRejectedValueOnce(new Error('database unavailable'));
+    expect((await buildApp().request('/api/users')).status).toBe(503);
+  });
+  it('denies empty enabled whitelist', async () => {
+    mockConfig({ whitelistEnabled: true });
+    expect((await buildApp().request('/api/users')).status).toBe(403);
   });
 });
 

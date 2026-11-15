@@ -17,6 +17,9 @@ import { assertSettingsBase, loadSettingsEntry, lockSettingsModule, settingsDefi
 import { exactTenantCondition } from '../../lib/tenant';
 import { withPagination } from '../../lib/where-helpers';
 import type { JwtPayload } from '../../middleware/auth';
+import { HTTPException } from 'hono/http-exception';
+import { assertIpAccessChange } from '../../lib/settings/ip-access-guard';
+import type { IpAccessSettings } from '@zenith/shared/settings';
 
 const revisionSummaryColumns = {
   id: systemSettingsRevisions.id, version: systemSettingsRevisions.version, action: systemSettingsRevisions.action,
@@ -87,9 +90,13 @@ export async function previewSettingsRestore(module: SettingsModuleKey, user: Jw
     try {
       overrides = parseSettingsOverrides(module, overrides);
       restored = SETTINGS_MODULES[module].schema.parse(mergeSettingsLayers(current.inherited as SettingsDoc, overrides)) as SettingsDoc;
+      if (module === 'ipAccess') assertIpAccessChange(restored as IpAccessSettings);
     } catch (error) {
-      if (!(error instanceof z.ZodError)) throw error;
-      issues.push(...error.issues.map((issue) => ({ path: issue.path.join('.'), message: issue.message })));
+      if (error instanceof HTTPException) issues.push({ path: 'ipAccess', message: error.message });
+      else {
+        if (!(error instanceof z.ZodError)) throw error;
+        issues.push(...error.issues.map((issue) => ({ path: issue.path.join('.'), message: issue.message })));
+      }
     }
     return {
       baseToken: current.baseToken, currentVersion: current.version, targetVersion: version,
