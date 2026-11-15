@@ -118,7 +118,7 @@ export async function listUserMenuTree(): Promise<Menu[]> {
   const user = currentUser();
   // 禁用菜单（含其整棵子树）对所有人（含超管）不可见，前端不再注册禁用路由；菜单管理页走 listMenuTree 不受影响
   // 按钮型节点是纯操作权限点（权限码经登录态下发），不参与页面/侧边栏展示
-  const platformPages = new Set(Object.values(SETTINGS_MODULES).filter((def) => def.platformOnly).map((def) => def.page));
+  const platformPages = new Set(Object.values(SETTINGS_MODULES).filter((def) => def.platformOnly).flatMap((def) => def.page ? [def.page] : []));
   const allMenus = excludeDisabledSubtrees(await db.select().from(menus).orderBy(asc(menus.sort), asc(menus.id)))
     .filter((m) => m.type !== 'button' && (!config.multiTenantMode || isPlatformAdmin(user) || !platformPages.has(m.path ?? undefined)));
 

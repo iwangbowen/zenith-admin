@@ -141,6 +141,15 @@ describe('listUserMenuTree', () => {
     dbMocks.select.mockReturnValueOnce(createSelectChain([menuRow({ id: 2170, parentId: 0, title: 'IP', path: '/system/ip-access' })]));
     expect(await listUserMenuTree()).toEqual([]);
   });
+  it('preserves ordinary directories when a platform setting has no dedicated page', async () => {
+    deployment.multiTenantMode = true;
+    permissionMocks.isSuperAdmin.mockReturnValue(false);
+    permissionMocks.getUserMenuIds.mockResolvedValue([2010]);
+    dbMocks.select.mockReturnValueOnce(createSelectChain(rows));
+    const tree = await listUserMenuTree();
+    expect(tree.map((node) => node.id)).toEqual([2000]);
+    expect(tree[0].children?.map((node) => node.id)).toEqual([2010]);
+  });
   it('does not promote children of a disabled directory to sidebar roots for super admins', async () => {
     permissionMocks.isSuperAdmin.mockReturnValue(true);
     dbMocks.select.mockReturnValueOnce(createSelectChain(rows));
