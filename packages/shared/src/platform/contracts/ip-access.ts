@@ -15,6 +15,11 @@ export const ipAccessContract = defineContract('/api/ip-access', {
     response: z.object({ clientIp: z.string(), version: z.int(), baseToken: z.string(), decision: decisionSchema }),
     summary: '获取当前来源 IP 与已生效策略判定',
   }),
+  logHealth: op.get('/log-health', {
+    access: { permission: 'system:ip-access:log', platformOnly: 'multi-tenant' },
+    response: z.object({ accepted: z.int(), stored: z.int(), dropped: z.int(), flushFailures: z.int(), pending: z.int(), flushing: z.boolean() }),
+    summary: '查询当前 API 实例的拦截日志缓冲状态',
+  }),
   diagnose: op.post('/diagnose', {
     access: { permission: 'system:ip-access:view', platformOnly: 'multi-tenant' },
     body: z.object({

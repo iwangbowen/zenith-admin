@@ -100,7 +100,7 @@ IP 访问控制由 `packages/server/src/middleware/ip-access.ts` 实现，配置
 | `blacklistEnabled` | 是否启用黑名单（黑名单优先于白名单） |
 | `blacklist` | 黑名单数组，支持 IP 与 CIDR |
 
-免检精确路径包括登录、验证码、注册、刷新、找回密码、重置密码；免检前缀包括 `/api/oauth/` 与 `/api/auth/oauth/`。被拦截请求写入 `ip_access_logs`，查询接口位于 `/api/ip-access-logs`。
+所有 /api/* 请求统一执行策略，包含登录、OAuth、公开业务接口和 WebSocket 握手，不按匿名访问属性免检。非 API 页面与已建立的 WebSocket 消息需要部署层控制。策略、诊断、安全保存、日志和恢复遵循 [IP 访问控制规范](./ip-access.md)。
 
 `getClientIp()` 只信任 `TRUSTED_PROXY_CIDRS` 中代理转发的 `x-forwarded-for` / `x-real-ip`；非可信代理请求使用 TCP 连接 IP。
 

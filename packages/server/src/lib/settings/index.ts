@@ -177,10 +177,12 @@ function buildEntry<M extends SettingsModuleKey>(module: M, tenantId: number | n
   const baseToken = createHash('sha256').update(stableSettingsSerialize({
     module, tenantId, currentRevisionId, parent: tenantId === null ? null : rows.platform?.currentRevisionId ?? null, definitionHash,
   })).digest('hex');
+  const layers = tenantId === null ? [own] : [platformData, own];
+  const resolved = resolveSettings(module, layers);
   return {
     module, tenantId, own, currentRevisionId, inheritedVersion, definitionHash, baseToken,
-    degraded: resolveSettings(module, tenantId === null ? [own] : [platformData, own]).degraded,
-    effective: resolveLogged(module, tenantId, tenantId === null ? [own] : [platformData, own]),
+    degraded: resolved.degraded,
+    effective: resolved.degraded ? resolveLogged(module, tenantId, layers) : resolved.value,
     inherited, version: ownRow?.version ?? 0, updatedAt: ownRow?.updatedAt ?? null,
   };
 }
@@ -238,6 +240,13 @@ export async function getSettings<M extends SettingsModuleKey>(module: M, option
   const entry = await loadEntry(module, readTenantId(module, options));
   if (module === 'ipAccess' && entry.degraded) throw new HTTPException(503, { message: 'IP 访问策略无效，请通过受控运维流程恢复' });
   return entry.effective;
+}
+
+/** Policy and version originate from one immutable cached entry. */
+export async function getIpAccessPolicySnapshot() {
+  const entry = await loadEntry('ipAccess', null);
+  if (entry.degraded) throw new HTTPException(503, { message: 'IP 访问策略无效，请通过受控运维流程恢复' });
+  return { policy: entry.effective, version: entry.version };
 }
 
 export function toSettingsEnvelope<M extends SettingsModuleKey>(entry: SettingsEntry<M>): SettingsEnvelope<M> {

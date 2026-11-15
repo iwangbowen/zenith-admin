@@ -12,6 +12,9 @@ export const ipAccessLogSchema = z.object({
   method: z.string(),
   blockType: z.enum(IP_ACCESS_BLOCK_TYPES),
   userAgent: z.string().nullable(),
+  matchedEntry: z.string().nullable(),
+  policyVersion: z.int().nullable(),
+  correlationId: z.string().nullable(),
   createdAt: z.string(),
 }).meta({ id: 'IpAccessLog' });
 

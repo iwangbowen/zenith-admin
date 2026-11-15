@@ -173,6 +173,9 @@ export const ipAccessLogs = pgTable('ip_access_logs', {
   path: varchar({ length: 256 }).notNull(),
   method: varchar({ length: 16 }).notNull(),
   blockType: varchar({ length: 16 }).notNull(), // 'blacklist' | 'whitelist'
+  matchedEntry: varchar({ length: 64 }),
+  policyVersion: integer(),
+  correlationId: varchar({ length: 64 }),
   userAgent: varchar({ length: 512 }),
   createdAt: timestamptz().notNull().defaultNow(),
 }, (t) => [

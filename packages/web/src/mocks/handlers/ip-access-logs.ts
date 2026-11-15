@@ -6,6 +6,7 @@ import { mockIpAccessLogs } from '@/mocks/data/logs';
 import { withinDateRange } from '@/mocks/utils/filter';
 
 export const ipAccessLogsHandlers = [
+  mock(ipAccessContract.logHealth, ({ ok }) => ok({ accepted: 5, stored: 5, dropped: 0, flushFailures: 0, pending: 0, flushing: false })),
   mock(ipAccessContract.context, ({ ok }) => {
     const current = mockSettingsEnvelope('ipAccess');
     return ok({ clientIp: '192.0.2.10', version: current.version, baseToken: current.baseToken, decision: evaluateIpAccess(current.effective, '192.0.2.10') });

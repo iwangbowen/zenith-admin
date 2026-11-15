@@ -15,7 +15,7 @@ import { Hono } from 'hono';
 import type { IpAccessSettings } from '@zenith/shared/settings';
 
 vi.mock('../lib/settings', () => ({
-  getSettings: vi.fn(),
+  getIpAccessPolicySnapshot: vi.fn(),
 }));
 
 vi.mock('../services/platform/ip-access-logs.service', () => ({
@@ -26,12 +26,12 @@ vi.mock('../lib/request-helpers', () => ({
   getClientIp: vi.fn().mockReturnValue('203.0.113.10'),
 }));
 
-import { getSettings } from '../lib/settings';
+import { getIpAccessPolicySnapshot } from '../lib/settings';
 import { writeIpAccessLog } from '../services/platform/ip-access-logs.service';
 import { getClientIp } from '../lib/request-helpers';
 import { ipAccessMiddleware } from './ip-access';
 
-const settingsMock = vi.mocked(getSettings);
+const settingsMock = vi.mocked(getIpAccessPolicySnapshot);
 const logMock = vi.mocked(writeIpAccessLog);
 const ipMock = vi.mocked(getClientIp);
 
@@ -46,7 +46,7 @@ function mockConfig(opts: Partial<IpAccessSettings>) {
   const cfg: IpAccessSettings = {
     whitelistEnabled: false, whitelist: [], blacklistEnabled: false, blacklist: [], ...opts,
   };
-  settingsMock.mockResolvedValue(cfg as never);
+  settingsMock.mockResolvedValue({ policy: cfg, version: 3 });
 }
 
 beforeEach(() => {
@@ -74,7 +74,7 @@ describe('ipAccessMiddleware - 开关关闭', () => {
   it('黑白名单均未启用 → 放行且不解析 IP', async () => {
     const res = await buildApp().request('/api/users');
     expect(res.status).toBe(200);
-    expect(settingsMock).toHaveBeenCalledWith('ipAccess');
+    expect(settingsMock).toHaveBeenCalledOnce();
     expect(ipMock).not.toHaveBeenCalled();
   });
 });
@@ -88,7 +88,7 @@ describe('ipAccessMiddleware - 黑名单', () => {
     expect(res.status).toBe(403);
     expect(body).toEqual({ code: 403, message: '您的IP已被禁止访问', data: null });
     expect(logMock).toHaveBeenCalledWith(
-      expect.objectContaining({ ip: '203.0.113.10', path: '/api/users', blockType: 'blacklist' }),
+      expect.objectContaining({ ip: '203.0.113.10', path: '/api/[unmatched]', blockType: 'blacklist' }),
     );
   });
 

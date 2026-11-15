@@ -95,6 +95,7 @@ export default withMermaid(defineConfig({
         items: [
           { text: '系统运维', link: '/ops/' },
           { text: '安全体系', link: '/backend/security' },
+          { text: 'IP 访问控制', link: '/backend/ip-access' },
           { text: '定时任务', link: '/backend/cron-jobs' },
           { text: '数据保留', link: '/backend/data-retention' },
           { text: '多租户指南', link: '/backend/multi-tenant' },

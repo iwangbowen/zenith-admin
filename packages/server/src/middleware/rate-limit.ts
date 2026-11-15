@@ -7,7 +7,7 @@ import { recordRateLimitEvent } from '../lib/rate-limit-stats';
 import { limiterRedis } from '../lib/rate-limit-redis';
 import { selectRateLimitRule, type RateLimitOptions, type RateLimitWindow } from '@zenith/shared/platform';
 import { createHash } from 'node:crypto';
-import { matchedRoutes } from 'hono/route';
+import { safeRequestPath } from '../lib/safe-request-path';
 import { DEFAULT_RATE_LIMIT_RULES, CODE_RATE_LIMIT_NAMES } from '@zenith/shared/platform';
 import { onInvalidate, onInvalidationReset } from '../lib/invalidation-bus';
 import { installIdentityRateLimiter } from '../lib/rate-limit-stage';
@@ -91,8 +91,7 @@ function reportStatsFailure(scope: string, err: unknown): void {
  * 统计与解封均使用裸身份，前后端不再各自拆前缀。
  */
 export function safeRateLimitPath(c: Context): string {
-  const routes = matchedRoutes(c).filter((route) => route.method !== 'ALL' && !route.path.endsWith('*'));
-  return (routes.at(-1)?.path ?? '/api/[unmatched]').replace(/:([a-zA-Z0-9_]+)/g, '{$1}');
+  return safeRequestPath(c);
 }
 function identityFor(rule: RuleConfig, c: Context): string | null {
   if (rule.keyType === 'user') {

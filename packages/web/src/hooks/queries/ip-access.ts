@@ -24,3 +24,6 @@ export function useDiagnoseIpAccess() {
 export function useIpAccessContext() {
   return useApiQuery(ipAccessContract.context, {});
 }
+export function useIpAccessLogHealth() {
+  return useApiQuery(ipAccessContract.logHealth, {});
+}

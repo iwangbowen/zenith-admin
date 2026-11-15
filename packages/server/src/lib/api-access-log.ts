@@ -1,10 +1,10 @@
+import { createBoundedLogBuffer } from './bounded-log-buffer';
 import type { Context } from 'hono';
 import { db } from '../db';
 import { apiAccessLogs, type IotDeviceRow, type NewApiAccessLog } from '../db/schema';
 import type { JwtPayload } from '../middleware/auth';
 import type { MemberJwtPayload } from '../middleware/member-auth';
 import type { OpenPrincipal } from '../middleware/open-gateway';
-import logger from './logger';
 import { clampAuditJson } from './audit-clamp';
 import { redactBody, truncateVarchar } from './sanitize';
 import { getClientIp, getPlatformVersion, resolveRequestClient } from './request-helpers';
@@ -159,52 +159,8 @@ export function buildApiAccessLogEntry(c: Context, snapshot: Awaited<ReturnType<
   };
 }
 
-/** Bounded batch sink with counters; no database work starts on the request stack. */
 export function createApiAccessLogBuffer(write: (entries: NewApiAccessLog[]) => Promise<unknown>) {
-  const queue: NewApiAccessLog[] = [];
-  const stats = { accepted: 0, stored: 0, dropped: 0, flushFailures: 0 };
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let inFlight: Promise<void> | undefined;
-  let stopped = false;
-  let lastWarn = 0;
-  const warn = () => {
-    if (Date.now() - lastWarn < 30_000) return;
-    lastWarn = Date.now();
-    logger.warn('[api-access-log] entries dropped', { ...stats, pending: queue.length });
-  };
-  const flush = (): Promise<void> => {
-    if (timer) { clearTimeout(timer); timer = undefined; }
-    if (inFlight) return inFlight;
-    if (queue.length === 0) return Promise.resolve();
-    inFlight = (async () => {
-      while (queue.length > 0) {
-        const batch = queue.splice(0, 100);
-        try { await write(batch); stats.stored += batch.length; }
-        catch (error) {
-          stats.flushFailures += 1;
-          stats.dropped += batch.length;
-          // Report the SQLSTATE only: database errors may otherwise embed the request snapshot.
-          const raw = error as { code?: string; cause?: { code?: string } };
-          const code = raw.code ?? raw.cause?.code ?? null;
-          if (stats.flushFailures === 1) logger.warn('[api-access-log] persistence failed', { sqlState: code, errorType: error instanceof Error ? error.name : typeof error });
-          warn();
-        }
-      }
-    })().finally(() => { inFlight = undefined; });
-    return inFlight;
-  };
-  return {
-    enqueue(entry: NewApiAccessLog): void {
-      if (stopped) { stats.dropped += 1; return; }
-      stats.accepted += 1;
-      if (queue.length >= 2_000) { stats.dropped += 1; warn(); return; }
-      queue.push(entry);
-      if (!timer && !inFlight) timer = setTimeout(() => { void flush().catch(warn); }, 50).unref();
-    },
-    flush,
-    async stop(): Promise<void> { stopped = true; await flush(); },
-    stats: () => ({ ...stats, pending: queue.length, flushing: inFlight !== undefined }),
-  };
+  return createBoundedLogBuffer('[api-access-log]', write);
 }
 
 const buffer = createApiAccessLogBuffer(async (entries) => { await db.insert(apiAccessLogs).values(entries); });
