@@ -22,7 +22,7 @@ export function useDiagnoseIpAccess() {
   return useApiMutation(ipAccessContract.diagnose);
 }
 export function useIpAccessContext() {
-  return useApiQuery(ipAccessContract.context, {});
+  return useApiQuery(ipAccessContract.context, { meta: { settingsModule: 'ipAccess' } });
 }
 export function useIpAccessLogHealth() {
   return useApiQuery(ipAccessContract.logHealth, {});
