@@ -326,11 +326,6 @@ export default function RateLimitPage() {
             onRefresh={() => void rulesQuery.refetch()}
             refreshing={rulesQuery.isFetching}
           />
-          <Banner
-            type="info"
-            closeIcon={null}
-            description="自定义规则默认停用、观察模式。保存与加载状态分别显示；跨实例经失效广播更新，断线时30秒兜底。"
-          />
           <ConfigurableTable
             {...listTableProps(rulesQuery)}
             dataSource={filtered}
@@ -340,17 +335,6 @@ export default function RateLimitPage() {
         </TabPane>
         <TabPane tab="运行概览" itemKey="overview">
           <InstantFilterToolbar onRefresh={() => void stats.refetch()} refreshing={stats.isFetching} />
-          <Banner
-            type={stats.data?.dropped ? 'warning' : 'info'}
-            closeIcon={null}
-            description={
-              (stats.data?.scope ?? '规则命中统计') +
-              '；遥测待写 ' +
-              (stats.data?.queued ?? 0) +
-              '，当前实例丢弃 ' +
-              (stats.data?.dropped ?? 0)
-            }
-          />
           <StatGrid minItemWidth={155}>
             <StatCard title="启用 / 全部" value={rules.filter((r) => r.enabled).length + ' / ' + rules.length} />
             <StatCard title="规则命中" value={totals.hits} />
@@ -448,11 +432,6 @@ export default function RateLimitPage() {
             actions={canBan && <Button onClick={() => openBan()}>新增封禁</Button>}
             onRefresh={() => void bans.refetch()}
             refreshing={bans.isFetching}
-          />
-          <Banner
-            type="info"
-            closeIcon={null}
-            description="启用规则内，显式封禁优先于普通豁免和观察模式；停用规则停止执行。到期自动解除。"
           />
           <ConfigurableTable
             {...listTableProps(bans, { loadingMode: 'initial', rowKey: (r) => (r?.name ?? '') + '|' + (r?.key ?? '') })}
