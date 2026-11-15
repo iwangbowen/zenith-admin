@@ -130,6 +130,8 @@ local worstCount = 0
 local remaining = 1000000000
 local retry = 1
 local over = 0
+local selectedLimit = 0
+local selectedReset = 1
 for i = 1,n do
  local window = tonumber(ARGV[3+i*2-1])
  local limit = tonumber(ARGV[3+i*2])
@@ -158,10 +160,11 @@ for i = 1,n do
   if count > limit then over=1 end
  end
  worstCount=math.max(worstCount,count)
- remaining=math.min(remaining,math.max(0,math.floor(limit-count)))
+ local left=math.max(0,math.floor(limit-count))
+ if left < remaining or (left == remaining and (selectedLimit == 0 or limit < selectedLimit)) then remaining=left selectedLimit=limit selectedReset=wait end
  if count > limit then retry=math.max(retry,wait) end
 end
-return {over, math.ceil(retry), remaining, math.ceil(worstCount)}
+return {over, math.ceil(over == 1 and retry or selectedReset), remaining, math.ceil(worstCount), selectedLimit}
 `;
 
 function recordDecision(
@@ -251,8 +254,9 @@ async function applyRule(rule: RuleConfig, c: Context, next: () => Promise<void>
   let over: number;
   let retryMs: number;
   let remaining: number;
+  let selectedLimit: number;
   try {
-    [over, retryMs, remaining] = (await limiterRedis.eval(
+    [over, retryMs, remaining, , selectedLimit] = (await limiterRedis.eval(
       MULTI_WINDOW_SCRIPT,
       windows.length + 1,
       banKey,
@@ -261,14 +265,14 @@ async function applyRule(rule: RuleConfig, c: Context, next: () => Promise<void>
       String(windows.length),
       rule.algorithm,
       ...windows.flatMap((w) => [String(w.windowMs), String(w.limit)]),
-    )) as [number, number, number];
+    )) as [number, number, number, number, number];
   } catch (err) {
     return unavailable(rule, c, next, err);
   }
   const resetSec = Math.max(1, Math.ceil(retryMs / 1000));
   const prior = Number(c.res.headers.get('RateLimit-Remaining') ?? Number.MAX_SAFE_INTEGER);
   if (remaining < prior) {
-    c.header('RateLimit-Limit', String(rule.limit));
+    c.header('RateLimit-Limit', String(selectedLimit ?? rule.limit));
     c.header('RateLimit-Remaining', String(remaining));
     c.header('RateLimit-Reset', String(resetSec));
   }

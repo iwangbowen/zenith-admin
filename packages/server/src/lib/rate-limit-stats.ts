@@ -73,6 +73,7 @@ export async function flushRateLimitEvents(): Promise<void> {
         if (['blocked', 'monitored', 'banned', 'degraded'].includes(event.decision)) {
           pipeline
             .zadd(base + ':events', event.ts, JSON.stringify(event))
+            .zremrangebyscore(base + ':events', '-inf', event.ts - 7 * 86400_000)
             .zremrangebyrank(base + ':events', 0, -501)
             .expire(base + ':events', 7 * 86400);
           if (event.decision === 'blocked' || event.decision === 'banned')
@@ -168,7 +169,8 @@ export async function readRateLimitMetrics(name: string, details = false) {
   const raw = details ? await redis.zrevrange(base + ':events', 0, 499) : [];
   const events: LimitEvent[] = raw.flatMap((value) => {
     try {
-      return [JSON.parse(value) as LimitEvent];
+      const event = JSON.parse(value) as LimitEvent;
+      return event.ts > Date.now() - 7 * 86400_000 ? [event] : [];
     } catch {
       return [];
     }
@@ -187,7 +189,8 @@ export async function readRateLimitEvents(name: string): Promise<LimitEvent[]> {
   const raw = await redis.zrevrange(PREFIX + name + ':' + scope.id + ':events', 0, 499);
   return raw.flatMap((value) => {
     try {
-      return [JSON.parse(value) as LimitEvent];
+      const event = JSON.parse(value) as LimitEvent;
+      return event.ts > Date.now() - 7 * 86400_000 ? [event] : [];
     } catch {
       return [];
     }

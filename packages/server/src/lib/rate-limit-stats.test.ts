@@ -21,6 +21,7 @@ vi.mock('./rate-limit-redis', () => {
         return chain;
       },
       expire: () => chain,
+      zremrangebyscore: () => chain,
       zadd: (key: string, score: number, member: string) => {
         ops.push(() => {
           const set = state.sets.get(key) ?? new Map();
@@ -111,4 +112,19 @@ describe('rate limit metrics', () => {
     expect(data.events).toEqual([]);
     expect(data.topSources).toEqual([]);
   });
+});
+
+it('hides expired event members even when continued traffic renews the container TTL', async () => {
+  const event = {
+    id: 'old',
+    name: 'retention',
+    ts: Date.now() - 8 * 86400_000,
+    key: 'ip',
+    path: '/api/review',
+    method: 'GET',
+    decision: 'blocked',
+    correlationId: null,
+  };
+  state.sets.set('test:rlmetrics:retention:initial:events', new Map([[JSON.stringify(event), event.ts]]));
+  expect((await readRateLimitMetrics('retention', true)).events).toEqual([]);
 });

@@ -109,6 +109,7 @@ function validatePolicy(
     const family = isIP(ip);
     if (
       !family ||
+      entry.split('/').length > 2 ||
       (prefix !== undefined &&
         (!Array.from(prefix).every((char) => '0123456789'.includes(char)) ||
           prefix.length === 0 ||
