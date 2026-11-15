@@ -1,3 +1,4 @@
+import { runIdentityRateLimits } from '../lib/rate-limit-stage';
 import { createHash } from 'node:crypto';
 import { createMiddleware } from 'hono/factory';
 import { jwt, type JwtVariables } from 'hono/jwt';
@@ -299,8 +300,7 @@ export const authMiddleware = createMiddleware<AuthEnv>(async (c, next) => {
       const payload = await authenticateApiToken(rawToken);
       if (!payload) return c.json(errBody('API Token 无效或已过期', 401), 401);
       c.set('user', payload);
-      await next();
-      return;
+      return runIdentityRateLimits(c, next);
     }
 
     // Delegate signature and claims verification to Hono's official JWT middleware.
@@ -356,7 +356,7 @@ export const authMiddleware = createMiddleware<AuthEnv>(async (c, next) => {
     }
 
     c.set('user', subject.payload);
-    await next();
+    return runIdentityRateLimits(c, next);
   } catch (err) {
     logger.warn('[Auth] JWT verification failed:', err);
     return c.json(errBody('登录已过期', 401), 401);

@@ -33,3 +33,5 @@ export * from './entity-watches';
 export * from './entity-detail-routes';
 
 export * from './numbering-reference';
+
+export * from './rate-limit-policy';

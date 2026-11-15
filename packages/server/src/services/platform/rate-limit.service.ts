@@ -45,35 +45,10 @@ function mapRule(row: RateLimitRuleRow) {
   };
 }
 
-/** 列出 DB 中所有规则；若 DB 为空则用默认规则填充并落库 */
+/** Read-only: built-ins are initialized before API readiness, never by GET. */
 export async function listRateLimitRules() {
-  let rows = await db.select().from(rateLimitRules);
-  if (rows.length === 0) {
-    const defaults = listRuleConfigs();
-    if (defaults.length > 0) {
-      await db.insert(rateLimitRules).values(
-        defaults.map((r) => ({
-          name: r.name,
-          description: r.description,
-          windowMs: r.windowMs,
-          limit: r.limit,
-          keyType: r.keyType,
-          enabled: r.enabled,
-          mode: r.mode,
-          algorithm: r.algorithm,
-          allowlist: r.allowlist,
-          priority: r.priority,
-          alertThreshold: r.alertThreshold,
-          blockedMessage: r.blockedMessage,
-          // 路径绑定是规则配置的一部分：漏掉会导致重启后 DB 行覆盖代码默认值，
-          // 仅靠 pathPatterns 生效的公开端点限流（report_public_share 等）静默失效
-          pathPatterns: r.pathPatterns,
-        })),
-      );
-      rows = await db.select().from(rateLimitRules);
-    }
-  }
-  return rows.map(mapRule);
+  const rows = await db.select().from(rateLimitRules);
+  return rows.sort((a, b) => a.name.localeCompare(b.name)).map(mapRule);
 }
 
 export async function getRateLimitRuleBeforeAudit(id: number) {

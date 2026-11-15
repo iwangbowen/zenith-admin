@@ -43,6 +43,7 @@ export async function startApiRole(): Promise<ApiRoleHandle> {
     maxPayload: 64 * 1024,
     handleProtocols: (protocols) => (protocols.has(WS_AUTH_SUBPROTOCOL) ? WS_AUTH_SUBPROTOCOL : false),
   });
+  await bootstrapRateLimitRules();
   const server: ServerType = serve({ fetch: app.fetch, port: config.port, websocket: { server: wss } });
 
   // 升级请求被拒绝时（如向非 WS 路径发起 upgrade），socket 已脱离 http.Server 托管，
@@ -58,7 +59,7 @@ export async function startApiRole(): Promise<ApiRoleHandle> {
   logger.info(`Server running at http://localhost:${config.port}`);
 
   // 启动后异步加载限流规则到内存（失败时使用代码内默认规则）
-  void bootstrapRateLimitRules();
+
 
   // OpenAPI 文档预热：worker 线程生成（~10s CPU），主线程零阻塞
   warmupOpenApiDoc();

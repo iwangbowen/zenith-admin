@@ -83,14 +83,14 @@ export type RateLimitBan = z.infer<typeof rateLimitBanSchema>;
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 
 export const rateLimitContract = defineContract('/api/rate-limit', {
-  rules: op.get('/rules', { access: { permission: 'system:rate-limit:view' }, response: z.array(rateLimitRuleSchema), summary: '获取限流规则列表' }),
-  createRule: op.post('/rules', { access: { permission: 'system:rate-limit:manage' }, audit: '新增限流规则', body: createRateLimitRuleSchema, response: rateLimitRuleSchema, summary: '新增自定义限流规则' }),
-  updateRule: op.patch('/rules/{id}', { access: { permission: 'system:rate-limit:manage' }, audit: '更新限流规则', params: idParam, body: updateRateLimitRuleSchema, response: rateLimitRuleSchema, summary: '更新限流规则（保存后立即热更新）' }),
-  removeRule: op.delete('/rules/{id}', { access: { permission: 'system:rate-limit:manage' }, audit: '删除限流规则', params: idParam, summary: '删除自定义限流规则（内置规则不可删除）' }),
-  stats: op.get('/stats', { access: { permission: 'system:rate-limit:view' }, response: rateLimitStatsSchema, summary: '获取限流统计与最近拦截记录' }),
-  unblock: op.post('/unblock', { access: { permission: 'system:rate-limit:manage' }, audit: '解封限流 key', body: unblockRateLimitSchema, summary: '解封指定 key（清除 Redis 计数窗口）' }),
-  resetStats: op.post('/reset-stats', { access: { permission: 'system:rate-limit:manage' }, audit: '清空限流统计', body: resetRateLimitStatsSchema, summary: '清空指定规则的统计计数器' }),
-  ban: op.post('/ban', { access: { permission: 'system:rate-limit:manage' }, audit: '手动封禁限流 key', body: banRateLimitSchema, summary: '手动封禁指定 key（封禁期内一律 429，无视限额与观察模式）' }),
-  unban: op.post('/unban', { access: { permission: 'system:rate-limit:manage' }, audit: '解除限流封禁', body: unbanRateLimitSchema, summary: '解除手动封禁' }),
-  bans: op.get('/bans', { access: { permission: 'system:rate-limit:view' }, response: z.array(rateLimitBanSchema), summary: '活跃封禁列表' }),
+  rules: op.get('/rules', { access: { permission: 'system:rate-limit:view', platformOnly: 'multi-tenant' }, response: z.array(rateLimitRuleSchema), summary: '获取限流规则列表' }),
+  createRule: op.post('/rules', { access: { permission: 'system:rate-limit:manage', platformOnly: 'multi-tenant' }, audit: '新增限流规则', body: createRateLimitRuleSchema, response: rateLimitRuleSchema, summary: '新增自定义限流规则' }),
+  updateRule: op.patch('/rules/{id}', { access: { permission: 'system:rate-limit:manage', platformOnly: 'multi-tenant' }, audit: '更新限流规则', params: idParam, body: updateRateLimitRuleSchema, response: rateLimitRuleSchema, summary: '更新限流规则（保存后立即热更新）' }),
+  removeRule: op.delete('/rules/{id}', { access: { permission: 'system:rate-limit:manage', platformOnly: 'multi-tenant' }, audit: '删除限流规则', params: idParam, summary: '删除自定义限流规则（内置规则不可删除）' }),
+  stats: op.get('/stats', { access: { permission: 'system:rate-limit:view', platformOnly: 'multi-tenant' }, response: rateLimitStatsSchema, summary: '获取限流统计与最近拦截记录' }),
+  unblock: op.post('/unblock', { access: { permission: 'system:rate-limit:manage', platformOnly: 'multi-tenant' }, audit: '解封限流 key', body: unblockRateLimitSchema, summary: '解封指定 key（清除 Redis 计数窗口）' }),
+  resetStats: op.post('/reset-stats', { access: { permission: 'system:rate-limit:manage', platformOnly: 'multi-tenant' }, audit: '清空限流统计', body: resetRateLimitStatsSchema, summary: '清空指定规则的统计计数器' }),
+  ban: op.post('/ban', { access: { permission: 'system:rate-limit:manage', platformOnly: 'multi-tenant' }, audit: '手动封禁限流 key', body: banRateLimitSchema, summary: '手动封禁指定 key（封禁期内一律 429，无视限额与观察模式）' }),
+  unban: op.post('/unban', { access: { permission: 'system:rate-limit:manage', platformOnly: 'multi-tenant' }, audit: '解除限流封禁', body: unbanRateLimitSchema, summary: '解除手动封禁' }),
+  bans: op.get('/bans', { access: { permission: 'system:rate-limit:view', platformOnly: 'multi-tenant' }, response: z.array(rateLimitBanSchema), summary: '活跃封禁列表' }),
 }, { auditModule: '接口限流', tags: ['RateLimit'] });

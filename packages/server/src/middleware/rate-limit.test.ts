@@ -13,6 +13,8 @@ vi.mock('../lib/logger', () => ({
   default: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
 }));
 
+vi.mock('../lib/invalidation-bus', () => ({ onInvalidate: vi.fn(), onInvalidationReset: vi.fn() }));
+
 vi.mock('../lib/context', () => ({
   currentUser: vi.fn(() => undefined),
 }));
@@ -28,7 +30,8 @@ vi.mock('../services/platform/rate-limit-alert.service', () => ({
   maybeSendRateLimitSpikeAlert: vi.fn(() => Promise.resolve()),
 }));
 
-import { currentUser } from '../lib/context';
+import { runIdentityRateLimits } from '../lib/rate-limit-stage';
+import { createHash } from 'node:crypto';
 import { maybeSendRateLimitSpikeAlert } from '../services/platform/rate-limit-alert.service';
 
 // ─── 带状态的 Redis 假实现 ─────────────────────────────────────────────────────
@@ -359,12 +362,12 @@ describe('解封', () => {
     expect((await app.request('/api/t')).status).toBe(429);
     await flushAsync();
 
-    expect(counters.has('test:rl:t_unblock|127.0.0.1')).toBe(true);
+    expect([...counters.keys()].some(key => key.startsWith('test:rl:t_unblock|127.0.0.1|'))).toBe(true);
     expect((zsets.get('test:rlstats:t_unblock:recent') ?? []).length).toBe(1);
 
     const ok = await unblockRateLimitKey('t_unblock', '127.0.0.1');
     expect(ok).toBe(true);
-    expect(counters.has('test:rl:t_unblock|127.0.0.1')).toBe(false);
+    expect([...counters.keys()].some(key => key.startsWith('test:rl:t_unblock|127.0.0.1|'))).toBe(false);
     expect((zsets.get('test:rlstats:t_unblock:recent') ?? []).length).toBe(0);
 
     // 解封后立即恢复访问
@@ -384,9 +387,10 @@ describe('滑动窗口', () => {
       // 固定到窗口正中：elapsed=500ms → 上一桶权重 0.5
       vi.setSystemTime(1_000_000_000_500);
       const bucket = Math.floor(Date.now() / windowMs);
+      const spec = createHash('sha256').update(JSON.stringify(['sliding_window', windowMs, 'ip'])).digest('hex').slice(0, 12);
       await loadRules(ruleRow({ name: 't_slide', limit: 2, windowMs, algorithm: 'sliding_window' }));
       // 预置上一桶计数 2（等效于上一窗口末尾的突发）
-      counters.set(`test:rl:t_slide|127.0.0.1:${bucket - 1}`, { count: 2, expiresAt: Date.now() + windowMs });
+      counters.set(`test:rl:t_slide|127.0.0.1|${spec}:${bucket - 1}`, { count: 2, expiresAt: Date.now() + windowMs });
 
       const app = new Hono();
       app.get('/api/t', namedRateLimit('t_slide'), (c) => c.json({ ok: true }));
@@ -422,16 +426,17 @@ describe('白名单豁免', () => {
   });
 
   it('u:{userId} 命中白名单（登录用户豁免）', async () => {
-    vi.mocked(currentUser).mockReturnValue({ userId: 7 } as ReturnType<typeof currentUser>);
+
     try {
       await loadRules(ruleRow({ name: 't_user_allow', limit: 1, keyType: 'user', allowlist: ['u:7'] }));
       const app = new Hono();
+      app.use('*', async (c, next) => { c.set('user', { userId: 7, tenantId: null, username: 'review', roles: [] }); await next(); });
       app.get('/api/t', namedRateLimit('t_user_allow'), (c) => c.json({ ok: true }));
       expect((await app.request('/api/t')).status).toBe(200);
       expect((await app.request('/api/t')).status).toBe(200);
       expect(redisMock.eval).not.toHaveBeenCalled();
     } finally {
-      vi.mocked(currentUser).mockReturnValue(undefined);
+      // Request-local identity is disposed by Hono.
     }
   });
 
@@ -539,5 +544,41 @@ describe('规则目录一致性', () => {
     for (const name of CODE_MOUNTED_NAMES) {
       expect(PREDEFINED_NAMES.has(name)).toBe(true);
     }
+  });
+});
+
+
+describe('identity stages and policy safety', () => {
+  it('defers user rules until verified identity and isolates tenants and principals', async () => {
+    await loadRules(ruleRow({ name: 't_identity', keyType: 'user', limit: 1, pathPatterns: ['/api/identity'] }));
+    const app = new Hono();
+    app.use('*', pathBoundRateLimit);
+    app.use('*', async (c, next) => {
+      c.set('user', { userId: Number(c.req.header('x-test-user')), tenantId: 3, username: 'test', roles: [] });
+      return runIdentityRateLimits(c, next);
+    });
+    app.get('/api/identity', c => c.json({ ok: true }));
+    expect((await app.request('/api/identity', { headers: { 'x-test-user': '7' } })).status).toBe(200);
+    expect((await app.request('/api/identity', { headers: { 'x-test-user': '8' } })).status).toBe(200);
+    expect((await app.request('/api/identity', { headers: { 'x-test-user': '7' } })).status).toBe(429);
+    expect([...counters.keys()].some(key => key.includes('u:3:7'))).toBe(true);
+  });
+  it('records safe templates and opaque resource identity instead of public tokens', async () => {
+    await loadRules(ruleRow({ name: 't_secret', keyType: 'ip_path', limit: 1 }));
+    const app = new Hono();
+    app.get('/api/public/:token', namedRateLimit('t_secret'), c => c.json({ ok: true }));
+    await app.request('/api/public/secret-token'); await app.request('/api/public/secret-token'); await flushAsync();
+    const records = zsets.get('test:rlstats:t_secret:recent') ?? [];
+    expect(records[0]).toContain('/api/public/{token}');
+    expect(records[0]).not.toContain('secret-token');
+    expect([...counters.keys()].join()).not.toContain('secret-token');
+  });
+  it('manual bans override ordinary exemptions, disabled rules remain disabled', async () => {
+    await loadRules(ruleRow({ name: 't_explicit_ban', allowlist: ['127.0.0.1'] }));
+    const app = new Hono(); app.get('/api/t', namedRateLimit('t_explicit_ban'), c => c.json({ ok: true }));
+    await banRateLimitKey('t_explicit_ban', '127.0.0.1', 60);
+    expect((await app.request('/api/t')).status).toBe(429);
+    await loadRules(ruleRow({ name: 't_explicit_ban', enabled: false }));
+    expect((await app.request('/api/t')).status).toBe(200);
   });
 });

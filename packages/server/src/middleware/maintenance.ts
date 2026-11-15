@@ -35,6 +35,7 @@ export const maintenanceMiddleware = createMiddleware(async (c, next) => {
     }
   }
 
+  c.header('X-Zenith-Error', 'maintenance');
   return c.json(
     { code: 503, message: status.message || '系统维护中，请稍后重试', data: null },
     503,

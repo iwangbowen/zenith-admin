@@ -1,3 +1,4 @@
+import { runIdentityRateLimits } from '../lib/rate-limit-stage';
 /**
  * 会员认证中间件（与管理员 authMiddleware 完全隔离）。
  *
@@ -172,7 +173,7 @@ export const memberAuthMiddleware = createMiddleware<MemberAuthEnv>(async (c, ne
     }
 
     c.set('member', subject.payload);
-    await next();
+    return runIdentityRateLimits(c, next);
   } catch (err) {
     logger.warn('[MemberAuth] JWT verification failed:', err);
     return c.json(errBody('登录已过期', 401), 401);

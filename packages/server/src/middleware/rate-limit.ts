@@ -1,3 +1,9 @@
+import { createHash, randomUUID } from 'node:crypto';
+import { matchedRoutes } from 'hono/route';
+import { DEFAULT_RATE_LIMIT_RULES, CODE_RATE_LIMIT_NAMES } from '@zenith/shared/platform';
+import { onInvalidate, onInvalidationReset } from '../lib/invalidation-bus';
+import { installIdentityRateLimiter } from '../lib/rate-limit-stage';
+import { APP_TIME_ZONE } from '../lib/datetime';
 import type { MiddlewareHandler, Context } from 'hono';
 import type { RateLimitKeyType, RateLimitMode, RateLimitAlgorithm } from '@zenith/shared/platform';
 import ipRangeCheck from 'ip-range-check';
@@ -9,7 +15,6 @@ import logger from '../lib/logger';
 import dayjs from 'dayjs';
 import { db } from '../db';
 import { rateLimitRules } from '../db/schema';
-import { currentUser } from '../lib/context';
 
 export type RateLimitName = 'auth' | 'captcha' | 'sensitive' | 'analytics-ingest' | 'error-report' | 'replay-ingest' | 'report_public_share' | 'workflow_public_callback' | 'push_public_callback' | 'payment_public_link_pay' | 'payment_public_link_session' | 'chat_send' | 'chatbi_ask' | 'report_chatbi_write' | 'report_fill_write' | 'ai_chat_send' | 'ai_share_view' | 'drive_public_share' | 'chunk_upload';
 export type { RateLimitKeyType, RateLimitMode, RateLimitAlgorithm };
@@ -30,31 +35,7 @@ export interface RuleConfig {
   pathPatterns: string[];
 }
 
-/** 新列的默认取值：内置规则与 DB 缺省行为保持一致 */
-const RULE_BASE = { mode: 'enforce', algorithm: 'fixed_window', allowlist: [] as string[], priority: 0, alertThreshold: null } as const;
-
-const DEFAULTS: Record<RateLimitName, RuleConfig> = {
-  auth:      { ...RULE_BASE, name: 'auth',      description: '登录接口限流',          windowMs: 3 * 60 * 1000,      limit: 20, keyType: 'ip', enabled: true, blockedMessage: '登录尝试过于频繁，请 3 分钟后再试', pathPatterns: [] },
-  captcha:   { ...RULE_BASE, name: 'captcha',   description: '验证码接口限流',        windowMs: 60 * 1000,          limit: 30, keyType: 'ip', enabled: true, blockedMessage: '验证码请求过于频繁，请稍后再试', pathPatterns: [] },
-  sensitive: { ...RULE_BASE, name: 'sensitive', description: '敏感操作（注册/重置）限流', windowMs: 60 * 60 * 1000,  limit: 5,  keyType: 'ip', enabled: true, blockedMessage: '操作过于频繁，请 1 小时后重试', pathPatterns: [] },
-  'analytics-ingest': { ...RULE_BASE, name: 'analytics-ingest', description: '匿名埋点事件上报限流', windowMs: 60 * 1000, limit: 120, keyType: 'ip', enabled: true, blockedMessage: '埋点上报过于频繁，请稍后再试', pathPatterns: [] },
-  'error-report': { ...RULE_BASE, name: 'error-report', description: '匿名前端错误上报限流', windowMs: 60 * 1000, limit: 60, keyType: 'ip', enabled: true, blockedMessage: '错误上报过于频繁，请稍后再试', pathPatterns: [] },
-  'replay-ingest': { ...RULE_BASE, name: 'replay-ingest', description: '会话回放分片上报限流', windowMs: 60 * 1000, limit: 60, keyType: 'ip', enabled: true, blockedMessage: '回放上报过于频繁，请稍后再试', pathPatterns: [] },
-  report_public_share: { ...RULE_BASE, name: 'report_public_share', description: '报表公开分享访问限流（无需登录，防滥用/防爆破）', windowMs: 60 * 1000, limit: 120, keyType: 'ip', enabled: true, blockedMessage: '访问过于频繁，请稍后再试', pathPatterns: ['/api/report/public/*'] },
-  workflow_public_callback: { ...RULE_BASE, name: 'workflow_public_callback', description: '工作流公开回调接口限流', windowMs: 60 * 1000, limit: 120, keyType: 'ip_path', enabled: true, blockedMessage: '工作流回调请求过于频繁，请稍后再试', pathPatterns: ['/api/public/workflow/external-callback/*', '/api/public/workflow/trigger-callback/*'] },
-  push_public_callback: { ...RULE_BASE, name: 'push_public_callback', description: '推送供应商回执回调限流', windowMs: 60 * 1000, limit: 300, keyType: 'ip', enabled: true, blockedMessage: '回执回调过于频繁，请稍后再试', pathPatterns: ['/api/public/push/callbacks/*'] },
-  payment_public_link_pay: { ...RULE_BASE, name: 'payment_public_link_pay', description: '公开支付链接下单限流', windowMs: 60 * 1000, limit: 30, keyType: 'ip_path', enabled: true, blockedMessage: '支付请求过于频繁，请稍后再试', pathPatterns: [] },
-  payment_public_link_session: { ...RULE_BASE, name: 'payment_public_link_session', description: '公开支付链接会话查询限流', windowMs: 60 * 1000, limit: 300, keyType: 'ip_path', enabled: true, blockedMessage: '支付状态查询过于频繁，请稍后再试', pathPatterns: [] },
-  chat_send: { ...RULE_BASE, name: 'chat_send', description: '聊天消息发送限流（按用户）', windowMs: 60 * 1000, limit: 60, keyType: 'user', enabled: true, blockedMessage: '消息发送过于频繁，请稍后再试', pathPatterns: [] },
-  chatbi_ask: { ...RULE_BASE, name: 'chatbi_ask', description: 'ChatBI 提问限流（按用户）', windowMs: 60 * 1000, limit: 10, keyType: 'user', enabled: true, blockedMessage: 'ChatBI 提问过于频繁，请稍后再试', pathPatterns: [] },
-  report_chatbi_write: { ...RULE_BASE, name: 'report_chatbi_write', description: 'ChatBI 写操作限流（按用户）', windowMs: 60 * 1000, limit: 30, keyType: 'user', enabled: true, blockedMessage: 'ChatBI 操作过于频繁，请稍后再试', pathPatterns: [] },
-  report_fill_write: { ...RULE_BASE, name: 'report_fill_write', description: '报表填报写操作限流（按用户）', windowMs: 60 * 1000, limit: 30, keyType: 'user', enabled: true, blockedMessage: '填报操作过于频繁，请稍后再试', pathPatterns: [] },
-  ai_chat_send: { ...RULE_BASE, name: 'ai_chat_send', description: 'AI 对话发送限流（按用户）', windowMs: 60 * 1000, limit: 15, keyType: 'user', enabled: true, blockedMessage: 'AI 对话过于频繁，请稍后再试', pathPatterns: [] },
-  ai_share_view: { ...RULE_BASE, name: 'ai_share_view', description: 'AI 对话分享页访问限流（无需登录，防滥用）', windowMs: 60 * 1000, limit: 60, keyType: 'ip', enabled: true, blockedMessage: '访问过于频繁，请稍后再试', pathPatterns: [] },
-  drive_public_share: { ...RULE_BASE, name: 'drive_public_share', description: '网盘外链公开访问限流（无需登录，防密码爆破 / 防滥用）', windowMs: 60 * 1000, limit: 120, keyType: 'ip', enabled: true, blockedMessage: '访问过于频繁，请稍后再试', pathPatterns: ['/api/drive/public/*'] },
-  // 与 shared seed 的 SEED_RATE_LIMIT_RULES 同步：代码默认保证既有环境部署后即生效，DB 行供管理员调参覆盖
-  chunk_upload: { ...RULE_BASE, name: 'chunk_upload', description: '分片上传单片接口限流（按用户）：分片不小于 5MB，正常上传远达不到该速率，只拦异常刷片', windowMs: 60 * 1000, limit: 3000, keyType: 'user', enabled: true, blockedMessage: '分片上传过于频繁，请稍后再试', pathPatterns: ['/api/files/upload/chunk', '/api/drive/nodes/upload/chunk', '/api/app-releases/releases/*/artifacts/upload/chunk', '/api/iot/firmwares/upload/chunk'] },
-};
+const DEFAULTS = DEFAULT_RATE_LIMIT_RULES;
 
 const ruleCache = new Map<string, RuleConfig>(Object.entries(DEFAULTS));
 
@@ -68,11 +49,11 @@ const DAILY_TTL = 32 * 24 * 60 * 60;
 const TOP_TTL = 7 * 24 * 60 * 60;
 
 function currentHourKey(): string {
-  return dayjs().format('YYYY-MM-DD HH');
+  return dayjs().tz(APP_TIME_ZONE).format('YYYY-MM-DD HH');
 }
 
 function currentDayKey(): string {
-  return dayjs().format('YYYY-MM-DD');
+  return dayjs().tz(APP_TIME_ZONE).format('YYYY-MM-DD');
 }
 
 /**
@@ -98,23 +79,25 @@ function reportStatsFailure(scope: string, err: unknown): void {
  * Redis 计数键由 applyRule 统一拼接 `{name}|{identity}` 做规则级隔离；
  * 统计与解封均使用裸身份，前后端不再各自拆前缀。
  */
-function identityFor(rule: RuleConfig, c: Context): string {
+export function safeRateLimitPath(c: Context): string {
+  const routes = matchedRoutes(c).filter(route => route.method !== 'ALL' && !route.path.endsWith('*'));
+  return (routes.at(-1)?.path ?? '/api/[unmatched]').replace(/:([a-zA-Z0-9_]+)/g, '{$1}');
+}
+function identityFor(rule: RuleConfig, c: Context): string | null {
   if (rule.keyType === 'user') {
-    try {
-      const u = currentUser();
-      return u?.userId ? `u:${u.userId}` : getClientIp(c);
-    } catch {
-      return getClientIp(c);
-    }
+    const user = c.get('user'); const member = c.get('member'); const principal = c.get('openPrincipal');
+    if (user) return 'u:' + (user.tenantId ?? 'platform') + ':' + user.userId;
+    if (member) return 'm:' + (member.tenantId ?? 'platform') + ':' + member.memberId;
+    if (principal) return 'a:' + (principal.tenantId ?? 'platform') + ':' + principal.app.clientId;
+    return null;
   }
-  if (rule.keyType === 'ip_path') {
-    return `${getClientIp(c)}|${c.req.path}`;
-  }
+  if (rule.keyType === 'ip_path') return getClientIp(c) + '|r:' + createHash('sha256').update(c.req.path).digest('hex').slice(0, 32);
   return getClientIp(c);
 }
 
 /** 最近拦截记录的 zset member 结构（JSON 序列化，字段可含任意分隔符） */
 export interface RecentBlockRecord {
+  id: string;
   ts: number;
   key: string;
   path: string;
@@ -192,7 +175,7 @@ function recordBlockedStats(rule: RuleConfig, c: Context, identity: string, bann
       const topKey = `${STATS_PREFIX}${rule.name}:top:${currentDayKey()}`;
       const ts = Date.now();
       const hk = currentHourKey();
-      const record: RecentBlockRecord = { ts, key: identity, path: c.req.path };
+      const record: RecentBlockRecord = { id: randomUUID(), ts, key: identity, path: safeRateLimitPath(c) };
       if (banned) record.banned = true;
       else if (rule.mode === 'monitor') record.monitored = true;
       const results = await redis
@@ -264,7 +247,7 @@ function isAllowlisted(rule: RuleConfig, c: Context): boolean {
   if (rule.allowlist.length === 0) return false;
   let userId: number | undefined;
   try {
-    userId = currentUser()?.userId;
+    userId = c.get('user')?.userId;
   } catch {
     userId = undefined;
   }
@@ -294,11 +277,19 @@ function isAllowlisted(rule: RuleConfig, c: Context): boolean {
  */
 async function applyRule(rule: RuleConfig, c: Context, next: () => Promise<void>): Promise<Response | void> {
   markApplied(c, rule.name);
+  const identity = identityFor(rule, c);
+  if (!identity) return next();
+  const banKey = RL_BAN_PREFIX + rule.name + '|' + identity;
+  try {
+    const ttl = await redis.pttl(banKey);
+    if (ttl > 0) {
+      recordHitStats(rule.name); recordBlockedStats(rule, c, identity, true);
+      return c.json(errBody('访问已被临时封禁，请稍后再试', 429), 429, { 'Retry-After': String(Math.max(1, Math.ceil(ttl / 1000))) });
+    }
+  } catch (err) { reportStatsFailure('ban', err); return next(); }
   if (isAllowlisted(rule, c)) return next();
   recordHitStats(rule.name);
-  const identity = identityFor(rule, c);
-  const counterKey = `${RL_PREFIX}${rule.name}|${identity}`;
-  const banKey = `${RL_BAN_PREFIX}${rule.name}|${identity}`;
+  const counterKey = counterBase(rule, identity);
   let hit: LimiterHit;
   try {
     hit = rule.algorithm === 'sliding_window'
@@ -349,6 +340,7 @@ function markApplied(c: Context, name: string): void {
 
 function makeNamed(name: RateLimitName): MiddlewareHandler {
   return async (c, next) => {
+    await ensureRateLimitRules();
     const rule = ruleCache.get(name);
     if (!rule?.enabled) return next();
     if (alreadyApplied(c, name)) return next();
@@ -361,14 +353,14 @@ export const captchaRateLimit: MiddlewareHandler = makeNamed('captcha');
 export const sensitiveRateLimit: MiddlewareHandler = makeNamed('sensitive');
 
 /** 内置规则名称集合（不可删除） */
-export const PREDEFINED_NAMES = new Set(['auth', 'captcha', 'sensitive', 'analytics-ingest', 'error-report', 'replay-ingest', 'report_public_share', 'workflow_public_callback', 'push_public_callback', 'payment_public_link_pay', 'payment_public_link_session', 'chat_send', 'chatbi_ask', 'report_chatbi_write', 'report_fill_write', 'ai_chat_send', 'ai_share_view', 'drive_public_share', 'chunk_upload']);
+export const PREDEFINED_NAMES = new Set<string>(Object.keys(DEFAULTS));
 
 /**
  * 代码中通过 authRateLimit / namedRateLimit(...) 静态挂载的规则名。
  * 新增代码挂载点时必须同步维护（rate-limit.test.ts 有一致性校验兜底）；
  * 用于管理页的「挂载来源」标识——无代码挂载且无路径绑定的规则是死规则。
  */
-export const CODE_MOUNTED_NAMES = new Set(['auth', 'captcha', 'sensitive', 'analytics-ingest', 'error-report', 'replay-ingest', 'payment_public_link_pay', 'payment_public_link_session', 'chat_send', 'chatbi_ask', 'report_chatbi_write', 'report_fill_write', 'ai_chat_send', 'ai_share_view']);
+export const CODE_MOUNTED_NAMES = new Set<string>(CODE_RATE_LIMIT_NAMES);
 
 /** 规则挂载来源：code=代码挂载；path=路径绑定；code_path=两者皆有；none=未生效 */
 export function getMountSource(name: string, pathPatterns: string[]): 'code' | 'path' | 'code_path' | 'none' {
@@ -412,51 +404,50 @@ function matchesPath(patterns: string[], path: string): boolean {
  * 多条规则命中同一路径时取 priority 最大者（同优先级按规则缓存序取先出现者），
  * 一个请求只应用一条路径绑定规则。
  */
-export const pathBoundRateLimit: MiddlewareHandler = async (c, next) => {
-  const path = c.req.path;
-  let selected: RuleConfig | undefined;
-  for (const rule of ruleCache.values()) {
-    if (!rule.enabled || !rule.pathPatterns.length) continue;
-    if (!matchesPath(rule.pathPatterns, path)) continue;
-    if (!selected || rule.priority > selected.priority) selected = rule;
-  }
+async function applyPathRules(c: Context, next: () => Promise<void>, identityStage: boolean): Promise<Response | void> {
+  await ensureRateLimitRules();
+  const selected = [...ruleCache.values()].filter(rule => rule.enabled && (rule.keyType === 'user') === identityStage && rule.pathPatterns.length > 0 && matchesPath(rule.pathPatterns, c.req.path))
+    .sort((a, b) => b.priority - a.priority || a.name.localeCompare(b.name))[0];
   if (!selected || alreadyApplied(c, selected.name)) return next();
   return applyRule(selected, c, next);
-};
+}
+export const pathBoundRateLimit: MiddlewareHandler = (c, next) => applyPathRules(c, next, false);
+installIdentityRateLimiter((c, next) => applyPathRules(c, next, true));
 
-/** 从数据库加载规则到内存缓存 */
-export async function refreshRateLimitRules(): Promise<void> {
-  try {
+function counterBase(rule: RuleConfig, identity: string): string {
+  const spec = createHash('sha256').update(JSON.stringify([rule.algorithm, rule.windowMs, rule.keyType])).digest('hex').slice(0, 12);
+  return RL_PREFIX + rule.name + '|' + identity + '|' + spec;
+}
+let loadedAt = 0;
+let reload: Promise<void> | undefined;
+let generation = 0;
+export function refreshRateLimitRules(): Promise<void> {
+  if (reload) return reload;
+  const startedGeneration = generation;
+  reload = (async () => {
     const rows = await db.select().from(rateLimitRules);
     const next = new Map<string, RuleConfig>(Object.entries(DEFAULTS));
-    for (const r of rows) {
-      next.set(r.name, {
-        name: r.name,
-        description: r.description,
-        windowMs: r.windowMs,
-        limit: r.limit,
-        keyType: r.keyType,
-        enabled: r.enabled,
-        mode: r.mode,
-        algorithm: r.algorithm,
-        allowlist: r.allowlist ?? [],
-        priority: r.priority,
-        alertThreshold: r.alertThreshold,
-        blockedMessage: r.blockedMessage,
-        pathPatterns: r.pathPatterns ?? [],
-      });
-    }
+    for (const row of rows) next.set(row.name, { ...row, allowlist: row.allowlist ?? [], pathPatterns: row.pathPatterns ?? [] });
     ruleCache.clear();
-    for (const [k, v] of next) ruleCache.set(k, v);
-    logger.info(`[rate-limit] reloaded ${rows.length} rule(s) from DB`);
-  } catch (err) {
-    logger.warn('[rate-limit] DB load failed, using defaults', err);
-  }
+    for (const [key, rule] of next) ruleCache.set(key, rule);
+    loadedAt = generation === startedGeneration ? Date.now() : 0;
+  })().finally(() => { reload = undefined; });
+  return reload;
 }
-
-/** 服务启动时调用，预热规则缓存 */
+async function ensureRateLimitRules(): Promise<void> {
+  if (Date.now() - loadedAt < 30_000) return;
+  try { await refreshRateLimitRules(); }
+  catch (err) { reportStatsFailure('configuration', err); }
+}
+const invalidateRules = () => { loadedAt = 0; generation += 1; };
+onInvalidate('rate_limit_rules', invalidateRules);
+onInvalidationReset(invalidateRules);
 export async function bootstrapRateLimitRules(): Promise<void> {
+  await db.insert(rateLimitRules).values(Object.values(DEFAULTS)).onConflictDoNothing();
   await refreshRateLimitRules();
+}
+export function getRateLimitRuntimeState() {
+  return { loadedAt, rules: ruleCache.size, fresh: loadedAt > 0 && Date.now() - loadedAt < 30_000 };
 }
 
 /** 当前缓存中的所有规则配置 */
@@ -473,7 +464,9 @@ export function listRuleConfigs(): RuleConfig[] {
  * 同时从最近拦截记录中移除该身份的条目。
  */
 export async function unblockRateLimitKey(name: string, key: string): Promise<boolean> {
-  const base = `${RL_PREFIX}${name}|${key}`;
+  const ruleConfig = ruleCache.get(name);
+  if (!ruleConfig) return false;
+  const base = counterBase(ruleConfig, key);
   // 滑动窗口的计数分布在带桶序号的键上；按规则当前窗口宽度推导本桶与上一桶
   const keysToDelete = [base];
   const rule = ruleCache.get(name);

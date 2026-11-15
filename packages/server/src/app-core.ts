@@ -106,10 +106,10 @@ export function createAppWithDomains(routeDomains: readonly RouteDomain[], docCa
   // allowHeaders 留空 = 反射预检请求头（hono 默认），兼容携带自定义头的客户端。
   // Mastra Studio 的请求带 credentials:'include'，通配符 '*' 对凭据模式无效
   // → /api/mastra 单独反射请求 Origin 并允许凭据（该域鉴权走 Bearer + 权限,不依赖 Cookie）
-  app.use('/api/mastra/*', cors({ origin: (origin) => origin, credentials: true, exposeHeaders: ['X-Request-Id'] }));
+  app.use('/api/mastra/*', cors({ origin: (origin) => origin, credentials: true, exposeHeaders: ['X-Request-Id', 'Retry-After', 'RateLimit-Limit', 'RateLimit-Remaining', 'RateLimit-Reset', 'X-Zenith-Error'] }));
   app.use('*', except(
     (c) => c.req.path.startsWith('/api/mastra'),
-    cors({ origin: config.corsOrigin, exposeHeaders: ['X-Request-Id'] }),
+    cors({ origin: config.corsOrigin, exposeHeaders: ['X-Request-Id', 'Retry-After', 'RateLimit-Limit', 'RateLimit-Remaining', 'RateLimit-Reset', 'X-Zenith-Error'] }),
   ));
   app.use('*', createCsrfMiddleware({ allowedOrigins: config.allowedOrigins }));
   // ─── 访问日志（pino-http，官方 Hono 集成方式）────────────────────────────────

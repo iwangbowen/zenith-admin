@@ -444,8 +444,8 @@ const rateLimitAllowlistSchema = z.array(z.string().min(1).max(128)).max(100);
 export const createRateLimitRuleSchema = z.object({
   name: z.string().min(1).max(64).regex(/^[a-z][a-z0-9_-]*$/, '规则名称只能包含小写字母、数字、下划线和连字符'),
   description: z.string().max(255).nullable().optional(),
-  windowMs: z.number().int().min(1000),
-  limit: z.number().int().min(1),
+  windowMs: z.number().int().min(1000).max(86_400_000),
+  limit: z.number().int().min(1).max(1_000_000),
   keyType: z.enum(RATE_LIMIT_KEY_TYPES),
   enabled: z.boolean(),
   mode: z.enum(RATE_LIMIT_MODES).optional(),
@@ -457,21 +457,8 @@ export const createRateLimitRuleSchema = z.object({
   pathPatterns: z.array(rateLimitPathPatternSchema).max(50).optional(),
 });
 
-/** 部分更新；规则名称不可更改，描述与拦截提示不限长度 */
-export const updateRateLimitRuleSchema = z.object({
-  windowMs: z.number().int().min(1000).optional(),
-  limit: z.number().int().min(1).optional(),
-  keyType: z.enum(RATE_LIMIT_KEY_TYPES).optional(),
-  enabled: z.boolean().optional(),
-  mode: z.enum(RATE_LIMIT_MODES).optional(),
-  algorithm: z.enum(RATE_LIMIT_ALGORITHMS).optional(),
-  allowlist: rateLimitAllowlistSchema.optional(),
-  priority: z.number().int().min(0).max(9999).optional(),
-  alertThreshold: z.number().int().min(1).max(1_000_000).nullable().optional(),
-  description: z.string().nullable().optional(),
-  blockedMessage: z.string().nullable().optional(),
-  pathPatterns: z.array(rateLimitPathPatternSchema).max(50).optional(),
-});
+/** Updates preserve omitted values and share create-time bounds. */
+export const updateRateLimitRuleSchema = partialForUpdate(createRateLimitRuleSchema.omit({ name: true }));
 
 export const unblockRateLimitSchema = z.object({
   name: z.string().min(1),

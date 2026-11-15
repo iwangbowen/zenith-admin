@@ -1,3 +1,4 @@
+import { runIdentityRateLimits } from '../lib/rate-limit-stage';
 /**
  * 开放 API 网关中间件：
  *   1. openGatewayAuth  —— 双通道鉴权，产出统一 principal
@@ -171,7 +172,7 @@ export const openGatewayAuth: MiddlewareHandler = async (c, next) => {
   c.set('openPrincipal', principal);
   c.set('openApp', principal.app);
   c.header('X-Zenith-Environment', principal.app.environment);
-  await next();
+  return runIdentityRateLimits(c, next);
 };
 
 /** 开放子路由统一 Scope 门禁，同时记录计量维度。 */

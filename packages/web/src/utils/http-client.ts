@@ -331,7 +331,7 @@ export class HttpClient {
       }
     }
 
-    if (this.handleMaintenance && res.status === 503) {
+    if (this.handleMaintenance && res.status === 503 && res.headers.get('X-Zenith-Error') === 'maintenance') {
       let detail: { message?: string; estimatedEndAt?: string | null; startedAt?: string | null } = {};
       try {
         const parsed = await res.json() as { message: string; data: typeof detail };

@@ -173,3 +173,24 @@ describe.each(['request', 'fetchRaw'] as const)('HttpClient.%s headers', (method
     expect(takeAuthInvalidatedReason()).toBeNull();
   });
 });
+
+
+describe('service unavailable classification', () => {
+  it('does not turn a limiter outage into global maintenance', async () => {
+    fetchMock.mockResolvedValueOnce(Response.json({ code: 503, message: '限流服务暂不可用', data: null }, { status: 503 }));
+    const listener = vi.fn(); globalThis.addEventListener('maintenance:enabled', listener);
+    try {
+      const client = new HttpClient({ baseUrl: '', tokenKey: 'access-token', refreshTokenKey: 'refresh-token', refreshPath: '/refresh', loginUrl: () => '/login', handleMaintenance: true });
+      expect((await client.get('/resource', { silent: true })).code).toBe(503);
+      expect(listener).not.toHaveBeenCalled();
+    } finally { globalThis.removeEventListener('maintenance:enabled', listener); }
+  });
+  it('recognizes explicitly marked maintenance responses', async () => {
+    fetchMock.mockResolvedValueOnce(Response.json({ code: 503, message: '系统维护中', data: null }, { status: 503, headers: { 'X-Zenith-Error': 'maintenance' } }));
+    const listener = vi.fn(); globalThis.addEventListener('maintenance:enabled', listener);
+    try {
+      const client = new HttpClient({ baseUrl: '', tokenKey: 'access-token', refreshTokenKey: 'refresh-token', refreshPath: '/refresh', loginUrl: () => '/login', handleMaintenance: true });
+      await client.get('/resource', { silent: true }); expect(listener).toHaveBeenCalledOnce();
+    } finally { globalThis.removeEventListener('maintenance:enabled', listener); }
+  });
+});
