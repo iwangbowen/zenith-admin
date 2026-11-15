@@ -71,7 +71,7 @@ ALLOWED_ORIGINS=https://admin.example.com
 | `REQUEST_BODY_LIMIT` | 请求体大小上限，`0` 或未设置表示不启用全局限制（此时只有各上传端点按 `file.size` 自行拦截），生产环境务必设置（`.env.example` 示例为 64 MB，67108864）；至少要容纳一个分片（`files.chunkSizeMb`，最大 32 MB）加 multipart 开销，建议 ≥ 40 MB（41943040）；反向代理的 `client_max_body_size` 同理 |
 | `REQUEST_TIMEOUT_MS` | 请求超时，自动排除 `/api/ws`、`/api/files`、`/api/db-admin` 与 `/export` 接口 |
 | `UPLOAD_TEMP_DIR` | 分片上传本地暂存根目录，默认 `storage/tmp/uploads`；多实例部署见下文「多实例与本地存储」 |
-| `TRUSTED_PROXY_CIDRS` | 仅信任指定代理的 `X-Forwarded-For` / `X-Real-IP` |
+| `TRUSTED_PROXY_CIDRS` | 逗号分隔的可信代理 IP/CIDR；仅信任这些 TCP 对端的 `X-Forwarded-For` / `X-Real-IP`，用于确定限流与 [IP 访问控制](../backend/ip-access.md) 的来源，不能填入普通客户端范围 |
 | `REPORT_OUTBOUND_PRIVATE_ALLOWLIST` | 报表外部数据源访问私网的 allowlist |
 | `REPORT_PDF_FONT_PATH` | PDF 导出（报表打印 / 审批单）的 CJK 字体覆盖，指向单个 TTF / OTF 文件，优先级最高。默认使用随包内置的 Noto Sans SC（子集或全量，见下文「PDF 字体」），仅企业要求自有字体时设置 |
 | `PUBLIC_BASE_URL` | 对外可达的服务基址（默认 `http://localhost:3300`）。审批单打印件的验真二维码、通知退订链接等公开 URL 以此为前缀，生产环境必须设为用户 / 扫码者能访问的外网地址 |
@@ -84,6 +84,9 @@ ALLOWED_ORIGINS=https://admin.example.com
 | `WORKFLOW_OUTBOUND_ALLOWED_HOSTS` | 工作流出站（数据源 / 连接器 / 订阅 / 触发器 / 补偿 / 节点监听）私网目标 allowlist；默认一律拒绝内网 |
 
 跨域部署时同时设置 `CORS_ORIGIN=https://admin.example.com`。同域反向代理 `/api` 时通常不需要 CORS。
+
+启用 IP 白名单前，在管理页确认服务端观察到的来源 IP 与实际代理链一致，并把需访问 API 的网关出口、业务客户端和回调来源纳入策略。
+登录、公开业务 API 和 WebSocket 握手也执行策略。无法访问后台时，只能由服务器运维人员按 [受控恢复流程](../backend/ip-access.md#受控恢复) 操作；不得临时开放 HTTP 绕过入口。
 
 ### 3. 进程角色（api / worker）
 

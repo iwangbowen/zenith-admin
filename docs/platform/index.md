@@ -16,7 +16,7 @@
 
 | 能力 | API 前缀 | 当前实现 |
 | --- | --- | --- |
-| 运行时设置 | `/api/settings` | 按模块读写类型化设置文档（`version` 乐观锁）、模块清单、匿名 / 登录用户投影；模块注册表、缓存与跨实例失效见[运行时设置](../backend/settings.md) |
+| 运行时设置 | `/api/settings` | 类型化设置、模块清单、显式覆盖、`baseToken` 并发指纹、版本比较与恢复、匿名 / 登录用户投影；见[运行时设置](../backend/settings.md) |
 | 数据字典 | `/api/dicts` | 字典与字典项维护，按字典编码读取选项，支撑业务表单与展示 |
 | [业务编号](./numbering.md) | `/api/numbering-rules`、`/api/numbering-defaults`、`/api/numbering-allocations` | 规则草稿与不可变发布版本、按业务类型配置默认规则、实际使用位置、无副作用预览、计数查询及幂等分配记录；具体业务在自身设置中选择规则 |
 | 地区 | `/api/regions` | 地区树、平铺列表、详情与增删改 |
@@ -25,7 +25,8 @@
 | 数据脱敏 | `/api/data-mask` | 契约声明的敏感字段清单与生效策略、当前用户视角、按需查看明文（审计）；详见[安全体系](../backend/security.md#数据脱敏) |
 | 操作审计 | `/api/operation-logs` | 操作记录、筛选与变更前后快照；详见[操作日志与变更记录](../backend/audit-log-changes.md) |
 | API 访问日志 | `/api/api-access-logs` | 独立的结构化请求访问事实、脱敏快照、过滤、详情、导出与 90 天保留；详见[API 访问日志](../backend/api-access-logs.md) |
-| IP 访问与限流 | `/api/ip-access-logs`、`/api/rate-limit` | IP 拦截日志、限流规则、统计与拦截处置；IP 黑白名单配置及中间件行为见[安全体系](../backend/security.md) |
+| IP 访问控制 | `/api/settings/ip-access`、`/api/ip-access`、`/api/ip-access-logs` | 平台黑白名单、来源检测、草稿诊断、自锁保护、安全拦截日志和受控恢复；见[IP 访问控制](../backend/ip-access.md) |
+| 接口限流 | `/api/rate-limit` | 限流规则、统计、匹配诊断与封禁处置；见[接口限流](../backend/rate-limit.md) |
 | 缓存 | `/api/cache` | Redis 概览、key 浏览与清理等管理操作；详见[数据库、缓存与保留策略](../ops/data-platform.md) |
 | 监控与告警 | `/api/monitor`、`/api/monitor-alerts` | 实时监控、历史趋势、告警规则与事件处理；详见[监控与告警](../ops/observability.md) |
 | 请求链路 | `/api/trace` | 链路查询；观测入口见[系统运维](../ops/index.md) |
@@ -50,6 +51,8 @@ API 的方法、参数和响应以共享契约及运行中的 `/api/docs`、`/ap
 | 意见反馈 | `/system/feedbacks` |
 | 数据脱敏 | `/system/data-mask` |
 | API 访问日志 | `/system/api-access-logs` |
+| IP 访问控制 | `/system/ip-access` |
+| 接口限流 | `/system/rate-limit` |
 | 缓存管理 | `/system/cache` |
 | License 授权 | `/system/license` |
 
@@ -60,6 +63,7 @@ API 的方法、参数和响应以共享契约及运行中的 `/api/docs`、`/ap
 - 管理操作按各路由的管理员认证与 `guard` 权限执行，不能把整个领域视为公开 API。反馈提交只要求管理员登录态，查询、处理和删除另有 `system:feedback:*` 权限。
 - 匿名设置投影（`GET /api/settings/public`）和健康检查不要求登录；哪些字段可匿名读取由模块 `visibility` 决定，见[运行时设置](../backend/settings.md)。健康检查在依赖异常时仍返回 HTTP 200，调用方应读取 `data.status`（`ok` / `degraded`）和 `data.checks`。
 - `/api/ws` 只接受管理端 access token，不能复用会员凭证；身份与消息约束见[WebSocket 事件](../backend/websocket-events.md)。
+- IP 策略作用于 API 接入，包含登录、公开 API 和 WebSocket 握手；多租户下配置、诊断、历史及全局日志仅平台管理员可访问。匿名接口不表示绕过 IP 控制。
 - 规则中心挂载声明 `feature: 'rules'`。License 管理面不加 feature 门禁，以便受限模式下恢复授权；仍要求平台管理员身份及 `system:license:view` / `system:license:manage` 权限。
 
 ## 实现位置

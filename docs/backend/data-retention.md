@@ -54,7 +54,7 @@
 | `operation_logs` | 180 | 操作日志 |
 | `api_access_logs` | 90 | API 请求访问事实与脱敏请求快照，使用全局保留天数 |
 | `login_logs` | 180 | 管理员登录日志 |
-| `ip_access_logs` | 90 | IP 拦截日志 |
+| `ip_access_logs` | 90 | IP 访问策略拒绝记录、安全路径、命中依据及策略版本，见 [IP 访问控制](./ip-access.md#拦截日志) |
 | `login_risk_events` | 180 | 登录风险事件 |
 | `license_events` | 365 | License 事件 |
 | `identity_provider_sync_logs` | 90 | 身份源同步日志 |

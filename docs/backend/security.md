@@ -91,18 +91,11 @@ License 门控在 `feature`。`defineContractRoute` 据此装配 `authMiddleware
 
 ## IP 访问控制
 
-IP 访问控制由 `packages/server/src/middleware/ip-access.ts` 实现，配置来自运行时设置模块 `ipAccess`（平台作用域，进程内缓存 + 跨实例失效，管理页 `/system/ip-access`）：
+IP 访问控制是平台级 API 接入策略，覆盖登录、OAuth、公开业务 API 和 WebSocket 握手；多租户下仅平台管理员管理。
+黑名单优先，启用白名单必须非空；保存与版本恢复拒绝造成当前操作者自锁的变更。策略无效或无法加载时返回 503，不能静默关闭保护。
 
-| 字段 | 说明 |
-| --- | --- |
-| `whitelistEnabled` | 是否启用白名单 |
-| `whitelist` | 白名单数组，支持 IP 与 CIDR（IPv4 / IPv6） |
-| `blacklistEnabled` | 是否启用黑名单（黑名单优先于白名单） |
-| `blacklist` | 黑名单数组，支持 IP 与 CIDR |
-
-所有 /api/* 请求统一执行策略，包含登录、OAuth、公开业务接口和 WebSocket 握手，不按匿名访问属性免检。非 API 页面与已建立的 WebSocket 消息需要部署层控制。策略、诊断、安全保存、日志和恢复遵循 [IP 访问控制规范](./ip-access.md)。
-
-`getClientIp()` 只信任 `TRUSTED_PROXY_CIDRS` 中代理转发的 `x-forwarded-for` / `x-real-ip`；非可信代理请求使用 TCP 连接 IP。
+`getClientIp()` 只信任 `TRUSTED_PROXY_CIDRS` 内代理的转发头；非可信对端使用 TCP 来源。非 API 页面和已建立的 WebSocket 消息需要部署层控制。
+名单格式、接口契约、来源诊断、安全日志及服务器恢复流程以 [IP 访问控制规范](./ip-access.md) 为准。
 
 ## 限流
 

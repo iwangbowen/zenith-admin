@@ -18,6 +18,7 @@
 | `scope` | `platform`（全局一行）或 `tenant`（允许租户覆盖平台值）。被无请求上下文的后台任务读取的模块必须是 `platform` |
 | `feature` | License 特性门控，与同名业务域路由挂载的 `{ feature }` 保持一致；`/me` 与模块清单按租户套餐过滤带门控的模块 |
 | `readPermission` / `writePermission` | 读 / 写权限码；读为 `null` 表示任意登录用户可读整模块 |
+| `platformOnly` | `'multi-tenant'` 表示多租户部署下仅平台管理员可访问；约束模块读取、保存、版本历史与恢复，并从租户的模块清单和专用页面入口隐藏 |
 | `visibility` | 顶层字段的投影级别：`public`（匿名可见）/ `authenticated`（登录用户可见）/ 缺省 `admin` |
 | `page` | 已有专用页面的模块在通用设置页只给跳转链接 |
 | `sort` | 通用设置页导航顺序 |
@@ -40,7 +41,7 @@
 | `rules` 规则引擎 | `/rules` | platform | `rules` | `system:setting:view` / `system:setting:update` | 决策表发布审批（`authenticated`） | 通用设置页 |
 | `payment` 支付风控 | `/payment` | **tenant** | `payment` | `system:setting:view` / `system:setting:update` | 退款 / 转账四眼审批阈值 | 通用设置页 |
 | `workflow` 工作流引擎 | `/workflow` | platform | `workflow` | `system:setting:view` / `system:setting:update` | 引擎健康度诊断阈值 | 通用设置页 |
-| `ipAccess` IP 访问控制 | `/ip-access` | platform | — | `system:ip-access:view` / `system:ip-access:update` | 黑白名单开关与名单（IP / CIDR） | `/system/ip-access` |
+| `ipAccess` IP 访问控制 | `/ip-access` | platform | — | `system:ip-access:view` / `system:ip-access:update`；多租户仅平台管理员 | 黑白名单、严格 IP/CIDR 校验、保存与恢复自锁保护；见 [IP 访问控制](./ip-access.md) | `/system/ip-access` |
 | `drive` 企业网盘 | `/drive` | **tenant** | `drive` | `drive:setting:view` / `drive:setting:edit` | 空间配额、版本保留、外链策略、禁止扩展名、缩略图 / 全文索引、异常行为告警阈值（告警取平台值）；后台任务与匿名入口按数据行 `tenantId` 显式读取 | `/drive/admin/settings` |
 | `wiki` 知识中心 | `/wiki` | platform | `wiki` | `wiki:setting:view` / `wiki:setting:edit` | 发布审核、默认可见性、评论、AI 同步、回收站保留、审核提醒 | `/wiki/settings` |
 
@@ -67,8 +68,9 @@ flowchart LR
 唯一约束 `(module, tenant_id)` 使用 `NULLS NOT DISTINCT`（PostgreSQL ≥ 15），平台行不会重复。
 
 解析函数 `resolveSettings(module, layers)`（`@zenith/shared/settings`，服务端与 Demo Mock 共用）逐层深合并后 `schema.parse`；
-解析失败时**逐路径降级**：先丢弃校验失败的叶子再解析，仍失败则回落到完整默认值并记录 `error` 日志——
-一条坏数据只影响它自己，不会让登录或上传整体失效。
+通用解析失败时先丢弃校验失败的叶子再解析，仍失败则回落到完整默认值并记录 `error` 日志。
+IP 访问控制属于安全策略：运行时读取发现解析降级会拒绝使用结果，API 返回 503，不会把损坏策略视为关闭。
+具体失败处理与受控恢复见 [IP 访问控制](./ip-access.md#受控恢复)。
 
 `system_settings_revisions` 保存版本号、显式覆盖 `overrides`、当时的 `inherited` / `effective`、上级版本、定义快照与摘要、
 操作人、时间、变更字段、说明、动作（保存 / 恢复 / 初始）及恢复来源。唯一约束 `(settings_id, version)` 保证版本号不重复。
@@ -82,7 +84,7 @@ flowchart LR
 
 恢复使用历史的本层覆盖，继续继承当前上级；预览展示历史当时值与恢复后实际生效值，确认时再次校验指纹和当前规则。
 恢复会生成新的递增版本并记录来源，不倒退版本指针。虚拟版本 0 表示**当前**继承状态，可用于清除全部覆盖；它没有历史创建时间。
-迁移只为迁移时正在使用的配置保存初始快照，不重建此前未留存的历史。
+版本列表只展示实际留存的版本，不推算缺失版本或伪造历史创建时间。
 
 `system_runtime_state` 表另存机器状态（如 CMS 主题指纹），不属于设置，也不进入本接口。
 
@@ -100,6 +102,7 @@ const policy = await getSettings('identitySecurity', { tenantId });       // 租
 | 函数 | 用途 |
 | --- | --- |
 | `getSettings(module, { tenantId? })` | 类型化生效文档 `SettingsOf<M>`；`tenantId` 缺省时从请求上下文推导（后台任务无上下文即平台值）。进程内 `TtlCache` 按 `module + 作用域` 缓存，TTL `SETTINGS_CACHE_TTL_MS`（默认 30 s，SWR） |
+| `getIpAccessPolicySnapshot()` | 从同一缓存条目取得 IP 策略与版本，保证拦截日志对应实际使用的策略；解析降级时拒绝返回策略 |
 | `getSettingsEnvelope(module)` | 信封含 `effective` / `inherited` / `overrides` / `overriddenPaths` / `version` / `currentRevisionId` / `baseToken` / `inheritedVersion` / `definitionHash`；作用域取当前编辑目标 |
 | `saveSettings(module, user, { baseToken, overrides, note? })` | 显式覆盖写入；指纹不一致 409；版本和指针原子落库 |
 | `restoreSettings(module, user, version, { baseToken, note })` | 历史覆盖复用统一写入链；恢复说明必填 |
@@ -139,7 +142,9 @@ const policy = await getSettings('identitySecurity', { tenantId });       // 租
 | `POST` | `/{module-path}/versions/{version}/restore` | 模块 `writePermission`，记录审计 | `{ baseToken, note }`，确认恢复并产生新版本 |
 
 写入作用域规则：`platform` 模块在多租户模式下只有平台管理员可写；`tenant` 模块由平台管理员按当前租户范围写、租户管理员写本租户。
-公开投影只暴露 `visibility: 'public'` 的字段，新增公开字段前评估敏感性。
+声明 `platformOnly: 'multi-tenant'` 的模块在多租户下额外限制读取、历史与恢复，权限码不能绕过平台身份要求。
+IP 策略保存及恢复还会检查服务端观察到的操作者来源 IP，拒绝造成自锁的变更。
+公开投影只暴露 `visibility: 'public'` 的字段；匿名投影同样受全局 IP 策略约束，新增公开字段前评估敏感性。
 
 ## 前端
 

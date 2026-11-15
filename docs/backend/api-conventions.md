@@ -319,7 +319,7 @@ Server-Timing: total;dur=45.2;desc="Total Response Time"
 | CSRF | `createCsrfMiddleware` + `hono/csrf` | 来源检查、Bearer 机器调用及协议例外见 [安全 · CSRF](./security.md#安全头、cors、csrf)；拒绝返回明确的 403 文案 |
 | Body Limit | `hono/body-limit` | `REQUEST_BODY_LIMIT > 0` 时启用，超限返回 413 |
 | Timeout | `hono/timeout` | `REQUEST_TIMEOUT_MS > 0` 时对 `/api/*` 启用，WebSocket / 文件 / DB 管理 / 日志 / 监控流 / AI 流 / 应用发布制品 / `*/export` 排除 |
-| IP 访问控制 | `ipAccessMiddleware` | 对 `/api/*` 生效 |
+| IP 访问控制 | `ipAccessMiddleware` | API 接入统一执行黑白名单策略，包含登录、公开 API 与 WebSocket 握手；策略拒绝返回 403，加载失败或策略无效返回 503，详见[IP 访问控制](./ip-access.md) |
 | 限流 | `rate-limit.ts` / `lib/rate-limit-stage.ts` | 认证前 IP 防护、认证后身份路径策略与具名业务保护，见[接口限流](./rate-limit.md) |
 | 维护模式 | `maintenanceMiddleware` | 对 `/api/*` 生效，认证与公开维护接口除外 |
 | License 门控 | `licenseFeatureGate` | 挂载继承路由域的 `licensing.feature`；豁免需说明原因，见 [功能授权](./licensing.md) |

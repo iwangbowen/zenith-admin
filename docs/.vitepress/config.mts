@@ -432,6 +432,7 @@ export default withMermaid(defineConfig({
         collapsed: true,
         items: [
           { text: '安全体系', link: '/backend/security' },
+          { text: 'IP 访问控制', link: '/backend/ip-access' },
           { text: '幂等防重复提交', link: '/backend/idempotency' },
           { text: 'OAuth 第三方登录', link: '/backend/oauth' },
           { text: '多租户指南', link: '/backend/multi-tenant' },
