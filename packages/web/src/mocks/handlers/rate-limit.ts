@@ -1,34 +1,106 @@
-import { rateLimitContract, type RateLimitBan, type RateLimitRecentBlock, type RateLimitRule } from '@zenith/shared/platform';
+import { matchesFilter } from '@/mocks/utils/filter';
+import {
+  DEFAULT_RATE_LIMIT_RULES,
+  CODE_RATE_LIMIT_NAMES,
+  rateLimitMatches,
+  rateLimitPathMatches,
+  selectRateLimitRule,
+  rateLimitContract,
+  type RateLimitBan,
+  type RateLimitRecentBlock,
+  type RateLimitRule,
+} from '@zenith/shared/platform';
 import { mock } from '@/mocks/utils/contract';
 import { badRequest, notFound, nextIdFrom } from '@/mocks/utils/handlers';
 import { mockDateTime, mockDateTimeOffset } from '../utils/date';
 import { removeByIds, requireItem } from '../utils/crud';
 
-const RULE_BASE = { mode: 'enforce' as const, algorithm: 'fixed_window' as const, allowlist: [] as string[], priority: 0, alertThreshold: null };
+const RULE_BASE = {
+  mode: 'enforce' as const,
+  algorithm: 'fixed_window' as const,
+  allowlist: [] as string[],
+  priority: 0,
+  alertThreshold: null,
+};
 
-const rules: RateLimitRule[] = [
-  { ...RULE_BASE, id: 1, name: 'auth',      description: '登录接口限流',          windowMs: 3 * 60 * 1000,     limit: 20, keyType: 'ip', enabled: false,  blockedMessage: '登录尝试过于频繁，请 3 分钟后再试',  pathPatterns: [],  predefined: true, mountSource: 'code', createdAt: mockDateTime(), updatedAt: mockDateTime() },
-  { ...RULE_BASE, id: 2, name: 'captcha',   description: '验证码接口限流',        windowMs: 60 * 1000,         limit: 30, keyType: 'ip', enabled: true,  blockedMessage: '验证码请求过于频繁，请稍后再试',     pathPatterns: [],  predefined: true, mountSource: 'code', createdAt: mockDateTime(), updatedAt: mockDateTime() },
-  { ...RULE_BASE, id: 3, name: 'sensitive', description: '敏感操作（注册/重置）限流', windowMs: 60 * 60 * 1000, limit: 5,  keyType: 'ip', enabled: false, blockedMessage: '操作过于频繁，请 1 小时后重试',     pathPatterns: [],  predefined: true, mountSource: 'code', createdAt: mockDateTime(), updatedAt: mockDateTime() },
-  { ...RULE_BASE, id: 4, name: 'chat_send', description: '聊天消息发送限流（按用户）', windowMs: 60 * 1000,      limit: 60, keyType: 'user', enabled: true, blockedMessage: '消息发送过于频繁，请稍后再试',    pathPatterns: [],  predefined: true, mountSource: 'code', createdAt: mockDateTime(), updatedAt: mockDateTime() },
-  { ...RULE_BASE, id: 5, name: 'report_public_share', description: '报表公开分享访问限流', windowMs: 60 * 1000, limit: 120, keyType: 'ip', enabled: true, mode: 'monitor', blockedMessage: '访问过于频繁，请稍后再试', pathPatterns: ['/api/report/public/*'], predefined: true, mountSource: 'path', createdAt: mockDateTime(), updatedAt: mockDateTime() },
+const rules: RateLimitRule[] = Object.values(DEFAULT_RATE_LIMIT_RULES).map((rule, i) => ({
+  ...rule,
+  id: i + 1,
+  predefined: true,
+  mountSource: CODE_RATE_LIMIT_NAMES.some((name) => name === rule.name) ? ('code' as const) : ('path' as const),
+  methods: [],
+  extraWindows: [],
+  failMode: 'open' as const,
+  loadState: 'loaded' as const,
+  createdAt: mockDateTime(),
+  updatedAt: mockDateTime(),
+}));
+const operations = [
+  { method: 'POST', path: '/api/auth/login', summary: '后台登录', security: 'none' },
+  { method: 'GET', path: '/api/users/{id}', summary: '查询用户', security: 'bearer' },
 ];
 
 const stats: Record<string, { hit: number; blocked: number; recent: RateLimitRecentBlock[] }> = {
-  auth:      { hit: 8421, blocked: 12, recent: [
-    { at: mockDateTimeOffset(-5 * 60 * 1000),  key: '203.0.113.42',  path: '/api/auth/login', monitored: false, banned: false },
-    { at: mockDateTimeOffset(-22 * 60 * 1000), key: '198.51.100.7',  path: '/api/auth/login', monitored: false, banned: true },
-  ] },
-  captcha:   { hit: 12034, blocked: 3, recent: [
-    { at: mockDateTimeOffset(-1 * 60 * 60 * 1000), key: '192.0.2.55', path: '/api/auth/captcha', monitored: false, banned: false },
-  ] },
+  auth: {
+    hit: 8421,
+    blocked: 12,
+    recent: [
+      {
+        at: mockDateTimeOffset(-5 * 60 * 1000),
+        key: '203.0.113.42',
+        path: '/api/auth/login',
+        monitored: false,
+        banned: false,
+      },
+      {
+        at: mockDateTimeOffset(-22 * 60 * 1000),
+        key: '198.51.100.7',
+        path: '/api/auth/login',
+        monitored: false,
+        banned: true,
+      },
+    ],
+  },
+  captcha: {
+    hit: 12034,
+    blocked: 3,
+    recent: [
+      {
+        at: mockDateTimeOffset(-1 * 60 * 60 * 1000),
+        key: '192.0.2.55',
+        path: '/api/auth/captcha',
+        monitored: false,
+        banned: false,
+      },
+    ],
+  },
   sensitive: { hit: 187, blocked: 0, recent: [] },
-  chat_send: { hit: 4560, blocked: 1, recent: [
-    { at: mockDateTimeOffset(-40 * 60 * 1000), key: 'u:2', path: '/api/chat/conversations/1/messages', monitored: false, banned: false },
-  ] },
-  report_public_share: { hit: 960, blocked: 4, recent: [
-    { at: mockDateTimeOffset(-12 * 60 * 1000), key: '198.51.100.23', path: '/api/report/public/abc', monitored: true, banned: false },
-  ] },
+  chat_send: {
+    hit: 4560,
+    blocked: 1,
+    recent: [
+      {
+        at: mockDateTimeOffset(-40 * 60 * 1000),
+        key: 'u:2',
+        path: '/api/chat/conversations/1/messages',
+        monitored: false,
+        banned: false,
+      },
+    ],
+  },
+  report_public_share: {
+    hit: 960,
+    blocked: 4,
+    recent: [
+      {
+        at: mockDateTimeOffset(-12 * 60 * 1000),
+        key: '198.51.100.23',
+        path: '/api/report/public/abc',
+        monitored: true,
+        banned: false,
+      },
+    ],
+  },
 };
 
 const activeBans: RateLimitBan[] = [
@@ -45,8 +117,77 @@ function mountSourceOf(rule: RateLimitRule): RateLimitRule['mountSource'] {
 }
 
 export const rateLimitHandlers = [
+  mock(rateLimitContract.operations, ({ ok }) => ok(operations)),
+  mock(rateLimitContract.diagnose, ({ body, ok }) => {
+    const selected = [
+      selectRateLimitRule(rules, body.method, body.path, false),
+      body.principal === 'anonymous' ? undefined : selectRateLimitRule(rules, body.method, body.path, true),
+    ]
+      .filter(Boolean)
+      .map((rule) => rule!.name);
+    return ok({
+      method: body.method,
+      path: operations.find((op) => rateLimitPathMatches(op.path, body.path))?.path ?? '/[unmatched]',
+      selected,
+      matches: rules
+        .filter((rule) => rateLimitMatches(rule, body.method, body.path))
+        .map((rule) => ({
+          name: rule.name,
+          selected: selected.includes(rule.name),
+          stage: rule.keyType === 'user' ? '认证后' : '认证前',
+          reason: selected.includes(rule.name) ? '匹配选中' : '停用或被覆盖',
+        })),
+      note: 'Demo配置匹配，不消耗真实额度',
+    });
+  }),
+  mock(rateLimitContract.events, ({ query, ok }) => {
+    const rows = Object.entries(stats)
+      .flatMap(([name, value]) =>
+        value.recent.map((event, i) => ({
+          ...event,
+          name,
+          id: name + '-' + i,
+          decision: event.monitored
+            ? ('monitored' as const)
+            : event.banned
+              ? ('banned' as const)
+              : ('blocked' as const),
+          method: 'POST',
+          correlationId: null,
+        })),
+      )
+      .filter(
+        (event) =>
+          (!query.name || event.name.includes(query.name)) &&
+          (!query.keyword || event.key.includes(query.keyword) || event.path.includes(query.keyword)) &&
+          matchesFilter(event.decision, query.decision),
+      );
+    return ok({
+      list: rows.slice((query.page - 1) * query.pageSize, query.page * query.pageSize),
+      total: rows.length,
+      page: query.page,
+      pageSize: query.pageSize,
+    });
+  }),
+  mock(rateLimitContract.detailStats, ({ params, ok }) => {
+    const rule = requireItem(rules, params.id, '规则不存在', { status: 404 });
+    const value = stats[rule.name] ?? { hit: 0, blocked: 0, recent: [] };
+    return ok({
+      ...rule,
+      hitCount: value.hit,
+      blockedCount: value.blocked,
+      blockRate: 0,
+      recentBlocks: value.recent,
+      hourlySeries: [],
+      dailySeries: [],
+      topSources: [],
+    });
+  }),
   mock(rateLimitContract.rules, ({ ok }) =>
-    ok(rules.map((r) => ({ ...r, mountSource: mountSourceOf(r) })), 'success'),
+    ok(
+      rules.map((r) => ({ ...r, mountSource: mountSourceOf(r) })),
+      'success',
+    ),
   ),
 
   mock(rateLimitContract.updateRule, ({ params, body, ok }) => {
@@ -114,9 +255,8 @@ export const rateLimitHandlers = [
           blocked: r.enabled ? Math.floor(Math.random() * 40) : 0,
         };
       });
-      const topSources = s.blocked > 0
-        ? s.recent.slice(0, 5).map((b, i) => ({ key: b.key, count: Math.max(1, s.blocked - i) }))
-        : [];
+      const topSources =
+        s.blocked > 0 ? s.recent.slice(0, 5).map((b, i) => ({ key: b.key, count: Math.max(1, s.blocked - i) })) : [];
       return {
         name: r.name,
         description: r.description,
@@ -148,7 +288,11 @@ export const rateLimitHandlers = [
   mock(rateLimitContract.resetStats, ({ body, ok }) => {
     const { name } = body;
     const bucket = stats[name];
-    if (bucket) { bucket.hit = 0; bucket.blocked = 0; bucket.recent = []; }
+    if (bucket) {
+      bucket.hit = 0;
+      bucket.blocked = 0;
+      bucket.recent = [];
+    }
     return ok(null, '统计已清空');
   }),
 
@@ -158,7 +302,12 @@ export const rateLimitHandlers = [
     const { name, key, durationSeconds } = body;
     const existing = activeBans.findIndex((b) => b.name === name && b.key === key);
     if (existing >= 0) activeBans.splice(existing, 1);
-    activeBans.push({ name, key, expiresAt: mockDateTimeOffset(durationSeconds * 1000), remainingSeconds: durationSeconds });
+    activeBans.push({
+      name,
+      key,
+      expiresAt: mockDateTimeOffset(durationSeconds * 1000),
+      remainingSeconds: durationSeconds,
+    });
     return ok(null, '封禁成功');
   }),
 

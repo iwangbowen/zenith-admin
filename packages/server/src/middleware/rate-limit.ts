@@ -1,11 +1,11 @@
+import { recordRateLimitEvent } from '../lib/rate-limit-stats';
 import { limiterRedis } from '../lib/rate-limit-redis';
 import { selectRateLimitRule, type RateLimitOptions, type RateLimitWindow } from '@zenith/shared/platform';
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { matchedRoutes } from 'hono/route';
 import { DEFAULT_RATE_LIMIT_RULES, CODE_RATE_LIMIT_NAMES } from '@zenith/shared/platform';
 import { onInvalidate, onInvalidationReset } from '../lib/invalidation-bus';
 import { installIdentityRateLimiter } from '../lib/rate-limit-stage';
-import { APP_TIME_ZONE } from '../lib/datetime';
 import type { MiddlewareHandler, Context } from 'hono';
 import type { RateLimitKeyType, RateLimitMode, RateLimitAlgorithm } from '@zenith/shared/platform';
 import ipRangeCheck from 'ip-range-check';
@@ -14,7 +14,6 @@ import { config } from '../config';
 import { errBody } from '../lib/openapi-schemas';
 import { getClientIp } from '../lib/request-helpers';
 import logger from '../lib/logger';
-import dayjs from 'dayjs';
 import { db } from '../db';
 import { rateLimitRules } from '../db/schema';
 
@@ -44,20 +43,6 @@ const ruleCache = new Map<string, RuleConfig>(Object.entries(DEFAULTS));
 const RL_PREFIX = `${config.redis.keyPrefix}rl:`;
 const RL_BAN_PREFIX = `${config.redis.keyPrefix}rlban:`;
 const STATS_PREFIX = `${config.redis.keyPrefix}rlstats:`;
-const STATS_TTL = 7 * 24 * 60 * 60;
-const HOURLY_TTL = 25 * 60 * 60;
-/** 按日序列（30d 趋势）与按日 Top 来源的保留期 */
-const DAILY_TTL = 32 * 24 * 60 * 60;
-const TOP_TTL = 7 * 24 * 60 * 60;
-
-function currentHourKey(): string {
-  return dayjs().tz(APP_TIME_ZONE).format('YYYY-MM-DD HH');
-}
-
-function currentDayKey(): string {
-  return dayjs().tz(APP_TIME_ZONE).format('YYYY-MM-DD');
-}
-
 /**
  * 统计写入失败的日志节流：Redis 故障时命中统计会对每个请求都失败，
  * 逐条 warn 会在故障期间淹没日志。每分钟最多报一次，并带上累计失败数。
@@ -152,81 +137,9 @@ end
 return {over, math.ceil(retry), remaining, math.ceil(worstCount)}
 `;
 
-/** 拦截统计（fire-and-forget）：blocked 计数 + 最近记录 + 小时/日序列 + Top 来源 + 突增告警 */
-function recordBlockedStats(rule: RuleConfig, c: Context, identity: string, banned = false): void {
-  void (async () => {
-    try {
-      const blockedKey = `${STATS_PREFIX}${rule.name}:blocked`;
-      const recentKey = `${STATS_PREFIX}${rule.name}:recent`;
-      const hourlyBlockedKey = `${STATS_PREFIX}${rule.name}:hourly:blocked`;
-      const dailyBlockedKey = `${STATS_PREFIX}${rule.name}:daily:blocked`;
-      const topKey = `${STATS_PREFIX}${rule.name}:top:${currentDayKey()}`;
-      const ts = Date.now();
-      const hk = currentHourKey();
-      const record: RecentBlockRecord = { id: randomUUID(), ts, key: identity, path: safeRateLimitPath(c) };
-      if (banned) record.banned = true;
-      else if (rule.mode === 'monitor') record.monitored = true;
-      const results = await redis
-        .multi()
-        .incr(blockedKey)
-        .expire(blockedKey, STATS_TTL)
-        .zadd(recentKey, ts, JSON.stringify(record))
-        .zremrangebyrank(recentKey, 0, -201)
-        .expire(recentKey, STATS_TTL)
-        .hincrby(hourlyBlockedKey, hk, 1)
-        .expire(hourlyBlockedKey, HOURLY_TTL)
-        .hincrby(dailyBlockedKey, currentDayKey(), 1)
-        .expire(dailyBlockedKey, DAILY_TTL)
-        .zincrby(topKey, 1, identity)
-        .expire(topKey, TOP_TTL)
-        .exec();
-      // 突增告警：小时拦截数达到阈值时通知（去重在 alert service 内做）。
-      // exec 结果按链式顺序排列，索引 5 = hourlyBlockedKey 的 hincrby 返回值
-      if (rule.alertThreshold !== null && rule.alertThreshold > 0 && results) {
-        const hourlyBlocked = Number(results[5]?.[1] ?? 0);
-        if (hourlyBlocked >= rule.alertThreshold) {
-          void import('../services/platform/rate-limit-alert.service')
-            .then((m) => m.maybeSendRateLimitSpikeAlert({
-              ruleName: rule.name,
-              threshold: rule.alertThreshold as number,
-              blockedCount: hourlyBlocked,
-              hourKey: hk,
-            }))
-            .catch(() => {});
-        }
-      }
-    } catch (err) {
-      reportStatsFailure('blocked', err);
-    }
-  })();
+function recordDecision(rule: RuleConfig, c: Context, identity: string, decision: import('../lib/rate-limit-stats').LimitDecision): void {
+  recordRateLimitEvent({ name: rule.name, key: identity, path: safeRateLimitPath(c), method: c.req.method, decision, correlationId: c.get('requestId') ?? null }, { threshold: rule.alertThreshold, userIds: rule.alertUserIds ?? [], cooldownSeconds: rule.alertCooldownSeconds ?? 3600 });
 }
-
-/**
- * 命中统计（fire-and-forget）：统计只服务于限流看板，其失败不应拖慢或中断被保护的接口。
- * 限流判定本身由 applyRule 同步完成，不受影响。
- */
-function recordHitStats(name: string): void {
-  void (async () => {
-    try {
-      const k = `${STATS_PREFIX}${name}:hit`;
-      const hk = currentHourKey();
-      const hourlyHitsKey = `${STATS_PREFIX}${name}:hourly:hits`;
-      const dailyHitsKey = `${STATS_PREFIX}${name}:daily:hits`;
-      await redis
-        .multi()
-        .incr(k)
-        .expire(k, STATS_TTL)
-        .hincrby(hourlyHitsKey, hk, 1)
-        .expire(hourlyHitsKey, HOURLY_TTL)
-        .hincrby(dailyHitsKey, currentDayKey(), 1)
-        .expire(dailyHitsKey, DAILY_TTL)
-        .exec();
-    } catch (err) {
-      reportStatsFailure('hit', err);
-    }
-  })();
-}
-
 /**
  * 白名单豁免：条目为 IP、CIDR（如 10.0.0.0/8）或 `u:{userId}`。
  * 命中者跳过计数与拦截；条目非法时忽略该条（不影响其余条目）。
@@ -273,12 +186,11 @@ async function applyRule(rule: RuleConfig, c: Context, next: () => Promise<void>
   try {
     const ttl = await limiterRedis.pttl(banKey);
     if (ttl > 0) {
-      recordHitStats(rule.name); recordBlockedStats(rule, c, identity, true);
+      recordDecision(rule, c, identity, 'banned');
       return c.json(errBody('访问已被临时封禁，请稍后再试', 429), 429, { 'Retry-After': String(Math.max(1, Math.ceil(ttl / 1000))) });
     }
   } catch (err) { return unavailable(rule, c, next, err); }
-  if (isAllowlisted(rule, c)) return next();
-  recordHitStats(rule.name);
+  if (isAllowlisted(rule, c)) { recordDecision(rule, c, identity, 'exempt'); return next(); }
   const counterKey = counterBase(rule, identity);
   const windows: RateLimitWindow[] = [{ windowMs: rule.windowMs, limit: rule.limit }, ...(rule.extraWindows ?? [])];
   let over: number; let retryMs: number; let remaining: number;
@@ -291,11 +203,11 @@ async function applyRule(rule: RuleConfig, c: Context, next: () => Promise<void>
     c.header('RateLimit-Limit', String(rule.limit)); c.header('RateLimit-Remaining', String(remaining)); c.header('RateLimit-Reset', String(resetSec));
   }
   if (over === -1) {
-    recordBlockedStats(rule, c, identity, true);
+    recordDecision(rule, c, identity, 'banned');
     return c.json(errBody('访问已被临时封禁，请稍后再试', 429), 429, { 'Retry-After': String(resetSec) });
   }
-  if (!over) return next();
-  recordBlockedStats(rule, c, identity);
+  if (!over) { recordDecision(rule, c, identity, 'allowed'); return next(); }
+  recordDecision(rule, c, identity, rule.mode === 'monitor' ? 'monitored' : 'blocked');
   if (rule.mode === 'monitor') return next();
   return c.json(errBody(rule.blockedMessage ?? '请求过于频繁，请稍后再试', 429), 429, { 'Retry-After': String(resetSec) });
 }
@@ -416,7 +328,7 @@ export function listRuleConfigs(): RuleConfig[] {
  * `key` 为不含规则名前缀的计数身份（IP / `u:{userId}` / `ip|path`，
  * 与统计接口 recentBlocks 返回的 key 字段一致）；Redis 计数键为
  * `{name}|{identity}`（见 applyRule），这里负责补回前缀。
- * 同时从最近拦截记录中移除该身份的条目。
+ * 只清除额度，保留命中记录和临时封禁。
  */
 export async function unblockRateLimitKey(name: string, key: string): Promise<boolean> {
   const ruleConfig = ruleCache.get(name);
@@ -434,20 +346,6 @@ export async function unblockRateLimitKey(name: string, key: string): Promise<bo
     });
   }
   const n = await redis.del(...keysToDelete);
-  try {
-    const recentKey = `${STATS_PREFIX}${name}:recent`;
-    const members = await redis.zrange(recentKey, '0', '-1');
-    const toRemove = members.filter((m) => {
-      try {
-        return (JSON.parse(m) as RecentBlockRecord).key === key;
-      } catch {
-        return false;
-      }
-    });
-    if (toRemove.length > 0) await redis.zrem(recentKey, ...toRemove);
-  } catch {
-    /* ignore */
-  }
   return n > 0;
 }
 
@@ -457,14 +355,16 @@ export interface RateLimitBan {
   name: string;
   key: string;
   ttlMs: number;
+  reason: string;
+  createdBy: number | null;
 }
 
 /**
  * 手动封禁某个身份：无视限额与观察模式，封禁期内该身份在此规则下的请求一律 429。
  * 封禁键带 TTL 自动过期；解除用 unbanRateLimitKey。
  */
-export async function banRateLimitKey(name: string, key: string, durationSeconds: number): Promise<void> {
-  await redis.set(`${RL_BAN_PREFIX}${name}|${key}`, '1', 'PX', durationSeconds * 1000);
+export async function banRateLimitKey(name: string, key: string, durationSeconds: number, metadata = { reason: '管理员临时封禁', createdBy: null as number | null }): Promise<void> {
+  await redis.set(`${RL_BAN_PREFIX}${name}|${key}`, JSON.stringify(metadata), 'PX', durationSeconds * 1000);
 }
 
 export async function unbanRateLimitKey(name: string, key: string): Promise<boolean> {
@@ -485,7 +385,9 @@ export async function listRateLimitBans(): Promise<RateLimitBan[]> {
       if (sep <= 0) continue;
       const ttlMs = await redis.pttl(redisKey);
       if (ttlMs <= 0) continue;
-      bans.push({ name: suffix.slice(0, sep), key: suffix.slice(sep + 1), ttlMs });
+      const raw = await redis.get(redisKey);
+      const metadata = raw ? JSON.parse(raw) as {reason?: string;createdBy?: number} : {};
+      bans.push({ name: suffix.slice(0, sep), key: suffix.slice(sep + 1), ttlMs, reason: metadata.reason ?? '', createdBy: metadata.createdBy ?? null });
     }
   } while (cursor !== '0');
   return bans.sort((a, b) => a.ttlMs - b.ttlMs);
@@ -498,6 +400,7 @@ export const RATE_LIMIT_KEYS = {
 
 function unavailable(rule: RuleConfig, c: Context, next: () => Promise<void>, error: unknown): Promise<Response | void> | Response {
   reportStatsFailure('counter', error);
+  recordDecision(rule, c, identityFor(rule, c) ?? getClientIp(c), 'degraded');
   if (rule.failMode === 'closed') return c.json(errBody('限流服务暂时不可用，请稍后重试', 503), 503, { 'X-Zenith-Error': 'rate-limit-unavailable', 'Retry-After': '1' });
   return next();
 }

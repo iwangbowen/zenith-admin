@@ -106,12 +106,7 @@ IP 访问控制由 `packages/server/src/middleware/ip-access.ts` 实现，配置
 
 ## 限流
 
-限流包含代码内置默认规则、数据库规则和路径绑定规则。规则表为 `rate_limit_rules`，管理接口位于 `/api/rate-limit`，权限为：
-
-- `system:rate-limit:view`
-- `system:rate-limit:manage`
-
-具名默认规则包括 `auth`、`captcha`、`sensitive`、`analytics-ingest`、`error-report`、`report_public_share`、`chat_send`、`chatbi_ask`、`report_chatbi_write`、`report_fill_write`、`ai_chat_send`、`ai_share_view`。种子数据会写入常用规则，数据库中也可维护自定义规则。
+接口保护、规则管理、身份阶段、多实例一致性、受控封禁及有界统计统一遵循[接口限流规范](./rate-limit.md)。开放平台套餐配额和工作流出站保护保持各自业务边界。
 
 ## 数据脱敏
 

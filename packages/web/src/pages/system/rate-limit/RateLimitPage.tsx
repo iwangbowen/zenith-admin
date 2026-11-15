@@ -1,43 +1,42 @@
 import { useMemo, useState } from 'react';
-import ModalFooter from '@/components/ModalFooter';
-import { useNavigate } from 'react-router-dom';
-import { Button, Divider, Form, Modal, Radio, RadioGroup, Select, SideSheet, Space, TabPane, Tabs, Tag, Toast, Typography } from '@douyinfe/semi-ui';
-import { AlertTriangle, Ban, Eye, Gauge, ShieldOff, Zap } from 'lucide-react';
 import {
-  RATE_LIMIT_ALGORITHM_LABELS,
+  Banner,
+  Button,
+  Collapse,
+  Form,
+  Input,
+  Modal,
+  Radio,
+  RadioGroup,
+  Select,
+  SideSheet,
+  Space,
+  TabPane,
+  Tabs,
+  Tag,
+  Typography,
+} from '@douyinfe/semi-ui';
+import type { CreateRateLimitRuleInput, RateLimitRule } from '@zenith/shared/platform';
+import {
   RATE_LIMIT_ALGORITHM_OPTIONS,
   RATE_LIMIT_BAN_DURATION_OPTIONS,
-  RATE_LIMIT_KEY_TYPE_LABELS,
+  RATE_LIMIT_DECISION_LABELS,
+  RATE_LIMIT_DECISIONS,
   RATE_LIMIT_KEY_TYPE_OPTIONS,
-  RATE_LIMIT_MODE_LABELS,
-  RATE_LIMIT_MODE_OPTIONS,
-  RATE_LIMIT_MOUNT_SOURCE_LABELS,
-  RATE_LIMIT_WINDOW_UNIT_OPTIONS,
-  type CreateRateLimitRuleInput,
-  type RateLimitAlgorithm,
-  type RateLimitMode,
-  type RateLimitMountSource,
-  type RateLimitRule,
-  type RateLimitWindowUnit,
+  RATE_LIMIT_METHODS,
+  rateLimitSummary,
 } from '@zenith/shared/platform';
 import { usePermission } from '@/hooks/usePermission';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useEditModal } from '@/hooks/useEditModal';
-import ConfigurableTable from '@/components/ConfigurableTable';
-import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { InstantFilterToolbar, listTableProps, useStatusToggle, useCrudOperationColumn } from '@/components/list-page';
-import { FilterSelect, KeywordInput } from '@/components/search-filters';
-import { CreateButton } from '@/components/toolbar-controls';
-import { StatCard, StatGrid } from '@/components/charts/StatCard';
-import { LineChart, chartOptions, makeLineSpec, useChartPalette } from '@/components/charts';
-import { confirmDanger } from '@/utils/confirm';
-import { copyableNoColumn, dateTimeColumn, renderEllipsis, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
-import { DataBar } from '@/components/data-viz/DataBar';
 import {
   useBanRateLimitKey,
   useDeleteRateLimitRule,
+  useDiagnoseRateLimit,
   useRateLimitApiPaths,
   useRateLimitBans,
+  useRateLimitDetailStats,
+  useRateLimitEvents,
   useRateLimitRules,
   useRateLimitStats,
   useResetRateLimitStats,
@@ -45,739 +44,637 @@ import {
   useUnbanRateLimitKey,
   useUnblockRateLimitKey,
 } from '@/hooks/queries/rate-limit';
+import ConfigurableTable from '@/components/ConfigurableTable';
+import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { InstantFilterToolbar, listTableProps } from '@/components/list-page';
+import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { EditFormSheet } from '@/components/EditFormModal';
-
+import { StatCard, StatGrid } from '@/components/charts/StatCard';
+import { LineChart, chartOptions, makeLineSpec, useChartPalette } from '@/components/charts';
+import { confirmDanger } from '@/utils/confirm';
+import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { useNavigate } from 'react-router-dom';
 const { Text } = Typography;
-
-const WINDOW_UNIT_MS: Record<RateLimitWindowUnit, number> = {
-  second: 1000,
-  minute: 60 * 1000,
-  hour: 60 * 60 * 1000,
+type RuleValues = Omit<CreateRateLimitRuleInput, 'windowMs'> & {
+  windowSeconds: number;
+  burstSeconds?: number;
+  burstLimit?: number;
 };
-
-function formatWindow(ms: number): string {
-  const sec = Math.floor(ms / 1000);
-  if (sec < 60) return `${sec} 秒`;
-  const min = Math.floor(sec / 60);
-  if (min < 60) return `${min} 分钟`;
-  return `${Math.floor(min / 60)} 小时`;
-}
-
-/** windowMs → 最大可整除单位，编辑表单回显用 */
-function splitWindow(ms: number): { windowValue: number; windowUnit: RateLimitWindowUnit } {
-  if (ms % WINDOW_UNIT_MS.hour === 0) return { windowValue: ms / WINDOW_UNIT_MS.hour, windowUnit: 'hour' };
-  if (ms % WINDOW_UNIT_MS.minute === 0) return { windowValue: ms / WINDOW_UNIT_MS.minute, windowUnit: 'minute' };
-  return { windowValue: Math.max(1, Math.round(ms / 1000)), windowUnit: 'second' };
-}
-
-const MOUNT_SOURCE_TAG_COLOR: Record<RateLimitMountSource, 'blue' | 'cyan' | 'violet' | 'red'> = {
-  code: 'blue',
-  path: 'cyan',
-  code_path: 'violet',
-  none: 'red',
-};
-
-const IPV4_RE = /^\d{1,3}(\.\d{1,3}){3}$/;
-
-interface RuleFormValues {
-  name?: string;
-  description: string | null;
-  windowValue: number;
-  windowUnit: RateLimitWindowUnit;
-  limit: number;
-  keyType: RateLimitRule['keyType'];
-  enabled: boolean;
-  mode: RateLimitMode;
-  algorithm: RateLimitAlgorithm;
-  allowlist: string[];
-  priority: number;
-  alertThreshold: number | null;
-  blockedMessage: string | null;
-  pathPatterns: string[];
-}
-
-interface BlockRow {
-  _rowId: string;
-  rule: string;
-  at: string;
-  key: string;
-  path: string;
-  monitored: boolean;
-  banned: boolean;
-}
-
+const modeOptions = [
+  { value: 'monitor', label: '观察' },
+  { value: 'enforce', label: '拦截' },
+];
 export default function RateLimitPage() {
   const { hasPermission } = usePermission();
-  const canManage = hasPermission('system:rate-limit:manage');
-  const navigate = useNavigate();
+  const manage = hasPermission('system:rate-limit:manage');
+  const canBan = hasPermission('system:rate-limit:ban');
+  const canReset = hasPermission('system:rate-limit:reset');
   const palette = useChartPalette();
-  const [activeTab, setActiveTab] = useUrlTabState(['rules', 'blocks', 'bans'] as const, 'rules');
-
+  const navigate = useNavigate();
+  const [tab, setTab] = useUrlTabState(['rules', 'overview', 'blocks', 'bans'] as const, 'rules');
   const rulesQuery = useRateLimitRules();
-  const statsQuery = useRateLimitStats();
-  const bansQuery = useRateLimitBans();
-  const apiPathsQuery = useRateLimitApiPaths();
-  const saveMutation = useSaveRateLimitRule();
-  const deleteMutation = useDeleteRateLimitRule();
-  const unblockMutation = useUnblockRateLimitKey();
-  const resetStatsMutation = useResetRateLimitStats();
-  const banMutation = useBanRateLimitKey();
-  const unbanMutation = useUnbanRateLimitKey();
-
-  const rules = useMemo(() => rulesQuery.data ?? [], [rulesQuery.data]);
-  const statItems = useMemo(() => statsQuery.data?.items ?? [], [statsQuery.data]);
-  const statsByName = useMemo(() => new Map(statItems.map((s) => [s.name, s])), [statItems]);
-  const apiPaths = apiPathsQuery.data ?? [];
-
-  const [detailRuleName, setDetailRuleName] = useState<string | null>(null);
-  /** 详情抽屉趋势范围：24h 小时级 / 30d 天级 */
-  const [trendRange, setTrendRange] = useState<'hourly' | 'daily'>('hourly');
-  /** 封禁弹窗目标（来自拦截记录行）；null = 关闭 */
-  const [banTarget, setBanTarget] = useState<{ rule: string; key: string } | null>(null);
-  const [banDuration, setBanDuration] = useState<number>(3600);
-
-  // 拦截记录 Tab 的客户端筛选（数据已随统计全量加载，无需回源）
-  const [blockRuleFilter, setBlockRuleFilter] = useState<string | undefined>();
-  const [blockTypeFilter, setBlockTypeFilter] = useState<string | undefined>();
-  const [blockKeyword, setBlockKeyword] = useState('');
-
-  const editModal = useEditModal<RateLimitRule, RuleFormValues, Partial<CreateRateLimitRuleInput>>({
+  const stats = useRateLimitStats();
+  const bans = useRateLimitBans(tab === 'bans');
+  const paths = useRateLimitApiPaths();
+  const save = useSaveRateLimitRule();
+  const remove = useDeleteRateLimitRule();
+  const reset = useResetRateLimitStats();
+  const unblock = useUnblockRateLimitKey();
+  const ban = useBanRateLimitKey();
+  const unban = useUnbanRateLimitKey();
+  const diagnose = useDiagnoseRateLimit();
+  const [keyword, setKeyword] = useState('');
+  const [mode, setMode] = useState<string>();
+  const [enabled, setEnabled] = useState<string>();
+  const [detail, setDetail] = useState<RateLimitRule | null>(null);
+  const [eventRule, setEventRule] = useState<string>();
+  const [eventDecision, setEventDecision] = useState<(typeof RATE_LIMIT_DECISIONS)[number]>();
+  const [eventKeyword, setEventKeyword] = useState('');
+  const [page, setPage] = useState(1);
+  const events = useRateLimitEvents(
+    { page, pageSize: 20, name: eventRule, decision: eventDecision, keyword: eventKeyword },
+    tab === 'blocks',
+  );
+  const detailStats = useRateLimitDetailStats(detail?.id ?? null);
+  const [diagOpen, setDiagOpen] = useState(false);
+  const [diagMethod, setDiagMethod] = useState('GET');
+  const [diagPath, setDiagPath] = useState('/api/users/1');
+  const [principal, setPrincipal] = useState<'anonymous' | 'admin' | 'member' | 'app'>('anonymous');
+  const [banTarget, setBanTarget] = useState<{ name: string; key: string } | null>(null);
+  const [banName, setBanName] = useState('');
+  const [banKey, setBanKey] = useState('');
+  const [banReason, setBanReason] = useState('');
+  const [duration, setDuration] = useState(3600);
+  const rules = rulesQuery.data ?? [];
+  const statMap = new Map((stats.data?.items ?? []).map((item) => [item.name, item]));
+  const filtered = rules.filter(
+    (rule) =>
+      (!keyword ||
+        (rule.name + ' ' + rule.description + ' ' + rule.pathPatterns.join(' '))
+          .toLowerCase()
+          .includes(keyword.toLowerCase())) &&
+      (!mode || rule.mode === mode) &&
+      (!enabled || (rule.enabled ? 'enabled' : 'disabled') === enabled),
+  );
+  const modal = useEditModal<RateLimitRule, RuleValues, Partial<CreateRateLimitRuleInput>>({
     entityName: '限流规则',
-    save: saveMutation,
+    save,
     defaults: {
-      description: null, windowValue: 1, windowUnit: 'minute', limit: 30, keyType: 'ip',
-      enabled: true, mode: 'enforce', algorithm: 'fixed_window', allowlist: [], priority: 0,
-      alertThreshold: null, blockedMessage: null, pathPatterns: [],
+      name: '',
+      description: null,
+      windowSeconds: 60,
+      limit: 30,
+      keyType: 'ip',
+      enabled: false,
+      mode: 'monitor',
+      algorithm: 'fixed_window',
+      methods: [],
+      pathPatterns: [],
+      allowlist: [],
+      priority: 0,
+      failMode: 'open',
+      alertThreshold: null,
+      alertUserIds: [],
+      alertCooldownSeconds: 3600,
     },
     toValues: (rule) => ({
-      ...splitWindow(rule.windowMs),
-      description: rule.description,
-      limit: rule.limit,
-      keyType: rule.keyType,
-      enabled: rule.enabled,
-      mode: rule.mode,
-      algorithm: rule.algorithm,
-      allowlist: rule.allowlist ?? [],
-      priority: rule.priority,
-      alertThreshold: rule.alertThreshold,
-      blockedMessage: rule.blockedMessage,
-      pathPatterns: rule.pathPatterns ?? [],
+      ...rule,
+      methods: (rule.methods ?? []) as CreateRateLimitRuleInput['methods'],
+      windowSeconds: rule.windowMs / 1000,
+      burstSeconds: rule.extraWindows?.[0]?.windowMs ? rule.extraWindows[0].windowMs / 1000 : undefined,
+      burstLimit: rule.extraWindows?.[0]?.limit,
     }),
     beforeSave: (values, ctx) => {
-      const { windowValue, windowUnit, name, ...rest } = values;
+      const { windowSeconds, burstSeconds, burstLimit, name, ...rest } = values;
       return {
-        // name 仅新增时提交；更新接口不接受改名
-        ...(ctx.isEdit ? {} : { name }),
         ...rest,
-        // InputNumber 清空后为 undefined，统一落为 null（= 不告警）
+        ...(ctx.isEdit ? {} : { name }),
+        windowMs: windowSeconds * 1000,
+        extraWindows: burstSeconds && burstLimit ? [{ windowMs: burstSeconds * 1000, limit: burstLimit }] : [],
         alertThreshold: rest.alertThreshold ?? null,
-        windowMs: windowValue * WINDOW_UNIT_MS[windowUnit],
+        alertUserIds: (rest.alertUserIds ?? []).map(Number),
       };
     },
-    // label 右侧有 16px 内边距：最长标签「拦截提示文案」6 字占 84px，列宽至少 100 才不换行
-    labelWidth: 112,
+    labelPosition: 'top',
   });
-
-  const statusToggle = useStatusToggle<RateLimitRule>({
-    toggle: (rule, enabled) => saveMutation.mutateAsync({ id: rule.id, values: { enabled } }),
-    isEnabled: (rule) => rule.enabled,
-    disabled: !canManage,
-    messages: {
-      enabled: (rule) => `${rule.name} 已启用`,
-      disabled: (rule) => `${rule.name} 已禁用`,
-    },
-  });
-
-  const handleResetStats = (name: string) => {
-    confirmDanger({
-      title: `清空 ${name} 的统计计数器？`,
-      content: '命中 / 拦截计数、最近拦截记录与小时趋势将全部清零。',
-      onOk: async () => {
-        await resetStatsMutation.mutateAsync({ body: { name } });
-        Toast.success('统计已清空');
-      },
-    });
-  };
-
-  const handleUnblock = async (name: string, key: string) => {
-    const message = await unblockMutation.mutateAsync({ name, key });
-    Toast.info(message);
-  };
-
-  const handleBanConfirm = async () => {
-    if (!banTarget) return;
-    await banMutation.mutateAsync({ body: { name: banTarget.rule, key: banTarget.key, durationSeconds: banDuration } });
-    Toast.success(`已封禁 ${banTarget.key}`);
-    setBanTarget(null);
-  };
-
-  const handleUnban = async (name: string, key: string) => {
-    const message = await unbanMutation.mutateAsync({ name, key });
-    Toast.info(message);
-  };
-
-  const refreshAll = () => {
-    void rulesQuery.refetch();
-    void statsQuery.refetch();
-  };
-  const refreshing = rulesQuery.isFetching || statsQuery.isFetching;
-
-  // ─── 概览指标（近 24h 由小时序列求和） ─────────────────────────────────────
-  const overview = useMemo(() => {
-    let hits24h = 0;
-    let blocked24h = 0;
-    for (const item of statItems) {
+  const totals = (stats.data?.items ?? []).reduce(
+    (sum, item) => ({
+      hits: sum.hits + item.hitCount,
+      blocked: sum.blocked + item.blockedCount,
+      monitor: sum.monitor + (item.monitoredCount ?? 0),
+      degraded: sum.degraded + (item.degradedCount ?? 0),
+    }),
+    { hits: 0, blocked: 0, monitor: 0, degraded: 0 },
+  );
+  const trend = useMemo(() => {
+    const points = new Map<string, { hour: string; hits: number; blocked: number }>();
+    for (const item of stats.data?.items ?? [])
       for (const p of item.hourlySeries) {
-        hits24h += p.hits;
-        blocked24h += p.blocked;
+        const v = points.get(p.hour) ?? { hour: p.hour, hits: 0, blocked: 0 };
+        v.hits += p.hits;
+        v.blocked += p.blocked;
+        points.set(p.hour, v);
       }
-    }
-    return {
-      enabledCount: rules.filter((r) => r.enabled).length,
-      monitorCount: rules.filter((r) => r.enabled && r.mode === 'monitor').length,
-      deadCount: rules.filter((r) => r.mountSource === 'none').length,
-      hits24h,
-      blocked24h,
-      blockRate24h: hits24h > 0 ? `${(Math.round((blocked24h / hits24h) * 10000) / 100).toFixed(2)}%` : '0%',
-    };
-  }, [rules, statItems]);
-
-  // ─── 拦截记录（合并全部规则 + 客户端筛选） ─────────────────────────────────
-  const blockRows = useMemo<BlockRow[]>(() => {
-    const rows = statItems.flatMap((s) =>
-      s.recentBlocks.map((b, idx) => ({
-        _rowId: `${s.name}-${b.at}-${b.key}-${idx}`,
-        rule: s.name,
-        at: b.at,
-        key: b.key,
-        path: b.path,
-        monitored: b.monitored,
-        banned: b.banned,
-      })),
-    );
-    return rows.sort((a, b) => b.at.localeCompare(a.at));
-  }, [statItems]);
-
-  const filteredBlockRows = useMemo(() => {
-    const kw = blockKeyword.trim().toLowerCase();
-    return blockRows.filter((row) => {
-      if (blockRuleFilter && row.rule !== blockRuleFilter) return false;
-      if (blockTypeFilter === 'enforce' && (row.monitored || row.banned)) return false;
-      if (blockTypeFilter === 'monitor' && !row.monitored) return false;
-      if (blockTypeFilter === 'banned' && !row.banned) return false;
-      if (kw && !row.key.toLowerCase().includes(kw) && !row.path.toLowerCase().includes(kw)) return false;
-      return true;
+    return makeLineSpec({
+      data: [...points.values()],
+      series: [
+        { name: '规则命中', field: 'hits' },
+        { name: '实际拦截', field: 'blocked' },
+      ],
+      xField: 'hour',
+      palette,
     });
-  }, [blockRows, blockRuleFilter, blockTypeFilter, blockKeyword]);
-
-  const detailRule = detailRuleName ? rules.find((r) => r.name === detailRuleName) : undefined;
-  const detailStat = detailRuleName ? statsByName.get(detailRuleName) : undefined;
-
-  const modeTag = (mode: RateLimitMode) => (
-    mode === 'monitor'
-      ? <Tag size="small" color="orange">{RATE_LIMIT_MODE_LABELS.monitor}</Tag>
-      : <Tag size="small" color="blue">{RATE_LIMIT_MODE_LABELS.enforce}</Tag>
-  );
-
-  const blockTypeTag = (row: { monitored: boolean; banned: boolean }) => {
-    if (row.banned) return <Tag size="small" color="red">封禁</Tag>;
-    return modeTag(row.monitored ? 'monitor' : 'enforce');
+  }, [stats.data, palette]);
+  const openBan = (name = '', key = '') => {
+    setBanName(name);
+    setBanKey(key);
+    setBanReason('');
+    setBanTarget({ name, key });
   };
-
-  const mountSourceTag = (source: RateLimitMountSource) => (
-    <Tag size="small" color={MOUNT_SOURCE_TAG_COLOR[source]}>
-      {source === 'none' && <AlertTriangle size={12} style={{ verticalAlign: -2, marginRight: 4 }} />}
-      {RATE_LIMIT_MOUNT_SOURCE_LABELS[source]}
-    </Tag>
-  );
-
-  const unblockAction = (rule: string, key: string) => ({
-    key: 'unblock',
-    label: '解封',
-    hidden: !canManage,
-    onClick: () => void handleUnblock(rule, key),
-  });
-
-  const banAction = (rule: string, key: string) => ({
-    key: 'ban',
-    label: '封禁',
-    danger: true,
-    hidden: !canManage,
-    onClick: () => {
-      setBanDuration(3600);
-      setBanTarget({ rule, key });
-    },
-  });
-
-  const operationColumn = useCrudOperationColumn<RateLimitRule>({
-    edit: editModal,
-    remove: (rule) => deleteMutation.mutateAsync({ params: { id: rule.id } }),
-    allow: { edit: canManage, remove: canManage },
-    hidden: { remove: (rule) => rule.predefined },
-    title: (rule) => `删除限流规则 ${rule.name}？`,
-    content: '删除后该规则的限流与统计立即停止，操作不可恢复。',
-    successMessage: '已删除',
-    onDeleted: (rule) => { if (detailRuleName === rule.name) setDetailRuleName(null); },
-    extra: (rule) => [
-      { key: 'detail', label: '详情', onClick: () => setDetailRuleName(rule.name) },
-    ],
-    extraBetween: (rule) => [
-      { key: 'reset', label: '重置统计', danger: true, hidden: !canManage, onClick: () => handleResetStats(rule.name) },
-    ],
-    width: 180,
-    desktopInlineKeys: ['detail', 'edit'],
-  });
-
+  const resetStats = (name: string) =>
+    void confirmDanger({
+      title: '清空 ' + name + ' 的统计？',
+      content: '切换统计周期，小时/日趋势、命中记录和来源排行同时清空；不清除额度或封禁。',
+      onOk: () => reset.mutateAsync({ body: { name } }),
+    });
   const rulesColumns = [
     {
       title: '规则',
       dataIndex: 'name',
-      width: 230,
-      render: (name: string, rule: RateLimitRule) => (
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, maxWidth: '100%' }}>
-          <Text strong ellipsis={{ showTooltip: true }} style={{ minWidth: 0 }}>{name}</Text>
-          {rule.predefined && <Tag size="small" color="grey" style={{ flexShrink: 0 }}>内置</Tag>}
-          {rule.mode === 'monitor' && modeTag('monitor')}
-        </div>
-      ),
-    },
-    {
-      title: '挂载来源',
-      dataIndex: 'mountSource',
-      width: 110,
-      render: (source: RateLimitMountSource) => mountSourceTag(source),
-    },
-    { title: '描述', dataIndex: 'description', render: (v: string | null) => (v ? renderEllipsis(v) : EMPTY_PLACEHOLDER) },
-    {
-      title: '窗口 / 上限',
-      dataIndex: 'windowMs',
-      width: 140,
-      render: (_: number, rule: RateLimitRule) => `${formatWindow(rule.windowMs)} / ${rule.limit} 次`,
-    },
-    {
-      title: '计数维度',
-      dataIndex: 'keyType',
-      width: 100,
-      render: (v: RateLimitRule['keyType']) => RATE_LIMIT_KEY_TYPE_LABELS[v],
-    },
-    {
-      title: '命中 / 拦截',
-      dataIndex: 'name',
-      key: 'stats',
-      width: 170,
-      render: (name: string) => {
-        const stat = statsByName.get(name);
-        if (!stat) return EMPTY_PLACEHOLDER;
-        return (
-          <span style={{ whiteSpace: 'nowrap' }}>
-            {stat.hitCount.toLocaleString()}
-            {' / '}
-            <Text type={stat.blockedCount > 0 ? 'danger' : 'tertiary'}>{stat.blockedCount.toLocaleString()}</Text>
-          </span>
-        );
-      },
-    },
-    statusToggle.column({ dataIndex: 'enabled' }),
-    operationColumn,
-  ];
-
-  const blockColumns = [
-    { title: '规则', dataIndex: 'rule', width: 180, render: (v: string) => <Tag color="blue" size="small">{v}</Tag> },
-    dateTimeColumn('拦截时间', 'at'),
-    {
-      title: '触发 Key',
-      dataIndex: 'key',
-      width: 240,
-      render: (v: string) => (
-        <Space spacing={4}>
-          <Text copyable>{v}</Text>
-          {IPV4_RE.test(v) && (
-            <Button size="small" theme="borderless" onClick={() => navigate('/system/ip-access')}>IP 记录</Button>
-          )}
+      width: 210,
+      render: (name: string, r: RateLimitRule) => (
+        <Space vertical align="start" spacing={2}>
+          <Text strong>{name}</Text>
+          <Space>
+            <Tag size="small">{r.predefined ? '内置' : '自定义'}</Tag>
+            <Tag size="small" color={r.mode === 'monitor' ? 'orange' : 'blue'}>
+              {r.mode === 'monitor' ? '观察' : '拦截'}
+            </Tag>
+          </Space>
         </Space>
       ),
     },
-    { title: '请求路径', dataIndex: 'path', render: (v: string) => (v ? <Text code>{v}</Text> : EMPTY_PLACEHOLDER) },
     {
-      title: '类型',
-      dataIndex: 'monitored',
-      width: 90,
-      fixed: 'right' as const,
-      render: (_: boolean, row: BlockRow) => blockTypeTag(row),
+      title: '说明 / 接口范围',
+      dataIndex: 'description',
+      render: (_: unknown, r: RateLimitRule) => (
+        <>
+          <div>{renderEllipsis(r.description ?? '未填写描述')}</div>
+          <Text type="tertiary" size="small">
+            {r.mountSource.includes('code') ? '含具名业务保护 · ' : ''}
+            {r.matchedOperationCount ?? 0} 个路径匹配 · {(r.methods ?? []).join('/') || '全部方法'}
+          </Text>
+          {r.warnings?.map((w) => (
+            <div key={w}>
+              <Text type="warning">{w}</Text>
+            </div>
+          ))}
+        </>
+      ),
     },
-    createOperationColumn<BlockRow>({
-      width: 150,
-      emptyContent: <span style={{ color: 'var(--semi-color-text-3)' }}>{EMPTY_PLACEHOLDER}</span>,
-      actions: (row) => [unblockAction(row.rule, row.key), banAction(row.rule, row.key)],
+    { title: '限额', width: 190, render: (_: unknown, r: RateLimitRule) => rateLimitSummary(r) },
+    {
+      title: '近24小时 命中/拦截',
+      width: 160,
+      render: (_: unknown, r: RateLimitRule) => {
+        const s = statMap.get(r.name);
+        return s ? s.hitCount + ' / ' + s.blockedCount : '—';
+      },
+    },
+    {
+      title: '状态',
+      width: 100,
+      render: (_: unknown, r: RateLimitRule) => (
+        <Tag color={r.enabled ? 'green' : 'grey'}>{r.enabled ? '启用' : '停用'}</Tag>
+      ),
+    },
+    createOperationColumn<RateLimitRule>({
+      width: 160,
+      desktopInlineKeys: ['detail', 'edit'],
+      actions: (r) => [
+        { key: 'detail', label: '详情', onClick: () => setDetail(r) },
+        { key: 'edit', label: '编辑', hidden: !manage, onClick: () => modal.openEdit(r) },
+        {
+          key: 'toggle',
+          label: r.enabled ? '停用' : '启用',
+          hidden: !manage,
+          onClick: () => void save.mutateAsync({ id: r.id, values: { enabled: !r.enabled } }),
+        },
+        { key: 'reset', label: '清空统计', hidden: !canReset, danger: true, onClick: () => resetStats(r.name) },
+        {
+          key: 'delete',
+          label: '删除',
+          hidden: !manage || r.predefined,
+          danger: true,
+          onClick: () =>
+            void confirmDanger({
+              title: '删除 ' + r.name + '？',
+              content: '删除自定义规则，已产生的统计按保留期限回收。',
+              onOk: () => remove.mutateAsync({ params: { id: r.id } }),
+            }),
+        },
+      ],
     }),
   ];
-
-  const detailChartSpec = detailStat
-    ? makeLineSpec({
-        data: trendRange === 'hourly' ? detailStat.hourlySeries : detailStat.dailySeries,
-        xField: trendRange === 'hourly' ? 'hour' : 'day',
-        series: [
-          { field: 'hits', name: '命中', color: '#3b82f6' },
-          { field: 'blocked', name: '拦截', color: '#ef4444' },
-        ],
-        palette,
-        axis: { xLabel: (h: string) => h },
-      })
-    : null;
-
   return (
     <div className="page-container page-tabs-page">
-      <Tabs type="line" collapsible="auto" activeKey={activeTab} onChange={(key) => setActiveTab(key as 'rules' | 'blocks')}>
+      <Tabs activeKey={tab} onChange={(key) => setTab(key as typeof tab)} type="line" collapsible="auto">
         <TabPane tab="规则管理" itemKey="rules">
           <InstantFilterToolbar
-            actions={canManage && <CreateButton onClick={editModal.openCreate}>新增规则</CreateButton>}
-            onRefresh={refreshAll}
-            refreshing={refreshing}
-            extra={(
-              <Text type="tertiary" style={{ fontSize: 13 }}>
-                规则保存后立即热更新到运行中的服务；统计每 30 秒自动刷新。
-              </Text>
-            )}
-          />
-
-          <StatGrid minItemWidth={170} style={{ marginTop: 12, marginBottom: 16 }}>
-            <StatCard title="启用规则" icon={<Gauge size={14} />} value={`${overview.enabledCount} / ${rules.length}`} sub={`观察模式 ${overview.monitorCount} 条`} />
-            <StatCard title="未生效规则" icon={<AlertTriangle size={14} />} value={overview.deadCount} accent={overview.deadCount > 0 ? 'var(--semi-color-danger)' : undefined} sub={overview.deadCount > 0 ? '无代码挂载且未绑定路径' : '全部规则已挂载'} />
-            <StatCard title="近 24h 命中" icon={<Zap size={14} />} value={overview.hits24h.toLocaleString()} />
-            <StatCard title="近 24h 拦截" icon={<ShieldOff size={14} />} value={overview.blocked24h.toLocaleString()} accent={overview.blocked24h > 0 ? 'var(--semi-color-danger)' : undefined} />
-            <StatCard title="近 24h 拦截率" icon={<Eye size={14} />} value={overview.blockRate24h} />
-          </StatGrid>
-
-          <ConfigurableTable
-            bordered
-            rowKey="id"
-            loading={rulesQuery.isLoading}
-            onRefresh={refreshAll}
-            refreshLoading={refreshing}
-            dataSource={rules}
-            columns={rulesColumns}
-            pagination={false}
-          />
-        </TabPane>
-
-        <TabPane tab="拦截记录" itemKey="blocks">
-          <InstantFilterToolbar
-            primary={<KeywordInput value={blockKeyword} onChange={setBlockKeyword} placeholder="搜索 Key / 路径" />}
-            filters={(
+            primary={<KeywordInput value={keyword} onChange={setKeyword} placeholder="搜索规则、说明或路径" />}
+            filters={
               <>
+                <FilterSelect items={modeOptions} value={mode} onChange={setMode} placeholder="全部模式" />
                 <FilterSelect
-                  placeholder="全部规则"
-                  items={rules.map((r) => ({ value: r.name, label: r.name }))}
-                  value={blockRuleFilter}
-                  onChange={setBlockRuleFilter}
-                  width={200}
-                  aria-label="按规则筛选"
-                />
-                <FilterSelect
-                  placeholder="全部类型"
-                  items={[{ value: 'enforce', label: RATE_LIMIT_MODE_LABELS.enforce },
-                    { value: 'monitor', label: RATE_LIMIT_MODE_LABELS.monitor },
-                    { value: 'banned', label: '封禁' },]}
-                  value={blockTypeFilter}
-                  onChange={setBlockTypeFilter}
-                  aria-label="按类型筛选"
+                  items={[
+                    { value: 'enabled', label: '启用' },
+                    { value: 'disabled', label: '停用' },
+                  ]}
+                  value={enabled}
+                  onChange={setEnabled}
+                  placeholder="全部状态"
                 />
               </>
-            )}
-            onRefresh={() => void statsQuery.refetch()}
-            refreshing={statsQuery.isFetching}
-            filterTitle="拦截记录筛选"
+            }
+            actions={
+              <>
+                <Button
+                  onClick={() => {
+                    diagnose.reset();
+                    setDiagOpen(true);
+                  }}
+                >
+                  匹配诊断
+                </Button>
+                {manage && (
+                  <Button type="primary" onClick={modal.openCreate}>
+                    新增规则
+                  </Button>
+                )}
+              </>
+            }
+            onRefresh={() => void rulesQuery.refetch()}
+            refreshing={rulesQuery.isFetching}
+          />
+          <Banner
+            type="info"
+            closeIcon={null}
+            description="自定义规则默认停用、观察模式。保存与加载状态分别显示；跨实例经失效广播更新，断线时30秒兜底。"
           />
           <ConfigurableTable
-            bordered
-            rowKey="_rowId"
-            loading={statsQuery.isLoading}
-            onRefresh={() => void statsQuery.refetch()}
-            refreshLoading={statsQuery.isFetching}
-            dataSource={filteredBlockRows}
-            columns={blockColumns}
+            {...listTableProps(rulesQuery)}
+            dataSource={filtered}
+            columns={rulesColumns}
             pagination={{ pageSize: 20 }}
           />
         </TabPane>
-
-        <TabPane tab="封禁列表" itemKey="bans">
+        <TabPane tab="运行概览" itemKey="overview">
+          <InstantFilterToolbar onRefresh={() => void stats.refetch()} refreshing={stats.isFetching} />
+          <Banner
+            type={stats.data?.dropped ? 'warning' : 'info'}
+            closeIcon={null}
+            description={
+              (stats.data?.scope ?? '规则命中统计') +
+              '；遥测待写 ' +
+              (stats.data?.queued ?? 0) +
+              '，当前实例丢弃 ' +
+              (stats.data?.dropped ?? 0)
+            }
+          />
+          <StatGrid minItemWidth={155}>
+            <StatCard title="启用 / 全部" value={rules.filter((r) => r.enabled).length + ' / ' + rules.length} />
+            <StatCard title="规则命中" value={totals.hits} />
+            <StatCard title="实际拦截" value={totals.blocked} />
+            <StatCard title="观察命中" value={totals.monitor} />
+            <StatCard title="故障放行 / 拒绝" value={totals.degraded} />
+          </StatGrid>
+          <LineChart {...trend} options={chartOptions} height={280} />
+        </TabPane>
+        <TabPane tab="命中记录" itemKey="blocks">
           <InstantFilterToolbar
-            onRefresh={() => void bansQuery.refetch()}
-            refreshing={bansQuery.isFetching}
-            extra={(
-              <Text type="tertiary" style={{ fontSize: 13 }}>
-                手动封禁的身份在封禁期内一律拦截（无视限额与观察模式），到期自动解除。
-              </Text>
-            )}
+            primary={
+              <KeywordInput
+                value={eventKeyword}
+                onChange={(value) => {
+                  setEventKeyword(value);
+                  setPage(1);
+                }}
+                placeholder="搜索身份或安全路由"
+              />
+            }
+            filters={
+              <>
+                <FilterSelect
+                  items={rules.map((r) => ({ value: r.name, label: r.name }))}
+                  value={eventRule}
+                  onChange={(value) => {
+                    setEventRule(value);
+                    setPage(1);
+                  }}
+                  placeholder="全部规则"
+                />
+                <FilterSelect
+                  items={RATE_LIMIT_DECISIONS.filter((d) => d !== 'allowed' && d !== 'exempt').map((value) => ({
+                    value,
+                    label: RATE_LIMIT_DECISION_LABELS[value],
+                  }))}
+                  value={eventDecision}
+                  onChange={(value) => {
+                    setEventDecision(value as typeof eventDecision);
+                    setPage(1);
+                  }}
+                  placeholder="全部决策"
+                />
+              </>
+            }
+            onRefresh={() => void events.refetch()}
+            refreshing={events.isFetching}
+          />
+          <Text type="tertiary">每规则最多保留500条近期异常决策，7天到期；统计聚合独立保存，不代表完整请求审计。</Text>
+          <ConfigurableTable
+            {...listTableProps(events, { loadingMode: 'initial' })}
+            rowKey="id"
+            columns={[
+              dateTimeColumn('时间', 'at'),
+              { title: '规则', dataIndex: 'name', width: 180 },
+              { title: '方法 / 安全路由', render: (_: unknown, r) => r.method + ' ' + r.path },
+              { title: '身份', dataIndex: 'key', width: 200, render: renderEllipsis },
+              {
+                title: '决策',
+                dataIndex: 'decision',
+                width: 100,
+                render: (d: (typeof RATE_LIMIT_DECISIONS)[number]) => RATE_LIMIT_DECISION_LABELS[d],
+              },
+              createOperationColumn({
+                width: 150,
+                actions: (r: { name: string; key: string; correlationId?: string | null }) => [
+                  {
+                    key: 'clear',
+                    label: '清额度',
+                    hidden: !canReset,
+                    onClick: () =>
+                      void confirmDanger({
+                        title: '清除此身份的计数窗口？',
+                        content: '保留统计记录和临时封禁。',
+                        onOk: () => unblock.mutateAsync({ name: r.name, key: r.key }),
+                      }),
+                  },
+                  { key: 'ban', label: '封禁', hidden: !canBan, danger: true, onClick: () => openBan(r.name, r.key) },
+                  {
+                    key: 'trace',
+                    label: '链路',
+                    hidden: !r.correlationId,
+                    onClick: () =>
+                      navigate('/system/api-access-logs?correlationId=' + encodeURIComponent(r.correlationId ?? '')),
+                  },
+                ],
+              }),
+            ]}
+            pagination={{ currentPage: page, pageSize: 20, total: events.data?.total ?? 0, onPageChange: setPage }}
+          />
+        </TabPane>
+        <TabPane tab="临时封禁" itemKey="bans">
+          <InstantFilterToolbar
+            actions={canBan && <Button onClick={() => openBan()}>新增封禁</Button>}
+            onRefresh={() => void bans.refetch()}
+            refreshing={bans.isFetching}
+          />
+          <Banner
+            type="info"
+            closeIcon={null}
+            description="启用规则内，显式封禁优先于普通豁免和观察模式；停用规则停止执行。到期自动解除。"
           />
           <ConfigurableTable
-            {...listTableProps(bansQuery, { rowKey: (b: { name: string; key: string } | undefined) => `${b?.name}|${b?.key}`, loadingMode: 'initial' })}
+            {...listTableProps(bans, { loadingMode: 'initial', rowKey: (r) => (r?.name ?? '') + '|' + (r?.key ?? '') })}
             columns={[
-              { title: '规则', dataIndex: 'name', minWidth: 200, render: (v: string) => <Tag color="blue" size="small">{v}</Tag> },
-              copyableNoColumn('被封禁 Key', 'key', { width: undefined }),
-              dateTimeColumn('到期时间', 'expiresAt'),
-              {
-                title: '剩余',
-                dataIndex: 'remainingSeconds',
-                width: 110,
-                render: (v: number) => formatWindow(v * 1000),
-              },
-              createOperationColumn<{ name: string; key: string; expiresAt: string; remainingSeconds: number }>({
+              { title: '规则', dataIndex: 'name', width: 180 },
+              { title: '身份', dataIndex: 'key', render: renderEllipsis },
+              { title: '原因', dataIndex: 'reason' },
+              dateTimeColumn('到期', 'expiresAt'),
+              createOperationColumn({
                 width: 120,
-                emptyContent: <span style={{ color: 'var(--semi-color-text-3)' }}>{EMPTY_PLACEHOLDER}</span>,
-                actions: (row) => [{
-                  key: 'unban',
-                  label: '解除封禁',
-                  danger: true,
-                  hidden: !canManage,
-                  onClick: () => void handleUnban(row.name, row.key),
-                }],
+                actions: (r: { name: string; key: string }) => [
+                  {
+                    key: 'unban',
+                    label: '解除封禁',
+                    hidden: !canBan,
+                    danger: true,
+                    onClick: () =>
+                      void confirmDanger({
+                        title: '解除临时封禁？',
+                        content: '只解除显式封禁，普通限额继续生效。',
+                        onOk: () => unban.mutateAsync({ name: r.name, key: r.key }),
+                      }),
+                  },
+                ],
               }),
             ]}
             pagination={{ pageSize: 20 }}
           />
         </TabPane>
       </Tabs>
-
-      <SideSheet
-        title={detailRule && (
-          <Space spacing={8}>
-            <span>{detailRule.name}</span>
-            {detailRule.predefined && <Tag size="small" color="grey">内置</Tag>}
-            {modeTag(detailRule.mode)}
-            {mountSourceTag(detailRule.mountSource)}
-          </Space>
-        )}
-        visible={!!detailRule}
-        onCancel={() => setDetailRuleName(null)}
-        width={680}
-        closeOnEsc
-      >
-        {detailRule && (
-          <div className="zx-flat-panels">
-            {detailRule.description && (
-              <Text type="tertiary" style={{ display: 'block', marginBottom: 12 }}>{detailRule.description}</Text>
+      <EditFormSheet modal={modal} width={680} okText="保存规则">
+        <Collapse defaultActiveKey={['basic', 'scope', 'limits']} keepDOM>
+          <Collapse.Panel header="基本信息" itemKey="basic">
+            {!modal.editing && (
+              <Form.Input field="name" label="规则名称" rules={[{ required: true, message: '请输入规则名称' }]} />
             )}
-            <div className="auto-grid" style={{ ['--auto-grid-min' as string]: '150px', ['--auto-grid-gap' as string]: '12px' }}>
-              <InfoBlock label="时间窗口" value={formatWindow(detailRule.windowMs)} />
-              <InfoBlock label="窗口内上限" value={`${detailRule.limit} 次`} />
-              <InfoBlock label="计数维度" value={RATE_LIMIT_KEY_TYPE_LABELS[detailRule.keyType]} />
-              <InfoBlock label="算法" value={RATE_LIMIT_ALGORITHM_LABELS[detailRule.algorithm]} />
-              <InfoBlock label="路径优先级" value={String(detailRule.priority)} />
-              <InfoBlock label="告警阈值" value={detailRule.alertThreshold === null ? '不告警' : `${detailRule.alertThreshold} 次/小时`} />
-              <InfoBlock label="拦截提示" value={detailRule.blockedMessage ?? '默认提示'} />
-            </div>
-            {detailRule.allowlist.length > 0 && (
-              <div style={{ marginTop: 12 }}>
-                <Text type="tertiary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>白名单</Text>
-                <Space wrap spacing={4}>
-                  {detailRule.allowlist.map((entry) => <Tag key={entry} size="small" color="green">{entry}</Tag>)}
-                </Space>
-              </div>
-            )}
-            {detailRule.pathPatterns.length > 0 && (
-              <div style={{ marginTop: 12 }}>
-                <Text type="tertiary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>绑定路径</Text>
-                <Space wrap spacing={4}>
-                  {detailRule.pathPatterns.map((p) => <Tag key={p} size="small" color="cyan">{p}</Tag>)}
-                </Space>
-              </div>
-            )}
-
-            <Divider align="left" style={{ margin: '20px 0 12px' }}>拦截趋势</Divider>
-            {detailChartSpec && detailStat ? (
-              <>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-                  <RadioGroup
-                    type="button"
-                    buttonSize="small"
-                    value={trendRange}
-                    onChange={(e) => setTrendRange(e.target.value as 'hourly' | 'daily')}
-                  >
-                    <Radio value="hourly">近 24 小时</Radio>
-                    <Radio value="daily">近 30 天</Radio>
-                  </RadioGroup>
-                  <Tag size="small" color="blue">累计命中 {detailStat.hitCount.toLocaleString()}</Tag>
-                  <Tag size="small" color="red">累计拦截 {detailStat.blockedCount.toLocaleString()}</Tag>
-                  <Tag size="small">拦截率 {detailStat.blockRate}%</Tag>
-                </div>
-                <LineChart {...detailChartSpec} options={chartOptions} height={220} />
-              </>
-            ) : <Text type="tertiary">暂无统计数据</Text>}
-
-            <Divider align="left" style={{ margin: '20px 0 12px' }}>今日 Top 拦截来源</Divider>
-            {detailStat && detailStat.topSources.length > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {detailStat.topSources.map((source) => {
-                  const maxCount = detailStat.topSources[0]?.count ?? 1;
-                  return (
-                    <div key={source.key} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <Text copyable style={{ width: 220, flexShrink: 0 }} ellipsis={{ showTooltip: true }}>{source.key}</Text>
-                      <DataBar value={source.count} max={maxCount} color="var(--semi-color-danger)" style={{ flex: 1 }} />
-                      <Text strong style={{ width: 56, textAlign: 'right', flexShrink: 0 }}>{source.count.toLocaleString()}</Text>
-                      {canManage && (
-                        <Button
-                          size="small"
-                          theme="borderless"
-                          type="danger"
-                          onClick={() => {
-                            setBanDuration(3600);
-                            setBanTarget({ rule: detailRule.name, key: source.key });
-                          }}
-                        >封禁</Button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            ) : <Text type="tertiary">今日暂无拦截来源</Text>}
-
-            <Divider align="left" style={{ margin: '20px 0 12px' }}>该规则最近拦截</Divider>
-            <ConfigurableTable
-              bordered
-              rowKey="_rowId"
-              size="small"
-              dataSource={(detailStat?.recentBlocks ?? []).map((b, idx) => ({
-                _rowId: `${detailRule.name}-${b.at}-${idx}`, rule: detailRule.name, ...b,
-              }))}
-              columns={[
-                dateTimeColumn('时间', 'at'),
-                copyableNoColumn('Key', 'key', { flex: true }),
-                {
-                  title: '类型', dataIndex: 'monitored', width: 80,
-                  render: (_: boolean, row: BlockRow) => blockTypeTag(row),
-                },
-                createOperationColumn<BlockRow>({
-                  width: 150,
-                  emptyContent: <span style={{ color: 'var(--semi-color-text-3)' }}>{EMPTY_PLACEHOLDER}</span>,
-                  actions: (row) => [unblockAction(row.rule, row.key), banAction(row.rule, row.key)],
-                }),
-              ]}
-              pagination={{ pageSize: 10 }}
+            <Form.Input field="description" label="描述" maxLength={255} />
+            <Form.RadioGroup field="mode" label="执行模式" type="button" options={modeOptions} />
+            <Form.Switch field="enabled" label="启用规则" />
+          </Collapse.Panel>
+          <Collapse.Panel header="接口范围" itemKey="scope">
+            <Form.Select
+              field="pathPatterns"
+              label="接口路径 / 路由模板"
+              multiple
+              filter
+              allowCreate
+              showClear
+              optionList={paths.data ?? []}
+              style={{ width: '100%' }}
+              extraText="支持 {id}、单段 * 和末尾 /*；具名内置保护无须额外绑定。"
             />
-          </div>
+            <Form.Select
+              field="methods"
+              label="HTTP 方法"
+              multiple
+              optionList={RATE_LIMIT_METHODS.map((value) => ({ value, label: value }))}
+              style={{ width: '100%' }}
+              placeholder="留空表示全部方法"
+            />
+            <Form.Select
+              field="keyType"
+              label="计数维度"
+              optionList={RATE_LIMIT_KEY_TYPE_OPTIONS}
+              style={{ width: '100%' }}
+              extraText="身份维度只在认证成功后执行，管理员、会员、开放应用与租户互相隔离。"
+            />
+          </Collapse.Panel>
+          <Collapse.Panel header="限额策略" itemKey="limits">
+            <Form.InputNumber
+              field="windowSeconds"
+              label="主窗口（秒）"
+              min={1}
+              max={86400}
+              rules={[{ required: true, message: '请输入窗口' }]}
+            />
+            <Form.InputNumber
+              field="limit"
+              label="主窗口请求上限"
+              min={1}
+              max={1000000}
+              rules={[{ required: true, message: '请输入上限' }]}
+            />
+            <Form.Select
+              field="algorithm"
+              label="算法"
+              optionList={RATE_LIMIT_ALGORITHM_OPTIONS}
+              style={{ width: '100%' }}
+            />
+          </Collapse.Panel>
+          <Collapse.Panel header="高级策略与豁免" itemKey="advanced">
+            <Form.InputNumber field="burstSeconds" label="附加窗口（秒，可选）" min={1} max={86400} />
+            <Form.InputNumber field="burstLimit" label="附加窗口上限" min={1} max={1000000} />
+            <Form.InputNumber field="priority" label="同阶段路径优先级" min={0} max={9999} />
+            <Form.TagInput
+              field="allowlist"
+              label="豁免 IP / CIDR / 身份"
+              extraText="如 10.0.0.0/8、u:platform:1、m:3:7；临时封禁优先。"
+            />
+            <Form.RadioGroup
+              field="failMode"
+              label="Redis 异常策略"
+              options={[
+                { value: 'open', label: '故障放行' },
+                { value: 'closed', label: '故障拒绝（503）' },
+              ]}
+            />
+            <Form.Input field="blockedMessage" label="拦截提示" maxLength={255} />
+          </Collapse.Panel>
+          <Collapse.Panel header="告警" itemKey="alerts">
+            <Form.InputNumber field="alertThreshold" label="每小时实际拦截阈值" min={1} max={1000000} />
+            <Form.TagInput field="alertUserIds" label="接收人用户 ID" extraText="留空通知平台管理员" />
+            <Form.InputNumber field="alertCooldownSeconds" label="告警冷却（秒）" min={60} max={86400} />
+          </Collapse.Panel>
+        </Collapse>
+      </EditFormSheet>
+      <SideSheet title={detail?.name} visible={detail !== null} onCancel={() => setDetail(null)} width={680}>
+        {detail && (
+          <Space vertical align="start" style={{ width: '100%' }}>
+            <Text>{detail.description}</Text>
+            <Text>{rateLimitSummary(detail)}</Text>
+            <Text>
+              配置版本 {detail.policyVersion} ·{' '}
+              {detail.loadState === 'loaded' ? '当前实例已加载' : '等待加载 / 兜底刷新'}
+            </Text>
+            <Text>
+              路径绑定 {detail.pathPatterns.join('、') || '无'}；
+              {detail.mountSource.includes('code') ? '同时存在具名业务保护' : '仅路径绑定'}
+            </Text>
+            <Text>
+              近24小时：命中 {detailStats.data?.hitCount ?? 0} / 实际拦截 {detailStats.data?.blockedCount ?? 0} / 观察{' '}
+              {detailStats.data?.monitoredCount ?? 0}
+            </Text>
+            <Text strong>30天趋势</Text>
+            <LineChart
+              {...makeLineSpec({
+                data: detailStats.data?.dailySeries ?? [],
+                series: [
+                  { name: '规则命中', field: 'hits' },
+                  { name: '实际拦截', field: 'blocked' },
+                ],
+                xField: 'day',
+                palette,
+              })}
+              options={chartOptions}
+              height={230}
+            />
+            <Text strong>今日实际拦截来源</Text>
+            {detailStats.data?.topSources.map((source) => (
+              <Text key={source.key}>
+                {source.key} · {source.count}
+              </Text>
+            ))}
+          </Space>
         )}
       </SideSheet>
-
       <Modal
-        title={banTarget ? `封禁 ${banTarget.key}` : ''}
-        visible={!!banTarget}
-        onCancel={() => setBanTarget(null)}
-        onOk={() => void handleBanConfirm()}
-        okText="封禁"
-        okButtonProps={{ type: 'danger', theme: 'solid', loading: banMutation.isPending }}
-        closeOnEsc
-        width={420}
+        title="规则匹配诊断"
+        visible={diagOpen}
+        onCancel={() => setDiagOpen(false)}
+        onOk={() =>
+          void diagnose.mutateAsync({
+            body: { method: diagMethod as (typeof RATE_LIMIT_METHODS)[number], path: diagPath, principal },
+          })
+        }
+        okText="执行诊断"
+        confirmLoading={diagnose.isPending}
+        width={640}
       >
-        {banTarget && (
-          <Space vertical align="start" spacing={12} style={{ width: '100%' }}>
-            <Text>
-              封禁期内该身份在规则 <Tag size="small" color="blue">{banTarget.rule}</Tag> 下的请求一律拦截，
-              无视限额与观察模式；到期自动解除，也可在封禁列表中提前解除。
-            </Text>
-            <Select
-              value={banDuration}
-              onChange={(v) => setBanDuration(v as number)}
-              optionList={RATE_LIMIT_BAN_DURATION_OPTIONS}
-              style={{ width: 200 }}
-              aria-label="封禁时长"
-              prefix={<Ban size={14} />}
-            />
-          </Space>
-        )}
-      </Modal>
-
-      <EditFormSheet modal={editModal} width={680} footer={<ModalFooter onCancel={editModal.modalProps.onCancel} onOk={() => void editModal.modalProps.onOk()} okText={editModal.editing ? '保存（立即生效）' : '创建（立即生效）'} loading={editModal.modalProps.okButtonProps.loading} disabled={editModal.modalProps.okButtonProps.disabled} />}>
-        {!editModal.editing && (
-          <Form.Input
-            field="name"
-            label="规则名称"
-            placeholder="小写字母/数字/下划线/连字符，如 upload"
-            rules={[
-              { required: true, message: '请输入规则名称' },
-              { pattern: /^[a-z][a-z0-9_-]*$/, message: '只能小写字母、数字、下划线、连字符，且以字母开头' },
-            ]}
+        <Space vertical align="start" style={{ width: '100%' }}>
+          <Select
+            value={diagMethod}
+            onChange={(v) => setDiagMethod(String(v))}
+            optionList={RATE_LIMIT_METHODS.map((value) => ({ value, label: value }))}
           />
-        )}
-        <Form.Input field="description" label="描述" placeholder="可选" />
-        <Form.Select
-          field="mode"
-          label="模式"
-          optionList={RATE_LIMIT_MODE_OPTIONS}
-          style={{ width: '100%' }}
-          extraText="观察模式下超限只记录统计不实际拦截，用于新规则上线前安全调参"
-        />
-        <Form.Select
-          field="algorithm"
-          label="限流算法"
-          optionList={RATE_LIMIT_ALGORITHM_OPTIONS}
-          style={{ width: '100%' }}
-          extraText="滑动窗口消除固定窗口在边界处最多 2× 限额的突刺，适合 auth / 支付等敏感规则"
-        />
-        <div style={{ display: 'flex', gap: 8 }}>
-          <Form.InputNumber field="windowValue" label="时间窗口" min={1} style={{ width: '100%' }} rules={[{ required: true, message: '请输入窗口时长' }]} fieldStyle={{ flex: 1 }} />
-          <Form.Select field="windowUnit" label="单位" optionList={RATE_LIMIT_WINDOW_UNIT_OPTIONS} style={{ width: 110 }} />
-        </div>
-        <Form.InputNumber field="limit" label="窗口内上限" min={1} style={{ width: '100%' }} rules={[{ required: true, message: '请输入请求上限' }]} />
-        <Form.Select
-          field="keyType"
-          label="计数维度"
-          optionList={RATE_LIMIT_KEY_TYPE_OPTIONS}
-          style={{ width: '100%' }}
-          extraText="「登录用户」在无登录态的公开路径上自动回退为按 IP 计数"
-        />
-        <Form.Select
-          field="pathPatterns"
-          label="绑定路径"
-          placeholder="选择或输入 /api/ 开头的路径，支持 /* 通配，留空则仅代码挂载生效"
-          multiple
-          filter
-          allowCreate
-          showClear
-          searchPosition="dropdown"
-          style={{ width: '100%' }}
-          optionList={apiPaths}
-          virtualize={{ height: 260, width: '100%', itemSize: 36 }}
-          rules={[{
-            validator: (_rule: unknown, value: string[] | undefined) =>
-              !value || value.every((p) => p.startsWith('/api/')),
-            message: '绑定路径必须以 /api/ 开头（限流仅挂载在 /api/* 上）',
-          }]}
-        />
-        <Form.InputNumber
-          field="priority"
-          label="路径优先级"
-          min={0}
-          max={9999}
-          style={{ width: '100%' }}
-          extraText="多条规则的绑定路径命中同一请求时应用优先级大者；仅路径绑定时生效"
-        />
-        <Form.TagInput
-          field="allowlist"
-          label="白名单"
-          placeholder="IP、CIDR（10.0.0.0/8）或 u:用户ID，回车添加"
-          extraText="命中白名单的请求直接放行且不计数；用于内部探活、回调源与办公网豁免"
-        />
-        <Form.InputNumber
-          field="alertThreshold"
-          label="告警阈值"
-          min={1}
-          style={{ width: '100%' }}
-          placeholder="留空不告警"
-          extraText="单小时拦截数达到该值时通知平台管理员（同一小时只告警一次）"
-        />
-        <Form.Input field="blockedMessage" label="拦截提示文案" placeholder="为空使用默认提示" />
-        <Form.Switch field="enabled" label="启用" />
-      </EditFormSheet>
-    </div>
-  );
-}
-
-function InfoBlock({ label, value }: { readonly label: string; readonly value: string }) {
-  return (
-    <div>
-      <div style={{ fontSize: 12, color: 'var(--semi-color-text-2)', marginBottom: 2 }}>{label}</div>
-      <div style={{ fontSize: 14, fontWeight: 500 }}>{value}</div>
+          <Input
+            value={diagPath}
+            onChange={setDiagPath}
+            placeholder="实际请求路径，如 /api/users/42"
+            style={{ width: '100%' }}
+          />
+          <RadioGroup value={principal} onChange={(e) => setPrincipal(e.target.value)}>
+            <Radio value="anonymous">匿名</Radio>
+            <Radio value="admin">管理员</Radio>
+            <Radio value="member">会员</Radio>
+            <Radio value="app">开放应用</Radio>
+          </RadioGroup>
+          {diagnose.data && (
+            <>
+              <Banner closeIcon={null} description={diagnose.data.note} />
+              <Text>选中：{diagnose.data.selected.join('、') || '无路径规则'}</Text>
+              {diagnose.data.matches.map((match) => (
+                <Text key={match.name}>
+                  {match.name} · {match.stage} · {match.reason}
+                </Text>
+              ))}
+            </>
+          )}
+        </Space>
+      </Modal>
+      <Modal
+        title="临时封禁身份"
+        visible={banTarget !== null}
+        onCancel={() => setBanTarget(null)}
+        okText="封禁"
+        confirmLoading={ban.isPending}
+        onOk={() =>
+          void ban
+            .mutateAsync({
+              body: { name: banName, key: banKey, durationSeconds: duration, reason: banReason || '管理员临时封禁' },
+            })
+            .then(() => setBanTarget(null))
+        }
+        width={480}
+      >
+        <Space vertical align="start" style={{ width: '100%' }}>
+          <Select
+            value={banName || undefined}
+            placeholder="选择规则"
+            optionList={rules.map((r) => ({ value: r.name, label: r.name }))}
+            onChange={(v) => setBanName(String(v))}
+            style={{ width: '100%' }}
+          />
+          <Input value={banKey} onChange={setBanKey} placeholder="精确计数身份：IP / u:platform:1 / m:3:7" />
+          <Input value={banReason} onChange={setBanReason} placeholder="封禁原因" />
+          <Select
+            value={duration}
+            onChange={(v) => setDuration(Number(v))}
+            optionList={RATE_LIMIT_BAN_DURATION_OPTIONS}
+          />
+        </Space>
+      </Modal>
     </div>
   );
 }

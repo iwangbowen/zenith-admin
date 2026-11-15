@@ -1,6 +1,6 @@
 import * as z from 'zod';
-import { idParam } from '../../core/api-schemas';
-import { RATE_LIMIT_METHODS, RATE_LIMIT_FAIL_MODES } from '../rate-limit';
+import { idParam, keywordQuery, paginationQuery, queryEnum, paginated } from '../../core/api-schemas';
+import { RATE_LIMIT_METHODS, RATE_LIMIT_FAIL_MODES, RATE_LIMIT_DECISIONS, RATE_LIMIT_DECISION_LABELS } from '../rate-limit';
 import { defineContract, op } from '../../core/contract';
 import { RATE_LIMIT_ALGORITHMS, RATE_LIMIT_KEY_TYPES, RATE_LIMIT_MODES, RATE_LIMIT_MOUNT_SOURCES } from '../constants';
 import {
@@ -47,6 +47,10 @@ export const rateLimitRuleSchema = z.object({
 export type RateLimitRule = z.infer<typeof rateLimitRuleSchema>;
 
 export const rateLimitRecentBlockSchema = z.object({
+  id: z.string().optional(),
+  method: z.string().optional(),
+  decision: z.enum(RATE_LIMIT_DECISIONS).optional(),
+  correlationId: z.string().nullable().optional(),
   at: z.string(),
   key: z.string(),
   path: z.string(),
@@ -65,6 +69,10 @@ export const rateLimitStatItemSchema = z.object({
   enabled: z.boolean(),
   mode: z.enum(RATE_LIMIT_MODES),
   hitCount: z.int(),
+  monitoredCount: z.int().optional(),
+  bannedCount: z.int().optional(),
+  exemptCount: z.int().optional(),
+  degradedCount: z.int().optional(),
   blockedCount: z.int(),
   blockRate: z.number(),
   recentBlocks: z.array(rateLimitRecentBlockSchema),
@@ -77,6 +85,8 @@ export type RateLimitStatItem = z.infer<typeof rateLimitStatItemSchema>;
 
 export const rateLimitStatsSchema = z.object({
   items: z.array(rateLimitStatItemSchema),
+  queued: z.int().optional(), dropped: z.int().optional(),
+  scope: z.string().optional(),
 }).meta({ id: 'RateLimitStats' });
 
 export type RateLimitStats = z.infer<typeof rateLimitStatsSchema>;
@@ -99,7 +109,12 @@ export type RateLimitDiagnosis = z.infer<typeof rateLimitDiagnosisSchema>;
 
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 
+export const rateLimitEventSchema = rateLimitRecentBlockSchema.extend({ name: z.string() }).meta({ id: 'RateLimitEvent' });
+export const rateLimitEventsQuery = paginationQuery.extend({ name: keywordQuery('规则名称'), keyword: keywordQuery('身份 / 路由'), decision: queryEnum(RATE_LIMIT_DECISIONS, { description: '决策', options: RATE_LIMIT_DECISIONS.map(value => ({ value, label: RATE_LIMIT_DECISION_LABELS[value] })) }) });
+
 export const rateLimitContract = defineContract('/api/rate-limit', {
+  events: op.get('/events', { access: { permission: 'system:rate-limit:view', platformOnly: 'multi-tenant' }, query: rateLimitEventsQuery, response: paginated(rateLimitEventSchema), summary: '有界命中记录分页查询' }),
+  detailStats: op.get('/rules/{id}/stats', { access: { permission: 'system:rate-limit:view', platformOnly: 'multi-tenant' }, params: idParam, response: rateLimitStatItemSchema, summary: '按需读取规则趋势和来源' }),
   operations: op.get('/operations', { access: { permission: 'system:rate-limit:view', platformOnly: 'multi-tenant' }, response: z.array(rateLimitOperationSchema), summary: '限流可绑定接口目录' }),
   diagnose: op.post('/diagnose', { access: { permission: 'system:rate-limit:view', platformOnly: 'multi-tenant' }, body: rateLimitDiagnoseSchema, response: rateLimitDiagnosisSchema, summary: '诊断规则匹配（不消耗额度）' }),
   rules: op.get('/rules', { access: { permission: 'system:rate-limit:view', platformOnly: 'multi-tenant' }, response: z.array(rateLimitRuleSchema), summary: '获取限流规则列表' }),
@@ -107,9 +122,9 @@ export const rateLimitContract = defineContract('/api/rate-limit', {
   updateRule: op.patch('/rules/{id}', { access: { permission: 'system:rate-limit:manage', platformOnly: 'multi-tenant' }, audit: '更新限流规则', params: idParam, body: updateRateLimitRuleSchema, response: rateLimitRuleSchema, summary: '更新限流规则（保存后立即热更新）' }),
   removeRule: op.delete('/rules/{id}', { access: { permission: 'system:rate-limit:manage', platformOnly: 'multi-tenant' }, audit: '删除限流规则', params: idParam, summary: '删除自定义限流规则（内置规则不可删除）' }),
   stats: op.get('/stats', { access: { permission: 'system:rate-limit:view', platformOnly: 'multi-tenant' }, response: rateLimitStatsSchema, summary: '获取限流统计与最近拦截记录' }),
-  unblock: op.post('/unblock', { access: { permission: 'system:rate-limit:manage', platformOnly: 'multi-tenant' }, audit: '解封限流 key', body: unblockRateLimitSchema, summary: '解封指定 key（清除 Redis 计数窗口）' }),
-  resetStats: op.post('/reset-stats', { access: { permission: 'system:rate-limit:manage', platformOnly: 'multi-tenant' }, audit: '清空限流统计', body: resetRateLimitStatsSchema, summary: '清空指定规则的统计计数器' }),
-  ban: op.post('/ban', { access: { permission: 'system:rate-limit:manage', platformOnly: 'multi-tenant' }, audit: '手动封禁限流 key', body: banRateLimitSchema, summary: '手动封禁指定 key（封禁期内一律 429，无视限额与观察模式）' }),
-  unban: op.post('/unban', { access: { permission: 'system:rate-limit:manage', platformOnly: 'multi-tenant' }, audit: '解除限流封禁', body: unbanRateLimitSchema, summary: '解除手动封禁' }),
+  unblock: op.post('/unblock', { access: { permission: 'system:rate-limit:reset', platformOnly: 'multi-tenant' }, audit: '解封限流 key', body: unblockRateLimitSchema, summary: '解封指定 key（清除 Redis 计数窗口）' }),
+  resetStats: op.post('/reset-stats', { access: { permission: 'system:rate-limit:reset', platformOnly: 'multi-tenant' }, audit: '清空限流统计', body: resetRateLimitStatsSchema, summary: '清空指定规则的统计计数器' }),
+  ban: op.post('/ban', { access: { permission: 'system:rate-limit:ban', platformOnly: 'multi-tenant' }, audit: '手动封禁限流 key', body: banRateLimitSchema, summary: '手动封禁指定 key（封禁期内一律 429，无视限额与观察模式）' }),
+  unban: op.post('/unban', { access: { permission: 'system:rate-limit:ban', platformOnly: 'multi-tenant' }, audit: '解除限流封禁', body: unbanRateLimitSchema, summary: '解除手动封禁' }),
   bans: op.get('/bans', { access: { permission: 'system:rate-limit:view', platformOnly: 'multi-tenant' }, response: z.array(rateLimitBanSchema), summary: '活跃封禁列表' }),
 }, { auditModule: '接口限流', tags: ['RateLimit'] });

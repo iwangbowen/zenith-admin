@@ -11,6 +11,8 @@ import {
   createRateLimitRule,
   deleteRateLimitRule,
   getRateLimitStats,
+  listRateLimitEvents,
+  getRateLimitDetailStats,
   unblockRateLimit,
   resetRateLimitStats,
   getRateLimitRuleBeforeAudit,
@@ -21,6 +23,8 @@ import {
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
+const events = defineContractRoute(rateLimitContract.events, { handler: async c => c.json(okBody(await listRateLimitEvents(c.req.valid('query'))), 200) });
+const detailStats = defineContractRoute(rateLimitContract.detailStats, { handler: async c => c.json(okBody(await getRateLimitDetailStats(c.req.valid('param').id)), 200) });
 const operations = defineContractRoute(rateLimitContract.operations, { handler: c => c.json(okBody(getRateLimitOperations()), 200) });
 const diagnose = defineContractRoute(rateLimitContract.diagnose, { handler: c => c.json(okBody(diagnoseRateLimit(c.req.valid('json'))), 200) });
 
@@ -75,8 +79,8 @@ const resetStats = defineContractRoute(rateLimitContract.resetStats, {
 
 const banKey = defineContractRoute(rateLimitContract.ban, {
   handler: async (c) => {
-    const { name, key, durationSeconds } = c.req.valid('json');
-    await banRateLimit(name, key, durationSeconds);
+    const { name, key, durationSeconds, reason } = c.req.valid('json');
+    await banRateLimit(name, key, durationSeconds, reason);
     return c.json(okBody(null, '封禁成功'), 200);
   },
 });
@@ -93,6 +97,6 @@ const listBans = defineContractRoute(rateLimitContract.bans, {
   handler: async (c) => c.json(okBody(await listRateLimitActiveBans()), 200),
 });
 
-router.openapiRoutes([operations, diagnose, listRules, createRule, patchRule, deleteRule, getStats, unblock, resetStats, banKey, unbanKey, listBans] as const);
+router.openapiRoutes([events, detailStats, operations, diagnose, listRules, createRule, patchRule, deleteRule, getStats, unblock, resetStats, banKey, unbanKey, listBans] as const);
 
 export default router;

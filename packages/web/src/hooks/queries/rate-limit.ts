@@ -1,10 +1,9 @@
 // eslint-disable-next-line no-restricted-imports -- H5 保留：手写 useQuery / useMutation 的理由见本文件对应 hook 的注释；queryKey 仍由 contractKey 生成
-import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { resourceKeyOf } from '@zenith/shared/core';
 import { rateLimitContract, type RateLimitAlgorithm, type RateLimitKeyType, type RateLimitMode, type RateLimitMountSource } from '@zenith/shared/platform';
-import { config } from '@/config';
 import { useSaveMutation, apiRaw, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
-import { unwrap, LOOKUP_STALE_TIME } from '@/lib/query';
+import { unwrap } from '@/lib/query';
 
 export type { RateLimitAlgorithm, RateLimitKeyType, RateLimitMode, RateLimitMountSource };
 
@@ -26,28 +25,19 @@ export function useRateLimitStats() {
   return useApiQuery(rateLimitContract.stats, { refetchInterval: 30 * 1000 });
 }
 
-/** H5：openapi.json 不是契约操作、也不是 ApiResponse 信封，走原生 fetch 的非契约通道 */
 export function useRateLimitApiPaths() {
-  return useQuery({
-    queryKey: rateLimitKeys.apiPaths,
-    // OpenAPI 路径集在部署内不变，长缓存避免反复拉取 260kB 文档
-    staleTime: LOOKUP_STALE_TIME,
-    queryFn: async () => {
-      // openapi.json 返回原始 OpenAPI 文档（非 ApiResponse 信封），不走 request；但仍需拼接 API 基址
-      const res = await fetch(`${config.apiBaseUrl}/api/openapi.json`);
-      const spec = (await res.json()) as { paths?: Record<string, unknown> };
-      return Object.keys(spec.paths ?? {})
-        .filter((p) => p.startsWith('/api/'))
-        .sort((a, b) => a.localeCompare(b))
-        .map((p) => ({ label: p, value: p }));
-    },
-  });
+  return useApiQuery(rateLimitContract.operations, { select: items => items.map(item => ({ label: item.method + ' ' + item.path + ' · ' + item.summary, value: item.path })) });
 }
+export function useDiagnoseRateLimit() { return useApiMutation(rateLimitContract.diagnose); }
+export function useRateLimitDetailStats(id: number | null) { return useApiQuery(rateLimitContract.detailStats, { params: { id: id ?? 0 } }, { enabled: id !== null, refetchInterval: 30_000 }); }
+export function useRateLimitEvents(query: import('@zenith/shared/core').QueryOf<typeof rateLimitContract.events>, enabled = true) { return useApiQuery(rateLimitContract.events, { query }, { enabled, refetchInterval: enabled ? 30_000 : false }); }
 
 /** 统计接口的规则元信息（enabled/mode/窗口）派生自规则配置，两者都需失效 */
 function invalidateRuleViews(qc: QueryClient) {
   void qc.invalidateQueries({ queryKey: rateLimitKeys.rules });
   void qc.invalidateQueries({ queryKey: rateLimitKeys.stats });
+  void qc.invalidateQueries({ queryKey: contractKey(rateLimitContract.detailStats) });
+  void qc.invalidateQueries({ queryKey: contractKey(rateLimitContract.events) });
 }
 
 /** 无 id 新增，有 id 部分更新（规则名称不可更改） */
@@ -78,13 +68,13 @@ export function useUnblockRateLimitKey() {
 
 export function useResetRateLimitStats() {
   return useApiMutation(rateLimitContract.resetStats, {
-    invalidate: (qc) => void qc.invalidateQueries({ queryKey: rateLimitKeys.stats }),
+    invalidate: (qc) => invalidateRuleViews(qc),
   });
 }
 
 /** 活跃封禁列表：30 秒轮询（TTL 持续变化） */
-export function useRateLimitBans() {
-  return useApiQuery(rateLimitContract.bans, { refetchInterval: 30 * 1000 });
+export function useRateLimitBans(enabled = true) {
+  return useApiQuery(rateLimitContract.bans, { enabled, refetchInterval: 30 * 1000 });
 }
 
 export function useBanRateLimitKey() {

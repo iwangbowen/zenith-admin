@@ -25,14 +25,10 @@ vi.mock('../db', () => ({
   db: { select: () => ({ from: () => Promise.resolve(dbRows) }) },
 }));
 
-// 突增告警 service（中间件动态 import，vi.mock 同样拦截动态导入）
-vi.mock('../services/platform/rate-limit-alert.service', () => ({
-  maybeSendRateLimitSpikeAlert: vi.fn(() => Promise.resolve()),
-}));
-
+const eventRecorder = vi.hoisted(() => ({ record: vi.fn() }));
+vi.mock('../lib/rate-limit-stats', () => ({ recordRateLimitEvent: eventRecorder.record }));
 import { runIdentityRateLimits } from '../lib/rate-limit-stage';
 import { createHash } from 'node:crypto';
-import { maybeSendRateLimitSpikeAlert } from '../services/platform/rate-limit-alert.service';
 
 // ─── 带状态的 Redis 假实现 ─────────────────────────────────────────────────────
 interface CounterState { count: number; expiresAt: number }
@@ -142,6 +138,7 @@ const redisMock = {
     };
     return chain;
   }),
+  get: vi.fn((key: string) => Promise.resolve(bans.has(key) ? JSON.stringify({reason:'test',createdBy:null}) : null)),
   set: vi.fn((key: string, _value: string, _px: string, ms: number) => {
     bans.set(key, Date.now() + ms);
     return Promise.resolve('OK');
@@ -270,23 +267,12 @@ describe('固定窗口限流', () => {
   });
 });
 
-describe('monitor 观察模式', () => {
-  it('超限只记拦截统计（monitored 标记），请求仍放行', async () => {
-    await loadRules(ruleRow({ name: 't_mon', limit: 1, mode: 'monitor' }));
-    const app = new Hono();
-    app.get('/api/t', namedRateLimit('t_mon'), (c) => c.json({ ok: true }));
-
-    expect((await app.request('/api/t')).status).toBe(200);
-    expect((await app.request('/api/t')).status).toBe(200);
-    expect((await app.request('/api/t')).status).toBe(200);
-    await flushAsync();
-
-    const recent = zsets.get('test:rlstats:t_mon:recent') ?? [];
-    expect(recent.length).toBe(2);
-    const record = JSON.parse(recent[0]) as { key: string; monitored?: boolean };
-    expect(record.monitored).toBe(true);
-    expect(record.key).toBe('127.0.0.1');
-  });
+describe('monitor observation', () => {
+ it('records observed decisions without counting them as actual denials',async()=>{
+  await loadRules(ruleRow({name:'t_mon',limit:1,mode:'monitor'}));const app=new Hono();app.get('/api/t',namedRateLimit('t_mon'),c=>c.json({ok:true}));
+  for(let i=0;i<3;i++)expect((await app.request('/api/t')).status).toBe(200);
+  expect(eventRecorder.record.mock.calls.map(call=>call[0].decision)).toEqual(['allowed','monitored','monitored']);
+ });
 });
 
 describe('同请求规则去重', () => {
@@ -365,7 +351,7 @@ describe('解封', () => {
     await flushAsync();
 
     expect([...counters.keys()].some(key => key.startsWith('test:rl:t_unblock|127.0.0.1|'))).toBe(true);
-    expect((zsets.get('test:rlstats:t_unblock:recent') ?? []).length).toBe(1);
+    expect(eventRecorder.record.mock.calls.at(-1)?.[0].decision).toBe('blocked');
 
     const ok = await unblockRateLimitKey('t_unblock', '127.0.0.1');
     expect(ok).toBe(true);
@@ -464,9 +450,7 @@ describe('手动封禁', () => {
     expect(banned.status).toBe(429);
     expect(Number(banned.headers.get('Retry-After'))).toBeGreaterThan(0);
     await flushAsync();
-    const recent = zsets.get('test:rlstats:t_ban:recent') ?? [];
-    const record = JSON.parse(recent[recent.length - 1]) as { banned?: boolean };
-    expect(record.banned).toBe(true);
+    expect(eventRecorder.record.mock.calls.at(-1)?.[0].decision).toBe('banned');
 
     expect(await unbanRateLimitKey('t_ban', '127.0.0.1')).toBe(true);
     expect((await app.request('/api/t')).status).toBe(200);
@@ -481,45 +465,6 @@ describe('手动封禁', () => {
     expect(list[0].key).toBe('u:3');
     expect(list[0].ttlMs).toBeGreaterThan(0);
     expect(list[1].key).toBe('10.0.0.9');
-  });
-});
-
-describe('Top 来源与突增告警', () => {
-  it('拦截时累积当日 Top 来源计数', async () => {
-    await loadRules(ruleRow({ name: 't_top', limit: 1 }));
-    const app = new Hono();
-    app.get('/api/t', namedRateLimit('t_top'), (c) => c.json({ ok: true }));
-    for (let i = 0; i < 4; i++) await app.request('/api/t');
-    await flushAsync();
-
-    const topKey = [...zscores.keys()].find((k) => k.includes('t_top:top:'));
-    expect(topKey).toBeDefined();
-    expect(zscores.get(topKey as string)?.get('127.0.0.1')).toBe(3); // 4 发中 3 发被拦截
-  });
-
-  it('小时拦截数达到 alertThreshold 时触发告警派发', async () => {
-    await loadRules(ruleRow({ name: 't_alert', limit: 1, alertThreshold: 2 }));
-    const app = new Hono();
-    app.get('/api/t', namedRateLimit('t_alert'), (c) => c.json({ ok: true }));
-    for (let i = 0; i < 4; i++) await app.request('/api/t'); // 拦截 3 次 → 第 2 次起达阈值
-    await flushAsync();
-    await flushAsync(); // 动态 import 多一跳微任务
-
-    expect(maybeSendRateLimitSpikeAlert).toHaveBeenCalled();
-    const call = vi.mocked(maybeSendRateLimitSpikeAlert).mock.calls[0][0];
-    expect(call.ruleName).toBe('t_alert');
-    expect(call.threshold).toBe(2);
-    expect(call.blockedCount).toBeGreaterThanOrEqual(2);
-  });
-
-  it('未配置 alertThreshold 时不触发告警', async () => {
-    await loadRules(ruleRow({ name: 't_no_alert', limit: 1 }));
-    const app = new Hono();
-    app.get('/api/t', namedRateLimit('t_no_alert'), (c) => c.json({ ok: true }));
-    for (let i = 0; i < 4; i++) await app.request('/api/t');
-    await flushAsync();
-    await flushAsync();
-    expect(maybeSendRateLimitSpikeAlert).not.toHaveBeenCalled();
   });
 });
 
@@ -570,9 +515,9 @@ describe('identity stages and policy safety', () => {
     const app = new Hono();
     app.get('/api/public/:token', namedRateLimit('t_secret'), c => c.json({ ok: true }));
     await app.request('/api/public/secret-token'); await app.request('/api/public/secret-token'); await flushAsync();
-    const records = zsets.get('test:rlstats:t_secret:recent') ?? [];
-    expect(records[0]).toContain('/api/public/{token}');
-    expect(records[0]).not.toContain('secret-token');
+    const record = JSON.stringify(eventRecorder.record.mock.calls.at(-1)?.[0]);
+    expect(record).toContain('/api/public/{token}');
+    expect(record).not.toContain('secret-token');
     expect([...counters.keys()].join()).not.toContain('secret-token');
   });
   it('manual bans override ordinary exemptions, disabled rules remain disabled', async () => {
