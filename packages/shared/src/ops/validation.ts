@@ -29,9 +29,6 @@ import {
 } from './constants';
 import { entityStatusSchema } from '../core/api-schemas';
 
-// ─── 维护模式 ────────────────────────────────────────────────────────────────
-export { updateMaintenanceSchema, type UpdateMaintenanceInput } from './maintenance-validation';
-
 // ─── SSL 证书 ────────────────────────────────────────────────────────────────
 export const generateSelfSignedCertSchema = z.object({
   name: z.string().min(1).max(128),

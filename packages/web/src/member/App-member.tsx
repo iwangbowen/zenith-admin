@@ -123,13 +123,13 @@ function AppRoutes() {
 export default function MemberApp() {
   return (
     <QueryClientProvider client={memberQueryClient}>
-      <MemberAuthProvider>
-        <MaintenanceBoundary><HashRouter>
+      <MaintenanceBoundary><MemberAuthProvider>
+        <HashRouter>
           {/* 埋点桥接：路由级 PV/PL 采集 + 登录身份关联，覆盖公开与受保护路由，全局挂载一次 */}
           <MemberAnalyticsBridge />
           <AppRoutes />
-        </HashRouter></MaintenanceBoundary>
-      </MemberAuthProvider>
+        </HashRouter>
+      </MemberAuthProvider></MaintenanceBoundary>
     </QueryClientProvider>
   );
 }

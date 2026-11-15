@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Button, Empty, Typography } from '@douyinfe/semi-ui';
-import { RefreshCw } from 'lucide-react';
-import { emptyIllustration } from '@/components/EmptyIllustration';
+import { Button, Typography } from '@douyinfe/semi-ui';
+import { parseDateTimeParam } from '@/utils/date';
 import { usePublicMaintenanceStatus } from '@/hooks/queries/maintenance';
 
 const { Text } = Typography;
@@ -63,14 +62,9 @@ export default function MaintenanceOverlay({ info, onAdminLogin }: Readonly<Prop
         overflow: 'auto',
       }}
     >
-      {/* 维护态复用 Semi 空状态：插画、标题、描述与操作区的间距交给组件默认排版。
-          「建设中」表达"正在施工、能力暂不可用"，比「神游四方」的"空/发呆"语义更贴近计划内维护 */}
-      <Empty
-        {...emptyIllustration('Construction', 160)}
-        title="系统维护中"
-        description={info.message || '系统正在进行维护升级，请稍后再试。'}
-        style={{ maxWidth: 460, width: '100%' }}
-      >
+      <section aria-label="系统维护" style={{ maxWidth: 460, width: '100%', textAlign: 'center', overflowWrap: 'anywhere' }}>
+        <h1 style={{ fontSize: 28, marginBottom: 16 }}>系统维护中</h1>
+        <p style={{ color: 'var(--semi-color-text-2)', lineHeight: 1.7, marginBottom: 24 }}>{info.message || '系统正在进行维护升级，请稍后再试。'}</p>
         <div
           style={{
             display: 'flex',
@@ -93,7 +87,6 @@ export default function MaintenanceOverlay({ info, onAdminLogin }: Readonly<Prop
           )}
 
           <Button
-            icon={<RefreshCw size={14} />}
             loading={checking}
             onClick={() => void refetch()}
           >
@@ -103,10 +96,10 @@ export default function MaintenanceOverlay({ info, onAdminLogin }: Readonly<Prop
           <Text type="tertiary" size="small" aria-live="polite">
             {checking ? '正在获取最新维护状态…' : isError ? '状态检查失败，登录凭证已保留，请重试' : '每 30 秒自动检查一次；预计时间不代表自动开放'}
           </Text>
-          {info.estimatedEndAt && Date.parse(info.estimatedEndAt.replace(' ', 'T')) < Date.now() ? <Text type="warning">维护已超过预计时间，请等待管理员确认恢复</Text> : null}
+          {info.estimatedEndAt && (parseDateTimeParam(info.estimatedEndAt)?.getTime() ?? Infinity) < Date.now() ? <Text type="warning">维护已超过预计时间，请等待管理员确认恢复</Text> : null}
           {onAdminLogin ? <Button theme="borderless" onClick={onAdminLogin}>管理员登录 / 恢复管理</Button> : null}
         </div>
-      </Empty>
+      </section>
     </div>
   );
 }

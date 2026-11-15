@@ -210,4 +210,4 @@
 
 ## 维护模式
 
-`/api/maintenance` 提供全站维护模式开关（权限 `system:maintenance:manage`，页面 `/system/maintenance`）：`GET /api/maintenance/status` 为公开接口供前端探测；`PUT /api/maintenance` 开启 / 关闭并可设置公告文案与预计结束时间；`GET /api/maintenance/logs` 分页查询维护记录。维护记录落 `maintenance_logs`，由数据保留策略统一清理。详见[维护模式](../backend/maintenance-mode.md)。
+`/system/maintenance` 提供版本化维护控制、一次性计划、独立自动恢复、访问诊断和时段记录；管理、日志与业务通行分别授权。Worker 每分钟推进计划，变更与提醒经通知 Outbox 投递。API 和实时业务受门禁控制，后台任务与关键回调可能继续运行；本地恢复命令和完整边界见[维护模式](../backend/maintenance-mode.md)。

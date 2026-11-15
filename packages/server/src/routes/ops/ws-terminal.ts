@@ -566,6 +566,7 @@ export function createWsTerminalRoute(upgradeWebSocket: UpgradeWebSocket) {  con
           // 只操作本连接持有的会话：未通过 onOpen 授权的连接在此直接返回
           const session = ownedSession.current;
           if (!session) return;
+          if (!payload || !(await maintenanceRealtimeAllowed(payload))) { _ws.close(1013, 'Maintenance'); return; }
           try {
             const raw: unknown = typeof evt.data === 'string' ? JSON.parse(evt.data) : null;
             if (!raw || typeof raw !== 'object') return;

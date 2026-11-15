@@ -15,6 +15,7 @@ export const maintenanceContentSchema = z.object({
   estimatedEndAt: maintenanceDateSchema.nullable(),
 });
 export const updateMaintenanceSchema = maintenanceContentSchema.extend({
+  autoEndAt: maintenanceDateSchema.nullable(),
   version: z.int().min(0), enabled: z.boolean(), reason: z.string().trim().min(1, '请填写操作原因').max(500),
 });
 export const maintenancePlanSchema = maintenanceContentSchema.extend({

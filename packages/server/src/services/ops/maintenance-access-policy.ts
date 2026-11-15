@@ -21,7 +21,7 @@ export function maintenanceDecision(enabled: boolean, method: string, path: stri
   if (exception) return { allowed: true, reason: exception.reason };
   if (access?.canBypass) return { allowed: true, reason: '主体具有维护业务通行权限，业务权限仍需验证' };
   const managementPath = /^\/api\/maintenance(?:\/|$)/.test(path);
-  const shellPath = method === 'GET' && ['/api/menus/user', '/api/settings/me', '/api/auth/me'].includes(path);
+  const shellPath = method === 'GET' && ['/api/menus/user', '/api/settings/me', '/api/auth/me', '/api/auth/preferences'].includes(path);
   if ((managementPath || shellPath) && access && (access.canView || access.canManage || access.canViewLogs)) return { allowed: true, reason: '维护管理恢复通路，仍需对应操作权限' };
   return { allowed: false, reason: '维护策略拒绝' };
 }

@@ -69,7 +69,10 @@ export function mockServerInfra(): void {
   // onError 兜成 500，连 /api/openapi.json 都取不到——整个套件在装配阶段就失败。
   // 契约测试校验的是路由声明面而非数据行为，因此给一个「查不到任何数据」的替身即可
   // （设置副本冷加载得到空行集 → 解析为 schema 默认文档）。
-  vi.doMock('../db', () => ({ db: createDbStub() }));
+  vi.doMock('../db', () => {
+    const db = createDbStub();
+    return { db, readSnapshot: (work: (tx: unknown) => unknown) => work(db) };
+  });
 
   // ops 域（docker / ssh / 进程管理）会真的起子进程。契约测试只发无凭证请求，
   // 正常情况下会被 authMiddleware 挡在处理器之前；但一旦真的存在漏挂认证的路由，

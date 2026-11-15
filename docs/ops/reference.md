@@ -61,7 +61,7 @@
 | 缓存管理 | `/system/cache` | `system/cache/CacheManagePage` | `system:cache:list` |
 | 数据保留 | `/system/retention` | `system/retention/RetentionPage` | `system:retention:view` |
 | 服务监控 | `/system/monitor` | `system/monitor/MonitorPage` | `system:monitor:view` |
-| 维护模式 | `/system/maintenance` | `system/maintenance/MaintenancePage` | `system:maintenance:manage` |
+| 维护模式 | `/system/maintenance` | `system/maintenance/MaintenancePage` | `system:maintenance:view/manage/log`；业务通行独立授权 `bypass` |
 | 应用版本 | `/system/app-releases` | `system/app-releases/AppReleasesPage` | `system:app-release:list` |
 | 告警概览 | `/alerts/overview` | `alerts/overview/AlertOverviewPage` | `alert:overview:list` |
 | 告警规则 | `/alerts/rules` | `alerts/rules/AlertRulesPage` | `alert:rule:list` |

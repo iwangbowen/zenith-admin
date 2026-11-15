@@ -72,7 +72,7 @@ interface StoredAccount {
 - 刷新失败或重试仍 401 时清除配置的本地凭证，写入 `zenith_auth_invalidated_reason`，再执行宿主回调或整页跳转
 - `silent` 由调用方接管错误提示；`skipAuth` 让 401 直接返回响应体，不触发刷新与退出
 - 429 读取 `Retry-After` 并返回 `retryAfterSeconds`
-- 后台端 503 维护模式派发 `maintenance:enabled`，`App.tsx` 失效维护状态查询并展示 `MaintenanceOverlay`
+- 后台、会员与移动审批仅将带 `X-Zenith-Error: maintenance` 的 503 派发为 `maintenance:enabled`，失效公开状态并显示维护提示；30 秒轮询兜底，恢复后校准缓存，失败保留凭证。管理恢复和普通业务通行分别由服务端能力决定，见[维护模式](../backend/maintenance-mode.md)。
 - `fetchRaw(url, init)`：带鉴权的原生 fetch，401 时刷新并重试一次，返回原生 `Response`（非 401 的失败状态码原样返回，认证失效 / 网络错误返回 `null`），供流式与二进制读取
 - `authHeaders()`：当前登录态的 `Authorization` 头，供 Semi `Upload`、wangEditor 等自行发请求的第三方组件使用
 

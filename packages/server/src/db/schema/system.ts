@@ -294,7 +294,7 @@ export const maintenanceLogs = pgTable('maintenance_logs', {
   notifyUserIds: jsonb().$type<number[]>().notNull().default([]),
   remindMinutes: integer().notNull().default(15),
   reminderSent: boolean().notNull().default(false),
-  changes: jsonb().$type<Array<{ action: string; at: string; actor: string; reason: string; message: string; estimatedEndAt: string | null }>>().notNull().default([]),
+  changes: jsonb().$type<Array<{ action: string; at: string; actor: string; reason: string; message: string; estimatedEndAt: string | null; autoEndAt: string | null }>>().notNull().default([]),
   startedById: integer(),
   startedByName: varchar({ length: 64 }),
   endedAt: timestamptz(),

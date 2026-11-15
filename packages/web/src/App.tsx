@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, Suspense, useMemo, useRef } from 'react';
+import { Button } from '@douyinfe/semi-ui';
 import { BrowserRouter, HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
@@ -27,7 +28,9 @@ const AdminLayout = React.lazy(() => import('@/layouts/AdminLayout'));
 // 维护遮罩只在维护生效后加载，避免其 Empty 等组件进入每次登录的关键路径。
 const MaintenanceOverlay = React.lazy(() => import('@/components/MaintenanceOverlay'));
 const MaintenanceManagementPage = React.lazy(() => import('@/pages/system/maintenance/MaintenancePage'));
-function MaintenanceManagementOnly() { return <Routes><Route path="/system/maintenance" element={<Suspense fallback={null}><MaintenanceManagementPage /></Suspense>} /><Route path="*" element={<Navigate to="/system/maintenance" replace />} /></Routes>; }
+function MaintenanceManagementOnly({ onLogout }: { readonly onLogout: () => void }) {
+  return <div style={{ padding: 16 }}><Button onClick={onLogout}>退出恢复管理</Button><Routes><Route path="/system/maintenance" element={<Suspense fallback={routeFallback}><MaintenanceManagementPage /></Suspense>} /><Route path="*" element={<Navigate to="/system/maintenance" replace />} /></Routes></div>;
+}
 
 // 登录页静态引入：未登录首屏只需关键路径本身，不再多一轮 chunk 下载。
 // 代价是它的静态闭包直接决定匿名首屏体积：Semi Form（含 BaseForm）会静态拖入全部字段控件（≈770 KB / 210 KB gz），
@@ -367,8 +370,14 @@ export default function App() {
     if (wasMaintaining.current && maintenance && !maintenance.enabled) void queryClient.invalidateQueries();
     wasMaintaining.current = !!maintenance?.enabled;
   }, [maintenance, queryClient]);
-  const canManageMaintenance = maintenanceAccess.data?.canManage || maintenanceAccess.data?.canView || maintenanceAccess.data?.canViewLogs;
-  const showMaintenance = !!maintenance?.enabled && !maintenanceAccess.data?.canBypass && !canManageMaintenance && !(maintenanceLogin && !user);
+  const activeMaintenanceAccess = status === 'authenticated' ? maintenanceAccess.data : undefined;
+  const canManageMaintenance = activeMaintenanceAccess?.canManage || activeMaintenanceAccess?.canView || activeMaintenanceAccess?.canViewLogs;
+  const showMaintenance = !!maintenance?.enabled && !activeMaintenanceAccess?.canBypass && !canManageMaintenance && !(maintenanceLogin && !user);
+  useEffect(() => {
+    if (maintenance?.version === undefined) return;
+    void queryClient.invalidateQueries({ queryKey: maintenanceKeys.status });
+    void queryClient.invalidateQueries({ queryKey: maintenanceKeys.logs });
+  }, [maintenance?.version, queryClient]);
 
   // http-client 在 React 树之外拦截 503，只能靠事件通知；事件仅作失效触发器，
   // 真实状态始终以服务端返回为准。
@@ -420,7 +429,7 @@ export default function App() {
       {user ? (
         <PreferencesProvider>
           <ThemeProvider>
-            {maintenance?.enabled && canManageMaintenance && !maintenanceAccess.data?.canBypass ? <MaintenanceManagementOnly /> : <AdminRouteLoader user={user} logout={handleLogout} />}
+            {maintenance?.enabled && canManageMaintenance && !activeMaintenanceAccess?.canBypass ? <MaintenanceManagementOnly onLogout={handleLogout} /> : <AdminRouteLoader user={user} logout={handleLogout} />}
           </ThemeProvider>
         </PreferencesProvider>
       ) : (

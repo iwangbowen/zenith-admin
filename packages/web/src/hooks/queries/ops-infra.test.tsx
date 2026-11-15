@@ -206,7 +206,7 @@ describe('maintenance', () => {
     expect(hasCacheEntry(qc, maintenanceKeys.publicStatus)).toBe(true);
     const fetches = observeFetches(qc);
 
-    await result.current.update.mutateAsync({ body: { enabled: true, message: '维护中', estimatedEndAt: null, version: 0, reason: '缓存回归' } });
+    await result.current.update.mutateAsync({ body: { enabled: true, message: '维护中', estimatedEndAt: null, autoEndAt: null, version: 0, reason: '缓存回归' } });
     await waitFor(() => {
       expect(fetches.countOf(maintenanceKeys.publicStatus)).toBe(1);
       expect(fetches.countOf(maintenanceKeys.status)).toBe(1);

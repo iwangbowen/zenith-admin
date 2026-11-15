@@ -1,7 +1,7 @@
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db';
 import { config } from '../config';
-import { getUserPermissions } from './permissions';
+import { getUserPermissions, runWithFreshUserPermissions } from './permissions';
 import { enabledGroupRolesWith, extractEnabledGroupRoles } from './user-group-access';
 import type { JwtPayload } from '../middleware/auth';
 
@@ -17,7 +17,7 @@ export async function maintenanceAccess(user: JwtPayload) {
     .some((role) => role.code === 'super_admin' && role.status === 'enabled' && role.tenantId === null);
   if (config.multiTenantMode && !superAdmin) return none;
   if (superAdmin) return { canView: true, canManage: !user.impersonation, canViewLogs: true, canBypass: !user.impersonation };
-  const permissions = await getUserPermissions(user.userId);
+  const permissions = await runWithFreshUserPermissions(user.userId, () => getUserPermissions(user.userId));
   const canManage = !user.impersonation && permissions.includes('system:maintenance:manage');
   return { canManage, canView: canManage || permissions.includes('system:maintenance:view'),
     canViewLogs: canManage || permissions.includes('system:maintenance:log'), canBypass: !user.impersonation && permissions.includes('system:maintenance:bypass') };

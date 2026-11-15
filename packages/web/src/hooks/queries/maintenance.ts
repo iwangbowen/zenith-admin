@@ -6,7 +6,7 @@ import { apiQueryOptions, contractKey, useApiMutation, useApiQuery } from '@/lib
 export type MaintenanceLogListParams = NonNullable<QueryOf<typeof maintenanceContract.logs>>;
 
 export const maintenanceKeys = {
-  /** 管理端详情 —— 需 system:maintenance:manage 权限 */
+  /** 管理详情：查看或管理权限。 */
   status: contractKey(maintenanceContract.detail),
   /** 公开探测 —— 未登录 / 无权限用户也可访问 */
   publicStatus: contractKey(maintenanceContract.status),
@@ -37,9 +37,10 @@ export function useMaintenanceStatus(enabled = true) {
   return useApiQuery(maintenanceContract.detail, { enabled });
 }
 export function useMaintenanceAccess(enabled = true) {
-  return useApiQuery(maintenanceContract.access, { enabled, requestOptions: { silent: true } });
+  return useApiQuery(maintenanceContract.access, { enabled, refetchInterval: enabled ? 30_000 : false, requestOptions: { silent: true } });
 }
 export function useMaintenancePlan() { return useApiMutation(maintenanceContract.plan, { invalidate: invalidateMaintenanceAfterToggle }); }
+export function useMaintenanceRecipients(enabled: boolean) { return useApiQuery(maintenanceContract.recipients, { enabled }); }
 export function useMaintenanceStart() { return useApiMutation(maintenanceContract.start, { invalidate: invalidateMaintenanceAfterToggle }); }
 export function useMaintenanceCancel() { return useApiMutation(maintenanceContract.cancel, { invalidate: invalidateMaintenanceAfterToggle }); }
 export function useMaintenanceDiagnosis() { return useApiMutation(maintenanceContract.diagnose); }
@@ -49,7 +50,7 @@ export function useMaintenanceLogs(params: MaintenanceLogListParams) {
   return useApiQuery(maintenanceContract.logs, { query: params }, { placeholderData: keepPreviousData });
 }
 
-/** 开关维护模式：公开状态（遮罩 / 横幅）、管理详情与维护记录（开启 / 关闭各落一条）是本域全部三个查询，逐个失效 */
+/** 生命周期写入影响公开摘要、管理详情、维护时段和当前维护能力。 */
 export function invalidateMaintenanceAfterToggle(qc: QueryClient) {
   void qc.invalidateQueries({ queryKey: maintenanceKeys.publicStatus });
   void qc.invalidateQueries({ queryKey: maintenanceKeys.status });

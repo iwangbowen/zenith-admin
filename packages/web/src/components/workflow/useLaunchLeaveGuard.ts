@@ -82,7 +82,7 @@ export function registerLaunchLeaveGuard(navigator: Navigator, registration: Gua
 }
 
 /** 仅在发起页面启用保护；BrowserRouter 没有 data-router blocker。 */
-export function useLaunchLeaveGuard(hasUnsavedChanges: () => boolean, enabled = true) {
+export function useLaunchLeaveGuard(hasUnsavedChanges: () => boolean, enabled = true, messages?: { title: string; content: string }) {
   const { navigator } = useContext(UNSAFE_NavigationContext);
   const location = useLocation();
   const currentPath = useRef(location.pathname);
@@ -96,8 +96,8 @@ export function useLaunchLeaveGuard(hasUnsavedChanges: () => boolean, enabled = 
     if (confirming.current) return;
     confirming.current = true;
     Modal.confirm({
-      title: '放弃未保存的申请？',
-      content: '申请尚未提交或保存为草稿，离开后当前填写内容将丢失。',
+      title: messages?.title ?? '放弃未保存的申请？',
+      content: messages?.content ?? '申请尚未提交或保存为草稿，离开后当前填写内容将丢失。',
       okText: '放弃并离开',
       cancelText: '继续填写',
       onCancel: () => { confirming.current = false; },

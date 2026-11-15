@@ -8,7 +8,7 @@ export const publicMaintenanceStatusSchema = z.object({
   enabled: z.boolean(), message: z.string(), estimatedEndAt: z.string().nullable(), startedAt: z.string().nullable(),
   scheduledStartAt: z.string().nullable(), autoEndAt: z.string().nullable(), version: z.int(),
 }).meta({ id: 'PublicMaintenanceStatus' });
-export const maintenanceChangeSchema = z.object({ action: z.string(), at: z.string(), actor: z.string(), reason: z.string(), message: z.string(), estimatedEndAt: z.string().nullable() });
+export const maintenanceChangeSchema = z.object({ action: z.string(), at: z.string(), actor: z.string(), reason: z.string(), message: z.string(), estimatedEndAt: z.string().nullable(), autoEndAt: z.string().nullable() });
 export const maintenanceLogSchema = z.object({
   id: z.int(), message: z.string(), estimatedEndAt: z.string().nullable(), scheduledStartAt: z.string().nullable(),
   autoEndAt: z.string().nullable(), startedAt: z.string().nullable(), startedByName: z.string().nullable(),
@@ -33,6 +33,7 @@ export const maintenanceContract = defineContract('/api/maintenance', {
   status: op.get('/status', { response: publicMaintenanceStatusSchema, public: true, summary: '公开维护摘要' }),
   access: op.get('/access', { access: 'authenticated', response: maintenanceAccessSchema, summary: '当前用户维护管理与通行能力' }),
   detail: op.get('/', { access: view, response: maintenanceStatusSchema, summary: '维护管理详情' }),
+  recipients: op.get('/recipients', { access: manage, response: z.array(z.object({ id: z.int(), username: z.string(), nickname: z.string() })), summary: '可选的平台维护通知接收人' }),
   update: op.put('/', { access: manage, audit: '变更维护状态或说明', body: updateMaintenanceSchema, response: maintenanceStatusSchema, summary: '开启、更新、保存草稿或结束维护' }),
   plan: op.post('/plans', { access: manage, audit: '安排维护计划', body: maintenancePlanSchema, response: maintenanceStatusSchema, summary: '创建一次性维护计划' }),
   start: op.post('/start', { access: manage, audit: '提前开始维护', body: maintenanceActionSchema, response: maintenanceStatusSchema, summary: '提前开始当前维护计划' }),

@@ -27,7 +27,7 @@ export function useMaintenanceBanner(isSuperAdmin: boolean) {
   const handleDisableMaintenance = useCallback(async () => {
     const state = detail.data;
     if (!state) return;
-    await updateMutation.mutateAsync({ body: { enabled: false, version: state.version, message: state.message, estimatedEndAt: state.estimatedEndAt, reason: '管理横幅结束维护' } });
+    await updateMutation.mutateAsync({ body: { enabled: false, version: state.version, message: state.message, estimatedEndAt: state.estimatedEndAt, autoEndAt: state.autoEndAt, reason: '管理横幅结束维护' } });
     Toast.success('维护模式已关闭');
   }, [updateMutation, detail.data]);
 

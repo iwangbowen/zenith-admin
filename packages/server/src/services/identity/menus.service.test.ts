@@ -134,6 +134,13 @@ describe('excludeDisabledSubtrees', () => {
 });
 
 describe('listUserMenuTree', () => {
+  it('omits global maintenance for tenant principals even if assigned', async () => {
+    deployment.multiTenantMode = true;
+    permissionMocks.isSuperAdmin.mockReturnValue(false);
+    permissionMocks.getUserMenuIds.mockResolvedValue([2410]);
+    dbMocks.select.mockReturnValueOnce(createSelectChain([menuRow({ id: 2410, parentId: 0, path: '/system/maintenance' })]));
+    expect(await listUserMenuTree()).toEqual([]);
+  });
   it('omits platform-only IP settings for tenant principals even if assigned', async () => {
     deployment.multiTenantMode = true;
     permissionMocks.isSuperAdmin.mockReturnValue(false);

@@ -306,7 +306,8 @@ export async function authenticateAdminRequest(c: Context): Promise<JwtPayload> 
     }
 
     // Delegate signature and claims verification to Hono's official JWT middleware.
-    await jwtMiddleware(c, async () => {});
+    try { await jwtMiddleware(c, async () => {}); }
+    catch { throw new HTTPException(401, { message: '登录已过期' }); }
     const payload = c.get('jwtPayload') as JwtPayload;
 
     // 安全隔离：拒绝会员 token 访问管理端接口（会员 token 带 type='member'）

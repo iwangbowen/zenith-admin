@@ -12,6 +12,7 @@ export const maintenanceMiddleware = createMiddleware(async (c, next) => {
   try { status = await getMaintenanceStatus(); }
   catch {
     c.header('X-Zenith-Error', 'maintenance-unavailable');
+    c.header('Cache-Control', 'no-store');
     return c.json({ code: 503, message: '维护状态暂不可用，请稍后重试', data: null }, 503);
   }
   if (!status.enabled) return next();

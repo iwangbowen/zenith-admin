@@ -59,7 +59,7 @@
 | `license_events` | 365 | License 事件 |
 | `identity_provider_sync_logs` | 90 | 身份源同步日志 |
 | `directory_sync_runs` | 90 | 通讯录同步运行 |
-| `maintenance_logs` | 365 | 维护模式记录 |
+| `maintenance_logs` | 365 | 按结束时间清理终态维护时段；保护待开始与维护中记录 |
 | `db_admin_query_history` | 90 | 数据库管理查询历史 |
 | `app_release_events` | 180 | 应用发布事件 |
 | `terminal_sessions` | 180 | 终端会话 |

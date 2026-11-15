@@ -189,7 +189,21 @@ export const RETENTION_POLICIES: readonly RetentionPolicyDefinition[] = [
     tableName: 'maintenance_logs',
     timeColumn: 'created_at',
     defaultDays: 365,
-    description: '维护模式开启至关闭的时段记录。',
+    mode: 'custom',
+    run: async (days, batchSize) => {
+      if (days <= 0) return 0;
+      const rows = await db.execute<{ id: number }>(sql`delete from maintenance_logs where id in (
+        select id from maintenance_logs where status in ('completed','cancelled') and ended_at < now()-make_interval(days=>${days})
+        order by id limit ${batchSize} for update skip locked) returning id`);
+      return rows.length;
+    },
+    previewPending: async days => {
+      if (days <= 0) return 0;
+      const [row] = await db.execute<{ count: number }>(sql`select count(*)::int as count from maintenance_logs
+        where status in ('completed','cancelled') and ended_at < now()-make_interval(days=>${days})`);
+      return row?.count ?? 0;
+    },
+    description: '按结束时间清理已完成和已取消的维护时段；计划中和维护中的记录始终保留。',
   },
   {
     key: 'db_admin_query_history',

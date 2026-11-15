@@ -1,12 +1,12 @@
-import { lazy, Suspense, useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { maintenanceKeys, usePublicMaintenanceStatus } from '@/hooks/queries/maintenance';
-const Overlay = lazy(() => import('./MaintenanceOverlay'));
+import Overlay from './MaintenanceOverlay';
 
 /** Lightweight cross-entry gate; only its active maintenance view loads the illustration. */
 export function MaintenanceBoundary({ children }: { readonly children: ReactNode }) {
   const client = useQueryClient();
-  const { data } = usePublicMaintenanceStatus({ refetchInterval: 30_000 });
+  const { data, isPending, isError, refetch } = usePublicMaintenanceStatus({ refetchInterval: 30_000 });
   const wasEnabled = useRef(false);
   useEffect(() => {
     if (wasEnabled.current && data?.enabled === false) void client.invalidateQueries();
@@ -17,5 +17,7 @@ export function MaintenanceBoundary({ children }: { readonly children: ReactNode
     globalThis.addEventListener('maintenance:enabled', handler);
     return () => globalThis.removeEventListener('maintenance:enabled', handler);
   }, [client]);
-  return data?.enabled ? <Suspense fallback={null}><Overlay info={data} /></Suspense> : children;
+  if (isPending) return <div role="status" style={{ padding: 32 }}>正在检查服务状态…</div>;
+  if (isError && !data) return <div role="alert" style={{ padding: 32 }}>暂时无法检查服务状态，登录凭证已保留。<button onClick={() => void refetch()}>重试</button></div>;
+  return data?.enabled ? <Overlay info={data} /> : children;
 }

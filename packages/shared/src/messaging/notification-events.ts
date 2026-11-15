@@ -76,6 +76,18 @@ export function eventVars<V extends Record<string, unknown>>(): V {
 }
 
 export const NOTIFICATION_EVENTS = defineNotificationEvents({
+  'ops.maintenance.changed': {
+    group: 'ops', label: '维护状态变更', severity: 'important',
+    defaultChannels: ['inapp'], availableChannels: ['inapp', 'email'],
+    vars: eventVars<{ periodId: number; action: string; message: string; scheduledStartAt: string; estimatedEndAt: string }>(),
+    title: '系统维护：{{action}}', content: '{{message}}；计划开始：{{scheduledStartAt}}；预计结束：{{estimatedEndAt}}。',
+  },
+  'ops.maintenance.reminder': {
+    group: 'ops', label: '计划维护开始提醒', severity: 'important',
+    defaultChannels: ['inapp'], availableChannels: ['inapp', 'email'],
+    vars: eventVars<{ periodId: number; message: string; scheduledStartAt: string }>(),
+    title: '系统维护即将开始', content: '{{scheduledStartAt}} 将开始维护：{{message}}。请提前保存工作。',
+  },
   'cms.content.mentioned': {
     group: 'cms', label: '审稿批注提及', severity: 'normal',
     defaultChannels: ['inapp'], availableChannels: ['inapp'],

@@ -10,9 +10,17 @@ vi.mock('./auth', () => ({ authenticateAdminRequest: async (c: { req: { header: 
 } }));
 vi.mock('../lib/maintenance-access', () => ({ maintenanceAccess: async () => ({ canManage: state.manage, canView: state.manage, canViewLogs: state.manage, canBypass: state.bypass }) }));
 import { maintenanceMiddleware } from './maintenance';
+import { maintenanceDecision } from '../services/ops/maintenance-access-policy';
 function app() { const a = new Hono(); a.use('*', maintenanceMiddleware); a.all('*', (c) => c.text('business')); return a; }
 beforeEach(() => { state.enabled = true; state.fail = false; state.manage = false; state.bypass = false; });
 describe('maintenance enforcement', () => {
+  it('keeps diagnosis and enforcement aligned for the exact management root', () => {
+    const access = { canManage: false, canView: false, canViewLogs: true, canBypass: false };
+    expect(maintenanceDecision(true, 'GET', '/api/maintenance', access).allowed).toBe(true);
+    expect(maintenanceDecision(true, 'GET', '/api/maintenance-evil', access).allowed).toBe(false);
+    expect(maintenanceDecision(true, 'PUT', '/api/settings/me', access).allowed).toBe(false);
+    expect(maintenanceDecision(true, 'GET', '/api/users', access).allowed).toBe(false);
+  });
   it('blocks business and never confuses read failures with planned maintenance', async () => {
     const blocked = await app().request('/api/users');
     expect(blocked.status).toBe(503); expect(blocked.headers.get('X-Zenith-Error')).toBe('maintenance');

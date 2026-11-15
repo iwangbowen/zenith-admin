@@ -28,6 +28,7 @@ vi.mock('../utils/member-request', () => ({
 }));
 
 import { prepareTrackerLogout } from '@/utils/tracker';
+import { memberRequest } from '../utils/member-request';
 
 beforeEach(() => {
   localStorage.clear();
@@ -36,6 +37,15 @@ beforeEach(() => {
 });
 
 describe('logout()', () => {
+  it('保留维护响应前的会员凭证', async () => {
+    localStorage.setItem(MEMBER_TOKEN_KEY, 'member-token');
+    localStorage.setItem(MEMBER_REFRESH_TOKEN_KEY, 'member-refresh-token');
+    vi.mocked(memberRequest.get).mockResolvedValueOnce({ code: 503, message: '维护中', data: null });
+    const { result } = renderHook(() => useMemberAuth(), { wrapper: ({ children }) => <MemberAuthProvider>{children}</MemberAuthProvider> });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(localStorage.getItem(MEMBER_TOKEN_KEY)).toBe('member-token');
+    expect(localStorage.getItem(MEMBER_REFRESH_TOKEN_KEY)).toBe('member-refresh-token');
+  });
   it('先调用 prepareTrackerLogout，再清除 MEMBER token', async () => {
     localStorage.setItem(MEMBER_TOKEN_KEY, 'member-token');
     localStorage.setItem(MEMBER_REFRESH_TOKEN_KEY, 'member-refresh-token');

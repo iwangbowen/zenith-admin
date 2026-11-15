@@ -3,7 +3,7 @@ import { Banner, Button, Collapse, DatePicker, Descriptions, Input, InputNumber,
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { maintenanceContract, MAINTENANCE_LOG_STATUS_OPTIONS, type MaintenanceLog, type MaintenanceStatus } from '@zenith/shared/ops';
 import { maintenanceContentSchema, maintenancePlanSchema } from '@zenith/shared/ops/maintenance-validation';
-import { useMaintenanceAccess, useMaintenanceStatus, useMaintenanceLogs, useMaintenancePlan, useMaintenanceStart, useMaintenanceCancel, useMaintenanceDiagnosis, useUpdateMaintenanceStatus } from '@/hooks/queries/maintenance';
+import { useMaintenanceAccess, useMaintenanceStatus, useMaintenanceLogs, useMaintenancePlan, useMaintenanceStart, useMaintenanceCancel, useMaintenanceDiagnosis, useUpdateMaintenanceStatus, useMaintenanceRecipients } from '@/hooks/queries/maintenance';
 import { ListSearchToolbar } from '@/components/list-page';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { useListPage } from '@/hooks/useListPage';
@@ -12,7 +12,6 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { formatDateTimeForApi, parseDateTimeParam } from '@/utils/date';
 import DateTimeText from '@/components/DateTimeText';
-import { useAllUsers } from '@/hooks/queries/users';
 import './maintenance.css';
 import { useLaunchLeaveGuard } from '@/components/workflow/useLaunchLeaveGuard';
 const { Text } = Typography;
@@ -26,12 +25,12 @@ function MaintenanceEditor({ status, reload }: { readonly status: MaintenanceSta
   const save = useUpdateMaintenanceStatus(); const plan = useMaintenancePlan(); const start = useMaintenanceStart(); const cancel = useMaintenanceCancel();
   const diagnosis = useMaintenanceDiagnosis();
   const [draft, setDraft] = useState<Draft | null>(null);
-  useLaunchLeaveGuard(() => draft !== null);
+  useLaunchLeaveGuard(() => draft !== null, true, { title: '放弃未保存的维护配置？', content: '当前修改尚未保存，离开后将丢失。' });
   const [testPath, setTestPath] = useState('/api/users'); const [testMethod, setTestMethod] = useState('GET');
   const [diagnosisKey, setDiagnosisKey] = useState('');
   const [planning, setPlanning] = useState(false);
   const [automaticEnd, setAutomaticEnd] = useState(false);
-  const users = useAllUsers({ enabled: planning && !!access.data?.canManage && !status.current });
+  const users = useMaintenanceRecipients(planning && !!access.data?.canManage && !status.current);
   const initial: Draft = { message: status.message, estimatedEndAt: status.estimatedEndAt, version: status.version, reason: '', scheduledStartAt: status.scheduledStartAt, autoEndAt: status.autoEndAt, notifyUserIds: status.current?.notifyUserIds ?? [], remindMinutes: status.current?.remindMinutes ?? 15 };
   const value = draft ?? initial; const stale = !!draft && value.version !== status.version;
   const pending = save.isPending || plan.isPending || start.isPending || cancel.isPending;
@@ -46,7 +45,7 @@ function MaintenanceEditor({ status, reload }: { readonly status: MaintenanceSta
     if (!parsed.success) { Toast.error(parsed.error.issues[0].message); return; }
     if (!value.reason.trim()) { Toast.error('请填写操作原因'); return; }
     try {
-      await save.mutateAsync({ body: { ...parsed.data, reason: value.reason, enabled, version: value.version } });
+      await save.mutateAsync({ body: { ...parsed.data, autoEndAt: value.autoEndAt, reason: value.reason, enabled, version: value.version } });
       setDraft(null); Toast.success(enabled ? status.enabled ? '维护说明已更新' : '维护已开启' : status.enabled ? '维护已结束' : '草稿已保存');
     } catch { /* Preserve the draft and its original version on all failures. */ }
   };
@@ -72,7 +71,7 @@ function MaintenanceEditor({ status, reload }: { readonly status: MaintenanceSta
   return <div className="maintenance-editor">
     <Space wrap><Tag color={status.enabled ? 'orange' : status.current ? 'blue' : 'green'}>{status.enabled ? '维护中' : status.current ? '待开始' : '正常开放'}</Tag>
       <Tag>版本 {status.version}</Tag><Button size="small" disabled={pending} onClick={abandon}>{draft ? '放弃草稿并重载' : '刷新状态'}</Button></Space>
-    <Descriptions align="left" data={[
+    <Descriptions align="left" row column={2} data={[
       { key: '实际开始', value: <DateTimeText value={status.startedAt} mode="absolute" /> },
       { key: '开启人', value: status.startedByName ?? '—' },
       { key: '预计结束', value: <DateTimeText value={status.estimatedEndAt} mode="absolute" /> },
@@ -83,6 +82,7 @@ function MaintenanceEditor({ status, reload }: { readonly status: MaintenanceSta
     {stale ? <Banner type="warning" closeIcon={null} description="服务端状态已变化，当前草稿保留。请重载后重新编辑，旧版本不能提交。" /> : null}
     <label>维护提示<TextArea aria-label="维护提示" rows={3} maxLength={512} value={value.message} onChange={(message) => edit({ message })} disabled={!canManage || pending} /></label>
     <label>预计结束时间<DatePicker type="dateTime" value={parseDateTimeParam(value.estimatedEndAt) ?? undefined} onChange={(date) => edit({ estimatedEndAt: format(date) })} disabled={!canManage || pending} /></label>
+    {status.enabled ? <label>自动恢复时间（清空即关闭）<DatePicker type="dateTime" value={parseDateTimeParam(value.autoEndAt) ?? undefined} onChange={(date) => edit({ autoEndAt: format(date) })} disabled={!canManage || pending} /></label> : null}
     {canManage ? <label>操作原因<Input aria-label="操作原因" value={value.reason} maxLength={500} onChange={(reason) => edit({ reason })} disabled={pending} placeholder="保存、开启、延长或结束维护的原因" /></label> : null}
     {status.current?.status === 'scheduled' ? <Space wrap>
       <Text>计划开始：<DateTimeText value={status.scheduledStartAt} mode="absolute" /></Text>
@@ -96,7 +96,8 @@ function MaintenanceEditor({ status, reload }: { readonly status: MaintenanceSta
       <label>计划开始<DatePicker type="dateTime" value={parseDateTimeParam(value.scheduledStartAt) ?? undefined} onChange={(date) => edit({ scheduledStartAt: format(date) })} /></label>
       <Space wrap><Text>自动恢复（独立于预计结束）</Text><Switch checked={automaticEnd} onChange={(enabled) => { setAutomaticEnd(enabled); edit({ autoEndAt: enabled ? value.estimatedEndAt : null }); }} /></Space>
       {automaticEnd ? <label>自动恢复时间<DatePicker type="dateTime" value={parseDateTimeParam(value.autoEndAt) ?? undefined} onChange={(date) => edit({ autoEndAt: format(date) })} /></label> : null}
-      <label>通知接收人<Select multiple maxTagCount={2} value={value.notifyUserIds} optionList={(users.data ?? []).map((user) => ({ value: user.id, label: user.nickname || user.username }))} onChange={(ids) => edit({ notifyUserIds: ids as number[] })} placeholder="选填；无接收人时只显示站内维护状态" /></label>
+      <label>额外通知接收人（创建人始终接收）<Select multiple maxTagCount={2} value={value.notifyUserIds} optionList={(users.data ?? []).map((user) => ({ value: user.id, label: user.nickname || user.username }))} onChange={(ids) => edit({ notifyUserIds: ids as number[] })} placeholder="选择平台用户；通知按渠道策略与个人偏好投递" /></label>
+      <Text type="tertiary">由 Worker 每分钟扫描；预计结束只用于展示，只有显式设置自动恢复才会开放。</Text>
       <label>提前提醒（分钟）<InputNumber value={value.remindMinutes} min={0} max={1440} onChange={(minutes) => edit({ remindMinutes: Number(minutes) })} /></label>
       <Button disabled={stale || pending} loading={plan.isPending} onClick={() => void submitPlan()}>提交维护计划</Button>
     </section> : null}
@@ -135,9 +136,9 @@ export default function MaintenancePage() {
   if (access.isLoading || (access.data?.canView && status.isLoading)) return <Spin size="large" />;
   if (!access.data?.canView && access.data?.canViewLogs) return <div className="page-container"><MaintenanceHistory /></div>;
   if (!access.data?.canView && !access.isError) return <Banner type="warning" description="没有维护查看权限" />;
-  if (status.isError || !status.data) return <Banner type="danger" description={<Space>无法读取维护状态，不能将未知状态视为正常运行<Button onClick={() => void status.refetch()}>重试</Button></Space>} />;
+  if (!status.data) return <Banner type="danger" description={<Space>无法读取维护状态，不能将未知状态视为正常运行<Button onClick={() => void status.refetch()}>重试</Button></Space>} />;
   return <div className="page-container page-tabs-page"><Tabs activeKey={tab} onChange={(value) => setTab(value as typeof tab)} type="line">
-    <TabPane itemKey="config" tab="维护控制"><MaintenanceEditor status={status.data} reload={() => status.refetch()} /></TabPane>
+    <TabPane itemKey="config" tab="维护控制">{status.isError ? <Banner type="warning" closeIcon={null} description="刷新失败，当前显示上次成功读取的状态；草稿已保留，请重试刷新。" /> : null}<MaintenanceEditor status={status.data} reload={() => status.refetch()} /></TabPane>
     {access.data?.canViewLogs ? <TabPane itemKey="logs" tab="维护记录"><MaintenanceHistory /></TabPane> : null}
   </Tabs></div>;
 }

@@ -40,7 +40,7 @@ export function MemberAuthProvider({ children }: Readonly<{ children: ReactNode 
       const res = await apiRaw(memberAuthContract.me, { client: memberRequest, silent: true });
       if (res.code === 0) {
         setState({ member: res.data, loading: false });
-      } else if (res.code === -1) {
+      } else if (res.code === -1 || res.code === 429 || res.code >= 500) {
         // 网络错误（如后端未就绪），不清除 token，只重置 loading
         setState((prev) => ({ ...prev, loading: false }));
       } else {
