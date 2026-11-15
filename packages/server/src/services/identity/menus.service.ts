@@ -120,7 +120,7 @@ export async function listUserMenuTree(): Promise<Menu[]> {
   // 按钮型节点是纯操作权限点（权限码经登录态下发），不参与页面/侧边栏展示
   const platformPages = new Set(Object.values(SETTINGS_MODULES).filter((def) => def.platformOnly).flatMap((def) => def.page ? [def.page] : []));
   const allMenus = excludeDisabledSubtrees(await db.select().from(menus).orderBy(asc(menus.sort), asc(menus.id)))
-    .filter((m) => m.type !== 'button' && (!config.multiTenantMode || isPlatformAdmin(user) || !platformPages.has(m.path ?? undefined)));
+    .filter((m) => m.type !== 'button' && (!config.multiTenantMode || isPlatformAdmin(user) || !m.path || !platformPages.has(m.path)));
 
   if (isSuperAdmin(user)) {
     return buildMenuTree(allMenus.map(mapMenu));
