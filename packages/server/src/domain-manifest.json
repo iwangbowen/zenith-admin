@@ -10,6 +10,7 @@
       ],
       "dependsOn": [
         "files",
+        "identity",
         "messaging",
         "platform",
         "tasks"
