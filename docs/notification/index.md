@@ -62,11 +62,15 @@
 | 知识中心 `wiki` | `wiki.doc.published`、`wiki.doc.commented`、`wiki.doc.mentioned`、`wiki.doc.reviewed`、`wiki.governance.maintenance_due`、`wiki.governance.review_due` |
 | 工作流 `workflow` | `workflow.task.created`、`workflow.task.cc`、`workflow.task.urged`、`workflow.task.transferred`、`workflow.instance.approved`、`workflow.instance.rejected`、`workflow.instance.withdrawn`、`workflow.instance.returned`、`workflow.consult.invited`、`workflow.consult.replied`、`workflow.comment.mentioned`、`workflow.node.exception`、`workflow.automation.message` |
 | 组织与租户 `identity` | `identity.tenant.expiring`、`identity.tenant.expired` |
-| 运维与告警 `ops` | `ops.monitor.alert`、`ops.monitor.alert_test`、`ops.error.alert`、`ops.scheduler.job_failed`、`ops.scheduler.task_alert`、`ops.license.expiring`、`ops.license.invalid` |
+| 运维与告警 `ops` | `ops.monitor.alert`、`ops.monitor.alert_test`、`ops.error.alert`、`ops.scheduler.job_failed`、`ops.scheduler.task_alert`、`ops.license.expiring`、`ops.license.invalid`、`ops.maintenance.changed`、`ops.maintenance.reminder` |
 | 开放平台 `open-platform` | `open-platform.app.review_requested`、`open-platform.app.reviewed`、`open-platform.webhook.delivery_failed`、`open-platform.quota.threshold_exceeded` |
 | 报表中心 `report` | `report.dashboard.mentioned` |
 | 平台服务 `platform` | `platform.feedback.handled`、`platform.export.finished` |
 | 通知中心 `messaging` | `messaging.digest`（隐藏元事件，用于摘要邮件） |
+
+维护模式的状态变更与提前提醒以时段、版本或提醒动作去重，与状态同事务保存通知意图。
+事件级别为 `important`，默认站内信，可选邮件，遵循个人偏好与免打扰；仅保存提示草稿不通知，收件人名单也不授予维护查看或业务通行能力。
+创建人、额外平台接收人、提醒时点和 Worker 执行条件见[维护模式](../backend/maintenance-mode.md#计划、通知与恢复)。
 
 ### 级别与规则
 

@@ -203,7 +203,8 @@ const operationColumn = createOperationColumn<User>({
 | `PageLoading` | 页面级或内联加载态 |
 | `PageErrorBoundary` / `RouteErrorBoundary` | 页面错误边界，动态 chunk 加载失败时提供整页刷新 |
 | `FullPageRetry` | 全屏失败重试页，支持离线说明、重试中状态与次要操作 |
-| `MaintenanceOverlay` | 维护模式覆盖层 |
+| `MaintenanceOverlay` | 维护提示、预计时间和恢复检查；后台可附加管理员登录 / 恢复管理入口 |
+| `MaintenanceBoundary` | 会员与移动审批的维护状态门禁，保留凭证并在恢复后校准查询缓存，见[维护模式](../backend/maintenance-mode.md) |
 | `LockScreen` | 后台锁屏界面 |
 | `ForceChangePasswordModal` | 强制修改密码弹窗 |
 | `TaskTray` | 顶栏全局异步任务托盘 |

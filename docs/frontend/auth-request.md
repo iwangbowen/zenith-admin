@@ -76,6 +76,20 @@ interface StoredAccount {
 - `fetchRaw(url, init)`：带鉴权的原生 fetch，401 时刷新并重试一次，返回原生 `Response`（非 401 的失败状态码原样返回，认证失效 / 网络错误返回 `null`），供流式与二进制读取
 - `authHeaders()`：当前登录态的 `Authorization` 头，供 Semi `Upload`、wangEditor 等自行发请求的第三方组件使用
 
+### 维护状态与恢复
+
+公开状态 `usePublicMaintenanceStatus` 是维护提示的查询数据源；HTTP 的 `maintenance:enabled` 事件和 WebSocket
+的 `maintenance:changed` 消息只触发查询失效，不直接把事件负载写成本地维护状态。全入口每 30 秒轮询兜底，维护结束后失效业务查询缓存。
+`maintenance-unavailable`、`rate-limit-unavailable` 或未携带维护标识的 503 都按服务不可用处理；`FullPageRetry` 不凭状态码推断系统维护。
+
+维护期间，后台通过 `GET /api/maintenance/access` 获取四项能力：有业务通行能力可继续进入业务壳；仅有查看、管理或记录能力进入维护恢复控制台；
+普通账号和匿名身份显示维护提示。后台维护提示提供管理员登录 / 恢复管理入口，退出登录后不能沿用前一个账号的能力。
+会员前台和移动审批使用 `MaintenanceBoundary`，维护时暂停挂载业务路由；首次读取状态未完成时显示检查态，首次失败提供重试，临时失败保留凭证。
+
+维护控制页的草稿保留读取时的版本；其他操作人或计划调度推进版本后显示冲突提示，重载前不能提交旧草稿。
+后台刷新失败且已有状态数据时保留编辑器和草稿，并说明当前显示的是上次成功读取的状态。
+完整能力与 API 规则见[维护模式](../backend/maintenance-mode.md)。
+
 后台 `request` 额外提供：
 
 | 方法 | 用途 |

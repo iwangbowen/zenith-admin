@@ -179,6 +179,25 @@ api / worker 拆分且 worker 需要访问本地暂存或 CMS 静态产物时，
 
 部署须应用完整迁移链，并确保失效监听连接可用；连接池或代理不能传递 NOTIFY 时，配置一致性依赖兜底刷新。Redis 判定客户端不使用离线队列，超时或未就绪时按规则的故障放行/拒绝策略处理；接口规则、开放平台套餐的故障开关不能互相替代。统计队列及丢弃指标按进程计算，近期记录有容量和事件时间保留限制。运维边界及验证标准见[接口限流](../backend/rate-limit.md)。
 
+### 维护模式与受控恢复
+
+部署须应用完整数据库迁移，并保留 `maintenance_mode` / `maintenance_logs` 的失效监听。
+计划开始、提前提醒与显式自动恢复依赖 Worker 执行 `maintenance-lifecycle` 系统任务；只有 API 进程不能推进计划。
+在系统调度页面确认任务启用、Worker 存活及最近运行结果，时间参数使用系统业务时区；每分钟扫描不承诺秒级准点。
+
+维护模式只暂停受控业务入口，不会自动停掉 Worker、Subscriber、已开始请求或关键支付回调；需要数据库停写时另行执行停机与流量隔离。
+不能仅以预计结束时间判断已恢复，应检查公开状态 `GET /api/maintenance/status` 的 `enabled` 及实际业务请求。
+
+后台无法恢复时，在可访问同一数据库且已配置运行时密钥的服务器部署目录执行：
+
+```bash
+npm run maintenance:recover -- --actor-id <平台管理员ID> --reason "维护完成，恢复服务" --confirm-disable
+```
+
+monorepo 根目录加 `-w @zenith/server`；源码开发环境可用 `maintenance:recover:dev`。
+命令要求启用的平台账号及当前维护管理能力：取消待开始计划或结束进行中的维护，并记录原因与操作者。
+完成后确认公开状态恢复开放；数据库不可用时先恢复数据库。完整权限、计划与恢复规则见[维护模式](../backend/maintenance-mode.md)。
+
 ### 7. PDF 字体（子集 / 全量）
 
 报表打印与审批单的 PDF 由服务端 pdfkit 生成，含中文必须嵌入 CJK 字体（pdfkit 内置字体没有汉字字形），与是否 Docker 部署无关。

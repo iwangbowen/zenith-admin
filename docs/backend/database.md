@@ -139,7 +139,7 @@ import { users, roles } from '../db/schema';
 | `auth.ts` | 认证与账号安全 | `user_oauth_accounts`、`oauth_configs`、`user_api_tokens`、`password_reset_tokens`、`user_mfa_factors`、`user_trusted_devices`、`login_risk_events`、`rate_limit_rules` |
 | `identity-providers.ts` | 企业 SSO | `tenant_identity_providers`、`user_identity_accounts`、`identity_provider_sync_logs` |
 | `directory-sync.ts` | 通讯录同步 | `directory_sync_sources`、`directory_sync_runs`、`directory_sync_run_items`、`directory_sync_conflicts`、`directory_sync_user_links`、`directory_sync_dept_links` |
-| `system.ts` | 运行时设置与调度 | `system_settings`（按模块的 jsonb 覆盖文档，见[运行时设置](./settings.md)）、`system_runtime_state`、`cron_jobs`、`cron_job_logs`、`system_scheduler_*`、`retention_policies`、`regions`、`maintenance_mode`、`user_feedbacks` |
+| `system.ts` | 运行时设置与调度 | `system_settings`（按模块的 jsonb 覆盖文档，见[运行时设置](./settings.md)）、`system_runtime_state`、`cron_jobs`、`cron_job_logs`、`system_scheduler_*`、`retention_policies`、`regions`、`maintenance_mode` / `maintenance_logs`（全局版本与维护时段，见[维护模式](./maintenance-mode.md)）、`user_feedbacks` |
 | `dicts.ts` | 数据字典 | `dicts`、`dict_items` |
 | `files.ts` | 文件存储 | `file_storage_configs`、`managed_files`、`upload_sessions`、`upload_chunks`、`business_files` |
 | `logs.ts` | 审计日志 | `login_logs`、`operation_logs`、`ip_access_logs` |

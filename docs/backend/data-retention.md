@@ -45,6 +45,12 @@
 
 系统级任务 `data-retention` 每天 `0 3 * * *` 触发全量数据保留清理。
 
+### 维护时段保护
+
+`maintenance_logs` 使用 `custom` 策略，仅按 `ended_at` 清理超过保留天数的 `completed` / `cancelled` 时段。
+`scheduled` / `ongoing` 无论创建多久都保留；待清理预览与执行使用同一状态和结束时间条件。
+结束维护通过[维护模式生命周期](./maintenance-mode.md)操作，不通过保留清理关闭业务门禁。
+
 ## 策略清单
 
 策略清单以代码声明与运行时「数据保留」页面为准，主要分组如下：

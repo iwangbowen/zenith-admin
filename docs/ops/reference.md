@@ -61,13 +61,16 @@
 | 缓存管理 | `/system/cache` | `system/cache/CacheManagePage` | `system:cache:list` |
 | 数据保留 | `/system/retention` | `system/retention/RetentionPage` | `system:retention:view` |
 | 服务监控 | `/system/monitor` | `system/monitor/MonitorPage` | `system:monitor:view` |
-| 维护模式 | `/system/maintenance` | `system/maintenance/MaintenancePage` | `system:maintenance:view/manage/log`；业务通行独立授权 `bypass` |
+| 维护模式 | `/system/maintenance` | `system/maintenance/MaintenancePage` | `system:maintenance:view` / `system:maintenance:manage` 查看控制台；`system:maintenance:log` 查看记录 |
 | 应用版本 | `/system/app-releases` | `system/app-releases/AppReleasesPage` | `system:app-release:list` |
 | 告警概览 | `/alerts/overview` | `alerts/overview/AlertOverviewPage` | `alert:overview:list` |
 | 告警规则 | `/alerts/rules` | `alerts/rules/AlertRulesPage` | `alert:rule:list` |
 | 告警事件 | `/alerts/events` | `alerts/events/AlertEventsPage` | `alert:event:list` |
 
 按钮级权限包括 `system:process:kill`、`system:process:priority`、`system:docker:manage`、`system:service:manage`、`system:terminal:monitor`、`system:log:files:download`、`system:log:files:delete`、`system:firewall:manage`、`system:nginx:manage`、`system:nginx:reload`、`system:ssl:create`、`system:ssl:delete`、`system:db-admin:query`、`system:db-admin:export`、`system:db-admin:write`、`system:db-admin:maintain`、`system:db-admin:terminal`、`system:cache:update`、`system:cache:delete`、`system:retention:edit`、`system:retention:run`、`system:app-release:create`、`system:app-release:update`、`system:app-release:delete`、`system:app-release:publish`、`alert:rule:create`、`alert:rule:update`、`alert:rule:delete`、`alert:rule:test`、`alert:event:handle`、`alert:event:export`。
+
+维护模式的普通业务通行单独使用高风险权限 `system:maintenance:bypass`；查看、管理或日志权限不会自动授予通行。
+多租户范围、计划动作、诊断与恢复入口见[维护模式](../backend/maintenance-mode.md)。
 
 ## 核心数据表
 
@@ -80,7 +83,8 @@
 | `db_query_favorites` | SQL 收藏夹 |
 | `db_backups` | 数据库备份记录（数据库管理 → 备份 Tab 与定时任务 `databaseBackup` 写入） |
 | `ssl_certificates` | SSL 证书元数据 |
-| `maintenance_logs` | 维护模式记录 |
+| `maintenance_mode` | 全局维护提示草稿与递增配置版本 |
+| `maintenance_logs` | 计划 / 进行中 / 已结束 / 已取消时段、通知配置及变更过程 |
 | `retention_policies` | 数据保留策略运行期配置 |
 | `system_metric_samples` | 监控指标采样点 |
 | `monitor_alert_rules` | 告警规则 |

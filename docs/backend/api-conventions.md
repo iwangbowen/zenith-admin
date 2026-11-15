@@ -229,7 +229,10 @@ export const { list: listXxxs, get: getXxx, ensure: ensureXxxExists, create: cre
 
 接口级普通超限或显式封禁返回 HTTP 429，附带秒数形式的 `Retry-After`；正常计数响应提供额度与窗口信息。限流 Redis 故障是否放行由规则的 `failMode` 决定，故障拒绝返回 503 和 `X-Zenith-Error: rate-limit-unavailable`，不能触发全站维护。
 
-维护模式使用独立的 `X-Zenith-Error: maintenance` 标识。调用方不得仅根据 503 或提示文案推断维护状态；跨域调用所需的退避、额度和分类响应头通过 CORS 暴露。完整响应语义、身份阶段、路由匹配和规则叠加见[接口限流](./rate-limit.md#redis-与-http-响应)。
+维护模式使用独立的 `X-Zenith-Error: maintenance` 标识，并返回 `Cache-Control: no-store` 和 `Retry-After`。
+维护状态读取失败返回 503 与 `X-Zenith-Error: maintenance-unavailable`，保留服务不可用语义。
+调用方不得仅根据 503 或提示文案推断维护状态；跨域调用所需的退避、额度和分类响应头通过 CORS 暴露。
+维护状态、版本冲突和诊断响应见[维护模式](./maintenance-mode.md#响应语义)；限流身份阶段、路由匹配与规则叠加见[接口限流](./rate-limit.md#redis-与-http-响应)。
 
 ## 路由组织
 
