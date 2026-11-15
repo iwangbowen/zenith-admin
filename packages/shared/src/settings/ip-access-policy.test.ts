@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { evaluateIpAccess, ipRangesOverlap, isIpOrCidr, matchesIpRange, normalizeIpOrCidr } from './ip-access-policy';
+import { evaluateIpAccess, inspectIpList, ipRangesOverlap, isIpOrCidr, matchesIpRange, normalizeIpOrCidr } from './ip-access-policy';
 import { ipAccessSettingsSchema } from './modules/ip-access';
 
 describe('IP access policy', () => {
+  it('reports original line numbers and canonical duplicates', () => {
+    expect(inspectIpList('2001:DB8::1\n\n::: \n2001:db8::1')).toEqual({ entries: ['2001:db8::1'], duplicates: 1, invalid: [{ line: 3, value: ':::' }] });
+  });
   it.each([':::', 'abcd:ef', '2001:db8:1', '127.1', '0x7f000001', '010.0.0.1', 'fe80::1%eth0', '1.2.3.4/33', '::/129', '::/01', '::ffff:192.0.2.0/95'])('rejects ambiguous or invalid %s', (value) => expect(isIpOrCidr(value)).toBe(false));
   it('canonicalizes IPv6, host bits and mapped addresses', () => {
     expect(normalizeIpOrCidr('2001:0DB8:0:0::1')).toBe('2001:db8::1');

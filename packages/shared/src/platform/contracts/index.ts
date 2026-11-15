@@ -12,6 +12,7 @@ export * from './files';
 export * from './health';
 export * from './global-search';
 export * from './ip-access-logs';
+export * from './ip-access';
 export * from './monitor';
 export * from './observability';
 export * from './monitor-alerts';

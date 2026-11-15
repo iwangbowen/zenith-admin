@@ -14,6 +14,13 @@ function statusOf(run: () => unknown): number {
 }
 
 describe('Demo settings immutable revisions', () => {
+  it('IP policy rejects empty whitelist and self-lockout without changing history', () => {
+    const before = mockSettingsEnvelope('ipAccess');
+    for (const overrides of [{ whitelistEnabled: true, whitelist: [] }, { blacklistEnabled: true, blacklist: ['192.0.2.0/24'] }]) {
+      expect(statusOf(() => putMockSettings('ipAccess', { baseToken: before.baseToken, overrides }))).toBe(400);
+    }
+    expect(mockSettingsEnvelope('ipAccess')).toEqual(before);
+  });
   it('同值显式覆盖创建版本，重复保存与只改说明不创建版本', () => {
     const before = mockSettingsEnvelope('auth');
     const overrides = { captchaEnabled: before.inherited.captchaEnabled };

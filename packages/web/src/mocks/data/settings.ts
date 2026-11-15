@@ -1,6 +1,7 @@
 import * as z from 'zod';
 import {
   SETTINGS_MODULES, SETTINGS_MODULE_KEYS, diffSettingsSnapshots, getSettingsDefinition,
+  evaluateIpAccess, type IpAccessSettings,
   mergeSettingsLayers, parseSettingsOverrides, resolveSettings, settingsOverriddenPaths, stableSettingsSerialize,
   type SettingsDoc, type SettingsEnvelope, type SettingsModuleKey, type SettingsOf,
   type SettingsRevisionDetail, type SettingsRevisionSummary, type SettingsRestorePreview, type SettingsWriteBody,
@@ -77,6 +78,9 @@ export function putMockSettings<M extends SettingsModuleKey>(
     overrides = parseSettingsOverrides(module, candidate);
     effective = SETTINGS_MODULES[module].schema.parse(mergeSettingsLayers(before.inherited as SettingsDoc, overrides)) as SettingsDoc;
   } catch (error) { return validationError(error); }
+  if (module === 'ipAccess' && !evaluateIpAccess(effective as IpAccessSettings, '192.0.2.10').allowed) {
+    throw new MockHttpError(badRequest('该配置会阻断当前来源 IP（192.0.2.10），请先调整名单', { status: 400 }));
+  }
   if (stableSettingsSerialize(overrides) === stableSettingsSerialize(before.overrides)) return before;
   const { snapshot, hash } = definition(module);
   const revision: SettingsRevisionDetail = {

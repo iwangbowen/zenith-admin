@@ -39,6 +39,22 @@ export function isIpOrCidr(value: string): boolean {
   return normalizeIpOrCidr(value) !== null;
 }
 
+export function inspectIpList(text: string) {
+  const entries: string[] = [];
+  const invalid: { line: number; value: string }[] = [];
+  const seen = new Set<string>();
+  let duplicates = 0;
+  text.split('\n').forEach((line, index) => {
+    const value = line.trim();
+    if (!value) return;
+    const normalized = normalizeIpOrCidr(value);
+    if (!normalized) { invalid.push({ line: index + 1, value }); return; }
+    if (seen.has(normalized)) duplicates++;
+    else { seen.add(normalized); entries.push(normalized); }
+  });
+  return { entries, invalid, duplicates };
+}
+
 export function matchesIpRange(ip: string, range: string): boolean {
   if (ip.includes('/')) return false;
   const source = parseRange(ip);

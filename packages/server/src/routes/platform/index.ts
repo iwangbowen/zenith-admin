@@ -44,6 +44,8 @@ import apiAccessLogsRoutes from './api-access-logs';
 import healthRoutes from './health';
 import jobMonitorRoutes from './job-monitor';
 import ipAccessLogsRoutes from './ip-access-logs';
+import ipAccessRoutes from './ip-access';
+import { ipAccessContract } from '@zenith/shared/platform';
 import monitorAlertsRoutes from './monitor-alerts';
 import monitorRoutes from './monitor';
 import observabilityRoutes from './observability';
@@ -82,6 +84,7 @@ export default defineRouteDomain({
     [monitorAlertContract.basePath, monitorAlertsRoutes],
     [operationLogContract.basePath, operationLogsRoutes],
     [ipAccessLogContract.basePath, ipAccessLogsRoutes],
+    [ipAccessContract.basePath, ipAccessRoutes],
     // 运行时设置：模块级 License 门控在路由内按注册表逐模块施加，挂载点不整体打 feature 标
     [settingsContract.basePath, settingsRoutes],
     // License 管理面永不打 feature 标（受限模式下也必须可达，否则无法自救）

@@ -1,6 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { resourceKeyOf } from '@zenith/shared/core';
 import { analyticsContract } from '@zenith/shared/analytics';
+import { ipAccessContract } from '@zenith/shared/platform';
 import { driveAdminContract, driveSpaceContract } from '@zenith/shared/drive';
 import { wikiDocContract, wikiGovernanceContract, wikiStatsContract } from '@zenith/shared/wiki';
 import type { SettingsEnvelope, SettingsModuleKey } from '@zenith/shared/settings';
@@ -13,6 +14,7 @@ export function invalidateSettingsEffects<M extends SettingsModuleKey>(
   saved: SettingsEnvelope<M>,
   previous: SettingsEnvelope<M> | undefined,
 ) {
+  if (module === 'ipAccess') void qc.invalidateQueries({ queryKey: contractKey(ipAccessContract.context) });
   if (module === 'drive') {
     // 全局配额影响每个空间的派生值，所有空间列表及详情均需重新计算。
     for (const op of [driveSpaceContract.my, driveSpaceContract.list, driveSpaceContract.detail, driveAdminContract.spaces]) {

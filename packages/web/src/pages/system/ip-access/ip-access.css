@@ -1,0 +1,20 @@
+.ip-access-config {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ip-access-list-editor {
+  width: 100%;
+}
+
+.ip-access-list-editor textarea {
+  font-family: monospace;
+}
+
+@media (width <= 768px) {
+  .ip-access-list-editor {
+    min-width: 0;
+    max-width: 100%;
+  }
+}

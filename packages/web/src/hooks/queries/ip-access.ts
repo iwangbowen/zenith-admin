@@ -1,7 +1,7 @@
 import { keepPreviousData } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
-import { ipAccessLogContract } from '@zenith/shared/platform';
-import { contractKey, useApiQuery } from '@/lib/contract-query';
+import { ipAccessLogContract, ipAccessContract } from '@zenith/shared/platform';
+import { contractKey, useApiQuery, useApiMutation } from '@/lib/contract-query';
 
 export type IpAccessLogListParams = NonNullable<QueryOf<typeof ipAccessLogContract.list>>;
 
@@ -17,4 +17,10 @@ export const ipAccessKeys = {
 
 export function useIpAccessLogs(params: IpAccessLogListParams) {
   return useApiQuery(ipAccessLogContract.list, { query: params }, { placeholderData: keepPreviousData });
+}
+export function useDiagnoseIpAccess() {
+  return useApiMutation(ipAccessContract.diagnose);
+}
+export function useIpAccessContext() {
+  return useApiQuery(ipAccessContract.context, {});
 }
