@@ -2,6 +2,7 @@ import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TOKEN_KEY } from '@zenith/shared/core';
 import { authContract } from '@zenith/shared/identity';
+import { maintenanceContract } from '@zenith/shared/ops';
 import { preferencePolicySchema } from '@zenith/shared/preferences';
 import { settingsProjectionContract } from '@zenith/shared/settings/projections';
 import { contractKey } from '@/lib/contract-query';
@@ -35,6 +36,10 @@ beforeEach(() => {
   localStorage.clear();
   window.location.hash = '#/';
   policy = preferencePolicySchema.parse({});
+  requests.admin.mockImplementation(async (url: string) => {
+    if (url === maintenanceContract.status.fullPath) return response({ enabled: false, message: '系统维护中', estimatedEndAt: null, autoEndAt: null, scheduledStartAt: null, startedAt: null, version: 0 });
+    throw new Error('Unexpected admin request: ' + url);
+  });
   requests.approval.mockImplementation(async (url: string) => response(
     url === authContract.preferences.fullPath
       ? { overrides: { multiSelectLayout: 'wrap' } }
@@ -64,6 +69,15 @@ describe('ApprovalPreferencesBoundary', () => {
     render(<ApprovalApp />);
     expect(await screen.findByText('审批登录')).toBeTruthy();
     expect(requests.approval).not.toHaveBeenCalled();
+  });
+
+  it('does not mount authenticated preferences while maintenance is active', async () => {
+    localStorage.setItem(TOKEN_KEY, 'approval-test-token');
+    requests.admin.mockResolvedValueOnce(response({ enabled: true, message: '审批暂停维护', estimatedEndAt: null, autoEndAt: null, scheduledStartAt: null, startedAt: null, version: 1 }));
+    render(<ApprovalApp />);
+    expect(await screen.findByRole('heading', { name: '系统维护中' })).toBeTruthy();
+    expect(requests.approval).not.toHaveBeenCalled();
+    expect(localStorage.getItem(TOKEN_KEY)).toBe('approval-test-token');
   });
 
   it('clears cached personal preferences when leaving authenticated routes', async () => {
