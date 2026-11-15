@@ -30,13 +30,7 @@ import {
 import { entityStatusSchema } from '../core/api-schemas';
 
 // ─── 维护模式 ────────────────────────────────────────────────────────────────
-export const updateMaintenanceSchema = z.object({
-  enabled: z.boolean(),
-  message: z.string().max(512).optional(),
-  estimatedEndAt: z.string().nullable().optional(),
-});
-
-export type UpdateMaintenanceInput = z.infer<typeof updateMaintenanceSchema>;
+export { updateMaintenanceSchema, type UpdateMaintenanceInput } from './maintenance-validation';
 
 // ─── SSL 证书 ────────────────────────────────────────────────────────────────
 export const generateSelfSignedCertSchema = z.object({

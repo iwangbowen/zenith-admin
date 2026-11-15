@@ -71,6 +71,13 @@
       "when": 1794732196238,
       "tag": "0009_mixed_magik",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794740146294,
+      "tag": "0010_maintenance_lifecycle",
+      "breakpoints": true
     }
   ]
 }

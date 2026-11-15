@@ -1,43 +1,28 @@
 import { createMiddleware } from 'hono/factory';
-import { verifyToken } from '../lib/jwt';
-import type { JwtPayload } from './auth';
+import { authenticateAdminRequest } from './auth';
 import { getMaintenanceStatus } from '../services/ops/maintenance.service';
-import { SUPER_ADMIN_CODE } from '@zenith/shared/identity';
-
-/** Paths exempt from maintenance mode blocking */
-const BYPASS_PREFIXES = [
-  '/api/health',
-  '/api/auth/',
-  '/api/maintenance/status',
-  '/metrics',
-  '/api/ws',
-];
+import { maintenanceAccess } from '../lib/maintenance-access';
+import { maintenanceException } from '../services/ops/maintenance-access-policy';
+import { parseDateTimeInput } from '../lib/datetime';
 
 export const maintenanceMiddleware = createMiddleware(async (c, next) => {
-  const path = c.req.path;
-
-  // Always pass through bypass paths
-  if (BYPASS_PREFIXES.some((p) => path === p || path.startsWith(p))) {
-    return next();
+  if (maintenanceException(c.req.method, c.req.path)) return next();
+  let status;
+  try { status = await getMaintenanceStatus(); }
+  catch {
+    c.header('X-Zenith-Error', 'maintenance-unavailable');
+    return c.json({ code: 503, message: '维护状态暂不可用，请稍后重试', data: null }, 503);
   }
-
-  const status = await getMaintenanceStatus();
   if (!status.enabled) return next();
-
-  // Super admin bypasses maintenance
-  const authorization = c.req.header('Authorization');
-  if (authorization?.startsWith('Bearer ')) {
-    try {
-      const payload = await verifyToken<JwtPayload>(authorization.slice(7));
-      if (payload.roles?.includes(SUPER_ADMIN_CODE)) return next();
-    } catch {
-      // invalid token — fall through to maintenance block
-    }
-  }
-
+  try {
+    const user = await authenticateAdminRequest(c);
+    const access = await maintenanceAccess(user);
+    const managementPath = /^\/api\/maintenance(?:\/|$)/.test(c.req.path);
+    const shellPath = c.req.method === 'GET' && ['/api/menus/user', '/api/settings/me', '/api/auth/me'].includes(c.req.path);
+    if (access.canBypass || ((managementPath || shellPath) && (access.canView || access.canManage || access.canViewLogs))) return next();
+  } catch { /* An invalid identity never grants maintenance passage. */ }
   c.header('X-Zenith-Error', 'maintenance');
-  return c.json(
-    { code: 503, message: status.message || '系统维护中，请稍后重试', data: null },
-    503,
-  );
+  c.header('Cache-Control', 'no-store');
+  c.header('Retry-After', String(status.estimatedEndAt ? Math.max(30, Math.ceil((parseDateTimeInput(status.estimatedEndAt)!.getTime() - Date.now()) / 1000)) : 60));
+  return c.json({ code: 503, message: status.message, data: { enabled: true, version: status.version, estimatedEndAt: status.estimatedEndAt, startedAt: status.startedAt } }, 503);
 });

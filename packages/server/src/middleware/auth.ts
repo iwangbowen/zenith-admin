@@ -1,9 +1,11 @@
 import { runIdentityRateLimits } from '../lib/rate-limit-stage';
 import { createHash } from 'node:crypto';
 import { createMiddleware } from 'hono/factory';
+import type { Context } from 'hono';
+import { HTTPException } from 'hono/http-exception';
 import { jwt, type JwtVariables } from 'hono/jwt';
 import { getTokenRevocation, touchSession, registerSession } from '../lib/session-manager';
-import { checkSessionLiveness, clientFingerprint, sessionRevokedBody } from '../lib/session-liveness';
+import { checkSessionLiveness, clientFingerprint, sessionRevokedBody, SessionRevokedException } from '../lib/session-liveness';
 import { db } from '../db';
 import { impersonationSessions, tenants, userApiTokens, users } from '../db/schema';
 import { and, eq, isNull, lt, or } from 'drizzle-orm';
@@ -288,19 +290,19 @@ async function authenticateApiToken(rawToken: string): Promise<JwtPayload | null
   };
 }
 
-export const authMiddleware = createMiddleware<AuthEnv>(async (c, next) => {
+/** Request-scoped verified identity: global maintenance and route auth share one liveness/touch pass. */
+export async function authenticateAdminRequest(c: Context): Promise<JwtPayload> {
+  const existing = c.get('maintenanceVerifiedUser') as JwtPayload | undefined;
+  if (existing) return existing;
   const authorization = c.req.header('Authorization');
-  if (!authorization?.startsWith('Bearer ')) {
-    return c.json(errBody('未登录', 401), 401);
-  }
-
+  if (!authorization?.startsWith('Bearer ')) throw new HTTPException(401, { message: '未登录' });
   try {
     const rawToken = authorization.slice('Bearer '.length);
     if (rawToken.startsWith(API_TOKEN_PREFIX)) {
       const payload = await authenticateApiToken(rawToken);
-      if (!payload) return c.json(errBody('API Token 无效或已过期', 401), 401);
-      c.set('user', payload);
-      return runIdentityRateLimits(c, next);
+      if (!payload) throw new HTTPException(401, { message: 'API Token 无效或已过期' });
+      c.set('maintenanceVerifiedUser', payload);
+      return payload;
     }
 
     // Delegate signature and claims verification to Hono's official JWT middleware.
@@ -310,16 +312,16 @@ export const authMiddleware = createMiddleware<AuthEnv>(async (c, next) => {
     // 安全隔离：拒绝会员 token 访问管理端接口（会员 token 带 type='member'）
     const tokenType = (payload as { type?: string }).type;
     if (tokenType === 'member' || tokenType === 'refresh' || !Array.isArray(payload.roles)) {
-      return c.json(errBody('无效的访问令牌', 401), 401);
+      throw new HTTPException(401, { message: '无效的访问令牌' });
     }
 
     const subject = await checkAdminJwtSubject(payload);
-    if (!subject.ok) return c.json(errBody(subject.message, subject.status), subject.status);
+    if (!subject.ok) throw new HTTPException(subject.status, { message: subject.message });
 
     // 模拟会话的写门禁：只读模式拒绝全部写请求，可操作模式仍禁止账号安全类操作
     if (subject.payload.impersonation) {
       const denial = impersonationWriteDenial(c.req.method, c.req.path, subject.payload.impersonation);
-      if (denial) return c.json(errBody(denial, 403), 403);
+      if (denial) throw new HTTPException(403, { message: denial });
     }
 
     // Revocation check + session touch are independent Redis ops — run in parallel
@@ -328,7 +330,7 @@ export const authMiddleware = createMiddleware<AuthEnv>(async (c, next) => {
       const jti = payload.jti;
       const { revoked, touched } = await checkSessionLiveness(jti, { revocation: getTokenRevocation, touch: touchSession, logPrefix: '[Auth]' });
       if (revoked) {
-        return c.json(sessionRevokedBody(revoked), 401);
+        throw new SessionRevokedException(revoked);
       }
       // Session missing (e.g. Redis restarted) — lazily re-register to keep online-users list accurate
       // (best-effort: any failure here must not block the request)
@@ -355,12 +357,25 @@ export const authMiddleware = createMiddleware<AuthEnv>(async (c, next) => {
       }
     }
 
-    c.set('user', subject.payload);
-    return runIdentityRateLimits(c, next);
-  } catch (err) {
-    logger.warn('[Auth] JWT verification failed:', err);
-    return c.json(errBody('登录已过期', 401), 401);
+    c.set('maintenanceVerifiedUser', subject.payload);
+    return subject.payload;
+  } catch (error) {
+    if (error instanceof HTTPException) throw error;
+    logger.warn('[Auth] JWT verification failed:', error);
+    throw new HTTPException(401, { message: '登录已过期' });
   }
+}
+
+export const authMiddleware = createMiddleware<AuthEnv>(async (c, next) => {
+  let payload: JwtPayload;
+  try { payload = await authenticateAdminRequest(c); }
+  catch (error) {
+    if (error instanceof SessionRevokedException) return c.json(sessionRevokedBody(error.reason), 401);
+    if (error instanceof HTTPException) return c.json(errBody(error.message, error.status), error.status);
+    throw error;
+  }
+  c.set('user', payload);
+  return runIdentityRateLimits(c, next);
 });
 // 自描述标记：装配好的 app 可沿 app.routes 读出哪些端点挂了认证（契约 access 与运行时一致性测试 / 权限矩阵）
 tagMiddleware(authMiddleware, { kind: 'auth' });
@@ -371,6 +386,7 @@ tagMiddleware(authMiddleware, { kind: 'auth' });
  * 无需为每个路由器重复声明 AuthEnv 泛型。
  */
 declare module 'hono' {
+  interface ContextVariableMap { maintenanceVerifiedUser?: JwtPayload }
   interface ContextVariableMap {
     user: JwtPayload;
     auditBeforeData: string | undefined;

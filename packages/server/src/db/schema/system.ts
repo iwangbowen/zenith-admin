@@ -1,4 +1,4 @@
-import { pgTable, varchar, pgEnum, integer, boolean, unique, text, index, jsonb, foreignKey, check, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { pgTable, varchar, pgEnum, integer, boolean, unique, uniqueIndex, text, index, jsonb, foreignKey, check, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { PROCESS_ROLES } from '@zenith/shared/platform';
 import type { SettingsRevisionAction } from '@zenith/shared/settings';
@@ -269,11 +269,10 @@ export type NewRegion = typeof regions.$inferInsert;
 // ─── 维护模式（单例，id 固定为 1）───────────────────────────────────────────
 export const maintenanceMode = pgTable('maintenance_mode', {
   id: idColumn(),
-  enabled: boolean().notNull().default(false),
+  key: varchar({ length: 32 }).notNull().default('global').unique(),
+  version: integer().notNull().default(0),
   message: varchar({ length: 512 }).notNull().default('系统维护中，请稍后重试'),
   estimatedEndAt: timestamptz(),
-  startedAt: timestamptz(),
-  startedByName: varchar({ length: 64 }),
   updatedAt: timestamptz().defaultNow().$onUpdate(() => new Date()).notNull(),
 });
 
@@ -286,7 +285,16 @@ export const maintenanceLogs = pgTable('maintenance_logs', {
   id: idColumn(),
   message: varchar({ length: 512 }).notNull(),
   estimatedEndAt: timestamptz(),
-  startedAt: timestamptz().notNull(),
+  status: varchar({ length: 16 }).$type<'scheduled' | 'ongoing' | 'completed' | 'cancelled'>().notNull(),
+  scheduledStartAt: timestamptz(),
+  autoEndAt: timestamptz(),
+  startedAt: timestamptz(),
+  reason: varchar({ length: 500 }).notNull(),
+  endReason: varchar({ length: 500 }),
+  notifyUserIds: jsonb().$type<number[]>().notNull().default([]),
+  remindMinutes: integer().notNull().default(15),
+  reminderSent: boolean().notNull().default(false),
+  changes: jsonb().$type<Array<{ action: string; at: string; actor: string; reason: string; message: string; estimatedEndAt: string | null }>>().notNull().default([]),
   startedById: integer(),
   startedByName: varchar({ length: 64 }),
   endedAt: timestamptz(),
@@ -297,6 +305,8 @@ export const maintenanceLogs = pgTable('maintenance_logs', {
 }, (t) => [
   index('maintenance_logs_started_at_idx').on(t.startedAt),
   index('maintenance_logs_ended_at_idx').on(t.endedAt),
+  uniqueIndex('maintenance_one_open_period').on(sql`(1)`).where(sql`${t.status} in ('scheduled', 'ongoing')`),
+  check('maintenance_period_status_check', sql`${t.status} in ('scheduled', 'ongoing', 'completed', 'cancelled')`),
 ]);
 
 export type MaintenanceLogRow = typeof maintenanceLogs.$inferSelect;

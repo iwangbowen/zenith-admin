@@ -13,8 +13,9 @@ export const CONSOLE_LOG_ROLE_OPTIONS = createLabelOptions(CONSOLE_LOG_ROLES, CO
 
 // ─── 维护模式 ────────────────────────────────────────────────────────────────
 
-export const MAINTENANCE_LOG_STATUSES = ['ongoing', 'completed'] as const;
+export const MAINTENANCE_LOG_STATUSES = ['scheduled', 'ongoing', 'completed', 'cancelled'] as const;
 export type MaintenanceLogStatus = (typeof MAINTENANCE_LOG_STATUSES)[number];
+export const MAINTENANCE_LOG_STATUS_OPTIONS = createLabelOptions(MAINTENANCE_LOG_STATUSES, { scheduled: '待开始', ongoing: '维护中', completed: '已结束', cancelled: '已取消' });
 
 // ─── SSL 证书 ────────────────────────────────────────────────────────────────
 
