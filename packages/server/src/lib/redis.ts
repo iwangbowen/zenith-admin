@@ -2,7 +2,7 @@ import Redis from 'ioredis';
 import { config } from '../config';
 import logger from './logger';
 
-function createRedisClient(): Redis {
+export function createRedisClient(options: import('ioredis').RedisOptions = {}): Redis {
   const redisConfig = config.redis;
 
   /**
@@ -10,7 +10,7 @@ function createRedisClient(): Redis {
    * 鉴权链路每请求并行发 EXISTS（黑名单）+ GETEX（会话续期）+ GET（权限缓存），开启后只剩一次 RTT；
    * 高并发下跨请求的命令也会被合并。共享客户端上没有阻塞命令（BLPOP / SUBSCRIBE 等），无兼容风险。
    */
-  const sharedOptions = { lazyConnect: true, enableAutoPipelining: true } as const;
+  const sharedOptions = { lazyConnect: true, enableAutoPipelining: true, ...options } as const;
 
   let client: Redis;
   if (redisConfig.url) {

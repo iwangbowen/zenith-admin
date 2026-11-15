@@ -14,3 +14,5 @@ import { vi } from 'vitest';
 import { createRedisStub } from './test-utils/redis-stub';
 
 vi.mock('./lib/redis', () => ({ default: createRedisStub(), closeRedis: vi.fn() }));
+
+vi.mock('./lib/rate-limit-redis', () => ({ limiterRedis: createRedisStub() }));

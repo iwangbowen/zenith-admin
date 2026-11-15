@@ -70,22 +70,23 @@ const redisMock = {
   eval: vi.fn((_script: string, numKeys: number, ...args: string[]) => {
     if (evalFails) return Promise.reject(new Error('redis down'));
     const keys = args.slice(0, numKeys);
-    const windowMs = Number(args[numKeys]);
-    if (numKeys === 3) {
-      // 滑动窗口脚本：[currBucket, prevBucket, banKey]
-      const ttl = banTtl(keys[2]);
-      if (ttl > 0) return Promise.resolve([-1, ttl]);
-      const curr = incrCounter(keys[0], windowMs * 2);
-      const prevState = counters.get(keys[1]);
-      const prev = prevState && prevState.expiresAt > Date.now() ? prevState.count : 0;
-      return Promise.resolve([curr, prev]);
+    const now = Number(args[numKeys]); const n = Number(args[numKeys + 1]); const sliding = args[numKeys + 2] === 'sliding_window';
+    const ttl = banTtl(keys[0]); if (ttl > 0) return Promise.resolve([-1, ttl, 0, 0]);
+    let over = 0; let retry = 1; let remaining = 1_000_000; let worst = 0;
+    for (let i = 0; i < n; i++) {
+      const windowMs = Number(args[numKeys + 3 + i * 2]); const limit = Number(args[numKeys + 4 + i * 2]);
+      const base = keys[i + 1]; let count; let wait: number;
+      if (sliding) {
+        const bucket = Math.floor(now / windowMs); const elapsed = now - bucket * windowMs;
+        const current = incrCounter(base + ':' + bucket, windowMs * 2);
+        const previous = counters.get(base + ':' + (bucket - 1));
+        count = current + (previous && previous.expiresAt > now ? previous.count : 0) * (1 - elapsed / windowMs);
+        wait = windowMs - elapsed + Math.max(0, (1 - (limit - 1) / current) * windowMs);
+      } else { count = incrCounter(base, windowMs); wait = (counters.get(base)?.expiresAt ?? now) - now; }
+      if (count > limit) { over = 1; retry = Math.max(retry, wait); }
+      remaining = Math.min(remaining, Math.max(0, Math.floor(limit - count))); worst = Math.max(worst, count);
     }
-    // 固定窗口脚本：[counterKey, banKey]
-    const ttl = banTtl(keys[1]);
-    if (ttl > 0) return Promise.resolve([-1, ttl]);
-    const count = incrCounter(keys[0], windowMs);
-    const state = counters.get(keys[0]);
-    return Promise.resolve([count, state ? state.expiresAt - Date.now() : windowMs]);
+    return Promise.resolve([over, retry, remaining, worst]);
   }),
   multi: vi.fn(() => {
     // 有状态的 pipeline 模拟：exec 按链式顺序返回 [err, result]，
@@ -168,6 +169,7 @@ const redisMock = {
 };
 
 vi.mock('../lib/redis', () => ({ default: redisMock }));
+vi.mock('../lib/rate-limit-redis', () => ({ limiterRedis: redisMock }));
 
 const {
   namedRateLimit,
@@ -348,7 +350,7 @@ describe('路径绑定', () => {
     app.get('*', (c) => c.json({ ok: true }));
     await app.request('/api/p/x');
     expect(redisMock.eval).toHaveBeenCalledTimes(1);
-    const counterKey = redisMock.eval.mock.calls[0][2] as string;
+    const counterKey = redisMock.eval.mock.calls[0][3] as string;
     expect(counterKey).toContain('t_high|');
   });
 });
@@ -387,7 +389,7 @@ describe('滑动窗口', () => {
       // 固定到窗口正中：elapsed=500ms → 上一桶权重 0.5
       vi.setSystemTime(1_000_000_000_500);
       const bucket = Math.floor(Date.now() / windowMs);
-      const spec = createHash('sha256').update(JSON.stringify(['sliding_window', windowMs, 'ip'])).digest('hex').slice(0, 12);
+      const spec = createHash('sha256').update(JSON.stringify(['sliding_window', windowMs, 'ip', [], [], []])).digest('hex').slice(0, 12);
       await loadRules(ruleRow({ name: 't_slide', limit: 2, windowMs, algorithm: 'sliding_window' }));
       // 预置上一桶计数 2（等效于上一窗口末尾的突发）
       counters.set(`test:rl:t_slide|127.0.0.1|${spec}:${bucket - 1}`, { count: 2, expiresAt: Date.now() + windowMs });
@@ -581,4 +583,26 @@ describe('identity stages and policy safety', () => {
     await loadRules(ruleRow({ name: 't_explicit_ban', enabled: false }));
     expect((await app.request('/api/t')).status).toBe(200);
   });
+});
+
+
+describe('methods and multiple constraints', () => {
+ it('dynamic templates apply only to configured methods',async()=>{
+  await loadRules(ruleRow({name:'t_method',limit:1,pathPatterns:['/api/users/{id}'],options:{methods:['POST']}}));
+  const app=new Hono();app.use('*',pathBoundRateLimit);app.all('/api/users/:id',c=>c.json({ok:true}));
+  expect((await app.request('/api/users/4')).status).toBe(200);
+  expect((await app.request('/api/users/4',{method:'POST'})).status).toBe(200);
+  expect((await app.request('/api/users/4',{method:'POST'})).status).toBe(429);
+ });
+ it('checks all constraints in one Lua call',async()=>{
+  await loadRules(ruleRow({name:'t_multi',limit:10,options:{extraWindows:[{windowMs:1000,limit:1}]}}));
+  const app=new Hono();app.get('/api/t',namedRateLimit('t_multi'),c=>c.json({ok:true}));
+  expect((await app.request('/api/t')).status).toBe(200);expect((await app.request('/api/t')).status).toBe(429);
+  expect(redisMock.eval.mock.calls[0][1]).toBe(3);
+ });
+ it('fail closed returns a distinct unavailable response',async()=>{
+  await loadRules(ruleRow({name:'t_closed',options:{failMode:'closed'}}));evalFails=true;
+  const app=new Hono();app.get('/api/t',namedRateLimit('t_closed'),c=>c.json({ok:true}));
+  const response=await app.request('/api/t');expect(response.status).toBe(503);expect(response.headers.get('X-Zenith-Error')).toBe('rate-limit-unavailable');
+ });
 });

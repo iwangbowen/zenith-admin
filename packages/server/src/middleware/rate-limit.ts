@@ -1,3 +1,5 @@
+import { limiterRedis } from '../lib/rate-limit-redis';
+import { selectRateLimitRule, type RateLimitOptions, type RateLimitWindow } from '@zenith/shared/platform';
 import { createHash, randomUUID } from 'node:crypto';
 import { matchedRoutes } from 'hono/route';
 import { DEFAULT_RATE_LIMIT_RULES, CODE_RATE_LIMIT_NAMES } from '@zenith/shared/platform';
@@ -19,7 +21,7 @@ import { rateLimitRules } from '../db/schema';
 export type RateLimitName = 'auth' | 'captcha' | 'sensitive' | 'analytics-ingest' | 'error-report' | 'replay-ingest' | 'report_public_share' | 'workflow_public_callback' | 'push_public_callback' | 'payment_public_link_pay' | 'payment_public_link_session' | 'chat_send' | 'chatbi_ask' | 'report_chatbi_write' | 'report_fill_write' | 'ai_chat_send' | 'ai_share_view' | 'drive_public_share' | 'chunk_upload';
 export type { RateLimitKeyType, RateLimitMode, RateLimitAlgorithm };
 
-export interface RuleConfig {
+export interface RuleConfig extends RateLimitOptions {
   name: string;
   description: string | null;
   windowMs: number;
@@ -107,62 +109,48 @@ export interface RecentBlockRecord {
   banned?: boolean;
 }
 
-/**
- * 固定窗口计数（Lua 原子执行）：先查封禁键，再 INCR 并在首个请求上设置窗口 TTL。
- * 返回 [窗口内计数, 剩余窗口毫秒]；封禁中返回 [-1, 封禁剩余毫秒]。
- * 脚本体极小，直接 EVAL 免去 SHA 缓存管理。
- */
-const FIXED_WINDOW_SCRIPT = `
-local ban = redis.call('PTTL', KEYS[2])
-if ban > 0 then return {-1, ban} end
-local count = redis.call('INCR', KEYS[1])
-if count == 1 then
-  redis.call('PEXPIRE', KEYS[1], ARGV[1])
+export const MULTI_WINDOW_SCRIPT = `local banned = redis.call('PTTL', KEYS[1])
+if banned > 0 then return {-1, banned, 0, 0} end
+local now = tonumber(ARGV[1])
+local n = tonumber(ARGV[2])
+local sliding = ARGV[3] == 'sliding_window'
+local worstCount = 0
+local remaining = 1000000000
+local retry = 1
+local over = 0
+for i = 1,n do
+ local window = tonumber(ARGV[3+i*2-1])
+ local limit = tonumber(ARGV[3+i*2])
+ local base = KEYS[i+1]
+ local count = 0
+ local wait = window
+ if sliding then
+  local bucket = math.floor(now/window)
+  local elapsed = now-bucket*window
+  local currentKey = base..':'..bucket
+  local previousKey = base..':'..(bucket-1)
+  local current = redis.call('INCR', currentKey)
+  if current == 1 then redis.call('PEXPIRE', currentKey, window*2) end
+  local previous = tonumber(redis.call('GET', previousKey) or '0')
+  count = current+previous*(1-elapsed/window)
+  if count > limit then
+   over = 1
+   local need = current+1-limit
+   if need <= 0 and previous > 0 then wait=math.max(1,(count+1-limit)*window/previous)
+   elseif current > 0 then wait=window-elapsed+math.max(0,(1-(limit-1)/current)*window) end
+  end
+ else
+  count = redis.call('INCR',base)
+  if count == 1 then redis.call('PEXPIRE',base,window) end
+  wait=redis.call('PTTL',base)
+  if count > limit then over=1 end
+ end
+ worstCount=math.max(worstCount,count)
+ remaining=math.min(remaining,math.max(0,math.floor(limit-count)))
+ if count > limit then retry=math.max(retry,wait) end
 end
-local ttl = redis.call('PTTL', KEYS[1])
-return {count, ttl}
+return {over, math.ceil(retry), remaining, math.ceil(worstCount)}
 `;
-
-/**
- * 滑动窗口（两桶加权近似，Cloudflare 同款算法）：按窗口宽度分桶计数，
- * 加权计数 = 当前桶 + 上一桶 × 上一桶在滑动窗口中的剩余占比。
- * 消除固定窗口在边界处最多 2× 限额的突刺；桶保留两个窗口供下一窗口加权。
- * 返回 [当前桶计数, 上一桶计数]；封禁中返回 [-1, 封禁剩余毫秒]。
- */
-const SLIDING_WINDOW_SCRIPT = `
-local ban = redis.call('PTTL', KEYS[3])
-if ban > 0 then return {-1, ban} end
-local curr = redis.call('INCR', KEYS[1])
-if curr == 1 then
-  redis.call('PEXPIRE', KEYS[1], ARGV[1] * 2)
-end
-local prev = tonumber(redis.call('GET', KEYS[2]) or '0')
-return {curr, prev}
-`;
-
-interface LimiterHit {
-  /** 窗口内计数（含当前请求）；-1 表示命中手动封禁 */
-  count: number;
-  /** 距窗口重置（或封禁解除）的毫秒数 */
-  resetMs: number;
-}
-
-async function fixedWindowHit(counterKey: string, banKey: string, windowMs: number): Promise<LimiterHit> {
-  const [count, ttl] = (await redis.eval(FIXED_WINDOW_SCRIPT, 2, counterKey, banKey, String(windowMs))) as [number, number];
-  return { count, resetMs: ttl > 0 ? ttl : windowMs };
-}
-
-async function slidingWindowHit(counterKey: string, banKey: string, windowMs: number): Promise<LimiterHit> {
-  const now = Date.now();
-  const bucket = Math.floor(now / windowMs);
-  const elapsed = now - bucket * windowMs;
-  const [curr, prevOrBanTtl] = (await redis.eval(
-    SLIDING_WINDOW_SCRIPT, 3, `${counterKey}:${bucket}`, `${counterKey}:${bucket - 1}`, banKey, String(windowMs),
-  )) as [number, number];
-  if (curr === -1) return { count: -1, resetMs: prevOrBanTtl };
-  const weighted = curr + prevOrBanTtl * (1 - elapsed / windowMs);
-  return { count: weighted, resetMs: windowMs - elapsed };
-}
 
 /** 拦截统计（fire-and-forget）：blocked 计数 + 最近记录 + 小时/日序列 + Top 来源 + 突增告警 */
 function recordBlockedStats(rule: RuleConfig, c: Context, identity: string, banned = false): void {
@@ -252,7 +240,9 @@ function isAllowlisted(rule: RuleConfig, c: Context): boolean {
     userId = undefined;
   }
   const ip = getClientIp(c);
+  const identity = identityFor(rule, c);
   for (const entry of rule.allowlist) {
+    if (entry === identity) return true;
     if (entry.startsWith('u:')) {
       if (userId !== undefined && entry === `u:${userId}`) return true;
       continue;
@@ -281,40 +271,33 @@ async function applyRule(rule: RuleConfig, c: Context, next: () => Promise<void>
   if (!identity) return next();
   const banKey = RL_BAN_PREFIX + rule.name + '|' + identity;
   try {
-    const ttl = await redis.pttl(banKey);
+    const ttl = await limiterRedis.pttl(banKey);
     if (ttl > 0) {
       recordHitStats(rule.name); recordBlockedStats(rule, c, identity, true);
       return c.json(errBody('访问已被临时封禁，请稍后再试', 429), 429, { 'Retry-After': String(Math.max(1, Math.ceil(ttl / 1000))) });
     }
-  } catch (err) { reportStatsFailure('ban', err); return next(); }
+  } catch (err) { return unavailable(rule, c, next, err); }
   if (isAllowlisted(rule, c)) return next();
   recordHitStats(rule.name);
   const counterKey = counterBase(rule, identity);
-  let hit: LimiterHit;
+  const windows: RateLimitWindow[] = [{ windowMs: rule.windowMs, limit: rule.limit }, ...(rule.extraWindows ?? [])];
+  let over: number; let retryMs: number; let remaining: number;
   try {
-    hit = rule.algorithm === 'sliding_window'
-      ? await slidingWindowHit(counterKey, banKey, rule.windowMs)
-      : await fixedWindowHit(counterKey, banKey, rule.windowMs);
-  } catch (err) {
-    reportStatsFailure('counter', err);
-    return next();
+    [over, retryMs, remaining] = await limiterRedis.eval(MULTI_WINDOW_SCRIPT, windows.length + 1, banKey, ...windows.map((_, i) => i === 0 ? counterKey : counterKey + ':w' + i), String(Date.now()), String(windows.length), rule.algorithm, ...windows.flatMap(w => [String(w.windowMs), String(w.limit)])) as [number, number, number];
+  } catch (err) { return unavailable(rule, c, next, err); }
+  const resetSec = Math.max(1, Math.ceil(retryMs / 1000));
+  const prior = Number(c.res.headers.get('RateLimit-Remaining') ?? Number.MAX_SAFE_INTEGER);
+  if (remaining < prior) {
+    c.header('RateLimit-Limit', String(rule.limit)); c.header('RateLimit-Remaining', String(remaining)); c.header('RateLimit-Reset', String(resetSec));
   }
-  if (hit.count === -1) {
+  if (over === -1) {
     recordBlockedStats(rule, c, identity, true);
-    return c.json(errBody('访问已被临时封禁，请稍后再试', 429), 429, {
-      'Retry-After': String(Math.ceil(hit.resetMs / 1000)),
-    });
+    return c.json(errBody('访问已被临时封禁，请稍后再试', 429), 429, { 'Retry-After': String(resetSec) });
   }
-  const resetSec = Math.ceil(hit.resetMs / 1000);
-  c.header('RateLimit-Limit', String(rule.limit));
-  c.header('RateLimit-Remaining', String(Math.max(0, Math.floor(rule.limit - hit.count))));
-  c.header('RateLimit-Reset', String(resetSec));
-  if (hit.count <= rule.limit) return next();
+  if (!over) return next();
   recordBlockedStats(rule, c, identity);
   if (rule.mode === 'monitor') return next();
-  return c.json(errBody(rule.blockedMessage ?? '请求过于频繁，请稍后再试', 429), 429, {
-    'Retry-After': String(resetSec),
-  });
+  return c.json(errBody(rule.blockedMessage ?? '请求过于频繁，请稍后再试', 429), 429, { 'Retry-After': String(resetSec) });
 }
 
 /**
@@ -342,7 +325,7 @@ function makeNamed(name: RateLimitName): MiddlewareHandler {
   return async (c, next) => {
     await ensureRateLimitRules();
     const rule = ruleCache.get(name);
-    if (!rule?.enabled) return next();
+    if (!rule?.enabled || rule.methods?.length && !rule.methods.includes(c.req.method)) return next();
     if (alreadyApplied(c, name)) return next();
     return applyRule(rule, c, next);
   };
@@ -377,37 +360,9 @@ export function namedRateLimit(name: string): MiddlewareHandler {
   return makeNamed(name as RateLimitName);
 }
 
-const PATH_PATTERN_CACHE = new Map<string, RegExp>();
-
-/**
- * 路径模式 → 正则：结尾的 `/*` 匹配任意多级后缀（含恰好到该前缀本身），路径中间的 `*` 只匹配一个路径段
- * （如 `/api/app-releases/releases/*\/artifacts/upload/chunk`），其余字符按字面匹配。
- */
-function pathPatternRegex(pattern: string): RegExp {
-  let regex = PATH_PATTERN_CACHE.get(pattern);
-  if (!regex) {
-    const anySuffix = pattern.endsWith('/*');
-    const core = anySuffix ? pattern.slice(0, -2) : pattern;
-    const source = core.split('*').map((s) => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('[^/]+');
-    regex = new RegExp(`^${source}${anySuffix ? '(?:/.*)?' : ''}$`);
-    PATH_PATTERN_CACHE.set(pattern, regex);
-  }
-  return regex;
-}
-
-function matchesPath(patterns: string[], path: string): boolean {
-  return patterns.some((pattern) => pathPatternRegex(pattern).test(path));
-}
-
-/**
- * 全局路径绑定限流中间件：自动应用 pathPatterns 匹配的规则。
- * 多条规则命中同一路径时取 priority 最大者（同优先级按规则缓存序取先出现者），
- * 一个请求只应用一条路径绑定规则。
- */
 async function applyPathRules(c: Context, next: () => Promise<void>, identityStage: boolean): Promise<Response | void> {
   await ensureRateLimitRules();
-  const selected = [...ruleCache.values()].filter(rule => rule.enabled && (rule.keyType === 'user') === identityStage && rule.pathPatterns.length > 0 && matchesPath(rule.pathPatterns, c.req.path))
-    .sort((a, b) => b.priority - a.priority || a.name.localeCompare(b.name))[0];
+  const selected = selectRateLimitRule([...ruleCache.values()], c.req.method, c.req.path, identityStage);
   if (!selected || alreadyApplied(c, selected.name)) return next();
   return applyRule(selected, c, next);
 }
@@ -415,7 +370,7 @@ export const pathBoundRateLimit: MiddlewareHandler = (c, next) => applyPathRules
 installIdentityRateLimiter((c, next) => applyPathRules(c, next, true));
 
 function counterBase(rule: RuleConfig, identity: string): string {
-  const spec = createHash('sha256').update(JSON.stringify([rule.algorithm, rule.windowMs, rule.keyType])).digest('hex').slice(0, 12);
+  const spec = createHash('sha256').update(JSON.stringify([rule.algorithm, rule.windowMs, rule.keyType, rule.methods ?? [], rule.extraWindows ?? [], rule.pathPatterns])).digest('hex').slice(0, 12);
   return RL_PREFIX + rule.name + '|' + identity + '|' + spec;
 }
 let loadedAt = 0;
@@ -427,7 +382,7 @@ export function refreshRateLimitRules(): Promise<void> {
   reload = (async () => {
     const rows = await db.select().from(rateLimitRules);
     const next = new Map<string, RuleConfig>(Object.entries(DEFAULTS));
-    for (const row of rows) next.set(row.name, { ...row, allowlist: row.allowlist ?? [], pathPatterns: row.pathPatterns ?? [] });
+    for (const row of rows) next.set(row.name, { ...row, ...row.options, allowlist: row.allowlist ?? [], pathPatterns: row.pathPatterns ?? [] });
     ruleCache.clear();
     for (const [key, rule] of next) ruleCache.set(key, rule);
     loadedAt = generation === startedGeneration ? Date.now() : 0;
@@ -471,8 +426,12 @@ export async function unblockRateLimitKey(name: string, key: string): Promise<bo
   const keysToDelete = [base];
   const rule = ruleCache.get(name);
   if (rule && rule.windowMs > 0) {
-    const bucket = Math.floor(Date.now() / rule.windowMs);
-    keysToDelete.push(`${base}:${bucket}`, `${base}:${bucket - 1}`);
+    const windows = [{ windowMs: rule.windowMs }, ...(rule.extraWindows ?? [])];
+    windows.forEach((window, i) => {
+      const keyBase = i === 0 ? base : base + ':w' + i;
+      const bucket = Math.floor(Date.now() / window.windowMs);
+      keysToDelete.push(keyBase, keyBase + ':' + bucket, keyBase + ':' + (bucket - 1));
+    });
   }
   const n = await redis.del(...keysToDelete);
   try {
@@ -536,3 +495,9 @@ export const RATE_LIMIT_KEYS = {
   rlPrefix: RL_PREFIX,
   statsPrefix: STATS_PREFIX,
 } as const;
+
+function unavailable(rule: RuleConfig, c: Context, next: () => Promise<void>, error: unknown): Promise<Response | void> | Response {
+  reportStatsFailure('counter', error);
+  if (rule.failMode === 'closed') return c.json(errBody('限流服务暂时不可用，请稍后重试', 503), 503, { 'X-Zenith-Error': 'rate-limit-unavailable', 'Retry-After': '1' });
+  return next();
+}

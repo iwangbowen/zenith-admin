@@ -57,6 +57,13 @@
       "when": 1794712662074,
       "tag": "0007_rate_limit_runtime",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794713121035,
+      "tag": "0008_rate_limit_options",
+      "breakpoints": true
     }
   ]
 }

@@ -1,3 +1,9 @@
+import type { z } from 'zod';
+import { createHash } from 'node:crypto';
+import { isIP } from 'node:net';
+import { createRateLimitRuleSchema, updateRateLimitRuleSchema, rateLimitDiagnoseSchema, rateLimitMatches, rateLimitPathMatches, selectRateLimitRule, type RateLimitOptions } from '@zenith/shared/platform';
+import { getApiCatalog } from '../identity/api-catalog.service';
+import { getRateLimitRuntimeState } from '../../middleware/rate-limit';
 import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import dayjs from 'dayjs';
@@ -41,6 +47,12 @@ function mapRule(row: RateLimitRuleRow) {
     pathPatterns: row.pathPatterns ?? [],
     predefined: PREDEFINED_NAMES.has(row.name),
     mountSource: getMountSource(row.name, row.pathPatterns ?? []),
+    ...row.options,
+    methods: row.options.methods ?? [], extraWindows: row.options.extraWindows ?? [], failMode: row.options.failMode ?? 'open',
+    policyVersion: createHash('sha256').update(JSON.stringify(row)).digest('hex').slice(0, 12),
+    loadState: getRateLimitRuntimeState().fresh ? 'loaded' as const : 'pending' as const,
+    matchedOperationCount: getRateLimitOperations().filter(op => rateLimitMatches({ ...row, methods: row.options.methods }, op.method, op.path)).length,
+    warnings: !getMountSource(row.name, row.pathPatterns).includes('code') && !row.pathPatterns.length ? ['未绑定接口，不会执行'] : [],
     ...formatTimestamps(row),
   };
 }
@@ -56,43 +68,33 @@ export async function getRateLimitRuleBeforeAudit(id: number) {
   return mapRule(requireRow(row, '规则不存在'));
 }
 
-export interface UpdateRateLimitRuleInput {
-  windowMs?: number;
-  limit?: number;
-  keyType?: 'ip' | 'user' | 'ip_path';
-  enabled?: boolean;
-  mode?: 'enforce' | 'monitor';
-  algorithm?: 'fixed_window' | 'sliding_window';
-  allowlist?: string[];
-  priority?: number;
-  alertThreshold?: number | null;
-  description?: string | null;
-  blockedMessage?: string | null;
-  pathPatterns?: string[];
+export type UpdateRateLimitRuleInput = z.output<typeof updateRateLimitRuleSchema>;
+export type CreateRateLimitRuleInput = z.output<typeof createRateLimitRuleSchema>;
+const OPTION_KEYS = ['methods', 'extraWindows', 'failMode', 'alertUserIds', 'alertCooldownSeconds'] as const;
+function optionsFrom(input: UpdateRateLimitRuleInput): RateLimitOptions {
+  return Object.fromEntries(OPTION_KEYS.filter(key => input[key] !== undefined).map(key => [key, input[key]]));
 }
-
-export interface CreateRateLimitRuleInput {
-  name: string;
-  description?: string | null;
-  windowMs: number;
-  limit: number;
-  keyType: 'ip' | 'user' | 'ip_path';
-  enabled: boolean;
-  mode?: 'enforce' | 'monitor';
-  algorithm?: 'fixed_window' | 'sliding_window';
-  allowlist?: string[];
-  priority?: number;
-  alertThreshold?: number | null;
-  blockedMessage?: string | null;
-  pathPatterns?: string[];
+function validatePolicy(input: UpdateRateLimitRuleInput, merged: { enabled: boolean; name: string; pathPatterns: string[]; options: RateLimitOptions; keyType: string }): void {
+  for (const entry of input.allowlist ?? []) {
+    if (/^[um]:[0-9]+$/.test(entry) || /^[uma]:(?:platform|[0-9]+):[A-Za-z0-9_-]+$/.test(entry)) continue;
+    const [ip, prefix] = entry.split('/');
+    const family = isIP(ip);
+    if (!family || prefix !== undefined && (!/^\d+$/.test(prefix) || Number(prefix) > (family === 4 ? 32 : 128))) throw new HTTPException(400, { message: '非法豁免身份或 IP/CIDR：' + entry });
+  }
+  if (merged.enabled && !PREDEFINED_NAMES.has(merged.name) && !merged.pathPatterns.length) throw new HTTPException(400, { message: '启用自定义规则前必须绑定接口，可先保存为停用规则' });
+  if (merged.enabled && merged.pathPatterns.some(pattern => rateLimitPathMatches(pattern, '/api/rate-limit/rules') || rateLimitPathMatches(pattern, '/api/health/readyz'))) throw new HTTPException(400, { message: '绑定范围覆盖管理恢复或健康探针，请缩小路径范围' });
+  if (new Set([input.windowMs, ...(merged.options.extraWindows ?? []).map(w => w.windowMs)].filter(Boolean)).size !== [input.windowMs, ...(merged.options.extraWindows ?? []).map(w => w.windowMs)].filter(Boolean).length) throw new HTTPException(400, { message: '附加窗口不能与主窗口重复' });
 }
 
 export async function updateRateLimitRule(id: number, patch: UpdateRateLimitRuleInput) {
   const [row] = await db.select().from(rateLimitRules).where(eq(rateLimitRules.id, id));
   requireRow(row, '规则不存在');
+  const options = { ...row.options, ...optionsFrom(patch) };
+  validatePolicy(patch, { ...row, ...patch, options });
   await db
     .update(rateLimitRules)
     .set({
+      options,
       ...(patch.windowMs === undefined ? {} : { windowMs: patch.windowMs }),
       ...(patch.limit === undefined ? {} : { limit: patch.limit }),
       ...(patch.keyType === undefined ? {} : { keyType: patch.keyType }),
@@ -113,6 +115,7 @@ export async function updateRateLimitRule(id: number, patch: UpdateRateLimitRule
 }
 
 export async function createRateLimitRule(input: CreateRateLimitRuleInput) {
+  validatePolicy(input, { ...input, pathPatterns: input.pathPatterns ?? [], options: optionsFrom(input) });
   const [existing] = await db.select({ id: rateLimitRules.id }).from(rateLimitRules).where(eq(rateLimitRules.name, input.name));
   if (existing) throw new HTTPException(400, { message: `规则名称 "${input.name}" 已存在` });
   const [row] = await db
@@ -124,7 +127,8 @@ export async function createRateLimitRule(input: CreateRateLimitRuleInput) {
       limit: input.limit,
       keyType: input.keyType,
       enabled: input.enabled,
-      mode: input.mode ?? 'enforce',
+      options: optionsFrom(input),
+      mode: input.mode ?? 'monitor',
       algorithm: input.algorithm ?? 'fixed_window',
       allowlist: input.allowlist ?? [],
       priority: input.priority ?? 0,
@@ -328,4 +332,18 @@ export async function listRateLimitActiveBans() {
     expiresAt: formatDateTime(new Date(now + b.ttlMs)),
     remainingSeconds: Math.max(1, Math.ceil(b.ttlMs / 1000)),
   }));
+}
+
+export function getRateLimitOperations() {
+  return getApiCatalog().items.map(item => ({ method: item.method.toUpperCase(), path: item.fullPath, summary: item.summary, security: item.security }))
+    .concat([{ method: 'GET', path: '/s/{code}', summary: '公开短链跳转', security: 'none' }]);
+}
+export function diagnoseRateLimit(input: z.output<typeof rateLimitDiagnoseSchema>) {
+  const path = input.path.split('?')[0];
+  const rules = listRuleConfigs();
+  const ipRule = selectRateLimitRule(rules, input.method, path, false);
+  const identityRule = input.principal === 'anonymous' ? undefined : selectRateLimitRule(rules, input.method, path, true);
+  const selected = [ipRule?.name, identityRule?.name].filter((name): name is string => Boolean(name));
+  const template = getRateLimitOperations().find(op => op.method === input.method && rateLimitPathMatches(op.path, path))?.path ?? '/[unmatched]';
+  return { path: template, method: input.method, selected, matches: rules.filter(rule => rateLimitMatches(rule, input.method, path)).map(rule => ({ name: rule.name, selected: selected.includes(rule.name), stage: rule.keyType === 'user' ? '认证后' : '认证前', reason: !rule.enabled ? '规则已停用' : rule.keyType === 'user' && input.principal === 'anonymous' ? '无已认证身份，不执行身份规则' : selected.includes(rule.name) ? '路径和方法匹配，按优先级选中' : '被同阶段更高优先级规则覆盖' })), note: '仅诊断配置匹配，不消耗额度；当前并发额度、具名业务保护和认证结果仍以真实请求为准。' };
 }

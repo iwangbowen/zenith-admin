@@ -5,6 +5,8 @@ import { defineContractRoute } from '../../lib/contract-route';
 import { okBody, validationHook } from '../../lib/openapi-schemas';
 import {
   listRateLimitRules,
+  getRateLimitOperations,
+  diagnoseRateLimit,
   updateRateLimitRule,
   createRateLimitRule,
   deleteRateLimitRule,
@@ -18,6 +20,9 @@ import {
 } from '../../services/platform/rate-limit.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
+
+const operations = defineContractRoute(rateLimitContract.operations, { handler: c => c.json(okBody(getRateLimitOperations()), 200) });
+const diagnose = defineContractRoute(rateLimitContract.diagnose, { handler: c => c.json(okBody(diagnoseRateLimit(c.req.valid('json'))), 200) });
 
 const listRules = defineContractRoute(rateLimitContract.rules, {
   handler: async (c) => c.json(okBody(await listRateLimitRules()), 200),
@@ -88,6 +93,6 @@ const listBans = defineContractRoute(rateLimitContract.bans, {
   handler: async (c) => c.json(okBody(await listRateLimitActiveBans()), 200),
 });
 
-router.openapiRoutes([listRules, createRule, patchRule, deleteRule, getStats, unblock, resetStats, banKey, unbanKey, listBans] as const);
+router.openapiRoutes([operations, diagnose, listRules, createRule, patchRule, deleteRule, getStats, unblock, resetStats, banKey, unbanKey, listBans] as const);
 
 export default router;

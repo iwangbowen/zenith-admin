@@ -218,6 +218,7 @@ export const rateLimitRules = pgTable('rate_limit_rules', {
   /** 小时拦截数告警阈值：达到即通知平台管理员；null = 不告警 */
   alertThreshold: integer(),
   blockedMessage: varchar({ length: 255 }),
+  options: jsonb().$type<import('@zenith/shared/platform').RateLimitOptions>().notNull().default({}),
   pathPatterns: text().array().notNull().default([]),
   ...auditColumns(),
   ...timestampColumns(),

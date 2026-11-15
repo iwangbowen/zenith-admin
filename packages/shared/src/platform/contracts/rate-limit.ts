@@ -1,5 +1,6 @@
 import * as z from 'zod';
 import { idParam } from '../../core/api-schemas';
+import { RATE_LIMIT_METHODS, RATE_LIMIT_FAIL_MODES } from '../rate-limit';
 import { defineContract, op } from '../../core/contract';
 import { RATE_LIMIT_ALGORITHMS, RATE_LIMIT_KEY_TYPES, RATE_LIMIT_MODES, RATE_LIMIT_MOUNT_SOURCES } from '../constants';
 import {
@@ -27,6 +28,15 @@ export const rateLimitRuleSchema = z.object({
   priority: z.int().meta({ description: '路径绑定优先级，多规则命中同一路径时取大者' }),
   alertThreshold: z.int().nullable().meta({ description: '小时拦截数告警阈值，null=不告警' }),
   blockedMessage: z.string().nullable(),
+  methods: z.array(z.string()).optional(),
+  extraWindows: z.array(z.object({ windowMs: z.int(), limit: z.int() })).optional(),
+  failMode: z.enum(RATE_LIMIT_FAIL_MODES).optional(),
+  alertUserIds: z.array(z.int()).optional(),
+  alertCooldownSeconds: z.int().optional(),
+  policyVersion: z.string().optional(),
+  loadState: z.enum(['loaded', 'pending']).optional(),
+  matchedOperationCount: z.int().optional(),
+  warnings: z.array(z.string()).optional(),
   pathPatterns: z.array(z.string()),
   predefined: z.boolean().meta({ description: '是否内置规则（不可删除）' }),
   mountSource: z.enum(RATE_LIMIT_MOUNT_SOURCES).meta({ description: '挂载来源：code=代码挂载；path=路径绑定；none=未生效（死规则）' }),
@@ -75,14 +85,23 @@ export const rateLimitBanSchema = z.object({
   name: z.string().meta({ description: '规则名' }),
   key: z.string().meta({ description: '被封禁的计数身份（IP / u:{userId} / ip|path）' }),
   expiresAt: z.string().meta({ description: '封禁到期时间' }),
+  reason: z.string().optional(),
+  createdBy: z.number().nullable().optional(),
   remainingSeconds: z.int().meta({ description: '剩余秒数' }),
 }).meta({ id: 'RateLimitBan' });
 
 export type RateLimitBan = z.infer<typeof rateLimitBanSchema>;
 
+export const rateLimitOperationSchema = z.object({ method: z.string(), path: z.string(), summary: z.string(), security: z.string() }).meta({ id: 'RateLimitOperation' });
+export const rateLimitDiagnoseSchema = z.object({ method: z.enum(RATE_LIMIT_METHODS), path: z.string().min(1).max(1024), principal: z.enum(['anonymous', 'admin', 'member', 'app']).default('anonymous'), identity: z.string().max(128).optional(), tenantId: z.int().positive().nullable().optional() });
+export const rateLimitDiagnosisSchema = z.object({ path: z.string(), method: z.string(), selected: z.array(z.string()), matches: z.array(z.object({ name: z.string(), selected: z.boolean(), stage: z.string(), reason: z.string() })), note: z.string() }).meta({ id: 'RateLimitDiagnosis' });
+export type RateLimitDiagnosis = z.infer<typeof rateLimitDiagnosisSchema>;
+
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 
 export const rateLimitContract = defineContract('/api/rate-limit', {
+  operations: op.get('/operations', { access: { permission: 'system:rate-limit:view', platformOnly: 'multi-tenant' }, response: z.array(rateLimitOperationSchema), summary: '限流可绑定接口目录' }),
+  diagnose: op.post('/diagnose', { access: { permission: 'system:rate-limit:view', platformOnly: 'multi-tenant' }, body: rateLimitDiagnoseSchema, response: rateLimitDiagnosisSchema, summary: '诊断规则匹配（不消耗额度）' }),
   rules: op.get('/rules', { access: { permission: 'system:rate-limit:view', platformOnly: 'multi-tenant' }, response: z.array(rateLimitRuleSchema), summary: '获取限流规则列表' }),
   createRule: op.post('/rules', { access: { permission: 'system:rate-limit:manage', platformOnly: 'multi-tenant' }, audit: '新增限流规则', body: createRateLimitRuleSchema, response: rateLimitRuleSchema, summary: '新增自定义限流规则' }),
   updateRule: op.patch('/rules/{id}', { access: { permission: 'system:rate-limit:manage', platformOnly: 'multi-tenant' }, audit: '更新限流规则', params: idParam, body: updateRateLimitRuleSchema, response: rateLimitRuleSchema, summary: '更新限流规则（保存后立即热更新）' }),
