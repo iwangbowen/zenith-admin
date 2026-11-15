@@ -63,6 +63,7 @@ function incrCounter(key: string, windowMs: number): number {
 }
 
 const redisMock = {
+  status: 'ready',
   eval: vi.fn((_script: string, numKeys: number, ...args: string[]) => {
     if (evalFails) return Promise.reject(new Error('redis down'));
     const keys = args.slice(0, numKeys);

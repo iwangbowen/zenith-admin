@@ -37,3 +37,5 @@ export * from './numbering-reference';
 export * from './rate-limit-policy';
 
 export * from './rate-limit';
+
+export * from './rate-limit-validation';

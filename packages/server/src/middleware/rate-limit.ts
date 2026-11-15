@@ -1,3 +1,8 @@
+declare module 'hono' {
+  interface ContextVariableMap {
+    rateLimitSafePath?: string;
+  }
+}
 import { recordRateLimitEvent } from '../lib/rate-limit-stats';
 import { limiterRedis } from '../lib/rate-limit-redis';
 import { selectRateLimitRule, type RateLimitOptions, type RateLimitWindow } from '@zenith/shared/platform';
@@ -17,7 +22,26 @@ import logger from '../lib/logger';
 import { db } from '../db';
 import { rateLimitRules } from '../db/schema';
 
-export type RateLimitName = 'auth' | 'captcha' | 'sensitive' | 'analytics-ingest' | 'error-report' | 'replay-ingest' | 'report_public_share' | 'workflow_public_callback' | 'push_public_callback' | 'payment_public_link_pay' | 'payment_public_link_session' | 'chat_send' | 'chatbi_ask' | 'report_chatbi_write' | 'report_fill_write' | 'ai_chat_send' | 'ai_share_view' | 'drive_public_share' | 'chunk_upload';
+export type RateLimitName =
+  | 'auth'
+  | 'captcha'
+  | 'sensitive'
+  | 'analytics-ingest'
+  | 'error-report'
+  | 'replay-ingest'
+  | 'report_public_share'
+  | 'workflow_public_callback'
+  | 'push_public_callback'
+  | 'payment_public_link_pay'
+  | 'payment_public_link_session'
+  | 'chat_send'
+  | 'chatbi_ask'
+  | 'report_chatbi_write'
+  | 'report_fill_write'
+  | 'ai_chat_send'
+  | 'ai_share_view'
+  | 'drive_public_share'
+  | 'chunk_upload';
 export type { RateLimitKeyType, RateLimitMode, RateLimitAlgorithm };
 
 export interface RuleConfig extends RateLimitOptions {
@@ -67,18 +91,21 @@ function reportStatsFailure(scope: string, err: unknown): void {
  * 统计与解封均使用裸身份，前后端不再各自拆前缀。
  */
 export function safeRateLimitPath(c: Context): string {
-  const routes = matchedRoutes(c).filter(route => route.method !== 'ALL' && !route.path.endsWith('*'));
+  const routes = matchedRoutes(c).filter((route) => route.method !== 'ALL' && !route.path.endsWith('*'));
   return (routes.at(-1)?.path ?? '/api/[unmatched]').replace(/:([a-zA-Z0-9_]+)/g, '{$1}');
 }
 function identityFor(rule: RuleConfig, c: Context): string | null {
   if (rule.keyType === 'user') {
-    const user = c.get('user'); const member = c.get('member'); const principal = c.get('openPrincipal');
+    const user = c.get('user');
+    const member = c.get('member');
+    const principal = c.get('openPrincipal');
     if (user) return 'u:' + (user.tenantId ?? 'platform') + ':' + user.userId;
     if (member) return 'm:' + (member.tenantId ?? 'platform') + ':' + member.memberId;
     if (principal) return 'a:' + (principal.tenantId ?? 'platform') + ':' + principal.app.clientId;
     return null;
   }
-  if (rule.keyType === 'ip_path') return getClientIp(c) + '|r:' + createHash('sha256').update(c.req.path).digest('hex').slice(0, 32);
+  if (rule.keyType === 'ip_path')
+    return getClientIp(c) + '|r:' + createHash('sha256').update(c.req.path).digest('hex').slice(0, 32);
   return getClientIp(c);
 }
 
@@ -137,8 +164,28 @@ end
 return {over, math.ceil(retry), remaining, math.ceil(worstCount)}
 `;
 
-function recordDecision(rule: RuleConfig, c: Context, identity: string, decision: import('../lib/rate-limit-stats').LimitDecision): void {
-  recordRateLimitEvent({ name: rule.name, key: identity, path: safeRateLimitPath(c), method: c.req.method, decision, correlationId: c.get('requestId') ?? null }, { threshold: rule.alertThreshold, userIds: rule.alertUserIds ?? [], cooldownSeconds: rule.alertCooldownSeconds ?? 3600 });
+function recordDecision(
+  rule: RuleConfig,
+  c: Context,
+  identity: string,
+  decision: import('../lib/rate-limit-stats').LimitDecision,
+): void {
+  c.set('rateLimitSafePath', safeRateLimitPath(c));
+  recordRateLimitEvent(
+    {
+      name: rule.name,
+      key: identity,
+      path: safeRateLimitPath(c),
+      method: c.req.method,
+      decision,
+      correlationId: c.get('requestId') ?? null,
+    },
+    {
+      threshold: rule.alertThreshold,
+      userIds: rule.alertUserIds ?? [],
+      cooldownSeconds: rule.alertCooldownSeconds ?? 3600,
+    },
+  );
 }
 /**
  * 白名单豁免：条目为 IP、CIDR（如 10.0.0.0/8）或 `u:{userId}`。
@@ -184,32 +231,60 @@ async function applyRule(rule: RuleConfig, c: Context, next: () => Promise<void>
   if (!identity) return next();
   const banKey = RL_BAN_PREFIX + rule.name + '|' + identity;
   try {
+    if(limiterRedis.status !== 'ready') throw new Error('Rate limiter Redis is not ready');
     const ttl = await limiterRedis.pttl(banKey);
     if (ttl > 0) {
       recordDecision(rule, c, identity, 'banned');
-      return c.json(errBody('访问已被临时封禁，请稍后再试', 429), 429, { 'Retry-After': String(Math.max(1, Math.ceil(ttl / 1000))) });
+      return c.json(errBody('访问已被临时封禁，请稍后再试', 429), 429, {
+        'Retry-After': String(Math.max(1, Math.ceil(ttl / 1000))),
+      });
     }
-  } catch (err) { return unavailable(rule, c, next, err); }
-  if (isAllowlisted(rule, c)) { recordDecision(rule, c, identity, 'exempt'); return next(); }
+  } catch (err) {
+    return unavailable(rule, c, next, err);
+  }
+  if (isAllowlisted(rule, c)) {
+    recordDecision(rule, c, identity, 'exempt');
+    return next();
+  }
   const counterKey = counterBase(rule, identity);
   const windows: RateLimitWindow[] = [{ windowMs: rule.windowMs, limit: rule.limit }, ...(rule.extraWindows ?? [])];
-  let over: number; let retryMs: number; let remaining: number;
+  let over: number;
+  let retryMs: number;
+  let remaining: number;
   try {
-    [over, retryMs, remaining] = await limiterRedis.eval(MULTI_WINDOW_SCRIPT, windows.length + 1, banKey, ...windows.map((_, i) => i === 0 ? counterKey : counterKey + ':w' + i), String(Date.now()), String(windows.length), rule.algorithm, ...windows.flatMap(w => [String(w.windowMs), String(w.limit)])) as [number, number, number];
-  } catch (err) { return unavailable(rule, c, next, err); }
+    [over, retryMs, remaining] = (await limiterRedis.eval(
+      MULTI_WINDOW_SCRIPT,
+      windows.length + 1,
+      banKey,
+      ...windows.map((_, i) => (i === 0 ? counterKey : counterKey + ':w' + i)),
+      String(Date.now()),
+      String(windows.length),
+      rule.algorithm,
+      ...windows.flatMap((w) => [String(w.windowMs), String(w.limit)]),
+    )) as [number, number, number];
+  } catch (err) {
+    return unavailable(rule, c, next, err);
+  }
   const resetSec = Math.max(1, Math.ceil(retryMs / 1000));
   const prior = Number(c.res.headers.get('RateLimit-Remaining') ?? Number.MAX_SAFE_INTEGER);
   if (remaining < prior) {
-    c.header('RateLimit-Limit', String(rule.limit)); c.header('RateLimit-Remaining', String(remaining)); c.header('RateLimit-Reset', String(resetSec));
+    c.header('RateLimit-Limit', String(rule.limit));
+    c.header('RateLimit-Remaining', String(remaining));
+    c.header('RateLimit-Reset', String(resetSec));
   }
   if (over === -1) {
     recordDecision(rule, c, identity, 'banned');
     return c.json(errBody('访问已被临时封禁，请稍后再试', 429), 429, { 'Retry-After': String(resetSec) });
   }
-  if (!over) { recordDecision(rule, c, identity, 'allowed'); return next(); }
+  if (!over) {
+    recordDecision(rule, c, identity, 'allowed');
+    return next();
+  }
   recordDecision(rule, c, identity, rule.mode === 'monitor' ? 'monitored' : 'blocked');
   if (rule.mode === 'monitor') return next();
-  return c.json(errBody(rule.blockedMessage ?? '请求过于频繁，请稍后再试', 429), 429, { 'Retry-After': String(resetSec) });
+  return c.json(errBody(rule.blockedMessage ?? '请求过于频繁，请稍后再试', 429), 429, {
+    'Retry-After': String(resetSec),
+  });
 }
 
 /**
@@ -237,7 +312,7 @@ function makeNamed(name: RateLimitName): MiddlewareHandler {
   return async (c, next) => {
     await ensureRateLimitRules();
     const rule = ruleCache.get(name);
-    if (!rule?.enabled || rule.methods?.length && !rule.methods.includes(c.req.method)) return next();
+    if (!rule?.enabled || (rule.methods?.length && !rule.methods.includes(c.req.method))) return next();
     if (alreadyApplied(c, name)) return next();
     return applyRule(rule, c, next);
   };
@@ -282,7 +357,19 @@ export const pathBoundRateLimit: MiddlewareHandler = (c, next) => applyPathRules
 installIdentityRateLimiter((c, next) => applyPathRules(c, next, true));
 
 function counterBase(rule: RuleConfig, identity: string): string {
-  const spec = createHash('sha256').update(JSON.stringify([rule.algorithm, rule.windowMs, rule.keyType, rule.methods ?? [], rule.extraWindows ?? [], rule.pathPatterns])).digest('hex').slice(0, 12);
+  const spec = createHash('sha256')
+    .update(
+      JSON.stringify([
+        rule.algorithm,
+        rule.windowMs,
+        rule.keyType,
+        rule.methods ?? [],
+        rule.extraWindows ?? [],
+        rule.pathPatterns,
+      ]),
+    )
+    .digest('hex')
+    .slice(0, 12);
   return RL_PREFIX + rule.name + '|' + identity + '|' + spec;
 }
 let loadedAt = 0;
@@ -294,24 +381,59 @@ export function refreshRateLimitRules(): Promise<void> {
   reload = (async () => {
     const rows = await db.select().from(rateLimitRules);
     const next = new Map<string, RuleConfig>(Object.entries(DEFAULTS));
-    for (const row of rows) next.set(row.name, { ...row, ...row.options, allowlist: row.allowlist ?? [], pathPatterns: row.pathPatterns ?? [] });
+    for (const row of rows)
+      next.set(row.name, {
+        ...row,
+        ...row.options,
+        allowlist: row.allowlist ?? [],
+        pathPatterns: row.pathPatterns ?? [],
+      });
     ruleCache.clear();
     for (const [key, rule] of next) ruleCache.set(key, rule);
     loadedAt = generation === startedGeneration ? Date.now() : 0;
-  })().finally(() => { reload = undefined; });
+  })().finally(() => {
+    reload = undefined;
+  });
   return reload;
 }
 async function ensureRateLimitRules(): Promise<void> {
   if (Date.now() - loadedAt < 30_000) return;
-  try { await refreshRateLimitRules(); }
-  catch (err) { reportStatsFailure('configuration', err); }
+  try {
+    await refreshRateLimitRules();
+  } catch (err) {
+    reportStatsFailure('configuration', err);
+  }
 }
-const invalidateRules = () => { loadedAt = 0; generation += 1; };
+const invalidateRules = () => {
+  loadedAt = 0;
+  generation += 1;
+};
 onInvalidate('rate_limit_rules', invalidateRules);
 onInvalidationReset(invalidateRules);
 export async function bootstrapRateLimitRules(): Promise<void> {
   await db.insert(rateLimitRules).values(Object.values(DEFAULTS)).onConflictDoNothing();
   await refreshRateLimitRules();
+}
+export function isRateLimitPolicyLoaded(name: string, version: Record<string, unknown>): boolean {
+  const rule = ruleCache.get(name);
+  if (!rule || loadedAt === 0) return false;
+  const keys = [
+    'windowMs',
+    'limit',
+    'keyType',
+    'enabled',
+    'mode',
+    'algorithm',
+    'allowlist',
+    'priority',
+    'alertThreshold',
+    'blockedMessage',
+    'pathPatterns',
+    'options',
+  ];
+  return keys.every(
+    (key) => JSON.stringify((rule as unknown as Record<string, unknown>)[key]) === JSON.stringify(version[key]),
+  );
 }
 export function getRateLimitRuntimeState() {
   return { loadedAt, rules: ruleCache.size, fresh: loadedAt > 0 && Date.now() - loadedAt < 30_000 };
@@ -363,7 +485,12 @@ export interface RateLimitBan {
  * 手动封禁某个身份：无视限额与观察模式，封禁期内该身份在此规则下的请求一律 429。
  * 封禁键带 TTL 自动过期；解除用 unbanRateLimitKey。
  */
-export async function banRateLimitKey(name: string, key: string, durationSeconds: number, metadata = { reason: '管理员临时封禁', createdBy: null as number | null }): Promise<void> {
+export async function banRateLimitKey(
+  name: string,
+  key: string,
+  durationSeconds: number,
+  metadata = { reason: '管理员临时封禁', createdBy: null as number | null },
+): Promise<void> {
   await redis.set(`${RL_BAN_PREFIX}${name}|${key}`, JSON.stringify(metadata), 'PX', durationSeconds * 1000);
 }
 
@@ -386,8 +513,14 @@ export async function listRateLimitBans(): Promise<RateLimitBan[]> {
       const ttlMs = await redis.pttl(redisKey);
       if (ttlMs <= 0) continue;
       const raw = await redis.get(redisKey);
-      const metadata = raw ? JSON.parse(raw) as {reason?: string;createdBy?: number} : {};
-      bans.push({ name: suffix.slice(0, sep), key: suffix.slice(sep + 1), ttlMs, reason: metadata.reason ?? '', createdBy: metadata.createdBy ?? null });
+      const metadata = raw ? (JSON.parse(raw) as { reason?: string; createdBy?: number }) : {};
+      bans.push({
+        name: suffix.slice(0, sep),
+        key: suffix.slice(sep + 1),
+        ttlMs,
+        reason: metadata.reason ?? '',
+        createdBy: metadata.createdBy ?? null,
+      });
     }
   } while (cursor !== '0');
   return bans.sort((a, b) => a.ttlMs - b.ttlMs);
@@ -398,9 +531,18 @@ export const RATE_LIMIT_KEYS = {
   statsPrefix: STATS_PREFIX,
 } as const;
 
-function unavailable(rule: RuleConfig, c: Context, next: () => Promise<void>, error: unknown): Promise<Response | void> | Response {
+function unavailable(
+  rule: RuleConfig,
+  c: Context,
+  next: () => Promise<void>,
+  error: unknown,
+): Promise<Response | void> | Response {
   reportStatsFailure('counter', error);
   recordDecision(rule, c, identityFor(rule, c) ?? getClientIp(c), 'degraded');
-  if (rule.failMode === 'closed') return c.json(errBody('限流服务暂时不可用，请稍后重试', 503), 503, { 'X-Zenith-Error': 'rate-limit-unavailable', 'Retry-After': '1' });
+  if (rule.failMode === 'closed')
+    return c.json(errBody('限流服务暂时不可用，请稍后重试', 503), 503, {
+      'X-Zenith-Error': 'rate-limit-unavailable',
+      'Retry-After': '1',
+    });
   return next();
 }

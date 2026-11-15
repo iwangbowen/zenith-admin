@@ -10,7 +10,7 @@ import {
   unbanRateLimitSchema,
   unblockRateLimitSchema,
   updateRateLimitRuleSchema,
-} from '../validation';
+} from '../rate-limit-validation';
 
 // ─── 实体 ────────────────────────────────────────────────────────────────────
 

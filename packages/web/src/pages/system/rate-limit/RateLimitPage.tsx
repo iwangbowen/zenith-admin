@@ -18,6 +18,7 @@ import {
 } from '@douyinfe/semi-ui';
 import type { CreateRateLimitRuleInput, RateLimitRule } from '@zenith/shared/platform';
 import {
+  DEFAULT_RATE_LIMIT_RULES,
   RATE_LIMIT_ALGORITHM_OPTIONS,
   RATE_LIMIT_BAN_DURATION_OPTIONS,
   RATE_LIMIT_DECISION_LABELS,
@@ -51,6 +52,8 @@ import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { EditFormSheet } from '@/components/EditFormModal';
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
 import { LineChart, chartOptions, makeLineSpec, useChartPalette } from '@/components/charts';
+import { abortSubmit } from '@/lib/abort-submit';
+import { Toast } from '@douyinfe/semi-ui';
 import { confirmDanger } from '@/utils/confirm';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { useNavigate } from 'react-router-dom';
@@ -146,11 +149,18 @@ export default function RateLimitPage() {
     }),
     beforeSave: (values, ctx) => {
       const { windowSeconds, burstSeconds, burstLimit, name, ...rest } = values;
+      if (Boolean(burstSeconds) !== Boolean(burstLimit)) {
+        Toast.warning('附加窗口时长与上限必须同时填写');
+        abortSubmit();
+      }
       return {
         ...rest,
         ...(ctx.isEdit ? {} : { name }),
         windowMs: windowSeconds * 1000,
-        extraWindows: burstSeconds && burstLimit ? [{ windowMs: burstSeconds * 1000, limit: burstLimit }] : [],
+        extraWindows:
+          burstSeconds && burstLimit
+            ? [{ windowMs: burstSeconds * 1000, limit: burstLimit }, ...(ctx.editing?.extraWindows?.slice(1) ?? [])]
+            : (ctx.editing?.extraWindows?.slice(1) ?? []),
         alertThreshold: rest.alertThreshold ?? null,
         alertUserIds: (rest.alertUserIds ?? []).map(Number),
       };
@@ -258,7 +268,7 @@ export default function RateLimitPage() {
           key: 'toggle',
           label: r.enabled ? '停用' : '启用',
           hidden: !manage,
-          onClick: () => void save.mutateAsync({ id: r.id, values: { enabled: !r.enabled } }),
+          onClick: () => void save.mutateAsync({ id: r.id, values: { enabled: !r.enabled } }).catch(() => undefined),
         },
         { key: 'reset', label: '清空统计', hidden: !canReset, danger: true, onClick: () => resetStats(r.name) },
         {
@@ -474,6 +484,27 @@ export default function RateLimitPage() {
         </TabPane>
       </Tabs>
       <EditFormSheet modal={modal} width={680} okText="保存规则">
+        {!modal.editing && (
+          <Select
+            placeholder="参考预设（填充策略，仍保持停用）"
+            style={{ width: '100%', marginBottom: 12 }}
+            optionList={['auth', 'captcha', 'chunk_upload', 'payment_public_link_session'].map((name) => ({
+              value: name,
+              label: DEFAULT_RATE_LIMIT_RULES[name].description ?? name,
+            }))}
+            onChange={(value) => {
+              const preset = DEFAULT_RATE_LIMIT_RULES[String(value)];
+              if (preset)
+                modal.formApi.current?.setValues({
+                  ...preset,
+                  name: '',
+                  windowSeconds: preset.windowMs / 1000,
+                  enabled: false,
+                  mode: 'monitor',
+                });
+            }}
+          />
+        )}
         <Collapse defaultActiveKey={['basic', 'scope', 'limits']} keepDOM>
           <Collapse.Panel header="基本信息" itemKey="basic">
             {!modal.editing && (
@@ -606,7 +637,7 @@ export default function RateLimitPage() {
         onOk={() =>
           void diagnose.mutateAsync({
             body: { method: diagMethod as (typeof RATE_LIMIT_METHODS)[number], path: diagPath, principal },
-          })
+          }).catch(() => undefined)
         }
         okText="执行诊断"
         confirmLoading={diagnose.isPending}
@@ -655,6 +686,7 @@ export default function RateLimitPage() {
               body: { name: banName, key: banKey, durationSeconds: duration, reason: banReason || '管理员临时封禁' },
             })
             .then(() => setBanTarget(null))
+            .catch(() => undefined)
         }
         width={480}
       >

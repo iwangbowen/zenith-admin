@@ -103,6 +103,8 @@ export async function captureApiAccessRequest(c: Context): Promise<{ query: Reco
 }
 
 function loggedPath(c: Context): string {
+  const limitedPath = c.get('rateLimitSafePath') as string | undefined;
+  if (limitedPath) return limitedPath;
   // Tokens in path parameters are credentials too: retain their template only.
   return Object.keys(c.req.param()).some(sensitiveKey) ? c.req.routePath || c.req.path : c.req.path;
 }

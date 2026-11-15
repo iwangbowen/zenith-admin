@@ -57,6 +57,7 @@ export async function flushRateLimitEvents(): Promise<void> {
         ),
       );
       const pipeline = redis.pipeline();
+      for (const name of scopes.keys()) pipeline.expire(PREFIX + name + ':epoch', 33 * 86400);
       for (const event of events) {
         const scope = scopes.get(event.name)!;
         if (event.ts <= scope.at) continue;
@@ -133,6 +134,7 @@ export async function readRateLimitMetrics(name: string, details = false) {
   for (const time of hours) pipe.hgetall(base + ':bucket:' + time.format('YYYY-MM-DD-HH'));
   for (const time of days) pipe.hgetall(base + ':bucket:' + time.format('YYYY-MM-DD'));
   const rows = await pipe.exec();
+  if (rows?.some(([error]) => error)) throw new Error('Rate-limit metrics are temporarily unavailable');
   const points = (times: typeof hours, offset: number) =>
     times.map((time, i) => {
       const value = rows?.[offset + i]?.[1] as Record<string, string> | undefined;
@@ -180,6 +182,17 @@ export async function readRateLimitMetrics(name: string, details = false) {
     topSources: Array.from({ length: top.length / 2 }, (_, i) => ({ key: top[i * 2], count: Number(top[i * 2 + 1]) })),
   };
 }
+export async function readRateLimitEvents(name: string): Promise<LimitEvent[]> {
+  const scope = await epoch(name);
+  const raw = await redis.zrevrange(PREFIX + name + ':' + scope.id + ':events', 0, 499);
+  return raw.flatMap((value) => {
+    try {
+      return [JSON.parse(value) as LimitEvent];
+    } catch {
+      return [];
+    }
+  });
+}
 export async function resetRateLimitMetrics(name: string): Promise<void> {
-  await redis.set(PREFIX + name + ':epoch', JSON.stringify({ id: randomUUID(), at: Date.now() }));
+  await redis.set(PREFIX + name + ':epoch', JSON.stringify({ id: randomUUID(), at: Date.now() }), 'EX', 33 * 86400);
 }

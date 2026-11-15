@@ -1,7 +1,12 @@
 import { currentUser } from '../../lib/context';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { rateLimitContract } from '@zenith/shared/platform';
-import { readRateLimitMetrics, resetRateLimitMetrics, rateLimitStatsHealth } from '../../lib/rate-limit-stats';
+import {
+  readRateLimitMetrics,
+  readRateLimitEvents,
+  resetRateLimitMetrics,
+  rateLimitStatsHealth,
+} from '../../lib/rate-limit-stats';
 import type { z } from 'zod';
 import { createHash } from 'node:crypto';
 import { isIP } from 'node:net';
@@ -15,7 +20,7 @@ import {
   type RateLimitOptions,
 } from '@zenith/shared/platform';
 import { getApiCatalog } from '../identity/api-catalog.service';
-import { getRateLimitRuntimeState } from '../../middleware/rate-limit';
+import { isRateLimitPolicyLoaded } from '../../middleware/rate-limit';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
@@ -58,7 +63,7 @@ function mapRule(row: RateLimitRuleRow) {
     extraWindows: row.options.extraWindows ?? [],
     failMode: row.options.failMode ?? 'open',
     policyVersion: createHash('sha256').update(JSON.stringify(row)).digest('hex').slice(0, 12),
-    loadState: getRateLimitRuntimeState().fresh ? ('loaded' as const) : ('pending' as const),
+    loadState: isRateLimitPolicyLoaded(row.name, row) ? ('loaded' as const) : ('pending' as const),
     matchedOperationCount: getRateLimitOperations().filter((op) =>
       rateLimitMatches({ ...row, methods: row.options.methods }, op.method, op.path),
     ).length,
@@ -89,13 +94,26 @@ function optionsFrom(input: UpdateRateLimitRuleInput): RateLimitOptions {
 }
 function validatePolicy(
   input: UpdateRateLimitRuleInput,
-  merged: { enabled: boolean; name: string; pathPatterns: string[]; options: RateLimitOptions; keyType: string },
+  merged: {
+    enabled: boolean;
+    name: string;
+    pathPatterns: string[];
+    options: RateLimitOptions;
+    keyType: string;
+    windowMs: number;
+  },
 ): void {
   for (const entry of input.allowlist ?? []) {
     if (/^[um]:[0-9]+$/.test(entry) || /^[uma]:(?:platform|[0-9]+):[A-Za-z0-9_-]+$/.test(entry)) continue;
     const [ip, prefix] = entry.split('/');
     const family = isIP(ip);
-    if (!family || (prefix !== undefined && (!/^\d+$/.test(prefix) || Number(prefix) > (family === 4 ? 32 : 128))))
+    if (
+      !family ||
+      (prefix !== undefined &&
+        (!Array.from(prefix).every((char) => '0123456789'.includes(char)) ||
+          prefix.length === 0 ||
+          Number(prefix) > (family === 4 ? 32 : 128)))
+    )
       throw new HTTPException(400, { message: '非法豁免身份或 IP/CIDR：' + entry });
   }
   if (merged.enabled && !PREDEFINED_NAMES.has(merged.name) && !merged.pathPatterns.length)
@@ -109,8 +127,8 @@ function validatePolicy(
   )
     throw new HTTPException(400, { message: '绑定范围覆盖管理恢复或健康探针，请缩小路径范围' });
   if (
-    new Set([input.windowMs, ...(merged.options.extraWindows ?? []).map((w) => w.windowMs)].filter(Boolean)).size !==
-    [input.windowMs, ...(merged.options.extraWindows ?? []).map((w) => w.windowMs)].filter(Boolean).length
+    new Set([merged.windowMs, ...(merged.options.extraWindows ?? []).map((w) => w.windowMs)].filter(Boolean)).size !==
+    [merged.windowMs, ...(merged.options.extraWindows ?? []).map((w) => w.windowMs)].filter(Boolean).length
   )
     throw new HTTPException(400, { message: '附加窗口不能与主窗口重复' });
 }
@@ -130,7 +148,7 @@ export async function updateRateLimitRule(id: number, patch: UpdateRateLimitRule
   await validateAlertRecipients(patch.alertUserIds);
   const options = { ...row.options, ...optionsFrom(patch) };
   validatePolicy(patch, { ...row, ...patch, options });
-  await db
+  const changed = await db
     .update(rateLimitRules)
     .set({
       options,
@@ -147,8 +165,10 @@ export async function updateRateLimitRule(id: number, patch: UpdateRateLimitRule
       ...(patch.blockedMessage === undefined ? {} : { blockedMessage: patch.blockedMessage }),
       ...(patch.pathPatterns === undefined ? {} : { pathPatterns: patch.pathPatterns }),
     })
-    .where(eq(rateLimitRules.id, id));
-  await refreshRateLimitRules();
+    .where(and(eq(rateLimitRules.id, id), eq(rateLimitRules.updatedAt, row.updatedAt)))
+    .returning({ id: rateLimitRules.id });
+  if (!changed.length) throw new HTTPException(409, { message: '规则已被其他操作修改，请刷新后重试' });
+  await refreshRateLimitRules().catch(() => undefined);
   const [updated] = await db.select().from(rateLimitRules).where(eq(rateLimitRules.id, id));
   return mapRule(updated);
 }
@@ -179,8 +199,10 @@ export async function createRateLimitRule(input: CreateRateLimitRuleInput) {
       blockedMessage: input.blockedMessage ?? null,
       pathPatterns: input.pathPatterns ?? [],
     })
+    .onConflictDoNothing({ target: rateLimitRules.name })
     .returning();
-  await refreshRateLimitRules();
+  if (!row) throw new HTTPException(409, { message: '规则名称已存在，请刷新后重试' });
+  await refreshRateLimitRules().catch(() => undefined);
   return mapRule(row);
 }
 
@@ -189,7 +211,7 @@ export async function deleteRateLimitRule(id: number) {
   const existingRule = requireRow(row, '规则不存在');
   if (PREDEFINED_NAMES.has(existingRule.name)) throw new HTTPException(400, { message: '内置规则不可删除' });
   await db.delete(rateLimitRules).where(eq(rateLimitRules.id, id));
-  await refreshRateLimitRules();
+  await refreshRateLimitRules().catch(() => undefined);
   return { deleted: true };
 }
 
@@ -235,8 +257,15 @@ export async function getRateLimitDetailStats(id: number) {
 }
 export async function listRateLimitEvents(query: QueryOutputOf<typeof rateLimitContract.events>) {
   const rules = listRuleConfigs().filter((rule) => !query.name || rule.name.includes(query.name));
-  const rows = (await Promise.all(rules.map((rule) => metricsFor(rule, true))))
-    .flatMap((stat) => stat.recentBlocks.map((event) => ({ ...event, name: stat.name })))
+  const rows = (await Promise.all(rules.map((rule) => readRateLimitEvents(rule.name))))
+    .flatMap((events) =>
+      events.map((event) => ({
+        ...event,
+        at: formatDateTime(new Date(event.ts)),
+        monitored: event.decision === 'monitored',
+        banned: event.decision === 'banned',
+      })),
+    )
     .filter(
       (event) =>
         (!query.decision || event.decision === query.decision) &&

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { rateLimitPathMatches, selectRateLimitRule } from './rate-limit';
-import { createRateLimitRuleSchema, updateRateLimitRuleSchema } from './validation';
+import { createRateLimitRuleSchema, updateRateLimitRuleSchema } from './rate-limit-validation';
 describe('rate limit policy matching', () => {
  it('matches templates, segment wildcards and literal metacharacters safely',()=>{
   expect(rateLimitPathMatches('/api/users/{id}','/api/users/42')).toBe(true);
