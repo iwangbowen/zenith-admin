@@ -47,6 +47,7 @@ const fontFile = path.join(FONT_DIR, PDF_FONT_FILES[pdfFont]);
 const required = [
   [path.join(SERVER_ROOT, 'dist', 'cms', 'renderer-fingerprint.json'), 'CMS 渲染指纹缺失，请先执行 npm run build -w @zenith/server'],
   [path.join(SERVER_ROOT, 'dist', 'index.js'), '请先执行 npm run build -w @zenith/server'],
+  [path.join(SERVER_ROOT, 'dist', 'bootstrap', 'recover-ip-access.js'), 'IP 访问控制恢复入口缺失，请先构建 server'],
   [path.join(SERVER_ROOT, 'drizzle', 'meta', '_journal.json'), 'drizzle/ 迁移目录缺失'],
   [fontFile, pdfFont === 'subset' ? '子集字体未生成，请先执行 npm run build -w @zenith/server（或 npm run build:pdf-font -w @zenith/server）' : '全量字体缺失，请检查仓库 checkout'],
 ];

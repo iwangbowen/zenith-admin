@@ -1,9 +1,9 @@
 /** Local server-console recovery only; no HTTP bypass is exposed. */
 import { eq, and } from 'drizzle-orm';
-import { loadSettingsEntry, restoreSettings } from '../src/lib/settings';
-import { db, closeDb } from '../src/db';
-import { users, roles, userRoles } from '../src/db/schema';
-import { runAsUser } from '../src/lib/audit-context';
+import { loadSettingsEntry, restoreSettings } from '../lib/settings';
+import { db, closeDb } from '../db';
+import { users, roles, userRoles } from '../db/schema';
+import { runAsUser } from '../lib/audit-context';
 
 const args = process.argv.slice(2);
 const read = (key: string) => args[args.indexOf(key) + 1];
@@ -11,7 +11,7 @@ const actorId = Number(read('--actor-id'));
 const reason = args.includes('--reason') ? read('--reason')?.trim() : '';
 try {
   if (!args.includes('--confirm-disable') || !args.includes('--actor-id') || !Number.isInteger(actorId) || actorId < 1 || !reason || reason.length > 450) {
-    throw new Error('Usage: npm run ip-access:recover -w @zenith/server -- --actor-id <platform-admin-id> --reason <reason> --confirm-disable');
+    throw new Error('Usage: npm run ip-access:recover -- --actor-id <platform-admin-id> --reason <reason> --confirm-disable');
   }
   const [actor] = await db.select({ userId: users.id, username: users.username, tenantId: users.tenantId, status: users.status })
     .from(users).where(eq(users.id, actorId));
