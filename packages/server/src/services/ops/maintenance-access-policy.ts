@@ -5,6 +5,7 @@ export const MAINTENANCE_EXCEPTIONS = [
   ...['/api/auth/me', '/api/auth/captcha', '/api/auth/oauth/providers', '/api/auth/oauth/{provider}', '/api/auth/enterprise/providers', '/api/auth/enterprise/{id}'].map((path) => ({ method: 'GET', path, reason: '认证与当前身份' })),
   { method: 'POST', path: '/api/auth/oauth/{provider}/callback', reason: '第三方登录，仍校验 OAuth 状态与凭证' },
   { method: 'GET', path: '/api/maintenance/access', reason: '当前主体维护能力，仍执行认证' },
+  { method: 'GET', path: '/api/ws', reason: '控制通道保留，业务帧另行检查维护策略' },
   { method: 'POST', path: '/api/public/payment/notify/{channel}/{callbackToken}', reason: '支付结果接收，仍执行验签与幂等' },
 ] as const;
 export function maintenancePathMatches(pattern: string, path: string) {
@@ -13,5 +14,15 @@ export function maintenancePathMatches(pattern: string, path: string) {
 }
 export function maintenanceException(method: string, path: string) {
   return MAINTENANCE_EXCEPTIONS.find((entry) => entry.method === method && maintenancePathMatches(entry.path, path));
+}
+export function maintenanceDecision(enabled: boolean, method: string, path: string, access?: { canView: boolean; canManage: boolean; canViewLogs: boolean; canBypass: boolean }) {
+  if (!enabled) return { allowed: true, reason: '未处于维护中' };
+  const exception = maintenanceException(method, path);
+  if (exception) return { allowed: true, reason: exception.reason };
+  if (access?.canBypass) return { allowed: true, reason: '主体具有维护业务通行权限，业务权限仍需验证' };
+  const managementPath = /^\/api\/maintenance(?:\/|$)/.test(path);
+  const shellPath = method === 'GET' && ['/api/menus/user', '/api/settings/me', '/api/auth/me'].includes(path);
+  if ((managementPath || shellPath) && access && (access.canView || access.canManage || access.canViewLogs)) return { allowed: true, reason: '维护管理恢复通路，仍需对应操作权限' };
+  return { allowed: false, reason: '维护策略拒绝' };
 }
 export const MAINTENANCE_BOUNDARIES = ['仅控制 API 与实时业务入口，不是数据库只读锁', '已有 HTTP 请求、后台任务和关键回调可能继续写入', '非 API 的 CMS、短链和静态资源由部署层控制'];

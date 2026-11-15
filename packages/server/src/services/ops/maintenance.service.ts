@@ -17,6 +17,8 @@ import { TtlCache } from '../../lib/ttl-cache';
 import { onInvalidate, onInvalidationReset } from '../../lib/invalidation-bus';
 import { scheduleBroadcast } from '../../lib/ws-manager';
 import { requireRow } from '../../lib/db-assert';
+import { maintenanceAccess } from '../../lib/maintenance-access';
+import { MAINTENANCE_EXCEPTIONS, MAINTENANCE_BOUNDARIES, maintenanceDecision } from './maintenance-access-policy';
 
 const OPEN = ['scheduled', 'ongoing'] as const;
 const mapPeriod = entityMapper(maintenanceLogSchema);
@@ -111,4 +113,9 @@ export async function listMaintenanceLogs(q: QueryOutputOf<typeof maintenanceCon
 }
 export async function getMaintenanceLog(id: number) {
   return mapPeriod(requireRow((await db.select().from(maintenanceLogs).where(eq(maintenanceLogs.id, id)).limit(1))[0], '维护记录不存在'));
+}
+export async function diagnoseMaintenance(input: z.output<typeof maintenanceContract.diagnose.body>) {
+  const status = await getMaintenanceStatus();
+  if (input.version !== status.version) throw new HTTPException(409, { message: '维护状态已变化，请重新诊断' });
+  return { ...maintenanceDecision(status.enabled, input.method, input.path, await maintenanceAccess(currentUser())), version: status.version, exceptions: [...MAINTENANCE_EXCEPTIONS], boundaries: MAINTENANCE_BOUNDARIES };
 }

@@ -1,3 +1,4 @@
+import { MaintenanceBoundary } from '@/components/MaintenanceBoundary';
 import React, { Suspense, type ReactNode } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
@@ -123,11 +124,11 @@ export default function MemberApp() {
   return (
     <QueryClientProvider client={memberQueryClient}>
       <MemberAuthProvider>
-        <HashRouter>
+        <MaintenanceBoundary><HashRouter>
           {/* 埋点桥接：路由级 PV/PL 采集 + 登录身份关联，覆盖公开与受保护路由，全局挂载一次 */}
           <MemberAnalyticsBridge />
           <AppRoutes />
-        </HashRouter>
+        </HashRouter></MaintenanceBoundary>
       </MemberAuthProvider>
     </QueryClientProvider>
   );

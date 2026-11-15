@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, Suspense, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, Suspense, useMemo, useRef } from 'react';
 import { BrowserRouter, HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
@@ -13,7 +13,7 @@ import { usePreferences } from '@/hooks/usePreferences';
 import { hasPostLoginHome, clearPostLoginHome } from '@/lib/post-login';
 import { ThemeProvider } from '@/providers/ThemeProvider';
 import { useQueryClient } from '@tanstack/react-query';
-import { maintenanceKeys, usePublicMaintenanceStatus } from '@/hooks/queries/maintenance';
+import { maintenanceKeys, usePublicMaintenanceStatus, useMaintenanceAccess } from '@/hooks/queries/maintenance';
 import { lazyPageComponent } from '@/utils/page-registry';
 import { useCurrentUserMenuTree, useMenuTree } from '@/hooks/queries/menus';
 import type { Menu, User } from '@zenith/shared/identity';
@@ -26,6 +26,8 @@ import RouteSuspense from '@/layouts/RouteSuspense';
 const AdminLayout = React.lazy(() => import('@/layouts/AdminLayout'));
 // 维护遮罩只在维护生效后加载，避免其 Empty 等组件进入每次登录的关键路径。
 const MaintenanceOverlay = React.lazy(() => import('@/components/MaintenanceOverlay'));
+const MaintenanceManagementPage = React.lazy(() => import('@/pages/system/maintenance/MaintenancePage'));
+function MaintenanceManagementOnly() { return <Routes><Route path="/system/maintenance" element={<Suspense fallback={null}><MaintenanceManagementPage /></Suspense>} /><Route path="*" element={<Navigate to="/system/maintenance" replace />} /></Routes>; }
 
 // 登录页静态引入：未登录首屏只需关键路径本身，不再多一轮 chunk 下载。
 // 代价是它的静态闭包直接决定匿名首屏体积：Semi Form（含 BaseForm）会静态拖入全部字段控件（≈770 KB / 210 KB gz），
@@ -343,7 +345,8 @@ export default function App() {
     logout();
   }, [logout]);
 
-  const isSuperAdmin = user?.roles?.some((r) => r.code === 'super_admin') ?? false;
+  const [maintenanceLogin, setMaintenanceLogin] = useState(false);
+  const maintenanceAccess = useMaintenanceAccess(status === 'authenticated');
 
   // 埋点 SDK 延后到空闲时初始化；有本地凭证时同时投机预取后台壳的 chunk 与图标表
   useEffect(() => {
@@ -358,8 +361,14 @@ export default function App() {
 
   // 维护状态收敛为单一查询（与超管横幅、维护遮罩共用缓存），
   // 不再各自裸取 + 用本地 state 保存。auth 未就绪前不发起。
-  const { data: maintenance } = usePublicMaintenanceStatus({ enabled: status !== 'checking' });
-  const showMaintenance = !!maintenance?.enabled && !isSuperAdmin;
+  const { data: maintenance } = usePublicMaintenanceStatus({ enabled: status !== 'checking', refetchInterval: 30_000 });
+  const wasMaintaining = useRef(false);
+  useEffect(() => {
+    if (wasMaintaining.current && maintenance && !maintenance.enabled) void queryClient.invalidateQueries();
+    wasMaintaining.current = !!maintenance?.enabled;
+  }, [maintenance, queryClient]);
+  const canManageMaintenance = maintenanceAccess.data?.canManage || maintenanceAccess.data?.canView || maintenanceAccess.data?.canViewLogs;
+  const showMaintenance = !!maintenance?.enabled && !maintenanceAccess.data?.canBypass && !canManageMaintenance && !(maintenanceLogin && !user);
 
   // http-client 在 React 树之外拦截 503，只能靠事件通知；事件仅作失效触发器，
   // 真实状态始终以服务端返回为准。
@@ -391,8 +400,13 @@ export default function App() {
   // 维护期间不再挂载后台壳：页面内的定时查询会持续收到 503，每次 503 都会派发
   // maintenance:enabled 让状态失效，遮罩里的刷新图标就会被动地反复转圈。
   // 只渲染遮罩可以把这些请求一起停掉；维护结束后由遮罩自身的 30 秒轮询解除。
+  if (maintenance?.enabled && status === 'authenticated' && maintenanceAccess.isPending) return <AppChrome><PageLoading /></AppChrome>;
   if (showMaintenance && maintenance) {
-    return <AppChrome><Suspense fallback={routeFallback}><MaintenanceOverlay info={maintenance} /></Suspense></AppChrome>;
+    return <AppChrome><Suspense fallback={routeFallback}><MaintenanceOverlay info={maintenance} onAdminLogin={() => {
+      setMaintenanceLogin(true); if (user) handleLogout();
+      if (import.meta.env.VITE_ELECTRON === 'true') window.location.hash = '/login';
+      else window.history.replaceState(null, '', import.meta.env.BASE_URL + 'login');
+    }} /></Suspense></AppChrome>;
   }
 
   // Electron file:// 协议不支持 BrowserRouter，需使用 HashRouter
@@ -406,7 +420,7 @@ export default function App() {
       {user ? (
         <PreferencesProvider>
           <ThemeProvider>
-            <AdminRouteLoader user={user} logout={handleLogout} />
+            {maintenance?.enabled && canManageMaintenance && !maintenanceAccess.data?.canBypass ? <MaintenanceManagementOnly /> : <AdminRouteLoader user={user} logout={handleLogout} />}
           </ThemeProvider>
         </PreferencesProvider>
       ) : (

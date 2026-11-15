@@ -1,274 +1,143 @@
-import { useEffect, useRef } from 'react';
-import {
-  Banner,
-  Button,
-  Form,
-  Tag,
-  Toast,
-  Typography,
-} from '@douyinfe/semi-ui';
-import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
+import { useState } from 'react';
+import { Banner, Button, Collapse, DatePicker, Descriptions, Input, InputNumber, Modal, Select, SideSheet, Space, Spin, Switch, TabPane, Tabs, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { Wrench, Power, PowerOff, RefreshCw } from 'lucide-react';
-import type { MaintenanceLog } from '@zenith/shared/ops';
+import { maintenanceContract, MAINTENANCE_LOG_STATUS_OPTIONS, type MaintenanceLog, type MaintenanceStatus } from '@zenith/shared/ops';
+import { maintenanceContentSchema, maintenancePlanSchema } from '@zenith/shared/ops/maintenance-validation';
+import { useMaintenanceAccess, useMaintenanceStatus, useMaintenanceLogs, useMaintenancePlan, useMaintenanceStart, useMaintenanceCancel, useMaintenanceDiagnosis, useUpdateMaintenanceStatus } from '@/hooks/queries/maintenance';
+import { ListSearchToolbar } from '@/components/list-page';
 import ConfigurableTable from '@/components/ConfigurableTable';
-import { listTableProps } from '@/components/list-page';
-import PageLoading from '@/components/PageLoading';
-import { usePermission } from '@/hooks/usePermission';
-import { usePagination } from '@/hooks/usePagination';
-import { formatDateTimeForApi } from '@/utils/date';
+import { useListPage } from '@/hooks/useListPage';
+import { useUrlTabState } from '@/hooks/useUrlTabState';
+import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { formatDateTimeForApi, parseDateTimeParam } from '@/utils/date';
 import DateTimeText from '@/components/DateTimeText';
-import { formatSecondsHuman } from '@/utils/format';
-import {
-  useMaintenanceLogs,
-  useMaintenanceStatus,
-  useUpdateMaintenanceStatus,
-} from '@/hooks/queries/maintenance';
-import { dateTimeColumn } from '@/utils/table-columns';
-import { confirmDangerAsync } from '@/utils/confirm';
+import { useAllUsers } from '@/hooks/queries/users';
+import './maintenance.css';
+import { useLaunchLeaveGuard } from '@/components/workflow/useLaunchLeaveGuard';
+const { Text } = Typography;
 
-const { Title, Text } = Typography;
+type Content = { message: string; estimatedEndAt: string | null };
+type Draft = Content & { version: number; reason: string; scheduledStartAt: string | null; autoEndAt: string | null; notifyUserIds: number[]; remindMinutes: number };
+const format = (value: unknown) => value instanceof Date ? formatDateTimeForApi(value) : null;
 
-interface FormValues {
-  message: string;
-  estimatedEndAt?: Date | null;
-}
-
-/** 将秒数格式化为「X 天 Y 小时 Z 分」 */
-export default function MaintenancePage() {
-  const { hasPermission } = usePermission();
-  const canManage = hasPermission('system:maintenance:manage');
-  // useEditModal 例外：页面级全局配置表单（维护模式），保存后不关闭；状态到达后经 setValues 回填
-  const formApi = useRef<FormApi | null>(null);
-
-  const { page, pageSize, setPage, buildPagination } = usePagination();
-  const statusQuery = useMaintenanceStatus();
-  const logsQuery = useMaintenanceLogs({ page, pageSize });
-  const updateMutation = useUpdateMaintenanceStatus();
-  const status = statusQuery.data ?? null;
-
-  useEffect(() => {
-    if (!status) return;
-    formApi.current?.setValues({
-      message: status.message,
-      estimatedEndAt: status.estimatedEndAt ? new Date(status.estimatedEndAt) : null,
-    });
-  }, [status]);
-
-  const handleToggle = async (enable: boolean) => {
-    if (!canManage) return;
-
-    if (enable) {
-      // 开启前二次确认，防止误操作
-      const confirmed = await confirmDangerAsync({
-        title: '确认开启维护模式？',
-        content: '开启后，所有非超级管理员用户的 API 请求将返回 503，前端会显示维护提示页面。请确认已通知相关用户。',
-        okText: '确认开启',
-      });
-      if (!confirmed) return;
-    }
-
-    const values = formApi.current?.getValues() as FormValues | undefined;
-    await updateMutation.mutateAsync({
-      body: {
-        enabled: enable,
-        message: values?.message || '系统维护中，请稍后重试',
-        estimatedEndAt: values?.estimatedEndAt ? formatDateTimeForApi(values.estimatedEndAt) : null,
-      },
-    });
-    // mutation 已按 invalidateMaintenanceAfterToggle 失效公开状态（超管横幅）、管理详情与维护记录，
-    // 无需再手工 dispatch CustomEvent 跨组件广播或重复失效日志。
-    Toast.success(enable ? '维护模式已开启' : '维护模式已关闭');
-    setPage(1);
+function MaintenanceEditor({ status, reload }: { readonly status: MaintenanceStatus; readonly reload: () => unknown }) {
+  const access = useMaintenanceAccess();
+  const save = useUpdateMaintenanceStatus(); const plan = useMaintenancePlan(); const start = useMaintenanceStart(); const cancel = useMaintenanceCancel();
+  const diagnosis = useMaintenanceDiagnosis();
+  const [draft, setDraft] = useState<Draft | null>(null);
+  useLaunchLeaveGuard(() => draft !== null);
+  const [testPath, setTestPath] = useState('/api/users'); const [testMethod, setTestMethod] = useState('GET');
+  const [diagnosisKey, setDiagnosisKey] = useState('');
+  const [planning, setPlanning] = useState(false);
+  const [automaticEnd, setAutomaticEnd] = useState(false);
+  const users = useAllUsers({ enabled: planning && !!access.data?.canManage && !status.current });
+  const initial: Draft = { message: status.message, estimatedEndAt: status.estimatedEndAt, version: status.version, reason: '', scheduledStartAt: status.scheduledStartAt, autoEndAt: status.autoEndAt, notifyUserIds: status.current?.notifyUserIds ?? [], remindMinutes: status.current?.remindMinutes ?? 15 };
+  const value = draft ?? initial; const stale = !!draft && value.version !== status.version;
+  const pending = save.isPending || plan.isPending || start.isPending || cancel.isPending;
+  const canManage = access.data?.canManage ?? false;
+  const edit = (patch: Partial<Draft>) => setDraft((current) => ({ ...(current ?? initial), ...patch }));
+  const abandon = () => {
+    const run = () => { setDraft(null); reload(); };
+    if (draft) Modal.confirm({ title: '放弃当前草稿并载入最新状态？', onOk: run }); else run();
   };
-
-  if (statusQuery.isFetching && !status) {
-    return <PageLoading inline />;
-  }
-
-  const isEnabled = status?.enabled ?? false;
-
-  const logColumns: ColumnProps<MaintenanceLog>[] = [
-    dateTimeColumn('开始时间', 'startedAt'),
-    dateTimeColumn('结束时间', 'endedAt'),
-    { title: '时长', dataIndex: 'durationSeconds', width: 120, align: 'right', render: (v: number | null) => formatSecondsHuman(v) },
-    { title: '维护提示', dataIndex: 'message', ellipsis: { showTitle: true } },
-    { title: '开启人', dataIndex: 'startedByName', width: 120, render: (v: string | null) => v ?? <Text type="tertiary">—</Text> },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      width: 100,
-      render: (v: MaintenanceLog['status']) => (
-        v === 'ongoing'
-          ? <Tag color="orange" size="small">进行中</Tag>
-          : <Tag color="green" size="small">已完成</Tag>
-      ),
-    },
+  const action = async (enabled: boolean) => {
+    const parsed = maintenanceContentSchema.safeParse(value);
+    if (!parsed.success) { Toast.error(parsed.error.issues[0].message); return; }
+    if (!value.reason.trim()) { Toast.error('请填写操作原因'); return; }
+    try {
+      await save.mutateAsync({ body: { ...parsed.data, reason: value.reason, enabled, version: value.version } });
+      setDraft(null); Toast.success(enabled ? status.enabled ? '维护说明已更新' : '维护已开启' : status.enabled ? '维护已结束' : '草稿已保存');
+    } catch { /* Preserve the draft and its original version on all failures. */ }
+  };
+  const submit = (enabled: boolean) => {
+    if (enabled !== status.enabled) Modal.confirm({ title: enabled ? '确认开启业务入口维护？' : '确认结束维护并开放业务？',
+      content: enabled ? '普通业务入口将暂停；后台任务、关键支付回调仍运行。当前有管理权限的身份可以恢复管理。' : '结束后普通业务接口和页面恢复访问，后台数据将重新校准。',
+      okText: enabled ? '开启维护' : '结束维护', onOk: () => action(enabled) });
+    else void action(enabled);
+  };
+  const submitPlan = async () => {
+    if (automaticEnd && !value.autoEndAt) { Toast.error('请选择自动恢复时间'); return; }
+    const parsed = maintenancePlanSchema.safeParse({ ...value, autoEndAt: automaticEnd ? value.autoEndAt : null });
+    if (!parsed.success) { Toast.error(parsed.error.issues[0].message); return; }
+    try { await plan.mutateAsync({ body: parsed.data }); setDraft(null); setPlanning(false); Toast.success('维护计划已安排'); } catch { /* Keep draft. */ }
+  };
+  const planAction = (name: 'start' | 'cancel') => {
+    if (!value.reason.trim()) { Toast.error('请填写操作原因'); return; }
+    Modal.confirm({ title: name === 'start' ? '提前开始维护？' : '取消维护计划？', onOk: async () => {
+      try { await (name === 'start' ? start : cancel).mutateAsync({ body: { version: value.version, reason: value.reason } }); setDraft(null); } catch { /* Keep draft. */ }
+    } });
+  };
+  const key = status.version + ':' + testMethod + ':' + testPath;
+  return <div className="maintenance-editor">
+    <Space wrap><Tag color={status.enabled ? 'orange' : status.current ? 'blue' : 'green'}>{status.enabled ? '维护中' : status.current ? '待开始' : '正常开放'}</Tag>
+      <Tag>版本 {status.version}</Tag><Button size="small" disabled={pending} onClick={abandon}>{draft ? '放弃草稿并重载' : '刷新状态'}</Button></Space>
+    <Descriptions align="left" data={[
+      { key: '实际开始', value: <DateTimeText value={status.startedAt} mode="absolute" /> },
+      { key: '开启人', value: status.startedByName ?? '—' },
+      { key: '预计结束', value: <DateTimeText value={status.estimatedEndAt} mode="absolute" /> },
+      { key: '自动恢复', value: status.autoEndAt ? <DateTimeText value={status.autoEndAt} mode="absolute" /> : '关闭；预计时间到达不会自动开放' },
+      { key: '最后变更', value: <DateTimeText value={status.updatedAt} /> },
+    ]} />
+    <Text type="tertiary">维护控制 API 与实时业务入口；后台任务、支付结果回调、已有 HTTP 请求可能继续执行，不提供数据库停写保证。</Text>
+    {stale ? <Banner type="warning" closeIcon={null} description="服务端状态已变化，当前草稿保留。请重载后重新编辑，旧版本不能提交。" /> : null}
+    <label>维护提示<TextArea aria-label="维护提示" rows={3} maxLength={512} value={value.message} onChange={(message) => edit({ message })} disabled={!canManage || pending} /></label>
+    <label>预计结束时间<DatePicker type="dateTime" value={parseDateTimeParam(value.estimatedEndAt) ?? undefined} onChange={(date) => edit({ estimatedEndAt: format(date) })} disabled={!canManage || pending} /></label>
+    {canManage ? <label>操作原因<Input aria-label="操作原因" value={value.reason} maxLength={500} onChange={(reason) => edit({ reason })} disabled={pending} placeholder="保存、开启、延长或结束维护的原因" /></label> : null}
+    {status.current?.status === 'scheduled' ? <Space wrap>
+      <Text>计划开始：<DateTimeText value={status.scheduledStartAt} mode="absolute" /></Text>
+      {canManage ? <><Button disabled={pending || stale} onClick={() => planAction('start')}>提前开始</Button><Button disabled={pending || stale} onClick={() => planAction('cancel')}>取消计划</Button></> : null}
+    </Space> : canManage ? <Space wrap>
+      <Button theme="solid" loading={pending} disabled={!draft || stale} onClick={() => submit(status.enabled)}>{status.enabled ? '保存维护说明 / 延长' : '保存提示草稿'}</Button>
+      <Button type={status.enabled ? 'primary' : 'warning'} disabled={pending || stale} onClick={() => submit(!status.enabled)}>{status.enabled ? '结束维护' : '立即开启维护'}</Button>
+      {!status.enabled ? <Button disabled={pending} onClick={() => setPlanning(!planning)}>{planning ? '收起计划' : '安排计划维护'}</Button> : null}
+    </Space> : null}
+    {planning && !status.current ? <section className="maintenance-plan">
+      <label>计划开始<DatePicker type="dateTime" value={parseDateTimeParam(value.scheduledStartAt) ?? undefined} onChange={(date) => edit({ scheduledStartAt: format(date) })} /></label>
+      <Space wrap><Text>自动恢复（独立于预计结束）</Text><Switch checked={automaticEnd} onChange={(enabled) => { setAutomaticEnd(enabled); edit({ autoEndAt: enabled ? value.estimatedEndAt : null }); }} /></Space>
+      {automaticEnd ? <label>自动恢复时间<DatePicker type="dateTime" value={parseDateTimeParam(value.autoEndAt) ?? undefined} onChange={(date) => edit({ autoEndAt: format(date) })} /></label> : null}
+      <label>通知接收人<Select multiple maxTagCount={2} value={value.notifyUserIds} optionList={(users.data ?? []).map((user) => ({ value: user.id, label: user.nickname || user.username }))} onChange={(ids) => edit({ notifyUserIds: ids as number[] })} placeholder="选填；无接收人时只显示站内维护状态" /></label>
+      <label>提前提醒（分钟）<InputNumber value={value.remindMinutes} min={0} max={1440} onChange={(minutes) => edit({ remindMinutes: Number(minutes) })} /></label>
+      <Button disabled={stale || pending} loading={plan.isPending} onClick={() => void submitPlan()}>提交维护计划</Button>
+    </section> : null}
+    <Collapse>
+      <Collapse.Panel header="访问诊断与影响范围" itemKey="diagnosis">
+        <Space wrap><Select value={testMethod} optionList={['GET','POST','PUT','PATCH','DELETE'].map((method) => ({ value: method, label: method }))} onChange={(method) => setTestMethod(String(method))} style={{ width: 110 }} />
+          <Input aria-label="诊断接口路径" value={testPath} onChange={setTestPath} style={{ width: 300 }} />
+          <Button loading={diagnosis.isPending} onClick={async () => { try { await diagnosis.mutateAsync({ body: { method: testMethod, path: testPath, version: status.version } }); setDiagnosisKey(key); } catch { /* Request feedback. */ } }}>诊断当前身份</Button></Space>
+        {diagnosis.data ? <div>{diagnosisKey !== key ? <Text type="warning">输入或版本已变化，请重新诊断</Text> : <><Tag color={diagnosis.data.allowed ? 'green' : 'red'}>{diagnosis.data.allowed ? '允许通过维护门禁' : '维护拒绝'}</Tag><Text>{diagnosis.data.reason}</Text></>}
+          <p>{diagnosis.data.boundaries.join('；')}</p>{diagnosis.data.exceptions.map((item) => <div key={item.method + item.path}><Text type="tertiary">{item.method} {item.path} · {item.reason}</Text></div>)}</div> : null}
+      </Collapse.Panel>
+      <Collapse.Panel header="管理员恢复说明" itemKey="recovery"><Text>维护页可由具有管理权限的合法账号进入，业务通行需要独立权限。无法进入时，在服务器部署目录执行受控维护恢复命令；不会公开任何 HTTP 绕过入口。</Text></Collapse.Panel>
+    </Collapse>
+  </div>;
+}
+function MaintenanceHistory() {
+  const page = useListPage({ op: maintenanceContract.logs, useList: useMaintenanceLogs });
+  const [detail, setDetail] = useState<MaintenanceLog | null>(null);
+  const columns: ColumnProps<MaintenanceLog>[] = [
+    dateTimeColumn('计划开始','scheduledStartAt'), dateTimeColumn('实际开始','startedAt'), dateTimeColumn('结束时间','endedAt'),
+    { title: '维护提示', dataIndex: 'message', render: renderEllipsis },
+    { title: '状态', dataIndex: 'status', width: 110, render: (value) => MAINTENANCE_LOG_STATUS_OPTIONS.find((item) => item.value === value)?.label },
+    { title: '开启人', dataIndex: 'startedByName', width: 120 },
+    createOperationColumn({ width: 80, actions: (row) => [{ key: 'detail', label: '详情', onClick: () => setDetail(row) }] }),
   ];
-
-  return (
-    <div style={{ maxWidth: 1040, margin: '0 auto', padding: '0 0 40px' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
-        <Wrench size={22} style={{ color: 'var(--semi-color-primary)' }} />
-        <Title heading={4} style={{ margin: 0 }}>维护模式</Title>
-      </div>
-
-      {/* Status Banner */}
-      <div style={{ marginBottom: 24 }}>
-        {isEnabled ? (
-          <Banner
-            type="warning"
-            icon={<PowerOff size={16} />}
-            description={
-              <span>
-                维护模式已开启，所有非超级管理员用户将无法访问系统。
-                {status?.startedByName && (
-                  <> 由 <Text strong>{status.startedByName}</Text> 于 {status.startedAt} 开启。</>
-                )}
-              </span>
-            }
-            closeIcon={null}
-          />
-        ) : (
-          <Banner
-            type="success"
-            icon={<Power size={16} />}
-            description="系统运行正常，维护模式未开启。"
-            closeIcon={null}
-          />
-        )}
-      </div>
-
-      {/* Current Status */}
-      <section
-        style={{
-          paddingBottom: 24,
-          borderBottom: '1px solid var(--semi-color-border)',
-        }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <Text type="secondary" size="small">当前状态</Text>
-          <Button
-            icon={<RefreshCw size={13} />}
-            size="small"
-            theme="borderless"
-            loading={statusQuery.isFetching}
-            onClick={() => void statusQuery.refetch()}
-          >
-            刷新
-          </Button>
-        </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px 32px' }}>
-          <div>
-            <Text type="secondary" size="small">状态</Text>
-            <div style={{ marginTop: 4 }}>
-              {isEnabled
-                ? <Tag color="orange" size="large">维护中</Tag>
-                : <Tag color="green" size="large">正常运行</Tag>}
-            </div>
-          </div>
-          {status?.startedByName && (
-            <div>
-              <Text type="secondary" size="small">开启人</Text>
-              <div style={{ marginTop: 4 }}><Text strong>{status.startedByName}</Text></div>
-            </div>
-          )}
-          {status?.startedAt && (
-            <div>
-              <Text type="secondary" size="small">开启时间</Text>
-              <div style={{ marginTop: 4 }}><Text>{status.startedAt}</Text></div>
-            </div>
-          )}
-          {status?.estimatedEndAt && (
-            <div>
-              <Text type="secondary" size="small">预计结束</Text>
-              <div style={{ marginTop: 4 }}><Text>{status.estimatedEndAt}</Text></div>
-            </div>
-          )}
-          <div>
-            <Text type="secondary" size="small">最后更新</Text>
-            <div style={{ marginTop: 4 }}><Text><DateTimeText value={status?.updatedAt} /></Text></div>
-          </div>
-        </div>
-      </section>
-
-      {/* Config Form */}
-      {canManage && (
-        <section
-          style={{
-            padding: '24px 0',
-            borderBottom: '1px solid var(--semi-color-border)',
-          }}
-        >
-          <Text type="secondary" size="small" style={{ display: 'block', marginBottom: 16 }}>维护配置</Text>
-          <Form
-            getFormApi={(api) => { formApi.current = api; }}
-            labelPosition="left"
-            labelWidth={100}
-            initValues={{
-              message: status?.message ?? '系统维护中，请稍后重试',
-              estimatedEndAt: status?.estimatedEndAt ? new Date(status.estimatedEndAt) : null,
-            }}
-          >
-            <Form.TextArea
-              field="message"
-              label="维护提示"
-              placeholder="向用户展示的维护提示信息"
-              rows={3}
-              maxCount={512}
-              disabled={!canManage}
-            />
-            <Form.DatePicker
-              field="estimatedEndAt"
-              label="预计结束时间"
-              type="dateTime"
-              placeholder="选择预计结束时间（可选）"
-              format="yyyy-MM-dd HH:mm:ss"
-              style={{ width: '100%' }}
-              disabled={!canManage}
-            />
-          </Form>
-
-          <div style={{ marginTop: 20, display: 'flex', gap: 12 }}>
-            {isEnabled ? (
-              <Button
-                type="tertiary"
-                theme="solid"
-                icon={<Power size={14} />}
-                loading={updateMutation.isPending}
-                onClick={() => void handleToggle(false)}
-              >
-                关闭维护模式
-              </Button>
-            ) : (
-              <Button
-                type="warning"
-                theme="solid"
-                icon={<PowerOff size={14} />}
-                loading={updateMutation.isPending}
-                onClick={() => void handleToggle(true)}
-              >
-                开启维护模式
-              </Button>
-            )}
-          </div>
-          <div style={{ marginTop: 12 }}>
-            <Text type="warning" size="small">
-              ⚠ 开启维护模式后，所有非超级管理员用户的 API 请求将返回 503，前端会显示维护提示页面。
-            </Text>
-          </div>
-        </section>
-      )}
-
-      {/* Maintenance History */}
-      <section style={{ paddingTop: 24 }}>
-        <Text type="secondary" size="small" style={{ display: 'block', marginBottom: 16 }}>维护记录</Text>
-        <ConfigurableTable<MaintenanceLog>
-          columns={logColumns}
-          {...listTableProps(logsQuery, { pagination: buildPagination, empty: '暂无维护记录' })}
-        />
-      </section>
-    </div>
-  );
+  return <><ListSearchToolbar page={page} filters={['keyword','status',['startTime','endTime']]} /><ConfigurableTable columns={columns} {...page.tableProps} />
+    <SideSheet title="维护详情" visible={!!detail} onCancel={() => setDetail(null)} width={680}>{detail ? <>
+      <Descriptions data={[{ key: '原因', value: detail.reason },{ key: '结束原因', value: detail.endReason ?? '—' },{ key: '提示', value: detail.message }]} />
+      {detail.changes.map((change, index) => <div key={index} style={{ marginTop: 16 }}><Text strong>{change.action} · {change.actor}</Text><div><DateTimeText value={change.at} mode="absolute" /> · {change.reason}</div><Text type="tertiary">{change.message}</Text></div>)}
+    </> : null}</SideSheet></>;
+}
+export default function MaintenancePage() {
+  const access = useMaintenanceAccess();
+  const status = useMaintenanceStatus(!!access.data?.canView);
+  const [tab, setTab] = useUrlTabState(['config','logs'] as const,'config');
+  if (access.isLoading || (access.data?.canView && status.isLoading)) return <Spin size="large" />;
+  if (!access.data?.canView && access.data?.canViewLogs) return <div className="page-container"><MaintenanceHistory /></div>;
+  if (!access.data?.canView && !access.isError) return <Banner type="warning" description="没有维护查看权限" />;
+  if (status.isError || !status.data) return <Banner type="danger" description={<Space>无法读取维护状态，不能将未知状态视为正常运行<Button onClick={() => void status.refetch()}>重试</Button></Space>} />;
+  return <div className="page-container page-tabs-page"><Tabs activeKey={tab} onChange={(value) => setTab(value as typeof tab)} type="line">
+    <TabPane itemKey="config" tab="维护控制"><MaintenanceEditor status={status.data} reload={() => status.refetch()} /></TabPane>
+    {access.data?.canViewLogs ? <TabPane itemKey="logs" tab="维护记录"><MaintenanceHistory /></TabPane> : null}
+  </Tabs></div>;
 }

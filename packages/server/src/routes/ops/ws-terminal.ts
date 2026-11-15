@@ -1,3 +1,4 @@
+import { maintenanceRealtimeAllowed } from '../../lib/maintenance-realtime';
 import { Hono } from 'hono';
 import type { UpgradeWebSocket } from 'hono/ws';
 import * as os from 'node:os';
@@ -561,7 +562,7 @@ export function createWsTerminalRoute(upgradeWebSocket: UpgradeWebSocket) {  con
           }
         },
 
-        onMessage(evt, _ws) {
+        async onMessage(evt, _ws) {
           // 只操作本连接持有的会话：未通过 onOpen 授权的连接在此直接返回
           const session = ownedSession.current;
           if (!session) return;
@@ -667,8 +668,9 @@ export function createWsTerminalMonitorRoute(upgradeWebSocket: UpgradeWebSocket)
           if (buffer) ws.send(JSON.stringify({ type: 'terminal:output', data: buffer }));
         },
 
-        onMessage(evt, _ws) {
+        async onMessage(evt, _ws) {
           if (!payload || !allowTakeover || !monitored) return;
+          if (!(await maintenanceRealtimeAllowed(payload))) { _ws.close(1013, 'Maintenance'); return; }
           try {
             const raw: unknown = typeof evt.data === 'string' ? JSON.parse(evt.data) : null;
             if (!raw || typeof raw !== 'object') return;

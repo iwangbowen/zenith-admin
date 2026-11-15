@@ -29,6 +29,7 @@ class ApprovalRequest extends HttpClient {
 
 export const approvalRequest = new ApprovalRequest({
   baseUrl: config.apiBaseUrl,
+  handleMaintenance: true,
   tokenKey: TOKEN_KEY,
   refreshTokenKey: REFRESH_TOKEN_KEY,
   refreshPath: authContract.refresh.fullPath,

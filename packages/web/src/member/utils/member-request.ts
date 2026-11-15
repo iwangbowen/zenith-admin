@@ -21,6 +21,7 @@ function memberLoginUrl(): string {
 
 export const memberRequest = new HttpClient({
   baseUrl: config.apiBaseUrl,
+  handleMaintenance: true,
   tokenKey: MEMBER_TOKEN_KEY,
   refreshTokenKey: MEMBER_REFRESH_TOKEN_KEY,
   refreshPath: memberAuthContract.refresh.fullPath,

@@ -1,3 +1,4 @@
+import { MaintenanceBoundary } from '@/components/MaintenanceBoundary';
 import { lazy, Suspense } from 'react';
 import { HashRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
@@ -30,7 +31,7 @@ function RequireAuth() {
 export default function ApprovalApp() {
   return (
     <QueryClientProvider client={approvalQueryClient}>
-      <HashRouter>
+      <MaintenanceBoundary><HashRouter>
         <Suspense fallback={routeFallback}>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
@@ -45,7 +46,7 @@ export default function ApprovalApp() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
-      </HashRouter>
+      </HashRouter></MaintenanceBoundary>
     </QueryClientProvider>
   );
 }

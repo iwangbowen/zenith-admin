@@ -16,7 +16,7 @@ export async function maintenanceAccess(user: JwtPayload) {
   const superAdmin = subject.tenantId === null && [...subject.userRoles.map((r) => r.role), ...extractEnabledGroupRoles(subject.userGroupMembers).roles]
     .some((role) => role.code === 'super_admin' && role.status === 'enabled' && role.tenantId === null);
   if (config.multiTenantMode && !superAdmin) return none;
-  if (superAdmin) return { canView: true, canManage: true, canViewLogs: true, canBypass: !user.impersonation };
+  if (superAdmin) return { canView: true, canManage: !user.impersonation, canViewLogs: true, canBypass: !user.impersonation };
   const permissions = await getUserPermissions(user.userId);
   const canManage = !user.impersonation && permissions.includes('system:maintenance:manage');
   return { canManage, canView: canManage || permissions.includes('system:maintenance:view'),

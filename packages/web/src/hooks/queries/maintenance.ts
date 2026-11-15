@@ -33,9 +33,17 @@ export function usePublicMaintenanceStatus(options?: { enabled?: boolean; refetc
   });
 }
 
-export function useMaintenanceStatus() {
-  return useApiQuery(maintenanceContract.detail);
+export function useMaintenanceStatus(enabled = true) {
+  return useApiQuery(maintenanceContract.detail, { enabled });
 }
+export function useMaintenanceAccess(enabled = true) {
+  return useApiQuery(maintenanceContract.access, { enabled, requestOptions: { silent: true } });
+}
+export function useMaintenancePlan() { return useApiMutation(maintenanceContract.plan, { invalidate: invalidateMaintenanceAfterToggle }); }
+export function useMaintenanceStart() { return useApiMutation(maintenanceContract.start, { invalidate: invalidateMaintenanceAfterToggle }); }
+export function useMaintenanceCancel() { return useApiMutation(maintenanceContract.cancel, { invalidate: invalidateMaintenanceAfterToggle }); }
+export function useMaintenanceDiagnosis() { return useApiMutation(maintenanceContract.diagnose); }
+export function useMaintenanceLog(id: number, enabled = true) { return useApiQuery(maintenanceContract.log, { params: { id } }, { enabled }); }
 
 export function useMaintenanceLogs(params: MaintenanceLogListParams) {
   return useApiQuery(maintenanceContract.logs, { query: params }, { placeholderData: keepPreviousData });
@@ -46,6 +54,7 @@ export function invalidateMaintenanceAfterToggle(qc: QueryClient) {
   void qc.invalidateQueries({ queryKey: maintenanceKeys.publicStatus });
   void qc.invalidateQueries({ queryKey: maintenanceKeys.status });
   void qc.invalidateQueries({ queryKey: maintenanceKeys.logs });
+  void qc.invalidateQueries({ queryKey: contractKey(maintenanceContract.access) });
 }
 
 export function useUpdateMaintenanceStatus() {

@@ -39,13 +39,14 @@ interface MaintenanceInfo {
 
 interface Props {
   info: MaintenanceInfo;
+  onAdminLogin?: () => void;
 }
 
-export default function MaintenanceOverlay({ info }: Readonly<Props>) {
+export default function MaintenanceOverlay({ info, onAdminLogin }: Readonly<Props>) {
   // 轮询交给查询本身：本组件只在维护生效期间挂载，卸载即自动停止，
   // 无需手写 setInterval。恢复后 App 依据同一份缓存直接停止渲染本遮罩。
   // 手动点击与 30 秒自动轮询都走同一个 isFetching，转圈至少保持 600ms 才看得见。
-  const { isFetching, refetch } = usePublicMaintenanceStatus({ refetchInterval: 30_000 });
+  const { isFetching, isError, refetch } = usePublicMaintenanceStatus({ refetchInterval: 30_000 });
   const checking = useMinVisibleDuration(isFetching, 600);
 
   return (
@@ -100,8 +101,10 @@ export default function MaintenanceOverlay({ info }: Readonly<Props>) {
           </Button>
 
           <Text type="tertiary" size="small" aria-live="polite">
-            {checking ? '正在获取最新维护状态…' : '每 30 秒自动检查一次'}
+            {checking ? '正在获取最新维护状态…' : isError ? '状态检查失败，登录凭证已保留，请重试' : '每 30 秒自动检查一次；预计时间不代表自动开放'}
           </Text>
+          {info.estimatedEndAt && Date.parse(info.estimatedEndAt.replace(' ', 'T')) < Date.now() ? <Text type="warning">维护已超过预计时间，请等待管理员确认恢复</Text> : null}
+          {onAdminLogin ? <Button theme="borderless" onClick={onAdminLogin}>管理员登录 / 恢复管理</Button> : null}
         </div>
       </Empty>
     </div>

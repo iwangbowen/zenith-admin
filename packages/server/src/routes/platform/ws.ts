@@ -14,6 +14,7 @@ import type { UpgradeWebSocket } from 'hono/ws';
 import { z } from 'zod';
 import type { JwtPayload } from '../../middleware/auth';
 import { authenticateAdminWs } from '../../lib/ws-auth';
+import { maintenanceRealtimeAllowed } from '../../lib/maintenance-realtime';
 import { getClientIp } from '../../lib/request-helpers';
 import { registerConnection, removeConnection, sendToUser, sendWsControl, incWsRecv, isUserOnline } from '../../lib/ws-manager';
 import { getCallConversation, joinRoom, leaveAllRooms, leaveRoom } from '../../lib/rtc-manager';
@@ -234,6 +235,7 @@ export function createWsRoute(upgradeWebSocket: UpgradeWebSocket) {
               sendWsControl(ws, { type: 'pong' });
               return;
             }
+            if (!(await maintenanceRealtimeAllowed(identity.payload))) return;
             if (frame.type === 'chat:typing') {
               const { conversationId } = frame.payload;
               if (!(await isMember(conversationId, identity.payload.userId))) return;

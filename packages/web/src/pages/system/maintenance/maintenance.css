@@ -1,0 +1,26 @@
+.maintenance-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 1100px;
+}
+
+.maintenance-editor label,
+.maintenance-plan {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.maintenance-plan {
+  gap: 16px;
+  padding: 16px 0;
+  border-top: 1px solid var(--semi-color-border);
+}
+
+@media (width <= 768px) {
+  .maintenance-editor .semi-datepicker,
+  .maintenance-editor .semi-select {
+    max-width: 100%;
+  }
+}

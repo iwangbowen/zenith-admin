@@ -71,6 +71,7 @@ function buildWebSocketTarget(): { url: string; protocols: string[] } | null {
 }
 
 function notifyListeners(message: WsMessage) {
+  if (message.type === 'maintenance:changed') globalThis.dispatchEvent(new Event('maintenance:enabled'));
   for (const listener of listeners) {
     listener(message);
   }
