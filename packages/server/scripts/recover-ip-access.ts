@@ -26,4 +26,4 @@ try {
 } catch (error) {
   process.stderr.write((error instanceof Error ? error.message : String(error)) + '\n');
   process.exitCode = 1;
-} finally { await closeDb(); }
+} finally { await closeDb(); process.exit(process.exitCode ?? 0); }

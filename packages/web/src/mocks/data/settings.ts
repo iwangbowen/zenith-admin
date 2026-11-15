@@ -125,6 +125,9 @@ export function previewMockSettingsRestore(module: SettingsModuleKey, version: n
   try {
     overrides = parseSettingsOverrides(module, overrides);
     restored = SETTINGS_MODULES[module].schema.parse(mergeSettingsLayers(current.inherited as SettingsDoc, overrides)) as SettingsDoc;
+    if (module === 'ipAccess' && !evaluateIpAccess(restored as IpAccessSettings, '192.0.2.10').allowed) {
+      issues.push({ path: 'ipAccess', message: '该配置会阻断当前来源 IP（192.0.2.10）' });
+    }
   } catch (error) {
     if (!(error instanceof z.ZodError)) throw error;
     issues.push(...error.issues.map((issue) => ({ path: issue.path.map(String).join('.'), message: issue.message })));

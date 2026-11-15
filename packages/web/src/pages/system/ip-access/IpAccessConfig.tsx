@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Banner, Button, Card, Collapse, Input, Modal, Space, Spin, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
-import { evaluateIpAccess, inspectIpList, ipAccessSettingsSchema, ipRangesOverlap, stableSettingsSerialize } from '@zenith/shared/settings';
+import { evaluateIpAccess, inspectIpList, ipAccessSettingsSchema, findIpListOverlap, stableSettingsSerialize } from '@zenith/shared/settings';
 import { SchemaForm } from '@/components/settings/SchemaForm';
 import { SettingsEditorTools } from '@/components/settings/SettingsEditorTools';
 import { useSettingsEditor } from '@/hooks/useSettingsEditor';
@@ -27,7 +27,7 @@ export default function IpAccessConfig() {
   const currentDecision = context.data && parsed.success ? evaluateIpAccess(parsed.data, context.data.clientIp) : null;
   const draftKey = stableSettingsSerialize({ value: editor.value, baseToken: editor.base?.baseToken, latestToken: configs.data?.baseToken, testIp });
   const overlap = parsed.success && parsed.data.whitelistEnabled && parsed.data.blacklistEnabled
-    ? parsed.data.whitelist.find((allow) => parsed.data.blacklist.some((deny) => ipRangesOverlap(allow, deny))) : null;
+    ? findIpListOverlap(parsed.data.whitelist, parsed.data.blacklist) : null;
   const updateList = (key: 'whitelist' | 'blacklist', text: string) => {
     setTextDraft((current) => ({ ...(current.key === textKey ? current : { key: textKey }), [key]: text }));
     editor.setField(key, text.split('\n').map((line) => line.trim()).filter(Boolean));

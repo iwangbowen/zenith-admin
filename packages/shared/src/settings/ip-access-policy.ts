@@ -70,14 +70,29 @@ export function ipRangesOverlap(left: string, right: string): boolean {
     && a.address.match(b.address, Math.min(a.prefix, b.prefix));
 }
 
+/** Parse each entry once, rather than reparsing both sides of every pair. */
+export function findIpListOverlap(allowlist: readonly string[], denylist: readonly string[]): string | null {
+  const denied = denylist.map(parseRange).filter((range) => range !== null);
+  for (const entry of allowlist) {
+    const allowed = parseRange(entry);
+    if (allowed && denied.some((range) => allowed.address.kind() === range.address.kind()
+      && allowed.address.match(range.address, Math.min(allowed.prefix, range.prefix)))) return entry;
+  }
+  return null;
+}
+
 /** Shared by enforcement, draft diagnosis and every settings write/restore. */
 export function evaluateIpAccess(policy: IpAccessSettings, ip: string) {
-  const normalizedIp = !ip.includes('/') ? normalizeIpOrCidr(ip) : null;
   if (!policy.blacklistEnabled && !policy.whitelistEnabled) return { allowed: true, reason: 'disabled' as const, matchedEntry: null };
-  if (!normalizedIp) return { allowed: false, reason: 'invalid-ip' as const, matchedEntry: null };
-  const denied = policy.blacklistEnabled ? policy.blacklist.find((entry) => matchesIpRange(normalizedIp, entry)) : undefined;
+  const source = !ip.includes('/') ? parseRange(ip) : null;
+  if (!source) return { allowed: false, reason: 'invalid-ip' as const, matchedEntry: null };
+  const matches = (entry: string) => {
+    const range = parseRange(entry);
+    return !!range && source.address.kind() === range.address.kind() && source.address.match(range.address, range.prefix);
+  };
+  const denied = policy.blacklistEnabled ? policy.blacklist.find(matches) : undefined;
   if (denied) return { allowed: false, reason: 'blacklist' as const, matchedEntry: denied };
-  const allowed = policy.whitelistEnabled ? policy.whitelist.find((entry) => matchesIpRange(normalizedIp, entry)) : undefined;
+  const allowed = policy.whitelistEnabled ? policy.whitelist.find(matches) : undefined;
   if (policy.whitelistEnabled && !allowed) return { allowed: false, reason: 'whitelist' as const, matchedEntry: null };
   return { allowed: true, reason: allowed ? 'whitelist' as const : 'default' as const, matchedEntry: allowed ?? null };
 }

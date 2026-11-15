@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { evaluateIpAccess, inspectIpList, ipRangesOverlap, isIpOrCidr, matchesIpRange, normalizeIpOrCidr } from './ip-access-policy';
+import { evaluateIpAccess, findIpListOverlap, inspectIpList, ipRangesOverlap, isIpOrCidr, matchesIpRange, normalizeIpOrCidr } from './ip-access-policy';
 import { ipAccessSettingsSchema } from './modules/ip-access';
 
 describe('IP access policy', () => {
@@ -26,5 +26,7 @@ describe('IP access policy', () => {
   it('detects overlap across normalized CIDRs', () => {
     expect(ipRangesOverlap('10.1.0.0/16', '10.0.0.0/8')).toBe(true);
     expect(ipRangesOverlap('10.1.0.0/16', '10.2.0.0/16')).toBe(false);
+    expect(findIpListOverlap(['10.1.0.0/16'], ['10.0.0.0/8'])).toBe('10.1.0.0/16');
+    expect(findIpListOverlap(['::1'], ['0.0.0.0/0'])).toBeNull();
   });
 });

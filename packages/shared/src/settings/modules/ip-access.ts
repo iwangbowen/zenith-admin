@@ -10,11 +10,11 @@ const ipOrCidrSchema = z.string().trim().min(1).max(64).refine(isIpOrCidr, '必�
 export const ipAccessSettingsSchema = z.object({
   whitelistEnabled: z.boolean().default(false)
     .meta({ title: '启用白名单', description: '开启后仅名单内 IP 可访问 API，包含登录、公开接口和 WebSocket 握手' }),
-  whitelist: z.array(ipOrCidrSchema).max(1000).default(() => [])
+  whitelist: z.array(ipOrCidrSchema).max(1000).overwrite((entries) => [...new Set(entries)]).default(() => [])
     .meta({ title: '白名单', description: 'IP 或 CIDR，支持 IPv4 / IPv6' }),
   blacklistEnabled: z.boolean().default(false)
     .meta({ title: '启用黑名单', description: '开启后名单内 IP 一律拒绝（黑名单优先于白名单）' }),
-  blacklist: z.array(ipOrCidrSchema).max(1000).default(() => [])
+  blacklist: z.array(ipOrCidrSchema).max(1000).overwrite((entries) => [...new Set(entries)]).default(() => [])
     .meta({ title: '黑名单', description: 'IP 或 CIDR，支持 IPv4 / IPv6' }),
 }).refine((value) => !value.whitelistEnabled || value.whitelist.length > 0, { path: ['whitelist'], message: '启用白名单时至少需要一个有效地址' })
   .meta({ id: 'Settings.IpAccess' });

@@ -8,6 +8,8 @@ const permissionMocks = vi.hoisted(() => ({
   isSuperAdmin: vi.fn(),
   getUserMenuIds: vi.fn(),
 }));
+const deployment = vi.hoisted(() => ({ multiTenantMode: false }));
+vi.mock('../../config', () => ({ config: deployment }));
 
 vi.mock('../../db', () => ({
   db: {
@@ -21,6 +23,7 @@ vi.mock('../../lib/context', () => ({
 
 vi.mock('../../lib/tenant', () => ({
   getEffectiveTenantId: vi.fn(() => null),
+  isPlatformAdmin: () => false,
 }));
 
 vi.mock('../../lib/tenant-package', () => ({
@@ -104,6 +107,7 @@ const rows: MenuRow[] = [
 
 beforeEach(() => {
   vi.resetAllMocks();
+  deployment.multiTenantMode = false;
 });
 
 describe('excludeDisabledSubtrees', () => {
@@ -130,6 +134,13 @@ describe('excludeDisabledSubtrees', () => {
 });
 
 describe('listUserMenuTree', () => {
+  it('omits platform-only IP settings for tenant principals even if assigned', async () => {
+    deployment.multiTenantMode = true;
+    permissionMocks.isSuperAdmin.mockReturnValue(false);
+    permissionMocks.getUserMenuIds.mockResolvedValue([2170]);
+    dbMocks.select.mockReturnValueOnce(createSelectChain([menuRow({ id: 2170, parentId: 0, title: 'IP', path: '/system/ip-access' })]));
+    expect(await listUserMenuTree()).toEqual([]);
+  });
   it('does not promote children of a disabled directory to sidebar roots for super admins', async () => {
     permissionMocks.isSuperAdmin.mockReturnValue(true);
     dbMocks.select.mockReturnValueOnce(createSelectChain(rows));
