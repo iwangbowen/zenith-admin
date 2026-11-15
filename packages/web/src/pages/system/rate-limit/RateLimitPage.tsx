@@ -166,6 +166,7 @@ export default function RateLimitPage() {
       };
     },
     labelPosition: 'top',
+    labelWidth: '100%',
   });
   const totals = (stats.data?.items ?? []).reduce(
     (sum, item) => ({
@@ -227,6 +228,7 @@ export default function RateLimitPage() {
     {
       title: '说明 / 接口范围',
       dataIndex: 'description',
+      minWidth: 320,
       render: (_: unknown, r: RateLimitRule) => (
         <>
           <div>{renderEllipsis(r.description ?? '未填写描述')}</div>
