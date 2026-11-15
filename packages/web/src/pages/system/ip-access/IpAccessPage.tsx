@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { Banner, Descriptions, SideSheet, Tabs, TabPane, Tag, Typography } from '@douyinfe/semi-ui';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { ListSearchToolbar } from '@/components/list-page';
+import { FilterSelect } from '@/components/search-filters';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { type IpAccessLog, ipAccessLogContract, IP_ACCESS_BLOCK_TYPE_OPTIONS } from '@zenith/shared/platform';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -51,6 +52,10 @@ function IpAccessLogsTab() {
       <ListSearchToolbar
         page={page}
         filters={['ip', 'blockType', ['startTime', 'endTime']]}
+        overrides={{
+          blockType: ({ bind }) => <FilterSelect placeholder="全部拦截类型" items={IP_ACCESS_BLOCK_TYPE_OPTIONS}
+            width={200} dropdownMatchSelectWidth={false} dropdownStyle={{ minWidth: 220 }} {...bind('blockType')} />,
+        }}
         filterTitle="IP 访问筛选"
         extraFilters={health.data ? <Typography.Text type="tertiary" size="small">当前实例待写 {health.data.pending} · 丢弃 {health.data.dropped}</Typography.Text> : null}
       />

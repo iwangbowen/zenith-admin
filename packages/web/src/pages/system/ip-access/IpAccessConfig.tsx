@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Banner, Button, Card, Collapse, Input, Modal, Space, Spin, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
+import { Banner, Button, Collapse, Input, Modal, Space, Spin, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
 import { evaluateIpAccess, inspectIpList, ipAccessSettingsSchema, findIpListOverlap, stableSettingsSerialize } from '@zenith/shared/settings';
 import { SchemaForm } from '@/components/settings/SchemaForm';
 import { SettingsEditorTools } from '@/components/settings/SettingsEditorTools';
@@ -63,9 +63,9 @@ export default function IpAccessConfig() {
     </div>;
   };
   if (configs.isLoading) return <Spin size="large" />;
-  if (configs.isError) return <Card><Text type="danger">无法读取访问控制设置</Text><Button onClick={() => void configs.refetch()}>重试</Button></Card>;
+  if (configs.isError) return <Space><Text type="danger">无法读取访问控制设置</Text><Button onClick={() => void configs.refetch()}>重试</Button></Space>;
   return <div className="ip-access-config">
-    <Card>
+    <section aria-label="访问控制摘要">
       <Space wrap>
         <Text strong>当前来源 IP：{context.data?.clientIp ?? (context.isError ? '读取失败' : '读取中')}</Text>
         <Tag color={editor.value.whitelistEnabled || editor.value.blacklistEnabled ? 'blue' : 'grey'}>{editor.value.whitelistEnabled || editor.value.blacklistEnabled ? '草稿已启用访问控制' : '草稿未启用访问控制'}</Tag>
@@ -73,16 +73,16 @@ export default function IpAccessConfig() {
         {context.isError ? <Button size="small" onClick={() => void context.refetch()}>重试来源检测</Button> : null}
       </Space>
       <div style={{ marginTop: 8 }}><Text type="tertiary" size="small">API 统一生效，包含登录、公开接口及 WebSocket 握手；可信代理由部署配置管理。</Text></div>
-    </Card>
+    </section>
     <SettingsEditorTools module="ipAccess" editor={editor} canWrite={canUpdate} saving={saveMutation.isPending} onReload={configs.refetch} />
     {!parsed.success ? <Banner type="danger" closeIcon={null} description={parsed.error.issues[0].message} /> : null}
     {currentDecision && !currentDecision.allowed ? <Banner type="danger" closeIcon={null} description="当前草稿会阻断你的来源 IP，无法保存。请先调整名单。" /> : null}
     {overlap ? <Banner type="warning" closeIcon={null} description={'黑白名单存在重叠（' + overlap + '），重叠范围按黑名单拒绝。'} /> : null}
-    <Card>
+    <section aria-label="黑白名单设置">
       <SchemaForm schema={ipAccessSettingsSchema} value={editor.value} onFieldChange={editor.setField} disabled={!canUpdate || saveMutation.isPending}
         overriddenPaths={editor.overriddenPaths} onRevert={editor.revert}
         controls={{ whitelist: ({ disabled }) => renderList('whitelist', disabled), blacklist: ({ disabled }) => renderList('blacklist', disabled) }} />
-    </Card>
+    </section>
     <Collapse>
       <Collapse.Panel header="匹配诊断" itemKey="diagnose">
         <Space wrap>
