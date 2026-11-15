@@ -226,12 +226,17 @@ export default function RateLimitPage() {
       ),
     },
     {
-      title: '说明 / 接口范围',
+      title: '说明',
       dataIndex: 'description',
       minWidth: 320,
+      render: (description: string | null) => renderEllipsis(description ?? '未填写描述'),
+    },
+    {
+      title: '接口范围',
+      key: 'scope',
+      width: 300,
       render: (_: unknown, r: RateLimitRule) => (
         <>
-          <div>{renderEllipsis(r.description ?? '未填写描述')}</div>
           <Text type="tertiary" size="small">
             {r.mountSource.includes('code') ? '含具名业务保护 · ' : ''}
             {r.matchedOperationCount ?? 0} 个路径匹配 · {(r.methods ?? []).join('/') || '全部方法'}
