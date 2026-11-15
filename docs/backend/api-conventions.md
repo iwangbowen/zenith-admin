@@ -144,7 +144,7 @@ import { okBody, validationHook } from '../../lib/openapi-schemas';
 
 const xxxRouter = new OpenAPIHono({ defaultHook: validationHook });
 
-// 认证 / 权限 / 审计按契约 access / audit 自动装配，路由只写 handler；认证前的限流放 preAuth，认证后追加的中间件放 middleware
+// 认证 / 权限 / 审计按契约 access / audit 自动装配；限流执行阶段及具名保护按接口限流规范接入
 const createXxxRoute = defineContractRoute(xxxContract.create, {
   handler: async (c) => c.json(okBody(await createXxx(c.req.valid('json')), '创建成功'), 200),
 });
@@ -223,6 +223,13 @@ export const { list: listXxxs, get: getXxx, ensure: ensureXxxExists, create: cre
 | `423` | 登录账号被锁定 |
 | `429` | 触发接口级限流 |
 | `500` | 服务端内部错误 |
+| `503` | 服务暂不可用；仅 `X-Zenith-Error: maintenance` 表示维护模式 |
+
+### 限流与服务不可用响应
+
+接口级普通超限或显式封禁返回 HTTP 429，附带秒数形式的 `Retry-After`；正常计数响应提供额度与窗口信息。限流 Redis 故障是否放行由规则的 `failMode` 决定，故障拒绝返回 503 和 `X-Zenith-Error: rate-limit-unavailable`，不能触发全站维护。
+
+维护模式使用独立的 `X-Zenith-Error: maintenance` 标识。调用方不得仅根据 503 或提示文案推断维护状态；跨域调用所需的退避、额度和分类响应头通过 CORS 暴露。完整响应语义、身份阶段、路由匹配和规则叠加见[接口限流](./rate-limit.md#redis-与-http-响应)。
 
 ## 路由组织
 
@@ -313,6 +320,6 @@ Server-Timing: total;dur=45.2;desc="Total Response Time"
 | Body Limit | `hono/body-limit` | `REQUEST_BODY_LIMIT > 0` 时启用，超限返回 413 |
 | Timeout | `hono/timeout` | `REQUEST_TIMEOUT_MS > 0` 时对 `/api/*` 启用，WebSocket / 文件 / DB 管理 / 日志 / 监控流 / AI 流 / 应用发布制品 / `*/export` 排除 |
 | IP 访问控制 | `ipAccessMiddleware` | 对 `/api/*` 生效 |
-| 限流 | `rate-limit.ts` | 登录、验证码、注册 / 找回 / 重置密码和路径绑定限流 |
+| 限流 | `rate-limit.ts` / `lib/rate-limit-stage.ts` | 认证前 IP 防护、认证后身份路径策略与具名业务保护，见[接口限流](./rate-limit.md) |
 | 维护模式 | `maintenanceMiddleware` | 对 `/api/*` 生效，认证与公开维护接口除外 |
 | License 门控 | `licenseFeatureGate` | 挂载继承路由域的 `licensing.feature`；豁免需说明原因，见 [功能授权](./licensing.md) |

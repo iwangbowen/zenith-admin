@@ -1,6 +1,6 @@
 # Scope 与限流
 
-Scope 决定应用可访问的资源范围，限流套餐决定生产环境的调用额度。
+Scope 决定应用可访问的资源范围，限流套餐决定应用调用额度。入站防滥用的[接口限流](../backend/rate-limit.md)独立执行，不能将接口规则额度当作套餐剩余配额。
 
 ---
 
@@ -72,13 +72,19 @@ API Scope 存储在 `api_scopes`，字段包括 `code`、`name`、`description`�
 
 ## 限流行为
 
-- 仅生产环境执行套餐限流。
+- 生产应用执行套餐限流；沙箱应用的非支付接口跳过套餐限流，`/api/open/v1/payments` 下的支付请求仍执行套餐策略。
 - 应用绑定套餐时使用绑定套餐；未绑定时使用默认套餐。
 - QPS 计数 key 按秒过期，超限返回 429 并附带 `Retry-After: 1`。
-- 日配额按 `YYYY-MM-DD` 计数，月配额按 `YYYY-MM` 计数。
+- 日配额按 `APP_TIME_ZONE` 的 `YYYY-MM-DD` 计数，月配额按同一业务时区的 `YYYY-MM` 计数。
 - 日 / 月用量达到 80% 时触发 `app.quota.warning`。
 - QPS / 日 / 月超限时触发 `app.quota.exceeded`，同一应用与周期内带冷却节流。
 - `OPEN_RATE_LIMIT_FAIL_CLOSED=true` 时，限流服务异常返回 503；否则放行请求。
+
+### 与接口规则的组合
+
+开放网关先验证 OAuth2 或签名凭据并建立 `openPrincipal`，身份维度接口规则据此执行；套餐限流继续负责 QPS 和日/月额度。入口 IP 规则、应用身份规则和套餐保护可分别拒绝请求，调用方不能把某一层的额度头解释为全部保护层的额度承诺。
+
+`OPEN_RATE_LIMIT_FAIL_CLOSED` 只控制套餐判定故障；接口规则使用其自身 `failMode`，具体响应分类见[接口限流](../backend/rate-limit.md#redis-与-http-响应)。两类策略分别配置、验证和观测。
 
 ## 限流套餐 API
 

@@ -51,7 +51,7 @@ packages/web/src/
 | 导出 | 说明 |
 | --- | --- |
 | `api(op, input?, options?)` | 单次调用，返回解包后的 `data`；`input` 为契约输入 `{ params?, query?, headers?, body? }`（`headers` 段仅当契约声明了业务请求头时存在，自动并入请求头，不参与 query key），`options` 为请求选项（`silent`、`client` 等） |
-| `apiRaw(op, input?, options?)` | 同 `api`，但返回完整响应信封 `{ code, message, data }` 且不抛业务错误：供需要 `message`（结果文案）、非零 `code` 分支或额外信封字段（限流倒计时）的调用使用，如登录 / 注册 / 验证码、解封等 |
+| `apiRaw(op, input?, options?)` | 同 `api`，但返回完整响应信封 `{ code, message, data }` 且不抛业务错误：供需要 `message`（结果文案）、非零 `code` 分支或额外信封字段（限流倒计时）的调用使用，如登录 / 注册 / 验证码、清除限流额度和解除封禁等 |
 | `urlOf(op, { params?, query? })` | 契约操作 + URL 相关输入段 → 完整 URL；带 body 的操作也只需 params / query（`request.postForm(urlOf(op), formData)`、`<Upload action>`、下载链接） |
 | `contractKey(op, input?)` | 查询 key：`[资源键, 操作名, input]`；省略 input 得到该操作的公共前缀（`invalidateQueries` / `useListSearch({ listKey })`）；传部分输入（如只有 `params`）得到该输入子集的前缀。`createResourceQueries` 的 `keys` 也由它生成 |
 | `apiQueryOptions(op, input?, options?)` / `useApiQuery(op, input?, options?)` | 可缓存查询；`options` 透传 TanStack Query 选项（`enabled`、`staleTime`、`placeholderData`、`refetchInterval`…），`select` 可改变返回数据形状（缓存与 key 仍是契约响应） |
@@ -91,6 +91,12 @@ export const useAssignXxxMenus = () =>
 ```
 
 仍以字面量书写 URL 的调用由 `lib/api-conformance.test.ts` 对照服务端路由快照校验，服务端尚无端点的调用登记在 `lib/api-conformance.allowlist.ts`。
+
+### 限流与 503 分类
+
+请求客户端收到 429 时读取秒数形式的 `Retry-After`，按 `retryAfterSeconds` 向调用方暴露退避建议；额度不是预约结果，不能保证等待后一定成功，也不因此自动重放非幂等写操作。
+
+启用维护处理的客户端仅将同时携带 `X-Zenith-Error: maintenance` 的 503 识别为全站维护。`rate-limit-unavailable` 或未带维护标识的 503 保留服务不可用语义，不派发维护事件。401 刷新遇到限流或临时服务故障时保留凭证，按暂时失败处理。响应头约定见[接口限流](../backend/rate-limit.md#redis-与-http-响应)。
 
 ## 域 hooks 约定
 

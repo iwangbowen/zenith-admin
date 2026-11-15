@@ -4,10 +4,10 @@
 
 ## 中间件链路
 
-`createApp()` 在路由挂载前装配全局中间件，顺序如下：
+`createApp()` 通过 `app-core.ts` 在路由挂载前装配全局中间件，主要顺序如下：
 
 1. Prometheus / HTTP metrics / OpenTelemetry（按配置启用）。
-2. `requestId`、`contextStorage`、`requestTrace`。
+2. `requestId`、`contextStorage`、`requestTrace` 与有界异步 API 访问日志采集。
 3. `secureHeaders`。
 4. `compress`：排除长连接、大文件、AI 流、客户端制品等响应。
 5. CORS 与 Mastra CORS。
@@ -15,10 +15,10 @@
 7. Hono logger、HTTP 流量日志、可选 Server-Timing。
 8. 可选请求体大小限制与 `/api/*` 请求超时。
 9. IP 访问控制。
-10. 具名限流：`auth`、`captcha`、`sensitive` 等。
-11. 路径绑定限流。
+10. 认证入口的具名 IP 防护：`auth`、`captcha`、`sensitive` 等。
+11. 认证前 IP / IP+资源路径限流。
 12. 维护模式。
-13. 业务路由。
+13. 业务路由：认证器验证管理员、会员或开放应用后执行身份路径限流，再继续各路由的权限、Scope 与具名业务保护。
 
 ## 认证令牌
 
@@ -106,7 +106,7 @@ IP 访问控制由 `packages/server/src/middleware/ip-access.ts` 实现，配置
 
 ## 限流
 
-接口保护、规则管理、身份阶段、多实例一致性、受控封禁及有界统计统一遵循[接口限流规范](./rate-limit.md)。开放平台套餐配额和工作流出站保护保持各自业务边界。
+接口保护、规则管理、身份阶段、多实例一致性、受控封禁及有界统计统一遵循[接口限流规范](./rate-limit.md)。规则是全局资源，多租户模式额外要求平台管理员；单租户按查看、管理、封禁和清理权限分别授权。开放平台套餐配额和工作流出站保护保持各自业务边界。
 
 ## 数据脱敏
 
