@@ -1,6 +1,7 @@
 import * as z from 'zod';
 import { auditFieldsSchema, dateRangeQuery, idParam, idQuery, keywordQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
+import { workflowInstanceSchema } from '../../workflow/contracts/instances';
 import { DATA_SCOPES } from '../constants';
 import { ACCESS_PROVISION_STATUSES, ACCESS_APPROVAL_POLICIES, ACCESS_GRANT_STATUSES, ACCESS_REQUEST_ITEM_TYPES, ACCESS_REQUEST_STATUSES, ACCESS_REQUEST_TYPES, ACCESS_REVIEW_DECISIONS, ACCESS_REVIEW_SCOPE_TYPES, ACCESS_REVIEW_STATUSES, ACCESS_REVIEW_SOURCE_TYPES, ACCESS_RISK_LEVELS } from '../access-governance-constants';
 import { accessSourceRefSchema, assignAccessReviewCampaignSchema, accessReviewHistorySchema, accessApprovalEvidenceSchema, accessApprovalPlanSchema, accessPolicySnapshotSchema, createAccessReviewCampaignSchema, decideAccessReviewItemSchema, revokeAccessGrantSchema, updatePermissionPolicySchema } from '../access-governance-validation';
@@ -9,6 +10,7 @@ import { accessWorkflowPreviewInputSchema } from '../access-governance-validatio
 export const permissionPolicySchema = z.object({
   id: z.int(),
   permissionCode: z.string(),
+  permissionLabel: z.string().nullable().optional(),
   version: z.int(),
   riskLevel: z.enum(ACCESS_RISK_LEVELS),
   approvalPolicy: z.enum(ACCESS_APPROVAL_POLICIES),
@@ -55,6 +57,9 @@ export const accessRequestSchema = z.object({
   expiresAt: z.string().nullable(),
   riskLevel: z.enum(ACCESS_RISK_LEVELS),
   workflowInstanceId: z.int().nullable().optional(),
+  workflowTitle: z.string().nullable().optional(),
+  workflowSerialNo: z.string().nullable().optional(),
+  provisionTask: z.object({ id: z.int(), status: z.string(), attempts: z.int(), maxAttempts: z.int(), errorMessage: z.string().nullable() }).nullable().optional(),
   approvedAt: z.string().nullable().optional(),
   appliedAt: z.string().nullable().optional(),
   failureReason: z.string().nullable().optional(),
@@ -84,6 +89,7 @@ export const accessGrantSchema = z.object({
   userId: z.int(),
   userName: z.string().nullable().optional(),
   requestId: z.int().nullable().optional(),
+  workflowInstanceId: z.int().nullable().optional(),
   sourceType: z.enum(['request', 'emergency', 'admin']),
   status: z.enum(ACCESS_GRANT_STATUSES),
   riskLevel: z.enum(ACCESS_RISK_LEVELS),
@@ -172,7 +178,7 @@ export const accessReviewItemSchema = z.object({
 export type AccessReviewItem = z.infer<typeof accessReviewItemSchema>;
 
 const requestListQuery = paginationQuery.extend({
-  keyword: keywordQuery('申请原因'),
+  keyword: keywordQuery('申请标题 / 业务编号 / 原因'),
   status: queryEnum(ACCESS_REQUEST_STATUSES, { description: '审批状态' }),
   provisionStatus: queryEnum(ACCESS_PROVISION_STATUSES, { description: '发放状态' }),
   riskLevel: queryEnum(ACCESS_RISK_LEVELS, { description: '风险等级' }),
@@ -197,6 +203,7 @@ const reviewListQuery = paginationQuery.extend({
 });
 
 export const accessGovernanceContract = defineContract('/api/access-governance', {
+  requestWorkflow: op.get('/requests/{id}/workflow', { access: { permission: 'system:access-governance:view' }, params: idParam, response: workflowInstanceSchema, summary: '治理人员只读查看精确关联的申请流程' }),
   workflowResult: op.get('/workflow/{id}/result', { access: 'authenticated', params: idParam, response: accessWorkflowResultSchema, summary: '按流程参与关系查看权限申请与实时授权结果' }),
   workflowOptions: op.get('/workflow-options', { access: 'authenticated', response: accessWorkflowOptionsSchema, summary: '权限申请工作流选项' }),
   workflowPreview: op.post('/workflow-preview', { access: 'authenticated', body: accessWorkflowPreviewInputSchema, response: accessWorkflowPreviewSchema, summary: '评估权限申请及实际审批计划' }),

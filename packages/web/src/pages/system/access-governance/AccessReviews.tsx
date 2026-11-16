@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Banner, Button, Form, Space, Tag, Typography } from '@douyinfe/semi-ui';
+import { Banner, Button, Form, SideSheet, Space, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { createLabelOptionsFromMap } from '@zenith/shared/core';
 import {
@@ -34,7 +34,7 @@ export default function AccessReviews({ onDetail }: Readonly<{ onDetail: (item: 
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
   });
   const campaigns = useListPage({ op: accessGovernanceContract.reviewCampaignList, useList: useAccessReviewCampaignList, table: { rowKey: 'id', empty: '暂无复核批次', loadingMode: 'initial' } });
-  const items = useListPage({ op: accessGovernanceContract.reviewItemList, useList: useAccessReviewItemList, params: { campaignId: campaignId ?? undefined }, table: { rowKey: 'id', empty: '所选范围没有复核项' } });
+  const items = useListPage({ op: accessGovernanceContract.reviewItemList, useList: useAccessReviewItemList, enabled: campaignId !== null, resetKey: campaignId, params: { campaignId: campaignId ?? undefined }, table: { rowKey: 'id', empty: '所选范围没有复核项' } });
   const create = useCreateAccessReviewCampaign();
   const assign = useAssignAccessReviewCampaign();
   const retry = useRetryAccessReviewCampaign();
@@ -100,14 +100,12 @@ export default function AccessReviews({ onDetail }: Readonly<{ onDetail: (item: 
   return <>
     <Space style={{ marginBottom: 12 }}><Button theme="solid" onClick={createModal.openCreate}>新建复核批次</Button><RefreshButton onClick={() => { void campaigns.listQuery.refetch(); void items.listQuery.refetch(); }} loading={campaigns.listQuery.isFetching || items.listQuery.isFetching} /></Space>
     <ConfigurableTable columns={singleLineColumns(campaignColumns)} {...campaigns.tableProps} />
-    <div style={{ marginTop: 24, marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-      <Typography.Title heading={6} style={{ margin: 0 }}>{campaignId ? `复核项 · ${batch?.name ?? `批次 #${campaignId}`}` : '全部复核项'}</Typography.Title>
-      {campaignId && <Button theme="borderless" onClick={() => { setCampaignId(null); items.setPage(1); }}>查看全部批次的复核项</Button>}
-    </div>
+    <SideSheet title={"复核批次 · " + (batch?.name ?? "#" + campaignId)} visible={campaignId !== null} width={1080} closeOnEsc onCancel={() => setCampaignId(null)}>
     {batch?.status === 'preparing' && <Banner type="info" closeIcon={null} description="正在分批采集权限来源，列表会自动刷新；准备完成后即可处置。" style={{ marginBottom: 12 }} />}
     {batch?.failureReason && <Banner type="danger" closeIcon={null} description={batch.failureReason} style={{ marginBottom: 12 }} />}
     <ListSearchToolbar page={items} filters={['decision', 'riskLevel', 'sourceType', 'userId']} />
     <ConfigurableTable columns={singleLineColumns(itemColumns)} {...items.tableProps} />
+    </SideSheet>
     <EditFormModal modal={createModal} width={620}>
       {({ formState }) => {
         const scope = (formState.values as Partial<CampaignValues>).scopeType ?? 'tenant';

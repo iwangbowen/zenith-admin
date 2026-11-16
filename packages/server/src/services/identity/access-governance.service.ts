@@ -8,7 +8,7 @@ import { ALL_PERMISSIONS } from '@zenith/shared/permissions';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { db } from '../../db';
 import type { DbExecutor } from '../../db/types';
-import { identityAccessGrantItems, identityAccessGrants, identityAccessRequests, identityAccessReviewItems, identityPermissionPolicies, menus, roles, users } from '../../db/schema';
+import { identityAccessGrantItems, identityAccessGrants, identityAccessRequests, identityAccessReviewItems, identityPermissionPolicies, menus, roles, users, asyncTasks, workflowInstances } from '../../db/schema';
 import { currentUser, setAuditBefore } from '../../lib/context';
 import { exactTenantCondition, getCreateTenantId, tenantCondition } from '../../lib/tenant';
 import { requireRow } from '../../lib/db-assert';
@@ -130,8 +130,8 @@ export async function listAccessRequests(q: QueryOutputOf<typeof accessGovernanc
   const user = currentUser();
   const where = buildWhere(
     mine ? undefined : tenantCondition(identityAccessRequests, user),
-    mine ? eq(identityAccessRequests.applicantUserId, user.userId) : undefined,
-    keywordCondition(q.keyword, [identityAccessRequests.reason]),
+    mine ? eq(identityAccessRequests.applicantUserId, user.userId) : eq(identityAccessRequests.status, 'approved'),
+    q.keyword ? or(keywordCondition(q.keyword, [identityAccessRequests.reason]), exists(db.select({ id: workflowInstances.id }).from(workflowInstances).where(and(eq(workflowInstances.id, identityAccessRequests.workflowInstanceId), keywordCondition(q.keyword, [workflowInstances.title, workflowInstances.serialNo], 'ilike'))))) : undefined,
     q.status ? eq(identityAccessRequests.status, q.status) : undefined,
     q.provisionStatus ? eq(identityAccessRequests.provisionStatus, q.provisionStatus) : undefined,
     q.riskLevel ? eq(identityAccessRequests.riskLevel, q.riskLevel) : undefined,
@@ -144,7 +144,7 @@ export async function listAccessRequests(q: QueryOutputOf<typeof accessGovernanc
     count: () => db.$count(identityAccessRequests, where),
     rows: async () => db.query.identityAccessRequests.findMany({
       where,
-      with: { applicant: true, target: true, items: true },
+      with: { applicant: true, target: true, items: true, workflowInstance: { columns: { title: true, serialNo: true } } },
       orderBy: [desc(identityAccessRequests.createdAt), desc(identityAccessRequests.id)],
       limit: q.pageSize,
       offset: pageOffset(q.page, q.pageSize),
@@ -154,11 +154,16 @@ export async function listAccessRequests(q: QueryOutputOf<typeof accessGovernanc
 }
 
 export async function getAccessRequest(id: number): Promise<AccessRequest> {
-  const row = await db.query.identityAccessRequests.findFirst({
-    where: and(eq(identityAccessRequests.id, id), tenantCondition(identityAccessRequests, currentUser())),
-    with: { applicant: true, target: true, items: true },
+  const user = currentUser();
+  const row = requireRow(await db.query.identityAccessRequests.findFirst({
+    where: buildWhere(eq(identityAccessRequests.id, id), tenantCondition(identityAccessRequests, user)),
+    with: { applicant: true, target: true, items: true, workflowInstance: { columns: { title: true, serialNo: true } } },
+  }), '权限申请不存在');
+  const task = await db.query.asyncTasks.findFirst({
+    where: buildWhere(eq(asyncTasks.taskType, 'identity-access-grant-apply'), eq(asyncTasks.idempotencyKey, 'identity-access-apply:' + id), exactTenantCondition(asyncTasks.tenantId, row.tenantId)),
+    columns: { id: true, status: true, attempts: true, maxAttempts: true, errorMessage: true },
   });
-  return formatAccessRequest(requireRow(row, '权限申请不存在'));
+  return { ...formatAccessRequest(row), provisionTask: task ?? null };
 }
 
 type AccessWorkflowCaller = { userId: number; username: string; tenantId: number | null; roles?: string[]; viewingTenantId?: number | null };
@@ -338,7 +343,7 @@ export async function listAccessGrants(q: QueryOutputOf<typeof accessGovernanceC
     count: () => db.$count(identityAccessGrants, where),
     rows: async () => db.query.identityAccessGrants.findMany({
       where,
-      with: { user: true, approver: true, revoker: true, items: true },
+      with: { user: true, approver: true, revoker: true, items: true, request: { columns: { workflowInstanceId: true } } },
       orderBy: [desc(identityAccessGrants.createdAt), desc(identityAccessGrants.id)],
       limit: q.pageSize,
       offset: pageOffset(q.page, q.pageSize),
@@ -350,7 +355,7 @@ export async function listAccessGrants(q: QueryOutputOf<typeof accessGovernanceC
 export async function getAccessGrant(id: number): Promise<AccessGrant> {
   const row = await db.query.identityAccessGrants.findFirst({
     where: and(eq(identityAccessGrants.id, id), tenantCondition(identityAccessGrants, currentUser())),
-    with: { user: true, approver: true, revoker: true, items: true },
+    with: { user: true, approver: true, revoker: true, items: true, request: { columns: { workflowInstanceId: true } } },
   });
   return formatAccessGrant(requireRow(row, '临时授权不存在'));
 }
@@ -360,7 +365,7 @@ export async function listPermissionPolicies(q: QueryOutputOf<typeof accessGover
   const entries = await readAccessPolicySet(Object.keys(ALL_PERMISSIONS), tenantId);
   const keyword = q.keyword?.toLowerCase();
   // 该视图由有界的代码目录与租户覆盖组合，筛选必须针对最终生效值。
-  const rows = entries.map(({ policy, record }) => formatPermissionPolicy(policy, record, tenantId)).filter(row => (!keyword || row.permissionCode.toLowerCase().includes(keyword)) && (!q.riskLevel || row.riskLevel === q.riskLevel) && (!q.approvalPolicy || row.approvalPolicy === q.approvalPolicy));
+  const rows = entries.map(({ policy, record }) => formatPermissionPolicy(policy, record, tenantId)).filter(row => (!keyword || row.permissionCode.toLowerCase().includes(keyword) || row.permissionLabel?.toLowerCase().includes(keyword)) && (!q.riskLevel || row.riskLevel === q.riskLevel) && (!q.approvalPolicy || row.approvalPolicy === q.approvalPolicy));
   return buildListResult({ page: q.page, pageSize: q.pageSize, count: async () => rows.length, rows: async () => rows.slice(pageOffset(q.page, q.pageSize), pageOffset(q.page, q.pageSize) + q.pageSize) });
 }
 
@@ -385,7 +390,7 @@ export async function updatePermissionPolicy(permissionCode: string, input: Upda
 export async function getUserAccessOverview(userId: number) {
   await requireTenantUser(userId, '用户不存在');
   const [grants, reviews] = await Promise.all([
-    db.query.identityAccessGrants.findMany({ where: and(eq(identityAccessGrants.userId, userId), tenantCondition(identityAccessGrants, currentUser())), with: { user: true, approver: true, revoker: true, items: true }, orderBy: [desc(identityAccessGrants.createdAt)] }),
+    db.query.identityAccessGrants.findMany({ where: and(eq(identityAccessGrants.userId, userId), tenantCondition(identityAccessGrants, currentUser())), with: { user: true, approver: true, revoker: true, items: true, request: { columns: { workflowInstanceId: true } } }, orderBy: [desc(identityAccessGrants.createdAt)] }),
     db.query.identityAccessReviewItems.findMany({ where: and(eq(identityAccessReviewItems.userId, userId), tenantCondition(identityAccessReviewItems, currentUser())), with: { user: true }, orderBy: [desc(identityAccessReviewItems.createdAt)] }),
   ]);
   return { userId, grants: grants.map(formatAccessGrant), reviews: reviews.map(formatReviewItem) };

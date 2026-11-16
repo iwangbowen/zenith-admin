@@ -4,8 +4,8 @@ import type { identityPermissionPolicies, identityAccessRequests, identityAccess
 import { entityMapper, pickEntity } from '../../lib/entity-map';
 
 type DisplayUser = Pick<typeof users.$inferSelect, 'id' | 'username' | 'nickname'>;
-type RequestRow = typeof identityAccessRequests.$inferSelect & { applicant?: DisplayUser; target?: DisplayUser; items?: (typeof identityAccessRequestItems.$inferSelect)[] };
-type GrantRow = typeof identityAccessGrants.$inferSelect & { user?: DisplayUser; approver?: DisplayUser | null; revoker?: DisplayUser | null; items?: (typeof identityAccessGrantItems.$inferSelect)[] };
+type RequestRow = typeof identityAccessRequests.$inferSelect & { applicant?: DisplayUser; target?: DisplayUser; workflowInstance?: { title: string; serialNo: string | null } | null; items?: (typeof identityAccessRequestItems.$inferSelect)[] };
+type GrantRow = typeof identityAccessGrants.$inferSelect & { user?: DisplayUser; request?: { workflowInstanceId: number | null } | null; approver?: DisplayUser | null; revoker?: DisplayUser | null; items?: (typeof identityAccessGrantItems.$inferSelect)[] };
 type CampaignRow = typeof identityAccessReviewCampaigns.$inferSelect & { reviewer?: DisplayUser; itemCount?: number; pendingCount?: number };
 type ReviewRow = typeof identityAccessReviewItems.$inferSelect & { user?: DisplayUser; reviewer?: DisplayUser };
 
@@ -18,18 +18,21 @@ function effectiveStatus(row: { status: string; startsAt: Date; expiresAt: Date 
 export function formatPermissionPolicy(policy: AccessPolicySnapshot, record: typeof identityPermissionPolicies.$inferSelect | undefined, tenantId: number | null) {
   const baseline = accessPolicyBaseline(policy.permissionCode, ALL_PERMISSIONS[policy.permissionCode]);
   return pickEntity(permissionPolicySchema, {
-    ...record, ...policy, id: record?.id ?? 0, tenantId, createdAt: record?.createdAt ?? null, updatedAt: record?.updatedAt ?? null, createdBy: record?.createdBy ?? null, updatedBy: record?.updatedBy ?? null,
+    ...record, ...policy, permissionLabel: ALL_PERMISSIONS[policy.permissionCode]?.label ?? null, id: record?.id ?? 0, tenantId, createdAt: record?.createdAt ?? null, updatedAt: record?.updatedAt ?? null, createdBy: record?.createdBy ?? null, updatedBy: record?.updatedBy ?? null,
     inherited: record?.tenantId !== tenantId || !record, minimumRiskLevel: baseline.riskLevel, selfRequestable: baseline.enabled,
   });
 }
 
 export const formatAccessRequest = entityMapper(accessRequestSchema, (row: RequestRow) => ({
+  workflowTitle: row.workflowInstance?.title ?? null,
+  workflowSerialNo: row.workflowInstance?.serialNo ?? null,
   applicantName: row.applicant ? row.applicant.nickname || row.applicant.username : null,
   targetUserName: row.target ? row.target.nickname || row.target.username : null,
   items: (row.items ?? []).map(item => pickEntity(accessRequestItemSchema, item)),
 }));
 
 export const formatAccessGrant = entityMapper(accessGrantSchema, (row: GrantRow) => ({
+  workflowInstanceId: row.request?.workflowInstanceId ?? null,
   userName: row.user ? row.user.nickname || row.user.username : null,
   approvedByName: row.approver ? row.approver.nickname || row.approver.username : null,
   status: effectiveStatus(row),

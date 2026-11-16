@@ -3,7 +3,7 @@ import { accessGovernanceContract } from '@zenith/shared/identity';
 import { defineContractRoute } from '../../lib/contract-route';
 import { idempotencyGuard } from '../../middleware/idempotency';
 import { okBody, validationHook } from '../../lib/openapi-schemas';
-import { getAccessWorkflowResult } from '../../services/identity/access-workflow-query.service';
+import { getAccessWorkflowResult, getGovernanceRequestWorkflow } from '../../services/identity/access-workflow-query.service';
 import {
   getAccessWorkflowOptions,
   evaluateAccessWorkflow,
@@ -30,6 +30,9 @@ const accessGovernanceRouter = new OpenAPIHono({ defaultHook: validationHook });
 
 const workflowResultRoute = defineContractRoute(accessGovernanceContract.workflowResult, {
   handler: async (c) => c.json(okBody(await getAccessWorkflowResult(c.req.valid('param').id)), 200),
+});
+const requestWorkflowRoute = defineContractRoute(accessGovernanceContract.requestWorkflow, {
+  handler: async (c) => c.json(okBody(await getGovernanceRequestWorkflow(c.req.valid('param').id)), 200),
 });
 
 const workflowOptionsRoute = defineContractRoute(accessGovernanceContract.workflowOptions, {
@@ -106,6 +109,7 @@ const userOverviewRoute = defineContractRoute(accessGovernanceContract.userOverv
 
 accessGovernanceRouter.openapiRoutes([
   workflowResultRoute,
+  requestWorkflowRoute,
   workflowOptionsRoute,
   workflowPreviewRoute,
   reviewOptionsRoute,

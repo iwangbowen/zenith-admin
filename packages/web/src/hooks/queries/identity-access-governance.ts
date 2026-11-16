@@ -38,6 +38,9 @@ export function useAccessWorkflowResult(instanceId: number | null | undefined) {
     refetchInterval: state => state.state.data && ['pending', 'running'].includes(state.state.data.request.provisionStatus) ? 3000 : 30_000,
   });
 }
+export function useGovernanceRequestWorkflow(id: number | null) {
+  return useApiQuery(accessGovernanceContract.requestWorkflow, { params: { id: id ?? 0 } }, { enabled: id !== null });
+}
 
 export function useAccessWorkflowOptions(enabled = true) {
   return useApiQuery(accessGovernanceContract.workflowOptions, undefined, { enabled, staleTime: 0, refetchOnMount: 'always' });

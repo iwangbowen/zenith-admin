@@ -38,3 +38,9 @@ export async function requireAccessWorkflowViewer(id: number, bizType: string, b
   const { requireBusinessApprovalInstance } = await import('../workflow-business-context.service');
   return requireBusinessApprovalInstance(id, bizType, bizId);
 }
+
+/** 调用方先授权业务记录，仅返回对应流程的只读上下文。 */
+export async function getAccessBusinessWorkflow(id: number, bizType: string, bizId: string) {
+  const { getBusinessInstanceDetail } = await import('../instances/queries');
+  return getBusinessInstanceDetail(id, bizType, bizId);
+}

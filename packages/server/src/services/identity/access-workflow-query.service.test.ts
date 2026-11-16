@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ request: vi.fn(), grant: vi.fn(), viewer: vi.fn(), permission: vi.fn() }));
+const mocks = vi.hoisted(() => ({ request: vi.fn(), grant: vi.fn(), viewer: vi.fn(), workflow: vi.fn(), permission: vi.fn() }));
 vi.mock('../../db', () => ({ db: { query: { identityAccessRequests: { findFirst: mocks.request }, identityAccessGrants: { findFirst: mocks.grant } } } }));
 vi.mock('../../lib/context', () => ({ currentUser: () => ({ userId: 9, tenantId: 3, roles: [] }), hasPermission: mocks.permission }));
-vi.mock('../workflow/public/access-approval', () => ({ requireAccessWorkflowViewer: mocks.viewer }));
+vi.mock('../workflow/public/access-approval', () => ({ requireAccessWorkflowViewer: mocks.viewer, getAccessBusinessWorkflow: mocks.workflow }));
 vi.mock('./access-formatters', () => ({ formatAccessRequest: (row: unknown) => row, formatAccessGrant: (row: unknown) => row }));
-import { getAccessWorkflowResult } from './access-workflow-query.service';
+import { getAccessWorkflowResult, getGovernanceRequestWorkflow } from './access-workflow-query.service';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -43,5 +43,10 @@ describe('access workflow live result', () => {
     mocks.request.mockResolvedValue(undefined);
     await expect(getAccessWorkflowResult(41)).rejects.toMatchObject({ status: 404 });
     expect(mocks.viewer).not.toHaveBeenCalled();
+  });
+  it('loads governance read-only workflow using the server-owned business reference', async () => {
+    mocks.workflow.mockResolvedValue({ id: 41, bizType: 'identity.access_request', bizId: '7' });
+    await expect(getGovernanceRequestWorkflow(7)).resolves.toMatchObject({ id: 41 });
+    expect(mocks.workflow).toHaveBeenCalledWith(41, 'identity.access_request', '7');
   });
 });

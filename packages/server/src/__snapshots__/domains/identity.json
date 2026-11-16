@@ -32,6 +32,7 @@
   "GET /api/access-governance/policies",
   "GET /api/access-governance/requests",
   "GET /api/access-governance/requests/:id",
+  "GET /api/access-governance/requests/:id/workflow",
   "GET /api/access-governance/review-campaigns",
   "GET /api/access-governance/review-items",
   "GET /api/access-governance/review-options",

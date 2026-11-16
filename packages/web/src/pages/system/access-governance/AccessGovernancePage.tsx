@@ -14,7 +14,7 @@ import { DATA_SCOPE_OPTIONS } from '@/components/permissions/DataScopePanel';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { RefreshButton } from '@/components/toolbar-controls';
 import WorkflowInstanceCell from '@/components/workflow/WorkflowInstanceCell';
-import WorkflowInstanceDetailSheet from '@/components/workflow/WorkflowInstanceDetailSheet';
+import GovernanceWorkflowSheet from './GovernanceWorkflowSheet';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useListPage } from '@/hooks/useListPage';
 import { usePermission } from '@/hooks/usePermission';
@@ -90,10 +90,9 @@ function DetailSheet({ title, visible, onClose, width, children }: { readonly ti
   return <SideSheet title={title} visible={visible} onCancel={onClose} width={width} closeOnEsc footer={null}>{children}</SideSheet>;
 }
 
-function RequestDetailSheet({ record, visible = record !== null, loading = false, onClose }: { readonly record: AccessRequest | null; readonly visible?: boolean; readonly loading?: boolean; readonly onClose: () => void }) {
-  const { hasAnyPermission } = usePermission();
-  // 流程实例详情与治理页权限码不同源，缺流程查看权限时降级为只读展示
-  const canViewWorkflow = hasAnyPermission('workflow:instance:list', 'workflow:task:handle', 'workflow:instance:monitor');
+function RequestDetailSheet({ record: suppliedRecord, visible = suppliedRecord !== null, loading = false, onClose }: { readonly record: AccessRequest | null; readonly visible?: boolean; readonly loading?: boolean; readonly onClose: () => void }) {
+  const detailQuery = useAccessRequestDetail(suppliedRecord?.id, visible);
+  const record = detailQuery.data ?? suppliedRecord;
   const [workflowId, setWorkflowId] = useState<number | null>(null);
   const [userId, setUserId] = useState<number | null>(null);
   // 抽屉关闭后清空下钻引用，避免下次打开时残留上一次的流程/用户
@@ -133,13 +132,14 @@ function RequestDetailSheet({ record, visible = record !== null, loading = false
             { key: '申请类型', value: REQUEST_TYPE_LABELS[record.requestType] },
             { key: '审批状态', value: STATUS_LABELS[record.status] },
             { key: '发放状态', value: ACCESS_PROVISION_STATUS_LABELS[record.provisionStatus] },
+            { key: '关联任务', value: record.provisionTask ? '#' + record.provisionTask.id + ' · ' + record.provisionTask.status + ' · 已执行 ' + record.provisionTask.attempts + '/' + record.provisionTask.maxAttempts : '尚未进入发放' },
             { key: '审批策略', value: APPROVAL_LABELS[record.approvalPlan.approvalPolicy] },
             { key: 'MFA 要求', value: record.approvalPlan.mfaRequired ? '每名审批人验证本人身份' : '无需 MFA' },
             { key: '风险等级', value: <RiskTag value={record.riskLevel} /> },
             { key: '权限项', value: `${accessPermissionCount(record.items)} 项权限 · ${record.items.length} 条范围` },
             { key: '生效时间', value: <DateTimeText value={record.startsAt} mode="absolute" /> },
             { key: '失效时间', value: <DateTimeText value={record.expiresAt} empty="永久有效" mode="absolute" /> },
-            { key: '工作流实例', value: record.workflowInstanceId != null ? <WorkflowInstanceCell instanceId={record.workflowInstanceId} showSub={false} onOpen={canViewWorkflow ? setWorkflowId : undefined} /> : EMPTY_PLACEHOLDER },
+            { key: '工作流实例', value: record.workflowInstanceId != null ? <WorkflowInstanceCell instanceId={record.workflowInstanceId} showSub={false} onOpen={() => setWorkflowId(record.id)} /> : EMPTY_PLACEHOLDER },
             { key: '申请时间', value: <DateTimeText value={record.createdAt} mode="absolute" /> },
             { key: '更新时间', value: <DateTimeText value={record.updatedAt} mode="absolute" /> },
             { key: '通过时间', value: <DateTimeText value={record.approvedAt} mode="absolute" /> },
@@ -152,7 +152,7 @@ function RequestDetailSheet({ record, visible = record !== null, loading = false
       </>}
     </DetailSheet>
     {/* 流程实例不跳转流程中心，直接在治理页内以抽屉展开，保留审批上下文 */}
-    <WorkflowInstanceDetailSheet instanceId={workflowId} visible={visible && workflowId !== null} onClose={() => setWorkflowId(null)} title="权限申请流程详情" />
+    <GovernanceWorkflowSheet requestId={visible ? workflowId : null} onClose={() => setWorkflowId(null)} />
     {visible && userId !== null && <UserGovernanceSheet userId={userId} onClose={() => setUserId(null)} />}
   </>;
 }
@@ -326,14 +326,14 @@ function PolicyDetailSheet({ record, onClose }: { readonly record: PermissionPol
 
 function RequestsTab() {
   const { hasPermission } = usePermission();
-  const page = useListPage({ op: accessGovernanceContract.requestList, useList: useAccessRequestList, table: { rowKey: 'id', empty: '暂无权限申请', loadingMode: 'initial' } });
+  const page = useListPage({ op: accessGovernanceContract.requestList, useList: useAccessRequestList, table: { rowKey: 'id', empty: '暂无发放记录', loadingMode: 'initial' } });
   const retry = useRetryAccessProvision();
   const [detail, setDetail] = useState<AccessRequest | null>(null);
   const columns: ColumnProps<AccessRequest>[] = [
-    { title: '申请人', dataIndex: 'applicantName', width: 180, render: (value) => value || EMPTY_PLACEHOLDER },
+    { title: '来源申请', dataIndex: 'workflowTitle', minWidth: 200, render: value => value ?? EMPTY_PLACEHOLDER },
+    { title: '业务编号', dataIndex: 'workflowSerialNo', width: 190 },
     { title: '目标用户', dataIndex: 'targetUserName', width: 180, render: (value) => value || EMPTY_PLACEHOLDER },
     { title: '风险等级', dataIndex: 'riskLevel', width: 100, render: (value: AccessRequest['riskLevel']) => <RiskTag value={value} /> },
-    { title: '审批状态', dataIndex: 'status', width: 110, render: (value: AccessRequest['status']) => STATUS_LABELS[value] },
     { title: '发放状态', dataIndex: 'provisionStatus', width: 110, render: (value: AccessRequest['provisionStatus']) => ACCESS_PROVISION_STATUS_LABELS[value] },
     { title: '发放失败原因', dataIndex: 'failureReason', minWidth: 200, render: (value: string | null) => value ?? '—' },
     { title: '申请原因', dataIndex: 'reason', minWidth: 220, ellipsis: true },
@@ -346,12 +346,12 @@ function RequestsTab() {
       { key: 'retry', label: '重试发放', hidden: !hasPermission('system:access-governance:grant') || row.provisionStatus !== 'failed' || row.status !== 'approved', loading: retry.isPending, onClick: () => void retry.mutateAsync({ params: { id: row.id } }) },
     ] }),
   ];
-  return <><ListSearchToolbar page={page} filters={['keyword', 'status', 'provisionStatus', 'riskLevel', 'targetUserId', ['startTime', 'endTime']]} actions={<RefreshButton onClick={() => void page.listQuery.refetch()} loading={page.listQuery.isFetching} />} /><ConfigurableTable columns={singleLineColumns(columns)} {...page.tableProps} /><RequestDetailSheet record={page.listQuery.data?.list.find(row => row.id === detail?.id) ?? detail} onClose={() => setDetail(null)} /></>;
+  return <><ListSearchToolbar page={page} filters={['keyword', 'provisionStatus', 'riskLevel', 'targetUserId', ['startTime', 'endTime']]} actions={<RefreshButton onClick={() => void page.listQuery.refetch()} loading={page.listQuery.isFetching} />} /><ConfigurableTable columns={singleLineColumns(columns)} {...page.tableProps} /><RequestDetailSheet record={page.listQuery.data?.list.find(row => row.id === detail?.id) ?? detail} onClose={() => setDetail(null)} /></>;
 }
 
 function GrantsTab() {
   const { hasPermission } = usePermission();
-  const page = useListPage({ op: accessGovernanceContract.grantList, useList: useAccessGrantList, table: { rowKey: 'id', empty: '暂无审批授权' } });
+  const page = useListPage({ op: accessGovernanceContract.grantList, useList: useAccessGrantList, table: { rowKey: 'id', empty: '暂无授权记录' } });
   const revoke = useRevokeAccessGrant();
   const revokeModal = useEditModal<AccessGrant, { reason: string }>({
     entityName: '授权包',
@@ -364,7 +364,7 @@ function GrantsTab() {
     { title: '用户', dataIndex: 'userName', minWidth: 120, render: (value) => value || EMPTY_PLACEHOLDER },
     { title: '风险等级', dataIndex: 'riskLevel', width: 100, render: (value: AccessGrant['riskLevel']) => <RiskTag value={value} /> },
     { title: '状态', dataIndex: 'status', width: 100, render: (value: AccessGrant['status']) => value === 'active' ? <Tag color="green" size="small">{GRANT_STATUS_LABELS[value]}</Tag> : GRANT_STATUS_LABELS[value] },
-    { title: '权限项', dataIndex: 'items', width: 90, render: (menus: AccessGrant['items']) => `${menus.length} 项` },
+    { title: '授权情况', dataIndex: 'items', minWidth: 230, render: (items: AccessGrant['items']) => Object.entries(GRANT_STATUS_LABELS).map(([status, label]) => label + ' ' + items.filter(item => item.status === status).length).join(' · ') },
     { title: '数据范围', dataIndex: 'items', width: 170, render: (items: AccessGrant['items']) => [...new Set(items.map(item => dataScopeLabel(item.dataScope)))].join('、') },
     dateTimeColumn('生效时间', 'startsAt'),
     dateTimeColumn('失效时间', 'expiresAt', { empty: '永久有效' }),
@@ -392,18 +392,20 @@ function PoliciesTab() {
     beforeSave: values => ({ ...values, maxDurationMinutes: values.maxDurationMinutes ?? null }),
   });
   const columns: ColumnProps<PermissionPolicy>[] = [
+    { title: '权限名称', dataIndex: 'permissionLabel', width: 180 },
     { title: '权限码', dataIndex: 'permissionCode', minWidth: 260, ellipsis: { showTitle: true } },
     { title: '风险等级', dataIndex: 'riskLevel', width: 100, render: (value: PermissionPolicy['riskLevel']) => <RiskTag value={value} /> },
     { title: '审批策略', dataIndex: 'approvalPolicy', width: 170, ellipsis: { showTitle: true }, render: (value: UpdatePermissionPolicyInput['approvalPolicy']) => APPROVAL_LABELS[value] },
     { title: '最大时长', dataIndex: 'maxDurationMinutes', width: 110, render: (value) => value ? `${value} 分钟` : '不限制' },
     { title: '复核周期', dataIndex: 'reviewIntervalDays', width: 140, ellipsis: { showTitle: true }, render: (value) => value ? `${value} 天` : '不自动复核' },
-    { title: '状态', dataIndex: 'enabled', width: 80, render: (value) => value ? <Tag color="green">启用</Tag> : <Tag color="grey">停用</Tag> },
+    { title: '策略来源', dataIndex: 'inherited', width: 110, render: value => value ? '继承策略' : '本租户覆盖' },
+    { title: '允许本人申请', dataIndex: 'enabled', width: 110, render: (value) => value ? <Tag color="green">启用</Tag> : <Tag color="grey">停用</Tag> },
     createOperationColumn<PermissionPolicy>({ width: 210, actions: (row) => [
       { key: 'detail', label: '查看详情', onClick: () => setDetail(row) },
       { key: 'edit', label: '编辑策略', onClick: () => modal.openEdit(row) },
     ] }),
   ];
-  return <><div style={{ marginBottom: 12 }}><Text type="tertiary">权限策略由共享权限目录生成，租户管理员可以调整审批方式、最长时长和复核周期。</Text></div><ListSearchToolbar page={page} filters={['keyword', 'riskLevel', 'approvalPolicy']} actions={<RefreshButton onClick={() => void page.listQuery.refetch()} loading={page.listQuery.isFetching} />} /><ConfigurableTable columns={singleLineColumns(columns)} {...page.tableProps} /><PolicyDetailSheet record={detail} onClose={() => setDetail(null)} /><EditFormModal modal={modal} width={620} header={<Banner type="info" closeIcon={null} description={`目录最低风险：${modal.editing ? RISK_LABELS[modal.editing.minimumRiskLevel] : '—'}。高危及极高危的审批、MFA 和复核要求不能低于目录底线；未覆盖时继承基线策略。`} />} formProps={{ onValueChange: next => {
+  return <><div style={{ marginBottom: 12 }}><Text type="tertiary">策略约束后续申请、审批、发放及延期；关闭本人申请不会撤销已授权限，立即收权请到授权台账撤销。</Text></div><ListSearchToolbar page={page} filters={['keyword', 'riskLevel', 'approvalPolicy']} actions={<RefreshButton onClick={() => void page.listQuery.refetch()} loading={page.listQuery.isFetching} />} /><ConfigurableTable columns={singleLineColumns(columns)} {...page.tableProps} /><PolicyDetailSheet record={detail} onClose={() => setDetail(null)} /><EditFormModal modal={modal} width={620} header={<Banner type="info" closeIcon={null} description={`目录最低风险：${modal.editing ? RISK_LABELS[modal.editing.minimumRiskLevel] : '—'}。高危及极高危的审批、MFA 和复核要求不能低于目录底线；未覆盖时继承基线策略。`} />} formProps={{ onValueChange: next => {
       const values = next as Partial<UpdatePermissionPolicyInput>;
       const risk = values.riskLevel;
       if (!risk) return;
@@ -439,16 +441,16 @@ export default function AccessGovernancePage() {
   const canView = hasPermission('system:access-governance:view');
   const canReview = hasPermission('system:access-governance:review');
   const canPolicy = hasPermission('system:access-governance:policy');
-  const fallback = canView ? 'requests' : canReview ? 'reviews' : 'policies';
+  const fallback = canView ? 'grants' : canReview ? 'reviews' : 'policies';
   const [activeTab, setActiveTab] = useUrlTabState(['requests', 'grants', 'reviews', 'policies'] as const, fallback);
   const allowed = activeTab === 'reviews' ? canReview : activeTab === 'policies' ? canPolicy : canView;
   const visibleTab = allowed ? activeTab : fallback;
-  if (!canView && !canReview && !canPolicy) return <Banner type="warning" closeIcon={null} description="您没有权限治理的查看或办理权限，可到“我的权限”查看本人申请和授权。" />;
+  if (!canView && !canReview && !canPolicy) return <Banner type="warning" closeIcon={null} description="您没有权限治理的查看或办理权限，请到“我的申请”查看本人申请和授权结果。" />;
   return <div className="page-container page-tabs-page zx-flat-panels">
-    <div style={{ marginBottom: 16 }}><Title heading={5} style={{ margin: 0 }}>权限治理</Title><Text type="tertiary" style={{ display: 'block', marginTop: 8 }}>管理申请、限时与永久授权、权限复核和有效策略。</Text></div>
-    <Tabs activeKey={visibleTab} onChange={key => setActiveTab(key as typeof activeTab)} type="line" lazyRender keepDOM={false}>
-      <TabPane tab="授权申请" itemKey="requests" disabled={!canView}>{canView && <RequestsTab />}</TabPane>
-      <TabPane tab="审批授权" itemKey="grants" disabled={!canView}>{canView && <GrantsTab />}</TabPane>
+    <div style={{ marginBottom: 16 }}><Title heading={5} style={{ margin: 0 }}>权限治理</Title><Text type="tertiary" style={{ display: 'block', marginTop: 8 }}>管理授权台账、发放执行、权限复核和有效策略；申请与审批统一在流程中心办理。</Text></div>
+    <Tabs collapsible="auto" activeKey={visibleTab} onChange={key => setActiveTab(key as typeof activeTab)} type="line" lazyRender keepDOM={false}>
+      <TabPane tab="授权台账" itemKey="grants" disabled={!canView}>{canView && <GrantsTab />}</TabPane>
+      <TabPane tab="发放记录" itemKey="requests" disabled={!canView}>{canView && <RequestsTab />}</TabPane>
       <TabPane tab="权限复核" itemKey="reviews" disabled={!canReview}>{canReview && <ReviewsTab />}</TabPane>
       <TabPane tab="策略配置" itemKey="policies" disabled={!canPolicy}>{canPolicy && <PoliciesTab />}</TabPane>
     </Tabs>
