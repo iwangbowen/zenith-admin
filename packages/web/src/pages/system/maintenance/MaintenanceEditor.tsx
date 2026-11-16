@@ -112,13 +112,16 @@ export default function MaintenanceEditor({ status, reload, refreshing }: {
 
   return <div className="maintenance-editor">
     <header className="maintenance-summary">
-      <Space wrap spacing={12}>
-        <Tag color={status.enabled ? 'orange' : scheduled ? 'blue' : 'green'}>{status.enabled ? '维护中' : scheduled ? '待开始' : '正常开放'}</Tag>
-        <Text type="tertiary" size="small">
+      <div className="maintenance-status" data-status={status.enabled ? 'active' : scheduled ? 'scheduled' : 'open'}>
+        <Space spacing={10}>
+          <span className="maintenance-status-dot" aria-hidden="true" />
+          <Title heading={3} className="maintenance-status-title">{status.enabled ? '维护中' : scheduled ? '待开始' : '正常开放'}</Title>
+        </Space>
+        <Text type="secondary">
           {status.enabled ? <><DateTimeText value={status.startedAt} mode="absolute" /> 开始{status.startedByName ? ' · ' + status.startedByName : ''}</>
             : scheduled ? <>计划于 <DateTimeText value={status.scheduledStartAt} mode="absolute" /> 开始</> : '当前没有维护计划'}
         </Text>
-      </Space>
+      </div>
       <Button theme="borderless" size="small" loading={refreshing} disabled={pending} onClick={abandon}>{draft ? '放弃草稿并重载' : '刷新状态'}</Button>
     </header>
     {staleNotice}

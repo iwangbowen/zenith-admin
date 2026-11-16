@@ -16,6 +16,34 @@
   gap: 12px;
 }
 
+.maintenance-status {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  color: var(--semi-color-success);
+}
+
+.maintenance-status[data-status='active'] {
+  color: var(--semi-color-warning);
+}
+
+.maintenance-status[data-status='scheduled'] {
+  color: var(--semi-color-info);
+}
+
+.maintenance-status-dot {
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background-color: currentColor;
+}
+
+.maintenance-status-title.semi-typography {
+  color: inherit;
+}
+
 .maintenance-config,
 .maintenance-dialog {
   display: flex;
