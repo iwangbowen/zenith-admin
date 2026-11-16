@@ -1,7 +1,7 @@
 /**
  * Real PostgreSQL / Redis / loopback HTTP probe, isolated from all business data.
  * Run from packages/server: npx tsx scripts/domain-events/benchmark-boundary.mts
- *   --mode legacy --source-root ../../output/outbox-baseline/source/packages/server --out ../../output/outbox-baseline/boundary.json
+ *   --mode legacy --source-root <pre-change-server-source-root> --out <result.json>
  * Candidate: --mode durable --schema-sql drizzle/<event-outbox-migration>.sql
  * This measures the production event primitive with synthetic business/effect rows;
  * it does NOT claim end-to-end payment, workflow or production Webhook coverage.
