@@ -1,28 +1,108 @@
 .maintenance-editor {
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  max-width: 1100px;
+  gap: 24px;
+  max-width: 960px;
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
-.maintenance-editor label,
-.maintenance-plan {
+.maintenance-summary,
+.maintenance-help {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.maintenance-config,
+.maintenance-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+.maintenance-config {
+  width: 100%;
+  max-width: 660px;
+}
+
+.maintenance-field {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-width: 0;
+  font-size: 14px;
 }
 
-.maintenance-plan {
-  gap: 16px;
-  padding: 16px 0;
+.maintenance-date {
+  width: 100%;
+  max-width: 320px;
+}
+
+.maintenance-field .semi-datepicker,
+.maintenance-field .semi-select,
+.maintenance-field .semi-input-number {
+  width: 100%;
+}
+
+.maintenance-actions {
+  margin-top: 4px;
+}
+
+.maintenance-help {
+  padding-top: 16px;
   border-top: 1px solid var(--semi-color-border);
 }
 
+.maintenance-help .semi-button {
+  padding-right: 0;
+  padding-left: 0;
+}
+
+.maintenance-dialog {
+  overflow-wrap: anywhere;
+}
+
+.maintenance-diagnosis-inputs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.maintenance-method {
+  width: 110px;
+}
+
+.maintenance-path {
+  flex: 1;
+  min-width: 180px;
+}
+
+.maintenance-exception {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
 @media (width <= 768px) {
-  .maintenance-editor .semi-datepicker,
-  .maintenance-editor .semi-select {
+  .maintenance-editor {
+    gap: 20px;
+  }
+
+  .maintenance-summary {
+    align-items: flex-start;
+  }
+
+  .maintenance-date {
     max-width: 100%;
+  }
+
+  .maintenance-diagnosis-inputs .maintenance-path {
+    flex-basis: calc(100% - 118px);
+    min-width: 0;
   }
 }
