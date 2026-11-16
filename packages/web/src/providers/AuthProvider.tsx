@@ -118,7 +118,10 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
   });
 
   useWebSocket(message => {
-    if (message.type === 'identity:permissions-changed' && message.payload.userId === sessionQuery.data?.user.id) invalidateCurrentUserAccess(queryClient);
+    if (message.type === 'identity:permissions-changed' && message.payload.userId === sessionQuery.data?.user.id) {
+      invalidateCurrentUserAccess(queryClient);
+      void import('@/hooks/queries/identity-access-governance').then(({ identityAccessGovernanceKeys }) => { void queryClient.invalidateQueries({ queryKey: identityAccessGovernanceKeys.workflowResults }); });
+    }
   }, hasCredentials);
 
   useEffect(() => {

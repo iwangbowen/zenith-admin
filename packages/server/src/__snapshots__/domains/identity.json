@@ -27,8 +27,6 @@
   "DELETE /api/users/batch",
   "GET /api/access-governance/grants",
   "GET /api/access-governance/grants/:id",
-  "GET /api/access-governance/my/grants",
-  "GET /api/access-governance/my/requests",
   "GET /api/access-governance/policies",
   "GET /api/access-governance/requests",
   "GET /api/access-governance/requests/:id",

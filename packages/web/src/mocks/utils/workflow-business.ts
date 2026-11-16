@@ -1,3 +1,4 @@
+import { syncMockAccess } from './access-workflow';
 import { numberMockWorkflowInstance } from './workflow-numbering';
 import { withMockNumberingTransaction } from './numbering';
 import { getMockCmsReviewContent, getMockCmsWorkingContent } from './cms-revisions';
@@ -114,6 +115,7 @@ export function assertMockCmsManualAudit(content: CmsContent): void {
 
 /** 只回写该业务的当前轮次，审批旧轮次不会覆盖已重新提交的业务。 */
 export function syncMockWorkflowBusinessResult(instance: WorkflowInstance): void {
+  syncMockAccess(instance);
   syncMockCmsFeedbackWorkflow(instance);
   if (['approved', 'rejected', 'withdrawn', 'returned'].includes(instance.status)) {
     publishMockWatchEvent({ id: `workflow:${instance.id}:${instance.status}:${instance.updatedAt}`, eventType: `workflow.instance.${instance.status}`,

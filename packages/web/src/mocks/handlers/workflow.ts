@@ -1,3 +1,4 @@
+import { prepareMockAccess } from '@/mocks/utils/access-workflow';
 import { numberMockWorkflowInstance, pinMockWorkflowNumbering, requirePinnedMockWorkflowNumbering } from '@/mocks/utils/workflow-numbering';
 import { withMockNumberingTransaction } from '@/mocks/utils/numbering';
 import { addMockSignGroup, cancelMockApprovalActivations, createMockActivation, delegateMockApprovalSeat, getMockApprovalActivations, reduceMockSignGroup, resetMockApprovalInstance, settleMockApprovalSeat, synchronizeMockApprovalTaskRefs, transferMockApprovalSeat } from '@/mocks/utils/workflow-approval';
@@ -1829,7 +1830,7 @@ export const workflowHandlers = [
       const task = mockWorkflowTasks.find(t => t.id === taskId);
       const flowForNext = inst.definitionSnapshot?.flowData ?? def?.flowData;
       const node = flowForNext?.nodes.find((item) => item.data.key === task?.nodeKey)?.data;
-      const requiresIndividual = signaturePolicy === 'handwritten' || node?.actionButtons?.approve?.uploadMode === 'required'
+      const requiresIndividual = !!inst.definitionSnapshot?.customForm?.actionComponent || signaturePolicy === 'handwritten' || node?.actionButtons?.approve?.uploadMode === 'required'
         || (!!task && !!flowForNext && findNextApproverSelectNodes(flowForNext, task.nodeKey).length > 0);
       return [{ ...toInstanceListItem(inst), pendingTaskId: taskId, pendingSignaturePolicy: signaturePolicy, requiresIndividual, ...sla, summary }];
     });
@@ -2245,11 +2246,13 @@ export const workflowHandlers = [
     const isDraft = body.asDraft === true;
     const formSnapshot = resolveDefinitionFormSnapshot(def);
     const signed = body.formData == null ? null : await resolveMockWorkflowFormSignatures(request, formSnapshot?.fields ?? [], body.formData);
-    const formData = signed == null ? null : await bindMockWorkflowFormAttachments(request, instanceId, formSnapshot?.fields ?? [], stripWorkflowSerialNumberValues(formSnapshot?.fields ?? [], computeWorkflowDerivedValues(formSnapshot?.fields ?? [], signed)));
+    let formData = signed == null ? null : await bindMockWorkflowFormAttachments(request, instanceId, formSnapshot?.fields ?? [], stripWorkflowSerialNumberValues(formSnapshot?.fields ?? [], computeWorkflowDerivedValues(formSnapshot?.fields ?? [], signed)));
 
     let selectedFlow = def.flowData;
+    const access = !isDraft ? prepareMockAccess(def, formData ?? {}, initiator.id) : null;
+    if (access) { formData = access.formData; selectedFlow = access.flowData; }
     if (!isDraft) {
-      try { selectedFlow = applyMockInitiatorSelections(def, formData ?? {}, initiator.id, body.selectedInitiatorApprovers); }
+      try { selectedFlow = applyMockInitiatorSelections({ ...def, flowData: selectedFlow }, formData ?? {}, initiator.id, body.selectedInitiatorApprovers); }
       catch (error) { return mockApprovalError(error); }
     }
 
@@ -2273,12 +2276,13 @@ export const workflowHandlers = [
       updatedAt: now,
     };
 
+    if (!isDraft && def.customForm?.businessType === 'identity.access_request') { newInstance.bizType = 'identity.access_request'; newInstance.bizId = String(instanceId); }
     newInstance.definitionSnapshot = structuredClone(withDefinitionSnapshot(newInstance).definitionSnapshot ?? null);
     if (newInstance.definitionSnapshot) newInstance.definitionSnapshot.flowData = selectedFlow;
     withMockNumberingTransaction(() => {
       if (isDraft) requirePinnedMockWorkflowNumbering({ id: def.id, tenantId: newInstance.tenantId, flowData: selectedFlow });
       mockWorkflowInstances.push(newInstance);
-      if (!isDraft) { numberMockWorkflowInstance(newInstance); advanceMockWorkflowGraph(newInstance, now); }
+      if (!isDraft) { numberMockWorkflowInstance(newInstance); advanceMockWorkflowGraph(newInstance, now); syncMockWorkflowBusinessResult(newInstance); }
     }, [mockWorkflowInstances, mockWorkflowTasks]);
 
     return ok(withActiveNodes(newInstance));
@@ -2512,6 +2516,7 @@ export const workflowHandlers = [
       beforeSettle: async (current, now) => {
         const instForUpdate = mockWorkflowInstances.find(i => i.id === current.instanceId);
         if (!instForUpdate) return;
+        if (instForUpdate.bizType === 'identity.access_request' && instForUpdate.formData?.mfaRequired === true && !/^\d{6}$/.test(String(body.businessInput?.mfaCode ?? ''))) throw new Error('请输入本人六位动态验证码，批量操作请改为逐笔办理');
         const flow = instForUpdate.definitionSnapshot?.flowData
           ?? mockWorkflowDefinitions.find(d => d.id === instForUpdate.definitionId)?.flowData;
         for (const [key, ids] of Object.entries(body.selectedNextApprovers ?? {})) {

@@ -4,9 +4,10 @@ import DateTimeText from '@/components/DateTimeText';
 import { DATA_SCOPE_OPTIONS } from '@/components/permissions/DataScopePanel';
 import { useAccessWorkflowResult } from '@/hooks/queries/identity-access-governance';
 import { dateTimeColumn } from '@/utils/table-columns';
+import type { ApiClient } from '@/lib/contract-query';
 
-export default function AccessWorkflowResult({ instanceId }: { readonly instanceId: number }) {
-  const result = useAccessWorkflowResult(instanceId);
+export default function AccessWorkflowResult({ instanceId, requestClient }: { readonly instanceId: number; readonly requestClient?: ApiClient }) {
+  const result = useAccessWorkflowResult(instanceId, requestClient);
   if (result.isPending) return <Spin tip="读取授权结果" />;
   if (!result.data) return <Banner type="warning" closeIcon={null} description="暂时无法读取授权结果，请刷新重试。" />;
   const { request, grant } = result.data;

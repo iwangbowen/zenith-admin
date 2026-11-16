@@ -44,12 +44,6 @@ const workflowPreviewRoute = defineContractRoute(accessGovernanceContract.workfl
 const reviewOptionsRoute = defineContractRoute(accessGovernanceContract.reviewOptions, {
   handler: async (c) => c.json(okBody(await getAccessReviewOptions()), 200),
 });
-const myRequestListRoute = defineContractRoute(accessGovernanceContract.myRequests, {
-  handler: async (c) => c.json(okBody(await listAccessRequests(c.req.valid('query'), true)), 200),
-});
-const myGrantListRoute = defineContractRoute(accessGovernanceContract.myGrants, {
-  handler: async (c) => c.json(okBody(await listAccessGrants(c.req.valid('query'), true)), 200),
-});
 const requestRetryRoute = defineContractRoute(accessGovernanceContract.requestRetry, {
   middleware: [idempotencyGuard()],
   handler: async (c) => c.json(okBody(await retryAccessRequestProvision(c.req.valid('param').id)), 200),
@@ -113,8 +107,6 @@ accessGovernanceRouter.openapiRoutes([
   workflowOptionsRoute,
   workflowPreviewRoute,
   reviewOptionsRoute,
-  myRequestListRoute,
-  myGrantListRoute,
   requestRetryRoute,
   grantItemRevokeRoute,
   reviewCampaignRetryRoute,

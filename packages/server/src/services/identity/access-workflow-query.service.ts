@@ -1,4 +1,5 @@
 import { eq } from 'drizzle-orm';
+import { HTTPException } from 'hono/http-exception';
 import { ACCESS_REQUEST_BIZ_TYPE } from '@zenith/shared/identity';
 import { db } from '../../db';
 import { identityAccessGrants, identityAccessRequests } from '../../db/schema';
@@ -14,7 +15,7 @@ export async function getGovernanceRequestWorkflow(id: number) {
     where: buildWhere(eq(identityAccessRequests.id, id), tenantCondition(identityAccessRequests, currentUser())),
     columns: { id: true, workflowInstanceId: true },
   }), '权限申请不存在');
-  if (!request.workflowInstanceId) throw new Error('权限申请缺少流程关联');
+  if (!request.workflowInstanceId) throw new HTTPException(409, { message: '权限申请缺少流程关联' });
   return getAccessBusinessWorkflow(request.workflowInstanceId, ACCESS_REQUEST_BIZ_TYPE, String(request.id));
 }
 

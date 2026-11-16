@@ -74,7 +74,7 @@ function ReadonlyAccessRequest({ value }: Readonly<{ value: Record<string, unkno
   </div>;
 }
 
-export default function AccessRequestWorkflowForm({ mode, value, instanceId, bizId, getFormApi, onValuesChange }: Readonly<WorkflowBusinessFormProps>) {
+export default function AccessRequestWorkflowForm({ mode, value, instanceId, bizId, requestClient, getFormApi, onValuesChange }: Readonly<WorkflowBusinessFormProps>) {
   const optionsQuery = useAccessWorkflowOptions(mode === 'create');
   const formApi = useRef<FormApi | null>(null);
   const [defaults] = useState(() => initialValues(value));
@@ -110,13 +110,14 @@ export default function AccessRequestWorkflowForm({ mode, value, instanceId, biz
     if (expiry !== undefined && expiry > limit) api.setValue('expiresAt', new Date(limit));
   }, [maxMinutes, startTimestamp, values.validityMode]);
 
-  if (mode !== 'create') return <><ReadonlyAccessRequest value={value} />{instanceId && bizId ? <AccessWorkflowResult instanceId={instanceId} /> : null}</>;
+  if (mode !== 'create') return <><ReadonlyAccessRequest value={value} />{instanceId && bizId ? <AccessWorkflowResult instanceId={instanceId} requestClient={requestClient} /> : null}</>;
   if (optionsQuery.isLoading) return <Spin />;
   if (optionsQuery.error) return <Banner type="warning" closeIcon={null} description={optionsQuery.error.message} />;
 
   const registerApi = (api: FormApi) => {
     formApi.current = api;
     getFormApi?.({
+      isPreviewReady: () => { const current = api.getValues() as FormValues; return !!(current.roleIds?.length || current.permissionCodes?.length); },
       getValues: () => serialize(api.getValues() as FormValues, latestPreview.current.roles),
       validate: async () => {
         const current = await api.validate() as FormValues;

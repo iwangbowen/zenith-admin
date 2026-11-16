@@ -8,7 +8,7 @@ import { ALL_PERMISSIONS } from '@zenith/shared/permissions';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { db } from '../../db';
 import type { DbExecutor } from '../../db/types';
-import { identityAccessGrantItems, identityAccessGrants, identityAccessRequests, identityAccessReviewItems, identityPermissionPolicies, menus, roles, users, asyncTasks, workflowInstances } from '../../db/schema';
+import { identityAccessGrantItems, identityAccessGrants, identityAccessRequests, identityAccessReviewItems, identityPermissionPolicies, menus, roles, users, asyncTasks } from '../../db/schema';
 import { currentUser, setAuditBefore } from '../../lib/context';
 import { exactTenantCondition, getCreateTenantId, tenantCondition } from '../../lib/tenant';
 import { requireRow } from '../../lib/db-assert';
@@ -23,7 +23,7 @@ import { notifyUserPermissionsChanged } from '../../lib/permissions';
 import { notifyWithin } from '../messaging/notification-outbox.service';
 import { ACCESS_REQUEST_BIZ_TYPE, accessWorkflowInputSchema, type DataScope } from '@zenith/shared/identity';
 import { taskTransaction } from '../../lib/task-center';
-import { requireApprovedBusiness } from '../workflow/public/access-approval';
+import { requireApprovedBusiness, businessApprovalKeywordCondition } from '../workflow/public/access-approval';
 import { aggregateAccessPolicies, accessPolicyBaseline, mergeAccessPermissionItems } from '@zenith/shared/identity';
 import { loadEffectiveAccessPolicies, readAccessPolicySet, assertPermissionPolicyUpdate, assertAccessSnapshotDuration, lockAccessPolicies } from './access-policy.service';
 import { resolveAccessApprovalPlan, assertAccessGrantApproversCurrent } from './access-approval.service';
@@ -126,12 +126,12 @@ export async function getAccessWorkflowOptions() {
   };
 }
 
-export async function listAccessRequests(q: QueryOutputOf<typeof accessGovernanceContract.requestList>, mine = false) {
+export async function listAccessRequests(q: QueryOutputOf<typeof accessGovernanceContract.requestList>) {
   const user = currentUser();
   const where = buildWhere(
-    mine ? undefined : tenantCondition(identityAccessRequests, user),
-    mine ? eq(identityAccessRequests.applicantUserId, user.userId) : eq(identityAccessRequests.status, 'approved'),
-    q.keyword ? or(keywordCondition(q.keyword, [identityAccessRequests.reason]), exists(db.select({ id: workflowInstances.id }).from(workflowInstances).where(and(eq(workflowInstances.id, identityAccessRequests.workflowInstanceId), keywordCondition(q.keyword, [workflowInstances.title, workflowInstances.serialNo], 'ilike'))))) : undefined,
+    tenantCondition(identityAccessRequests, user),
+    eq(identityAccessRequests.status, 'approved'),
+    q.keyword ? or(keywordCondition(q.keyword, [identityAccessRequests.reason]), businessApprovalKeywordCondition(identityAccessRequests.workflowInstanceId, q.keyword)) : undefined,
     q.status ? eq(identityAccessRequests.status, q.status) : undefined,
     q.provisionStatus ? eq(identityAccessRequests.provisionStatus, q.provisionStatus) : undefined,
     q.riskLevel ? eq(identityAccessRequests.riskLevel, q.riskLevel) : undefined,
@@ -321,7 +321,7 @@ export async function applyApprovedAccessRequest(requestId: number, expected: { 
   return result;
 }
 
-export async function listAccessGrants(q: QueryOutputOf<typeof accessGovernanceContract.grantList>, mine = false) {
+export async function listAccessGrants(q: QueryOutputOf<typeof accessGovernanceContract.grantList>) {
   const user = currentUser();
   const now = new Date();
   const live = inArray(identityAccessGrants.status, ['scheduled', 'active']);
@@ -330,12 +330,12 @@ export async function listAccessGrants(q: QueryOutputOf<typeof accessGovernanceC
     : q.status === 'scheduled' ? and(live, gt(identityAccessGrants.startsAt, now), or(isNull(identityAccessGrants.expiresAt), gt(identityAccessGrants.expiresAt, now)))
     : q.status === 'active' ? and(live, lte(identityAccessGrants.startsAt, now), or(isNull(identityAccessGrants.expiresAt), gt(identityAccessGrants.expiresAt, now))) : undefined;
   const where = buildWhere(
-    mine ? undefined : tenantCondition(identityAccessGrants, user),
+    tenantCondition(identityAccessGrants, user),
     q.keyword ? or(exists(db.select({ id: users.id }).from(users).where(and(eq(users.id, identityAccessGrants.userId), keywordCondition(q.keyword, [users.username, users.nickname])))),
       exists(db.select({ id: identityAccessGrantItems.id }).from(identityAccessGrantItems).where(and(eq(identityAccessGrantItems.grantId, identityAccessGrants.id), keywordCondition(q.keyword, [identityAccessGrantItems.permissionCode, identityAccessGrantItems.permissionLabel]))))) : undefined,
     statusWhere,
     q.riskLevel ? eq(identityAccessGrants.riskLevel, q.riskLevel) : undefined,
-    mine ? eq(identityAccessGrants.userId, user.userId) : q.userId ? eq(identityAccessGrants.userId, q.userId) : undefined,
+    q.userId ? eq(identityAccessGrants.userId, q.userId) : undefined,
   );
   return buildListResult({
     page: q.page,

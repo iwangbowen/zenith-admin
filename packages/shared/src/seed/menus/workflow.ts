@@ -14,7 +14,6 @@ export const SEED_MENUS_WORKFLOW: Menu[] = [
   { id: 4100, parentId: 4200, title: '我已办', name: 'WorkflowHandled', path: '/workflow/handled', component: 'workflow/handled/HandledPage', icon: 'CircleCheckBig', type: 'menu', sort: 4, status: 'enabled', visible: true, createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 4160, parentId: 4200, title: '审批代理', name: 'WorkflowDelegations', path: '/workflow/delegations', component: 'workflow/delegations/WorkflowDelegationsPage', icon: 'UserRoundCog', type: 'menu', sort: 5, status: 'enabled', visible: true, createdAt: SEED_DATE, updatedAt: SEED_DATE },
 
-  { id: 4210, parentId: 4200, title: '我的权限', name: 'MyAccess', path: '/access/my', component: 'biz/access/MyAccessPage', icon: 'KeyRound', type: 'menu', sort: 6, status: 'enabled', visible: true, createdAt: SEED_DATE, updatedAt: SEED_DATE },
 
   // ─── 流程管理（流程管理员）─────────────────────────────────────────────
   { id: 4300, parentId: 4000, title: '流程管理', name: 'WorkflowManagement', icon: 'PencilRuler', type: 'directory', sort: 1, status: 'enabled', visible: true, createdAt: SEED_DATE, updatedAt: SEED_DATE },

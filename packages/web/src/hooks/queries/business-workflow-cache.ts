@@ -8,6 +8,7 @@ type BusinessRef = { type: 'biz_leave' | 'cms_content'; id: number };
 
 /** 从已授权缓存反查业务归属，流程变化只刷新对应业务单据，不触碰其他业务的编辑器。 */
 export function invalidateBusinessWorkflow(qc: QueryClient, instanceId?: number): void {
+  void import('./identity-access-governance').then(({ invalidateAccessRequests }) => invalidateAccessRequests(qc));
   const refs = new Map<string, BusinessRef>();
   const add = (type: string | null | undefined, id: string | number | null | undefined) => {
     if ((type === 'biz_leave' || type === 'cms_content') && id && Number.isInteger(Number(id))) {

@@ -1,4 +1,6 @@
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, exists, type SQLWrapper } from 'drizzle-orm';
+import { keywordCondition } from '../../../lib/where-helpers';
+import { db } from '../../../db';
 import { workflowInstances, workflowTasks } from '../../../db/schema';
 import type { DbExecutor, DbTransaction } from '../../../db/types';
 import { exactTenantCondition } from '../../../lib/tenant';
@@ -43,4 +45,10 @@ export async function requireAccessWorkflowViewer(id: number, bizType: string, b
 export async function getAccessBusinessWorkflow(id: number, bizType: string, bizId: string) {
   const { getBusinessInstanceDetail } = await import('../instances/queries');
   return getBusinessInstanceDetail(id, bizType, bizId);
+}
+
+export function businessApprovalKeywordCondition(instanceId: SQLWrapper, keyword: string) {
+  return exists(db.select({ id: workflowInstances.id }).from(workflowInstances).where(and(
+    eq(workflowInstances.id, instanceId), keywordCondition(keyword, [workflowInstances.title, workflowInstances.serialNo], 'ilike'),
+  )));
 }

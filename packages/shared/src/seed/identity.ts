@@ -32,7 +32,7 @@ const DRIVE_PERSONAL_MENU_IDS: number[] = [
   }),
 ];
 
-const WORKFLOW_SELF_MENU_NAMES = new Set(['Workflow', 'WorkflowApprovalCenter', 'WorkflowLaunchpad', 'MyApplications', 'WorkflowCcToMe', 'MyAccess']);
+const WORKFLOW_SELF_MENU_NAMES = new Set(['Workflow', 'WorkflowApprovalCenter', 'WorkflowLaunchpad', 'MyApplications', 'WorkflowCcToMe']);
 const WORKFLOW_SELF_PERMISSIONS = new Set(['workflow:instance:create', 'workflow:instance:list']);
 const WORKFLOW_SELF_MENU_IDS = SEED_MENUS.filter(menu => WORKFLOW_SELF_MENU_NAMES.has(menu.name ?? '') || (menu.type === 'button' && WORKFLOW_SELF_PERMISSIONS.has(menu.permission ?? ''))).map(menu => menu.id);
 

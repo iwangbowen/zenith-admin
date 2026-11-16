@@ -12,6 +12,7 @@ import { Empty, Spin, Typography } from '@douyinfe/semi-ui';
 import type { WorkflowCustomFormConfig, WorkflowCustomFormVariable } from '@zenith/shared/workflow';
 import { lazyBusinessFormComponent } from '@/utils/business-form-registry';
 import { emptyIllustration } from '@/components/EmptyIllustration';
+import type { ApiClient } from '@/lib/contract-query';
 
 export type WorkflowBusinessFormMode = 'create' | 'view' | 'approve' | 'action';
 
@@ -23,12 +24,15 @@ export interface WorkflowBusinessFormApi {
   getValues?: () => Record<string, unknown>;
   /** 动作成功后由业务组件刷新自身领域视图，公共流程层不依赖具体领域 hooks。 */
   onActionSuccess?: () => void;
+  /** 业务值尚不足以预览时阻止公共容器发送预览请求。 */
+  isPreviewReady?: () => boolean;
 }
 
 /** 自定义业务表单组件接收的 props 契约 */
 export interface WorkflowBusinessFormProps {
   /** create=发起填写，view=只读查看，approve=审批办理，action=审批动作临时输入 */
   mode: WorkflowBusinessFormMode;
+  requestClient?: ApiClient;
   /** 容器：sheet=嵌入抽屉（当前），tab=整页多页签（预留） */
   container: 'sheet' | 'tab';
   definitionId: number;
@@ -52,6 +56,7 @@ export interface WorkflowBusinessFormProps {
 }
 
 interface BusinessFormHostProps {
+  requestClient?: ApiClient;
   customForm: WorkflowCustomFormConfig | null | undefined;
   mode: WorkflowBusinessFormMode;
   container?: 'sheet' | 'tab';
@@ -82,6 +87,7 @@ function MissingComponent({ path }: Readonly<{ path: string | null }>) {
 }
 
 export default function BusinessFormHost({
+  requestClient,
   customForm,
   mode,
   container = 'sheet',
@@ -108,6 +114,7 @@ export default function BusinessFormHost({
   if (!Component) return mode === 'action' && !componentPath ? null : <MissingComponent path={componentPath} />;
 
   const businessProps: WorkflowBusinessFormProps = {
+    requestClient,
     mode,
     container,
     definitionId,

@@ -50,8 +50,7 @@ function fetchApprovalList(tab: ApprovalTab, size: number, keyword: string): Pro
     case 'cc':
       return api(workflowInstanceContract.ccMine, { query }, client);
     case 'mine':
-      // 「我的申请」端点不支持关键字筛选
-      return api(workflowInstanceContract.list, { query: { page: 1, pageSize: size } }, client);
+      return api(workflowInstanceContract.list, { query }, client);
   }
 }
 

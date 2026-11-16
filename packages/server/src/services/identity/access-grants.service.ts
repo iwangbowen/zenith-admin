@@ -4,6 +4,7 @@ import type { RevokeAccessGrantInput } from '@zenith/shared/identity';
 import { db } from '../../db';
 import type { DbExecutor } from '../../db/types';
 import { identityAccessGrantItems, identityAccessGrants, identityAccessRequests, identityAccessRequestItems } from '../../db/schema';
+import { buildWhere } from '../../lib/where-helpers';
 import { currentUser, setAuditBefore } from '../../lib/context';
 import { exactTenantCondition, tenantCondition } from '../../lib/tenant';
 import { requireRow } from '../../lib/db-assert';
@@ -16,6 +17,15 @@ import { assertNoOverlappingAccessRequest } from './access-reservations.service'
 import { formatAccessGrant, formatAccessRequest } from './access-formatters';
 import { notifyWithin } from '../messaging/notification-outbox.service';
 import { resolveUserNames } from '../../lib/user-nicknames';
+
+async function grantSourceLink(executor: DbExecutor, requestId: number | null, tenantId: number | null): Promise<string> {
+  if (requestId === null) return '/workflow/applications';
+  const request = await executor.query.identityAccessRequests.findFirst({
+    where: buildWhere(eq(identityAccessRequests.id, requestId), exactTenantCondition(identityAccessRequests.tenantId, tenantId)),
+    columns: { workflowInstanceId: true },
+  });
+  return request?.workflowInstanceId ? '/workflow/instance/' + request.workflowInstanceId : '/workflow/applications';
+}
 
 export async function refreshAccessGrantHeader(executor: DbExecutor, grantId: number, tenantId: number | null, actorId?: number, reason?: string): Promise<void> {
   const where = and(eq(identityAccessGrants.id, grantId), exactTenantCondition(identityAccessGrants.tenantId, tenantId));
@@ -47,7 +57,7 @@ export async function revokeAccessGrantItemInTransaction(executor: DbExecutor, i
       .where(and(eq(identityAccessGrantItems.id, itemId), eq(identityAccessGrantItems.grantId, grant.id)));
     await refreshAccessGrantHeader(executor, grant.id, tenantId, actorId, reason);
     const names = await resolveUserNames([grant.userId], executor);
-    await notifyWithin(executor, 'identity.access.revoked', { recipients: [{ type: 'user', id: grant.userId }], vars: { grantId: grant.id, targetName: names.get(grant.userId) ?? `用户 ${grant.userId}`, reason: `${currentItem.permissionLabel ?? currentItem.permissionCode}（单项）：${reason}` }, tenantId, link: '/workflow/launchpad', dedupeKey: `identity-access-item-revoked:${itemId}` });
+    await notifyWithin(executor, 'identity.access.revoked', { recipients: [{ type: 'user', id: grant.userId }], vars: { grantId: grant.id, targetName: names.get(grant.userId) ?? `用户 ${grant.userId}`, reason: `${currentItem.permissionLabel ?? currentItem.permissionCode}（单项）：${reason}` }, tenantId, link: await grantSourceLink(executor, grant.requestId, tenantId), dedupeKey: `identity-access-item-revoked:${itemId}` });
   }
   return { grantId: grant.id, userId: grant.userId };
 }
@@ -77,7 +87,7 @@ export async function revokeAccessGrant(id: number, input: RevokeAccessGrantInpu
       await tx.update(identityAccessGrantItems).set({ status: 'revoked', revokedBy: actor.userId, revokedAt: new Date(), revokeReason: input.reason }).where(and(eq(identityAccessGrantItems.grantId, id), inArray(identityAccessGrantItems.status, ['scheduled', 'active'])));
       await tx.update(identityAccessGrants).set({ status: 'revoked', revokedBy: actor.userId, revokedAt: new Date(), revokeReason: input.reason }).where(where);
       const names = await resolveUserNames([row.userId], tx);
-      await notifyWithin(tx, 'identity.access.revoked', { recipients: [{ type: 'user', id: row.userId }], vars: { grantId: id, targetName: names.get(row.userId) ?? `用户 ${row.userId}`, reason: input.reason }, tenantId: row.tenantId, link: '/workflow/launchpad', dedupeKey: `identity-access-revoked:${id}` });
+      await notifyWithin(tx, 'identity.access.revoked', { recipients: [{ type: 'user', id: row.userId }], vars: { grantId: id, targetName: names.get(row.userId) ?? `用户 ${row.userId}`, reason: input.reason }, tenantId: row.tenantId, link: await grantSourceLink(tx, row.requestId, row.tenantId), dedupeKey: `identity-access-revoked:${id}` });
     }
     return row;
   });
@@ -135,14 +145,14 @@ export async function runAccessGrantLifecycle(): Promise<string> {
     const where = and(eq(identityAccessGrants.id, grant.id), exactTenantCondition(identityAccessGrants.tenantId, grant.tenantId));
     const [current] = await tx.select().from(identityAccessGrants).where(where).for('update').limit(1);
     if (!current || current.status !== 'expired' || current.expiredNotifiedAt) return;
-    await notifyWithin(tx, 'identity.access.expired', { recipients: [{ type: 'user', id: grant.userId }], vars: { grantId: grant.id, targetName: names.get(grant.userId) ?? `用户 ${grant.userId}` }, tenantId: grant.tenantId, link: '/workflow/launchpad', dedupeKey: `identity-access-expired:${grant.id}` });
+    await notifyWithin(tx, 'identity.access.expired', { recipients: [{ type: 'user', id: grant.userId }], vars: { grantId: grant.id, targetName: names.get(grant.userId) ?? `用户 ${grant.userId}` }, tenantId: grant.tenantId, link: await grantSourceLink(tx, current.requestId, current.tenantId), dedupeKey: `identity-access-expired:${grant.id}` });
     await tx.update(identityAccessGrants).set({ expiredNotifiedAt: now }).where(where);
   });
   for (const grant of expiring) await db.transaction(async tx => {
     const where = and(eq(identityAccessGrants.id, grant.id), exactTenantCondition(identityAccessGrants.tenantId, grant.tenantId));
     const [current] = await tx.select().from(identityAccessGrants).where(where).for('update').limit(1);
     if (!current || current.status !== 'active' || current.expiringNotifiedAt || !current.expiresAt || !grant.expiresAt || current.expiresAt.getTime() !== grant.expiresAt.getTime()) return;
-    await notifyWithin(tx, 'identity.access.expiring', { recipients: [{ type: 'user', id: grant.userId }], vars: { grantId: grant.id, targetName: names.get(grant.userId) ?? `用户 ${grant.userId}`, expiresAt: formatDateTime(grant.expiresAt) }, tenantId: grant.tenantId, link: '/workflow/launchpad', dedupeKey: `identity-access-expiring:${grant.id}:${formatDateTime(grant.expiresAt)}` });
+    await notifyWithin(tx, 'identity.access.expiring', { recipients: [{ type: 'user', id: grant.userId }], vars: { grantId: grant.id, targetName: names.get(grant.userId) ?? `用户 ${grant.userId}`, expiresAt: formatDateTime(grant.expiresAt) }, tenantId: grant.tenantId, link: await grantSourceLink(tx, current.requestId, current.tenantId), dedupeKey: `identity-access-expiring:${grant.id}:${formatDateTime(grant.expiresAt)}` });
     await tx.update(identityAccessGrants).set({ expiringNotifiedAt: now }).where(where);
   });
   return `维护 ${changed} 个授权项，刷新 ${affectedUsers.size} 个用户`;

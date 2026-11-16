@@ -1,3 +1,4 @@
+import { prepareMockAccess } from '@/mocks/utils/access-workflow';
 import { numberMockWorkflowInstance } from '@/mocks/utils/workflow-numbering';
 import { withMockNumberingTransaction } from '@/mocks/utils/numbering';
 import { cancelMockApprovalActivations, createMockActivation, getMockApprovalActivations, resetMockApprovalInstance, settleMockApprovalSeat, synchronizeMockApprovalTaskRefs, transferMockApprovalSeat } from '@/mocks/utils/workflow-approval';
@@ -580,7 +581,8 @@ export const workflowExtraHandlers = [
   // ── 提交前审批链路预览 ──
   mock(workflowDefinitionContract.preview, ({ params, body, request, ok }) => {
     const definition = requireItem(mockWorkflowDefinitions, params.id, '流程定义不存在');
-    return ok(configuredApproverPreview(definition, currentMockSession(request)?.user.id ?? 1, body.formData ?? {}));
+    const prepared = prepareMockAccess(definition, body.formData ?? {}, currentMockSession(request)?.user.id ?? 1);
+    return ok(configuredApproverPreview({ ...definition, flowData: prepared.flowData }, currentMockSession(request)?.user.id ?? 1, prepared.formData));
   }),
 
   // ── 主动抄送 / 转发 ──
@@ -831,6 +833,9 @@ export const workflowExtraHandlers = [
     let flowData: WorkflowFlowData | null;
     try { flowData = applyMockInitiatorSelections(definition, inst.formData ?? {}, inst.initiatorId ?? 1, body.selectedInitiatorApprovers); }
     catch (error) { return badRequest(error instanceof Error ? error.message : '审批人选择不完整'); }
+    const preparedAccess = prepareMockAccess(definition, inst.formData ?? {}, inst.initiatorId);
+    inst.formData = preparedAccess.formData; flowData = preparedAccess.flowData;
+    if (definition.customForm?.businessType === 'identity.access_request') { inst.bizType = 'identity.access_request'; inst.bizId = String(inst.id); }
     const originalNumbering = inst.definitionSnapshot?.flowData?.settings?.numbering;
     if (inst.serialNo && originalNumbering && flowData?.settings) flowData.settings.numbering = originalNumbering;
     const now = mockDateTime();

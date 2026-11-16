@@ -1,3 +1,4 @@
+import { accessGovernanceHandlers } from './access-governance';
 import { cmsDeliveryHandlers } from './cms-delivery';
 import { businessFileDetailHandlers } from './business-file-details';
 import { entityWatchesHandlers } from './entity-watches';
@@ -352,5 +353,6 @@ export const handlers = [
   ...notificationPoliciesHandlers,
   ...numberingHandlers,
   // 兜底 handler 必须放在最后：拦截所有未实现的 /api/* 请求，避免 dev:demo 下被代理到后端返回 401 跳转登录页
+  ...accessGovernanceHandlers,
   ...fallbackHandlers,
 ];

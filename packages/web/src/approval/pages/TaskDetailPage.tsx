@@ -19,7 +19,7 @@ import { SignatureClientProvider } from '@/components/signature/SignatureClientC
 import { approvalRequest } from '../lib/approval-request';
 import { UserAvatar } from '@/components/UserAvatar';
 import WorkflowFormRenderer from '@/pages/workflow/designer/components/WorkflowFormRenderer';
-import BusinessFormHost from '@/components/workflow/BusinessFormHost';
+import BusinessFormHost, { type WorkflowBusinessFormApi } from '@/components/workflow/BusinessFormHost';
 import WorkflowPriorityTag from '@/components/workflow/WorkflowPriorityTag';
 import { linearizeApprovalNodes } from '@/components/workflow/workflow-runtime';
 import {
@@ -127,6 +127,7 @@ function TaskDetailContent() {
   const [online, setOnline] = useState(() => navigator.onLine);
   const actionFormApi = useRef<FormApi | null>(null);
   const detailFormApi = useRef<FormApi | null>(null);
+  const businessActionFormApi = useRef<WorkflowBusinessFormApi | null>(null);
 
   useEffect(() => {
     const updateOnline = () => setOnline(navigator.onLine);
@@ -156,6 +157,7 @@ function TaskDetailContent() {
   const phrasesQuery = useApprovalQuickPhrases(action === 'approve' || action === 'reject');
 
   const def = useMemo(() => resolveWorkflowDetailDefinition(detail), [detail]);
+  const businessForm = resolveWorkflowCustomForm(detail, def);
   const formType = useMemo(() => resolveWorkflowFormType(detail, def), [detail, def]);
   const formFields = useMemo(() => resolveWorkflowFormFields(detail, def), [detail, def]);
   const flowData = useMemo(() => resolveWorkflowFlowData(detail, def), [detail, def]);
@@ -268,6 +270,8 @@ function TaskDetailContent() {
       }
       let vars: ApprovalTaskActionVariables;
       if (action === 'approve') {
+        if (businessForm?.actionComponent && !businessActionFormApi.current) { Toast.warning('补充审批表单尚未就绪'); return; }
+        const businessInput = await businessActionFormApi.current?.validate();
         const missing = nextGroups.find((g) => (selectedNext[g.nodeKey] ?? []).length === 0);
         if (missing) {
           setHighlightNextMissing(true);
@@ -283,6 +287,7 @@ function TaskDetailContent() {
           taskId,
           action,
           body: {
+            businessInput,
             comment: values.comment ?? '',
             signature: needSignature ? signature ?? undefined : undefined,
             formUpdates: await collectFormUpdates(),
@@ -321,6 +326,7 @@ function TaskDetailContent() {
         };
       }
       await actionMutation.mutateAsync(vars);
+      businessActionFormApi.current?.onActionSuccess?.();
       setAction(null);
       // 连续审批（对标钉钉）：处理完自动进入下一条待办，清零后回列表
       const doneLabel = action === 'approve' ? '已同意'
@@ -407,6 +413,7 @@ function TaskDetailContent() {
     if (formType !== 'designer') {
       return (
         <BusinessFormHost
+          requestClient={approvalRequest}
           customForm={resolveWorkflowCustomForm(detail, def)}
           mode="view"
           container="sheet"
@@ -711,6 +718,11 @@ function TaskDetailContent() {
         className="ap-sheet"
       >
         <div className="ap-sheet__body">
+          {action === 'approve' && businessForm?.actionComponent && detail ? <BusinessFormHost
+            key={'business-action-' + taskId} requestClient={approvalRequest} customForm={businessForm} mode="action"
+            definitionId={detail.definitionId} instanceId={detail.id} value={detail.formData ?? {}} bizType={detail.bizType} bizId={detail.bizId}
+            getFormApi={api => { businessActionFormApi.current = api; }}
+          /> : null}
           {(action === 'transfer' || action === 'delegate' || action === 'addSign') && (
             <div style={{ marginBottom: 12 }}>
               <Typography.Text type="secondary" size="small" style={{ display: 'block', marginBottom: 6 }}>

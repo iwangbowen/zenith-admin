@@ -1,7 +1,7 @@
 import { keepPreviousData, type QueryClient } from '@tanstack/react-query';
 import type { BodyOf, QueryOf } from '@zenith/shared/core';
 import { accessGovernanceContract, type AccessReviewItem } from '@zenith/shared/identity';
-import { contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { contractKey, useApiMutation, useApiQuery, type ApiClient } from '@/lib/contract-query';
 import { invalidateCurrentUserAccess } from './menus';
 import { userKeys } from './users';
 import { roleKeys } from './roles';
@@ -18,8 +18,6 @@ export const identityAccessGovernanceKeys = {
   workflowResults: contractKey(accessGovernanceContract.workflowResult),
   workflowOptions: contractKey(accessGovernanceContract.workflowOptions),
   all: ['identity-access-governance'] as const,
-  myRequests: contractKey(accessGovernanceContract.myRequests),
-  myGrants: contractKey(accessGovernanceContract.myGrants),
   reviewOptions: contractKey(accessGovernanceContract.reviewOptions),
   requests: contractKey(accessGovernanceContract.requestList),
   grants: contractKey(accessGovernanceContract.grantList),
@@ -32,9 +30,10 @@ export const identityAccessGovernanceKeys = {
   userOverview: (id: number | null | undefined) => contractKey(accessGovernanceContract.userOverview, { params: { id: id ?? 0 } }),
 };
 
-export function useAccessWorkflowResult(instanceId: number | null | undefined) {
+export function useAccessWorkflowResult(instanceId: number | null | undefined, client?: ApiClient) {
   return useApiQuery(accessGovernanceContract.workflowResult, { params: { id: instanceId ?? 0 } }, {
     enabled: instanceId != null,
+    requestOptions: { client },
     refetchInterval: state => state.state.data && ['pending', 'running'].includes(state.state.data.request.provisionStatus) ? 3000 : 30_000,
   });
 }
@@ -87,12 +86,12 @@ export function useAccessUserOverview(id: number | null | undefined, enabled = t
 
 export function invalidateAccessRequests(qc: QueryClient): void {
   void qc.invalidateQueries({ queryKey: identityAccessGovernanceKeys.workflowResults });
-  for (const queryKey of [identityAccessGovernanceKeys.requests, identityAccessGovernanceKeys.myRequests, contractKey(accessGovernanceContract.requestDetail)]) void qc.invalidateQueries({ queryKey });
+  for (const queryKey of [identityAccessGovernanceKeys.requests, contractKey(accessGovernanceContract.requestDetail)]) void qc.invalidateQueries({ queryKey });
 }
 
 function invalidateAccessGrants(qc: QueryClient, userId: number): void {
   void qc.invalidateQueries({ queryKey: identityAccessGovernanceKeys.workflowResults });
-  for (const queryKey of [identityAccessGovernanceKeys.grants, identityAccessGovernanceKeys.myGrants, contractKey(accessGovernanceContract.grantDetail), identityAccessGovernanceKeys.userOverview(userId), userKeys.effectivePermissions(userId), userKeys.dataPermission(userId)]) void qc.invalidateQueries({ queryKey });
+  for (const queryKey of [identityAccessGovernanceKeys.grants, contractKey(accessGovernanceContract.grantDetail), identityAccessGovernanceKeys.userOverview(userId), userKeys.effectivePermissions(userId), userKeys.dataPermission(userId)]) void qc.invalidateQueries({ queryKey });
   invalidateCurrentUserAccess(qc);
 }
 
@@ -121,14 +120,6 @@ function invalidateAccessReview(qc: QueryClient, item: AccessReviewItem): void {
 
 export function useDecideAccessReviewItem() {
   return useApiMutation(accessGovernanceContract.reviewItemDecide, { invalidate: invalidateAccessReview });
-}
-
-export function useMyAccessRequests(query: AccessRequestListQuery, enabled = true) {
-  return useApiQuery(accessGovernanceContract.myRequests, { query }, { enabled, placeholderData: keepPreviousData, refetchInterval: state => state.state.data?.list.some(request => ['pending', 'running'].includes(request.provisionStatus)) ? 3000 : false });
-}
-
-export function useMyAccessGrants(query: AccessGrantListQuery, enabled = true) {
-  return useApiQuery(accessGovernanceContract.myGrants, { query }, { enabled, placeholderData: keepPreviousData });
 }
 
 export function useAccessReviewOptions(enabled = true) {
