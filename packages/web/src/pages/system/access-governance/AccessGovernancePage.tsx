@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { Banner, Descriptions, Divider, Form, SideSheet, Skeleton, Spin, TabPane, Table, Tabs, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { AccessGrant, AccessRequest, AccessReviewItem, PermissionPolicy, UpdatePermissionPolicyInput } from '@zenith/shared/identity';
@@ -395,6 +395,7 @@ function PoliciesTab() {
   const [detail, setDetail] = useState<PermissionPolicy | null>(null);
   const modal = useEditModal<PermissionPolicy, UpdatePermissionPolicyInput & { permissionCode: string }>({
     entityName: '权限策略',
+    labelWidth: 130,
     save,
     toValues: (record) => ({ permissionCode: record.permissionCode, riskLevel: record.riskLevel, approvalPolicy: record.approvalPolicy, maxDurationMinutes: record.maxDurationMinutes ?? null, reviewIntervalDays: record.reviewIntervalDays, mfaRequired: record.mfaRequired, enabled: record.enabled, permanentAllowed: record.permanentAllowed, emergencyAllowed: record.emergencyAllowed, maxEmergencyMinutes: record.maxEmergencyMinutes }),
     beforeSave: values => ({ ...values, maxDurationMinutes: values.maxDurationMinutes ?? null }),
@@ -416,7 +417,7 @@ function PoliciesTab() {
   return <><div style={{ marginBottom: 12 }}><Text type="tertiary">策略约束后续申请、审批、发放及延期；关闭本人申请不会撤销已授权限，立即收权请到授权台账撤销。</Text></div><ListSearchToolbar page={page} filters={['keyword', 'riskLevel', 'approvalPolicy']} overrides={{
     riskLevel: p => <FilterSelect placeholder="全部风险等级" items={RISK_OPTIONS} {...p.bind('riskLevel')} width={160} />,
     approvalPolicy: p => <FilterSelect placeholder="全部审批策略" items={APPROVAL_OPTIONS} {...p.bind('approvalPolicy')} width={300} />,
-  }} actions={<RefreshButton onClick={() => void page.listQuery.refetch()} loading={page.listQuery.isFetching} />} /><ConfigurableTable columns={singleLineColumns(columns)} {...page.tableProps} /><PolicyDetailSheet record={detail} onClose={() => setDetail(null)} /><EditFormModal modal={modal} width={620} header={<Banner type="info" closeIcon={null} description={`目录最低风险：${modal.editing ? RISK_LABELS[modal.editing.minimumRiskLevel] : '—'}。高危及极高危的审批、MFA 和复核要求不能低于目录底线；未覆盖时继承基线策略。`} />} formProps={{ onValueChange: next => {
+  }} actions={<RefreshButton onClick={() => void page.listQuery.refetch()} loading={page.listQuery.isFetching} />} /><ConfigurableTable columns={singleLineColumns(columns)} {...page.tableProps} /><PolicyDetailSheet record={detail} onClose={() => setDetail(null)} /><EditFormModal modal={modal} width={900} formProps={{ onValueChange: next => {
       const values = next as Partial<UpdatePermissionPolicyInput>;
       const risk = values.riskLevel;
       if (!risk) return;
@@ -431,18 +432,18 @@ function PoliciesTab() {
       {({ formState }) => {
         const values = formState.values as Partial<UpdatePermissionPolicyInput>;
         const risk = values.riskLevel ?? 'low';
-        return <>
-          <Form.Input field="permissionCode" label="权限码" disabled />
-          <Form.Select field="riskLevel" label="风险等级" optionList={RISK_OPTIONS.map(option => ({ ...option, disabled: !!modal.editing && higherAccessRisk(option.value, modal.editing.minimumRiskLevel) !== option.value }))} />
-          <Form.Select field="approvalPolicy" label="审批策略" optionList={APPROVAL_OPTIONS.map(option => ({ ...option, disabled: stricterAccessApproval(option.value, ACCESS_MINIMUM_APPROVAL[risk]) !== option.value }))} />
-          <Form.InputNumber field="maxDurationMinutes" label="限时申请上限" min={1} suffix="分钟" extraText="选填，留空不限时长；不影响永久有效授权。" />
-          <Form.InputNumber field="reviewIntervalDays" label="复核周期" min={risk === 'low' ? 0 : 1} max={risk === 'critical' ? 30 : risk === 'high' ? 90 : 3650} suffix="天" />
+        return <div className="auto-grid" style={{ '--auto-grid-cols': 2, '--auto-grid-min': '360px', '--auto-grid-gap': '24px', '--auto-grid-row-gap': '0px' } as CSSProperties}>
+          <Form.Input field="permissionCode" label="权限码" disabled style={{ width: '100%' }} />
+          <Form.Select field="riskLevel" label="风险等级" style={{ width: '100%' }} optionList={RISK_OPTIONS.map(option => ({ ...option, disabled: !!modal.editing && higherAccessRisk(option.value, modal.editing.minimumRiskLevel) !== option.value }))} />
+          <Form.Select field="approvalPolicy" label="审批策略" style={{ width: '100%' }} optionList={APPROVAL_OPTIONS.map(option => ({ ...option, disabled: stricterAccessApproval(option.value, ACCESS_MINIMUM_APPROVAL[risk]) !== option.value }))} />
           <Form.Switch field="mfaRequired" label="审批时要求 MFA" disabled={risk === 'critical'} />
+          <Form.InputNumber field="maxDurationMinutes" label="限时申请上限" min={1} suffix="分钟" style={{ width: '100%' }} extraText="选填，留空不限时长；不影响永久有效授权。" />
+          <Form.InputNumber field="reviewIntervalDays" label="复核周期" min={risk === 'low' ? 0 : 1} max={risk === 'critical' ? 30 : risk === 'high' ? 90 : 3650} suffix="天" style={{ width: '100%' }} />
           <Form.Switch field="permanentAllowed" label="允许永久授权" />
           <Form.Switch field="emergencyAllowed" label="允许紧急授权" />
-          <Form.InputNumber field="maxEmergencyMinutes" label="紧急授权上限" min={1} max={1440} suffix="分钟" />
+          <Form.InputNumber field="maxEmergencyMinutes" label="紧急授权上限" min={1} max={1440} suffix="分钟" style={{ width: '100%' }} />
           <Form.Switch field="enabled" label="允许本人申请" disabled={modal.editing?.selfRequestable === false} />
-        </>;
+        </div>;
       }}
     </EditFormModal></>;
 }
