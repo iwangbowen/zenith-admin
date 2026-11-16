@@ -1,16 +1,21 @@
 import { HTTPException } from 'hono/http-exception';
-import { ACCESS_REQUEST_BIZ_TYPE, accessApprovalPlanSchema, buildAccessApprovalFlow } from '@zenith/shared/identity';
+import { ACCESS_REQUEST_BIZ_TYPE, accessApprovalPlanSchema, buildAccessApprovalFlow, buildAccessApprovalTemplate } from '@zenith/shared/identity';
 import type { WorkflowBusinessAdapter } from '../../lib/workflow-business-types';
 
 export const accessWorkflowBusinessAdapter: WorkflowBusinessAdapter = {
   businessType: ACCESS_REQUEST_BIZ_TYPE,
+  definitionDesign: {
+    description: '审批分支、人员来源和节点控制由权限策略统一生成；请在权限治理中调整审批要求。此处可查看节点，通知、评论、编号及打印设置可单独配置。',
+    lockedSettings: ['allowWithdraw', 'allowResubmit', 'notifyInitiator', 'approverDedupMode', 'summaryFields'],
+    normalizeFlow: flow => buildAccessApprovalTemplate(flow?.settings),
+  },
   async prepare({ mode, formData, flowData, actor }) {
     const service = await import('../../services/identity/public/access-approval');
     const normalized = mode === 'preview'
       ? await service.previewAccessWorkflowFormData(formData, actor)
       : await service.normalizeAccessWorkflowFormData(formData, actor);
-    const plan = accessApprovalPlanSchema.safeParse(normalized.approvalPlan);
-    return { formData: normalized, flowData: plan.success ? buildAccessApprovalFlow(plan.data, flowData.settings) : flowData };
+    const plan = accessApprovalPlanSchema.parse(normalized.approvalPlan);
+    return { formData: normalized, flowData: buildAccessApprovalFlow(plan, flowData.settings) };
   },
   async attachInTransaction(executor, instance) {
     const { attachAccessRequestToWorkflow } = await import('./bridge');

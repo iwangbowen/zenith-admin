@@ -1,6 +1,6 @@
 import { and, asc, eq, inArray, isNull, or } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { ACCESS_REQUEST_BIZ_TYPE, ACCESS_APPROVAL_ORDER, type AccessApprovalPlan, type AccessApprovalPolicy } from '@zenith/shared/identity';
+import { ACCESS_REQUEST_BIZ_TYPE, ACCESS_APPROVAL_ORDER, ACCESS_APPROVAL_STEPS, isAccessManagerNode, type AccessApprovalPlan, type AccessApprovalPolicy } from '@zenith/shared/identity';
 import { db } from '../../db';
 import type { DbExecutor } from '../../db/types';
 import { departments, identityAccessRequests, roles, userGroupMembers, userGroupRoles, userGroups, userRoles, users, userMfaFactors } from '../../db/schema';
@@ -47,7 +47,8 @@ export async function resolveAccessApprovalPlan(targetUserId: number, tenantId: 
     .innerJoin(users, eq(users.id, departments.leaderId)).where(and(eq(departments.id, target.departmentId), exactTenantCondition(departments.tenantId, tenantId), exactTenantCondition(users.tenantId, tenantId), eq(departments.status, 'enabled'), eq(users.status, 'enabled'))).limit(1) : [];
   if (!manager[0] || manager[0].id === targetUserId) throw new HTTPException(409, { message: '请先配置有效且独立的部门负责人，不能由申请人本人审批' });
   if (!await canHandleWorkflow(manager[0].id, executor)) throw new HTTPException(409, { message: '部门负责人尚未获得审批办理权限' });
-  plan.steps.push({ nodeKey: 'approve_manager', label: '部门负责人审批', userId: manager[0].id, userName: manager[0].name || manager[0].username, reason: '申请人所在部门的有效负责人' });
+  const definitions = ACCESS_APPROVAL_STEPS[approvalPolicy];
+  plan.steps.push({ nodeKey: definitions[0].nodeKey, label: definitions[0].label, userId: manager[0].id, userName: manager[0].name || manager[0].username, reason: '申请人所在部门的有效负责人' });
   if (ACCESS_APPROVAL_ORDER[approvalPolicy] < ACCESS_APPROVAL_ORDER.manager_security) return plan;
   const candidates = (await securityCandidates(tenantId, executor)).filter(candidate => candidate.id !== targetUserId && candidate.id !== manager[0].id);
   const capable = await Promise.all(candidates.map(async candidate => ({ ...candidate, capable: candidate.code === 'super_admin' || await canHandleWorkflow(candidate.id, executor) })));
@@ -55,7 +56,7 @@ export async function resolveAccessApprovalPlan(targetUserId: number, tenantId: 
   const needed = approvalPolicy === 'two_person' ? 2 : 1;
   if (eligible.length < needed) throw new HTTPException(409, { message: needed === 2 ? '缺少两名独立且可办理审批的安全审批人' : '缺少独立且可办理审批的安全审批人' });
   for (let index = 0; index < needed; index++) plan.steps.push({
-    nodeKey: index === 0 ? 'approve_security' : 'approve_second_security', label: index === 0 ? '安全管理员审批' : '第二独立安全审批',
+    nodeKey: definitions[index + 1].nodeKey, label: definitions[index + 1].label,
     userId: eligible[index].id, userName: eligible[index].name || eligible[index].username, reason: `${eligible[index].code === 'security_admin' ? '安全管理员' : '管理角色兜底'}；按角色优先级与用户 ID 确定`,
   });
   return plan;
@@ -78,7 +79,7 @@ export async function assertAccessGrantApproversCurrent(executor: DbExecutor, re
   const department = target?.departmentId ? await executor.query.departments.findFirst({ where: and(eq(departments.id, target.departmentId), exactTenantCondition(departments.tenantId, request.tenantId), eq(departments.status, 'enabled')), columns: { leaderId: true } }) : null;
   const security = new Set((await securityCandidates(request.tenantId, executor)).map(candidate => candidate.id));
   for (const evidence of request.approvalEvidence) {
-    if (evidence.nodeKey === 'approve_manager' ? department?.leaderId !== evidence.actorId : !security.has(evidence.actorId)) throw new HTTPException(409, { message: '审批人组织关系或安全身份已经变化，请重新申请' });
+    if (isAccessManagerNode(evidence.nodeKey) ? department?.leaderId !== evidence.actorId : !security.has(evidence.actorId)) throw new HTTPException(409, { message: '审批人组织关系或安全身份已经变化，请重新申请' });
   }
 }
 
@@ -89,8 +90,8 @@ export async function assertAccessTaskAssigneeInTransaction(executor: DbExecutor
   if (!target) throw new HTTPException(403, { message: '新处理人不存在或已停用' });
   const step = request.approvalPlan.steps.find(entry => entry.nodeKey === nodeKey);
   if (!step || targetUserId === request.targetUserId || targetUserId === request.applicantUserId || request.approvalEvidence.some(entry => entry.actorId === targetUserId) || request.approvalPlan.steps.some(entry => entry.nodeKey !== nodeKey && entry.userId === targetUserId)) throw new HTTPException(403, { message: '该成员不能独立办理当前权限审批，不能自审或复用其他审批节点成员' });
-  if (step.nodeKey === 'approve_manager' && targetUserId !== step.userId) throw new HTTPException(403, { message: '部门负责人节点不可转给其他成员，请按组织关系重新发起' });
-  if (step.nodeKey !== 'approve_manager' && !(await securityCandidates(instance.tenantId, executor)).some(candidate => candidate.id === targetUserId)) throw new HTTPException(403, { message: '新处理人没有有效的安全审批身份' });
+  if (isAccessManagerNode(step.nodeKey) && targetUserId !== step.userId) throw new HTTPException(403, { message: '部门负责人节点不可转给其他成员，请按组织关系重新发起' });
+  if (!isAccessManagerNode(step.nodeKey) && !(await securityCandidates(instance.tenantId, executor)).some(candidate => candidate.id === targetUserId)) throw new HTTPException(403, { message: '新处理人没有有效的安全审批身份' });
   const capable = await runWithFreshUserPermissions(targetUserId, async () => (await getUserPermissions(targetUserId)).includes('workflow:task:handle'), executor);
   if (!capable) throw new HTTPException(403, { message: '新处理人没有审批办理权限' });
 }
@@ -129,11 +130,11 @@ export async function assertAccessApprovalInTransaction(executor: DbExecutor, in
   if (!step) throw new HTTPException(403, { message: '该任务不属于权限策略要求的审批计划' });
   const stepIndex = request.approvalPlan.steps.indexOf(step);
   if (request.approvalPlan.steps.slice(0, stepIndex).some(previous => !request.approvalEvidence.some(evidence => evidence.nodeKey === previous.nodeKey))) throw new HTTPException(409, { message: '前置权限审批尚未完成，不能跳级办理' });
-  if (step.nodeKey === 'approve_manager') {
+  if (isAccessManagerNode(step.nodeKey)) {
     const department = target.departmentId ? await executor.query.departments.findFirst({ where: and(eq(departments.id, target.departmentId), exactTenantCondition(departments.tenantId, instance.tenantId), eq(departments.status, 'enabled')), columns: { leaderId: true } }) : null;
     if (actorId !== step.userId || department?.leaderId !== actorId) throw new HTTPException(403, { message: '部门负责人已变化，请撤回后按最新组织关系重新申请' });
   }
-  if (step.nodeKey !== 'approve_manager' && !(await securityCandidates(instance.tenantId, executor)).some(candidate => candidate.id === actorId)) throw new HTTPException(403, { message: '审批人不再具备有效的安全审批角色' });
+  if (!isAccessManagerNode(step.nodeKey) && !(await securityCandidates(instance.tenantId, executor)).some(candidate => candidate.id === actorId)) throw new HTTPException(403, { message: '审批人不再具备有效的安全审批角色' });
   await assertAccessSnapshotDuration(request.policySnapshot, request.startsAt, request.expiresAt, instance.tenantId, executor);
   if (request.approvalPlan.mfaRequired) {
     if (!mfa || mfa.actorId !== actorId || mfa.taskId !== task.id || Date.now() - mfa.verifiedAt.getTime() > 120_000) throw new HTTPException(403, { message: '权限审批需要当次 MFA 验证' });

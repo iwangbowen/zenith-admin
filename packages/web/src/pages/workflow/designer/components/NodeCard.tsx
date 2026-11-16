@@ -14,6 +14,7 @@ import { NODE_RT_STATUS_LABEL } from '@/components/workflow/workflow-runtime';
 
 interface NodeCardProps {
   node: FlowNode;
+  formFields?: ReadonlyArray<{ key: string; label: string }>;
   onEdit: (node: FlowNode) => void;
   onDelete: (nodeId: string) => void;
   onDuplicate?: (nodeId: string) => void;
@@ -60,7 +61,7 @@ function getNodeInfo(type: FlowNode['type']) {
 }
 
 /** 生成节点 Body 摘要文本 */
-function getBodySummary(node: FlowNode): string {
+function getBodySummary(node: FlowNode, formFields: ReadonlyArray<{ key: string; label: string }> = []): string {
   const p = node.props;
 
   switch (node.type) {
@@ -87,6 +88,8 @@ function getBodySummary(node: FlowNode): string {
       } else if (assigneeType === 'manager') {
         const level = p.managerLevel as number | undefined;
         parts.push(`${level ?? 1}级主管`);
+      } else if (assigneeType === 'formUser') {
+        parts.push(formFields.find(field => field.key === p.formUserField)?.label ?? typeLabel);
       } else {
         parts.push(typeLabel);
       }
@@ -181,6 +184,7 @@ function getNodeTags(node: FlowNode): string[] {
 
 export default function NodeCard({
   node,
+  formFields,
   onEdit,
   onDelete,
   onDuplicate,
@@ -202,7 +206,7 @@ export default function NodeCard({
     : color;
   const Icon = info?.icon;
 
-  const bodyText = getBodySummary(node);
+  const bodyText = getBodySummary(node, formFields);
   const tags = getNodeTags(node);
   const simulationInteractive = !!onSimulationNodeClick || !!onSimulationNodeContextMenu;
   const clickable = !readOnly || readOnlyInteractive || simulationInteractive;

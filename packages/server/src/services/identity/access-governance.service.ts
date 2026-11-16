@@ -206,9 +206,9 @@ async function enrichAccessWorkflowFormData(input: AccessWorkflowInput, caller: 
     approvalPlan,
     permissionItems: resolved.items,
     permissionSummary: resolved.items.map(item => `${item.permissionLabel ?? item.permissionCode}（${item.permissionCode}）`).join('、'),
-    managerId: approvalPlan.steps.find(step => step.nodeKey === 'approve_manager')?.userId,
-    securityApproverId: approvalPlan.steps.find(step => step.nodeKey === 'approve_security')?.userId,
-    secondSecurityApproverId: approvalPlan.steps.find(step => step.nodeKey === 'approve_second_security')?.userId,
+    managerId: approvalPlan.steps[0]?.userId,
+    securityApproverId: approvalPlan.steps[1]?.userId,
+    secondSecurityApproverId: approvalPlan.steps[2]?.userId,
   };
 }
 

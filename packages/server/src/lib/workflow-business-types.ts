@@ -9,6 +9,12 @@ export type PreparedWorkflowBusinessApproval = { assertInTransaction: (executor:
 
 export interface WorkflowBusinessAdapter {
   readonly businessType: string;
+  /** 业务拥有固定的审批语义时，统一声明设计图及不可修改的设置。 */
+  readonly definitionDesign?: {
+    readonly description: string;
+    readonly lockedSettings: string[];
+    readonly normalizeFlow: (flow: WorkflowFlowData | null) => WorkflowFlowData;
+  };
   prepare?: (context: {
     mode: 'preview' | 'submit'; definition: WorkflowDefinitionSnapshot; formData: Record<string, unknown>; flowData: WorkflowFlowData; actor: WorkflowBusinessCaller;
   }) => Promise<{ formData: Record<string, unknown>; flowData: WorkflowFlowData }>;

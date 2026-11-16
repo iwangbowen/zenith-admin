@@ -1,6 +1,7 @@
 import { pinWorkflowNumbering } from './workflow-numbering.service';
 import { workflowDefinitionContract } from '@zenith/shared/workflow';
 import type { QueryOutputOf } from '@zenith/shared/core';
+import { getWorkflowDefinitionBusinessAdapter } from '../../lib/workflow-business';
 import { workflowDefinitions, workflowDefinitionVersions, workflowForms, workflowCategories, workflowInstances, users, userRoles } from '../../db/schema';
 import { formatDateTime, formatTimestamps } from '../../lib/datetime';
 import type { WorkflowFormSchema, WorkflowCustomFormConfig, WorkflowFormType } from '@zenith/shared/workflow';
@@ -15,6 +16,7 @@ export function mapDefinition(
   },
   createdByName?: string | null,
 ) {
+  const design = getWorkflowDefinitionBusinessAdapter({ formType: row.formType ?? 'designer', customForm: row.customForm as WorkflowCustomFormConfig | null })?.definitionDesign;
   const initiatorScopeIds = Array.isArray(row.initiatorScopeIds)
     ? row.initiatorScopeIds.map(Number).filter((v) => Number.isInteger(v) && v > 0)
     : null;
@@ -29,7 +31,8 @@ export function mapDefinition(
     categoryName: row.category?.name ?? null,
     categoryColor: row.category?.color ?? null,
     categoryIcon: row.category?.icon ?? null,
-    flowData: sanitizeFlowDataForRead(row.flowData),
+    flowData: design ? design.normalizeFlow(sanitizeFlowDataForRead(row.flowData)) : sanitizeFlowDataForRead(row.flowData),
+    ...(design ? { designPolicy: { description: design.description, lockedSettings: design.lockedSettings } } : {}),
     formId: row.formId ?? null,
     formName: row.form?.name ?? null,
     formFields: formSchema?.fields ?? null,
@@ -284,7 +287,10 @@ export async function updateDefinition(id: number, data: Partial<{
   const nextFormType = (data.formType ?? existing.formType ?? 'designer') as WorkflowFormType;
   if (nextFormType === 'designer' && data.formId != null) await ensureFormExists(data.formId);
   const updateData: Record<string, unknown> = { ...data };
-  if (data.flowData !== undefined) updateData.flowData = await normalizeFlowDataForWrite(data.flowData);
+  if (data.flowData !== undefined) {
+    const design = getWorkflowDefinitionBusinessAdapter({ formType: nextFormType, customForm: data.customForm === undefined ? existing.customForm as WorkflowCustomFormConfig | null : data.customForm })?.definitionDesign;
+    updateData.flowData = await normalizeFlowDataForWrite(design ? design.normalizeFlow(data.flowData as WorkflowFlowData | null) : data.flowData);
+  }
   if (data.formType !== undefined) updateData.formType = data.formType;
   // 切到业务表单时清空表单库引用；切到设计器表单时清空业务表单配置，避免脏数据
   if (hasBusinessFormConfig(nextFormType)) {
@@ -371,6 +377,10 @@ export async function publishDefinition(id: number) {
     // 行级锁内校验 + 重算版本号：消除锁外校验与锁内快照间的竞争窗口（并发修改导致
     // 校验对象与实际发布内容不一致），同时避免并发发布争用 (definitionId, version) 唯一约束
     const [locked] = await tx.select().from(workflowDefinitions).where(where).for('update').limit(1);
+    if (locked) {
+      const design = getWorkflowDefinitionBusinessAdapter({ formType: locked.formType, customForm: locked.customForm as WorkflowCustomFormConfig | null })?.definitionDesign;
+      if (design) locked.flowData = design.normalizeFlow(locked.flowData as WorkflowFlowData | null);
+    }
     requireRow(locked, '流程定义不存在');
     await assertPublishable(locked);
     const flowData = await pinWorkflowNumbering(tx, { ...locked, customForm: locked.customForm as WorkflowCustomFormConfig | null, flowData: locked.flowData as WorkflowFlowData });

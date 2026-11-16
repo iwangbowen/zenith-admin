@@ -15,7 +15,21 @@ export type AccessApprovalPolicy = (typeof ACCESS_APPROVAL_POLICIES)[number];
 export const ACCESS_APPROVAL_POLICY_LABELS: Record<AccessApprovalPolicy, string> = {
   none: '策略自动批准', manager: '部门负责人', manager_security: '部门负责人 + 安全审批', two_person: '部门负责人 + 两名独立安全审批',
 };
-export const ACCESS_APPROVAL_NODE_KEYS = ['approve_manager', 'approve_security', 'approve_second_security'] as const;
+export const ACCESS_APPROVAL_NODE_KEYS = ['approve_manager', 'approve_security_manager', 'approve_security', 'approve_second_manager', 'approve_first_security', 'approve_second_security'] as const;
+export type AccessApprovalNodeKey = (typeof ACCESS_APPROVAL_NODE_KEYS)[number];
+export const ACCESS_APPROVAL_STEPS: Record<AccessApprovalPolicy, ReadonlyArray<{ nodeKey: AccessApprovalNodeKey; kind: 'manager' | 'security'; label: string; userField: string }>> = {
+  none: [],
+  manager: [{ nodeKey: 'approve_manager', kind: 'manager', label: '部门负责人审批', userField: 'managerId' }],
+  manager_security: [
+    { nodeKey: 'approve_security_manager', kind: 'manager', label: '部门负责人审批', userField: 'managerId' },
+    { nodeKey: 'approve_security', kind: 'security', label: '独立安全审批', userField: 'securityApproverId' },
+  ],
+  two_person: [
+    { nodeKey: 'approve_second_manager', kind: 'manager', label: '部门负责人审批', userField: 'managerId' },
+    { nodeKey: 'approve_first_security', kind: 'security', label: '第一独立安全审批', userField: 'securityApproverId' },
+    { nodeKey: 'approve_second_security', kind: 'security', label: '第二独立安全审批', userField: 'secondSecurityApproverId' },
+  ],
+};
 export const ACCESS_START_MODES = ['immediate', 'scheduled'] as const;
 export const ACCESS_VALIDITY_MODES = ['limited', 'permanent'] as const;
 export const ACCESS_VALIDITY_MODE_LABELS: Record<(typeof ACCESS_VALIDITY_MODES)[number], string> = { limited: '限时有效', permanent: '永久有效' };

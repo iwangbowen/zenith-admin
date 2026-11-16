@@ -105,6 +105,8 @@ export default function WorkflowDesignerPage({
   const isNew = !presetDefinition && id === 'new';
 
   const [definition, setDefinition] = useState<WorkflowDefinition | null>(null);
+  const designPolicy = definition?.designPolicy;
+  const flowReadOnly = readOnly || !!designPolicy;
   const [graphOnly, setGraphOnly] = useState<WorkflowFlowData | null>(null);
   const [graphJson, setGraphJson] = useState('');
   const [graphReason, setGraphReason] = useState('');
@@ -689,7 +691,7 @@ export default function WorkflowDesignerPage({
   // ─── 快捷键：Undo / Redo ──────────────────────────────────────────
 
   useEffect(() => {
-    if (currentStep !== 3 || readOnly) return;
+    if (currentStep !== 3 || flowReadOnly) return;
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       const tag = target?.tagName;
@@ -706,7 +708,7 @@ export default function WorkflowDesignerPage({
     };
     globalThis.addEventListener('keydown', handler);
     return () => globalThis.removeEventListener('keydown', handler);
-  }, [currentStep, history, readOnly]);
+  }, [currentStep, history, flowReadOnly]);
 
   // ─── 步骤导航标签 ──────────────────────────────────────────────────
 
@@ -967,8 +969,9 @@ export default function WorkflowDesignerPage({
       {/* 步骤 ③ 流程设计画布 */}
       {currentStep === 3 && (
         <div className="fd-canvas">
+          {designPolicy && <Typography.Paragraph type="tertiary" size="small" style={{ margin: '12px 20px' }}>{designPolicy.description}</Typography.Paragraph>}
           <div className="fd-canvas__toolbar">
-            {!readOnly && (
+            {!flowReadOnly && (
               <>
                 <Button
                   icon={<Undo2 size={14} />}
@@ -1023,12 +1026,12 @@ export default function WorkflowDesignerPage({
               <div style={{ padding: 20 }}>
                 <Typography.Paragraph>{graphReason}。图数据完整保留，可通过 JSON 编辑。</Typography.Paragraph>
                 <WorkflowGraphView flowData={buildCurrentFlowData()} height={480} />
-                {!readOnly && <>
+                {!flowReadOnly && <>
                   <TextArea value={graphJson} onChange={setGraphJson} rows={12} aria-label="流程图 JSON" />
                   <Button onClick={() => { try { const next = workflowFlowDataSchema.parse(JSON.parse(graphJson)); loadGraph(next); if (next.settings) setAdvancedSettings({ ...DEFAULT_ADVANCED_SETTINGS, ...next.settings }); Toast.success('图数据已应用'); } catch { Toast.error('流程图 JSON 格式或契约无效'); } }}>应用 JSON</Button>
                 </>}
               </div>
-            ) : readOnly ? (
+            ) : flowReadOnly ? (
               <FlowRenderer
                 process={process}
                 readOnly
@@ -1061,6 +1064,7 @@ export default function WorkflowDesignerPage({
       {currentStep === 4 && (
         <AdvancedSettingsPanel
           settings={advancedSettings}
+          lockedSettings={designPolicy?.lockedSettings}
           onChange={setAdvancedSettings}
           readOnly={readOnly}
           formFields={formFields}
@@ -1117,7 +1121,7 @@ export default function WorkflowDesignerPage({
         subProcessOptions={subProcessOptions}
         onSave={handleSaveNode}
         onCancel={() => { setDrawerVisible(false); setEditingNode(null); }}
-        readOnly={readOnly}
+        readOnly={flowReadOnly}
         formEditPermissionDisabled={formType === 'external'}
         zIndex={drawerZIndex}
       />

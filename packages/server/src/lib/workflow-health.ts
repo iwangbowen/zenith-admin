@@ -116,6 +116,7 @@ function rangesOverlap(a: WorkflowEdge, b: WorkflowEdge): boolean {
 }
 
 function isApproverResolvable(cfg: WorkflowNodeConfig): boolean {
+  if (cfg.type === 'approve' && (cfg.approvalType === 'autoApprove' || cfg.approvalType === 'autoReject')) return true;
   if (cfg.assigneeId != null) return true;
   if (Array.isArray(cfg.assigneeIds) && cfg.assigneeIds.length > 0) return true;
   switch (cfg.assigneeType) {

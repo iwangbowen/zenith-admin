@@ -123,6 +123,7 @@ export default function FlowRenderer({
         ) : (
           <NodeCard
             node={node}
+            formFields={formFields}
             onEdit={editNode}
             onDelete={deleteNode}
             onDuplicate={onDuplicateNode}

@@ -18,6 +18,7 @@ interface AdvancedSettingsProps {
   settings: AdvancedSettingsData;
   onChange: (settings: AdvancedSettingsData) => void;
   readOnly?: boolean;
+  lockedSettings?: readonly string[];
   /** 当前流程可选表单字段（用于列表摘要字段选择） */
   formFields?: Array<{ key: string; label: string; type: string }>;
   numberingFields?: WorkflowFormField[];
@@ -32,7 +33,7 @@ interface AdvancedSettingsProps {
   };
 }
 
-export default function AdvancedSettingsPanel({ settings, onChange, readOnly = false, formFields = [], numberingFields = [], print }: Readonly<AdvancedSettingsProps>) {
+export default function AdvancedSettingsPanel({ settings, onChange, readOnly = false, lockedSettings = [], formFields = [], numberingFields = [], print }: Readonly<AdvancedSettingsProps>) {
   const notify: WorkflowNotifyChannels = settings.notifyChannels ?? {};
   // useEditModal 例外：工作流设计器面板（高级设置随设计器整体保存，值经 onChange 回写）
   const formApiRef = useRef<FormApi | null>(null);
@@ -50,6 +51,7 @@ export default function AdvancedSettingsPanel({ settings, onChange, readOnly = f
   return (
     <div className="fd-basic-info">
       <div className="fd-basic-info__inner">
+        {lockedSettings.length > 0 && <Typography.Paragraph type="tertiary" size="small">灰色配置由业务策略固定，避免自动去重、重新提交或关闭结果通知改变授权审计语义。</Typography.Paragraph>}
         <Form
           getFormApi={(api) => { formApiRef.current = api; }}
           initValues={{
@@ -65,11 +67,12 @@ export default function AdvancedSettingsPanel({ settings, onChange, readOnly = f
             onChange({ ...settings, ...values });
           }}
         >
-          <Form.Switch field="allowWithdraw" label="允许撤回" />
-          <Form.Switch field="allowResubmit" label="允许驳回后重新提交" />
-          <Form.Switch field="notifyInitiator" label="流程结束后通知发起人" />
+          <Form.Switch field="allowWithdraw" label="允许撤回" disabled={readOnly || lockedSettings.includes('allowWithdraw')} />
+          <Form.Switch field="allowResubmit" label="允许驳回后重新提交" disabled={readOnly || lockedSettings.includes('allowResubmit')} />
+          <Form.Switch field="notifyInitiator" label="流程结束后通知发起人" disabled={readOnly || lockedSettings.includes('notifyInitiator')} />
           <Form.RadioGroup
             field="approverDedupMode"
+            disabled={readOnly || lockedSettings.includes('approverDedupMode')}
             label="自动去重"
             direction="vertical"
             extraText="同一审批人在流程中重复出现时的处理方式"
@@ -82,6 +85,7 @@ export default function AdvancedSettingsPanel({ settings, onChange, readOnly = f
           {/* 摘要按选择顺序展示且最多三项，保留全部标签便于核对顺序。 */}
           <Form.Select
             field="summaryFields"
+            disabled={readOnly || lockedSettings.includes('summaryFields')}
             label="列表摘要字段"
             multiple
             filter

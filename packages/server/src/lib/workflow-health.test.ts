@@ -21,6 +21,13 @@ function buildFlow(): WorkflowFlowData {
 }
 
 describe('analyzeWorkflowHealth 3D 增强', () => {
+  it.each(['autoApprove', 'autoReject'] as const)('does not require people for an automatic %s node', approvalType => {
+    const flow = buildFlow();
+    flow.nodes[2].data = { key: 'ap', type: 'approve', label: '策略处理', approvalType };
+    const report = analyzeWorkflowHealth(flow);
+    expect(report.checks.find(check => check.key === 'approver')?.issues).toEqual([]);
+  });
+
   it('排他网关条件区间重叠时告警', () => {
     const flow = {
       nodes: [

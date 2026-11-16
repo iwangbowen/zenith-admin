@@ -532,6 +532,7 @@ SEED_WORKFLOW_DEFINITIONS.push({
 // 权限域提供策略说明模板，实际审批图由领域适配器按生效策略和独立人员计划生成。
 const ACCESS_REQUEST_VARIABLES: WorkflowCustomFormVariable[] = [
   { key: 'targetUserId', label: '目标用户', type: 'user' },
+  { key: 'targetUserName', label: '受益人姓名', type: 'string' },
   { key: 'reason', label: '申请原因', type: 'string' },
   { key: 'requestType', label: '申请类型', type: 'string' },
   { key: 'validityMode', label: '有效期限', type: 'string' },
@@ -540,10 +541,11 @@ const ACCESS_REQUEST_VARIABLES: WorkflowCustomFormVariable[] = [
   { key: 'startsAt', label: '生效时间', type: 'date' },
   { key: 'expiresAt', label: '失效时间', type: 'date' },
   { key: 'riskLevel', label: '风险等级', type: 'string' },
+  { key: 'riskLabel', label: '风险说明', type: 'string' },
   { key: 'permissionSummary', label: '权限摘要', type: 'string' },
-  { key: 'managerId', label: '直属主管', type: 'user' },
-  { key: 'securityApproverId', label: '安全管理员', type: 'user' },
-  { key: 'secondSecurityApproverId', label: '第二安全审批人', type: 'user' },
+  { key: 'managerId', label: '策略解析的部门负责人', type: 'user' },
+  { key: 'securityApproverId', label: '策略解析的第一安全审批人', type: 'user' },
+  { key: 'secondSecurityApproverId', label: '策略解析的第二安全审批人', type: 'user' },
 ];
 
 const ACCESS_REQUEST_FLOW = buildAccessApprovalTemplate(TEMPLATE_SETTINGS);

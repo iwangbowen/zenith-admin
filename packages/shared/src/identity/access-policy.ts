@@ -1,6 +1,6 @@
 import type { PermissionMeta } from '../core/permissions';
 import type { WorkflowFlowData } from '../workflow/types';
-import type { AccessApprovalPolicy, AccessRiskLevel } from './access-governance-constants';
+import { ACCESS_APPROVAL_POLICIES, ACCESS_APPROVAL_STEPS, type AccessApprovalPolicy, type AccessRiskLevel } from './access-governance-constants';
 import type { AccessApprovalPlan, AccessPolicySnapshot } from './access-governance-validation';
 import type { AccessSourceRef } from './access-governance-validation';
 import type { DataScope } from './constants';
@@ -97,8 +97,17 @@ export function accessSourceLabel(sources: readonly AccessSourceRef[]): string {
   return sources.map(source => source.kind === 'role' ? `${source.label}（版本 ${source.roleVersion}）` : source.label).join('、');
 }
 
+export function isAccessManagerNode(nodeKey: string): boolean {
+  return ACCESS_APPROVAL_POLICIES.some(policy => ACCESS_APPROVAL_STEPS[policy].some(step => step.nodeKey === nodeKey && step.kind === 'manager'));
+}
+
 /** 冻结完整流程及实际审批人，保留未命中分支供原有流程图展示和高亮。 */
 export function buildAccessApprovalFlow(plan: AccessApprovalPlan, settings?: WorkflowFlowData['settings']): WorkflowFlowData {
+  const required = ACCESS_APPROVAL_STEPS[plan.approvalPolicy];
+  if (!required || required.length !== plan.steps.length || required.some((step, index) => step.nodeKey !== plan.steps[index]?.nodeKey)
+    || new Set(plan.steps.map(step => step.userId)).size !== plan.steps.length || plan.steps.some(step => !Number.isSafeInteger(step.userId) || step.userId <= 0)) {
+    throw new Error('权限审批计划的节点、顺序或独立审批人无效');
+  }
   const template = buildAccessApprovalTemplate(settings);
   return {
     ...template,
@@ -107,8 +116,7 @@ export function buildAccessApprovalFlow(plan: AccessApprovalPlan, settings?: Wor
       if (!step) return node;
       return { ...node, data: {
         ...node.data, label: step.label, assigneeType: 'user', assigneeIds: [step.userId], approvalType: 'manual',
-        approveMethod: 'or', emptyStrategy: 'reject', sameInitiatorStrategy: 'selfApprove', signaturePolicy: 'none',
-        operations: ['opinionRequired'], fieldPermissions: {},
+        assigneeNames: [step.userName],
       } };
     }),
   };
@@ -116,35 +124,29 @@ export function buildAccessApprovalFlow(plan: AccessApprovalPlan, settings?: Wor
 
 /** 定义页展示可用策略分支；发起时由同域策略评估冻结为实际审批计划。 */
 export function buildAccessApprovalTemplate(settings?: WorkflowFlowData['settings']): WorkflowFlowData {
-  const approval = { approvalType: 'manual', approveMethod: 'or', emptyStrategy: 'reject', sameInitiatorStrategy: 'toDirectManager', fieldPermissions: {}, signaturePolicy: 'none' } as const;
-  return {
-    nodes: [
-      { id: 'access-start', type: 'workflowNode', position: { x: 0, y: 0 }, data: { key: 'start', type: 'start', label: '发起' } },
-      { id: 'access-policy', type: 'workflowNode', position: { x: 180, y: 0 }, data: { key: 'policy_gateway', type: 'exclusiveGateway', label: '有效审批策略' } },
-      { id: 'access-manager', type: 'workflowNode', position: { x: 360, y: 0 }, data: { key: 'approve_manager', type: 'approve', label: '部门负责人审批', assigneeType: 'formUser', formUserField: 'managerId', ...approval } },
-      { id: 'access-security-policy', type: 'workflowNode', position: { x: 540, y: 0 }, data: { key: 'security_gateway', type: 'exclusiveGateway', label: '是否需要安全审批' } },
-      { id: 'access-security', type: 'workflowNode', position: { x: 720, y: 0 }, data: { key: 'approve_security', type: 'approve', label: '独立安全审批', assigneeType: 'formUser', formUserField: 'securityApproverId', ...approval } },
-      { id: 'access-second-policy', type: 'workflowNode', position: { x: 900, y: 0 }, data: { key: 'second_gateway', type: 'exclusiveGateway', label: '是否需要第二安全审批' } },
-      { id: 'access-second', type: 'workflowNode', position: { x: 1080, y: 0 }, data: { key: 'approve_second_security', type: 'approve', label: '第二独立安全审批', assigneeType: 'formUser', formUserField: 'secondSecurityApproverId', ...approval } },
-      { id: 'access-invalid', type: 'workflowNode', position: { x: 540, y: 200 }, data: { key: 'policy_invalid', type: 'approve', label: '策略校验失败', approvalType: 'autoReject', approveMethod: 'or', emptyStrategy: 'reject' } },
-      { id: 'access-end', type: 'workflowNode', position: { x: 1260, y: 0 }, data: { key: 'end', type: 'end', label: '结束' } },
-    ],
-    edges: [
-      { id: 'access-start-policy', source: 'access-start', target: 'access-policy' },
-      { id: 'access-auto', label: '无需人工审批', source: 'access-policy', target: 'access-end', condition: { field: 'approvalPolicy', operator: 'eq', value: 'none' } },
-      { id: 'access-human', label: '需要人工审批', source: 'access-policy', target: 'access-manager', condition: { field: 'approvalPolicy', operator: 'in', value: 'manager,manager_security,two_person' } },
-      { id: 'access-policy-invalid', label: '策略无效，自动拒绝', source: 'access-policy', target: 'access-invalid', isDefault: true },
-      { id: 'access-manager-policy', source: 'access-manager', target: 'access-security-policy' },
-      { id: 'access-manager-end', label: '仅需部门负责人审批', source: 'access-security-policy', target: 'access-end', condition: { field: 'approvalPolicy', operator: 'eq', value: 'manager' } },
-      { id: 'access-with-security', label: '还需独立安全审批', source: 'access-security-policy', target: 'access-security', condition: { field: 'approvalPolicy', operator: 'in', value: 'manager_security,two_person' } },
-      { id: 'access-security-invalid', label: '策略无效，自动拒绝', source: 'access-security-policy', target: 'access-invalid', isDefault: true },
-      { id: 'access-security-second', source: 'access-security', target: 'access-second-policy' },
-      { id: 'access-single-security-end', label: '安全审批已满足', source: 'access-second-policy', target: 'access-end', condition: { field: 'approvalPolicy', operator: 'eq', value: 'manager_security' } },
-      { id: 'access-with-second', label: '还需第二独立安全审批', source: 'access-second-policy', target: 'access-second', condition: { field: 'approvalPolicy', operator: 'eq', value: 'two_person' } },
-      { id: 'access-second-invalid', label: '策略无效，自动拒绝', source: 'access-second-policy', target: 'access-invalid', isDefault: true },
-      { id: 'access-second-end', source: 'access-second', target: 'access-end' },
-      { id: 'access-invalid-end', source: 'access-invalid', target: 'access-end' },
-    ],
-    settings: { ...settings, notifyInitiator: true, approverDedupMode: 'none', allowResubmit: false, allowWithdraw: true, summaryFields: ['targetUserName', 'riskLabel', 'expiresAt'] },
-  };
+  const nodes: WorkflowFlowData['nodes'] = [
+    { id: 'access-start', type: 'workflowNode', position: { x: 0, y: 0 }, data: { key: 'start', type: 'start', label: '提交权限申请' } },
+    { id: 'access-policy', type: 'workflowNode', position: { x: 0, y: 160 }, data: { key: 'policy_gateway', type: 'exclusiveGateway', label: '按有效策略分流' } },
+  ];
+  const edges: WorkflowFlowData['edges'] = [{ id: 'access-start-policy', source: 'access-start', target: 'access-policy' }];
+  const labels: Record<AccessApprovalPolicy, string> = { none: '自动批准', manager: '一级审批', manager_security: '两级审批', two_person: '三级独立审批' };
+  for (const [branchIndex, policy] of ACCESS_APPROVAL_POLICIES.entries()) {
+    const steps = ACCESS_APPROVAL_STEPS[policy];
+    const ids = steps.length ? steps.map(step => 'access-' + step.nodeKey) : ['access-auto-approve'];
+    edges.push({ id: 'access-branch-' + policy, label: labels[policy], source: 'access-policy', target: ids[0], condition: { field: 'approvalPolicy', operator: 'eq', value: policy } });
+    if (!steps.length) nodes.push({ id: ids[0], type: 'workflowNode', position: { x: branchIndex * 320, y: 320 }, data: { key: 'policy_auto_approve', type: 'approve', label: '策略自动批准', approvalType: 'autoApprove' } });
+    for (const [index, step] of steps.entries()) nodes.push({ id: ids[index], type: 'workflowNode', position: { x: branchIndex * 320, y: 320 + index * 160 }, data: {
+      key: step.nodeKey, type: 'approve', label: step.label, assigneeType: 'formUser', formUserField: step.userField,
+      approvalType: 'manual', approveMethod: 'or', emptyStrategy: 'reject', sameInitiatorStrategy: 'selfApprove', deduplicateStrategy: 'repeatApprove',
+      signaturePolicy: 'none', rejectStrategy: 'terminate', operations: ['opinionRequired'], fieldPermissions: {},
+      actionButtons: { approve: { enabled: true }, reject: { enabled: true }, transfer: { enabled: false }, delegate: { enabled: false }, addSign: { enabled: false }, reduceSign: { enabled: false }, return: { enabled: false } },
+    } });
+    for (const [index, id] of ids.entries()) edges.push({ id: id + '-next', source: id, target: ids[index + 1] ?? 'access-end' });
+  }
+  nodes.push(
+    { id: 'access-invalid', type: 'workflowNode', position: { x: 1280, y: 320 }, data: { key: 'policy_invalid', type: 'approve', label: '策略无效，拒绝申请', approvalType: 'autoReject', rejectStrategy: 'terminate' } },
+    { id: 'access-end', type: 'workflowNode', position: { x: 640, y: 840 }, data: { key: 'end', type: 'end', label: '审批结束，发放结果另行查询' } },
+  );
+  edges.push({ id: 'access-policy-invalid', label: '无有效策略', source: 'access-policy', target: 'access-invalid', isDefault: true }, { id: 'access-invalid-end', source: 'access-invalid', target: 'access-end' });
+  return { nodes, edges, settings: { ...settings, notifyInitiator: true, approverDedupMode: 'none', allowResubmit: false, allowWithdraw: true, allowComment: settings?.allowComment ?? true, summaryFields: ['targetUserName', 'riskLabel', 'expiresAt'] } };
 }

@@ -1,4 +1,4 @@
-import { ACCESS_REQUEST_BIZ_TYPE, accessPolicyBaseline, aggregateAccessPolicies, buildAccessApprovalFlow, effectiveAccessPolicy, mergeAccessPermissionItems, type AccessGrant, type AccessRequest, type AccessWorkflowPreview, type PermissionPolicy, type AccessWorkflowOptions } from '@zenith/shared/identity';
+import { ACCESS_REQUEST_BIZ_TYPE, ACCESS_APPROVAL_STEPS, accessPolicyBaseline, aggregateAccessPolicies, buildAccessApprovalFlow, effectiveAccessPolicy, mergeAccessPermissionItems, type AccessGrant, type AccessRequest, type AccessWorkflowPreview, type PermissionPolicy, type AccessWorkflowOptions } from '@zenith/shared/identity';
 import { ALL_PERMISSIONS } from '@zenith/shared/permissions';
 import type { WorkflowDefinition, WorkflowInstance } from '@zenith/shared/workflow';
 import { mockUsers } from '../data/users';
@@ -39,12 +39,12 @@ export function evaluateMockAccess(raw: Record<string, unknown>, actorId: number
   const policies = codes.map(mockAccessPolicy);
   const policy = aggregateAccessPolicies(policies);
   const people = mockUsers.filter(user => user.id !== actorId && user.status === 'enabled');
-  const keys = ['approve_manager', 'approve_security', 'approve_second_security'] as const;
-  const count = policy.approvalPolicy === 'none' ? 0 : policy.approvalPolicy === 'manager' ? 1 : policy.approvalPolicy === 'manager_security' ? 2 : 3;
+  const definitions = ACCESS_APPROVAL_STEPS[policy.approvalPolicy];
+  const count = definitions.length;
   if (people.length < count) return { status: 'blocked', message: '演示审批人不足' };
   return { status: 'ready', fingerprint: JSON.stringify([codes.sort(), policies.map(item => item.version), raw.startMode, raw.expiresAt]),
     permissionCount: codes.length, grantItemCount: codes.length, policies,
-    approvalPlan: { approvalPolicy: policy.approvalPolicy, mfaRequired: policy.mfaRequired, steps: people.slice(0, count).map((person, index) => ({ nodeKey: keys[index], label: index ? '独立安全审批' : '部门负责人审批', userId: person.id, userName: person.nickname || person.username, reason: '演示策略审批人' })) } };
+    approvalPlan: { approvalPolicy: policy.approvalPolicy, mfaRequired: policy.mfaRequired, steps: people.slice(0, count).map((person, index) => ({ nodeKey: definitions[index].nodeKey, label: definitions[index].label, userId: person.id, userName: person.nickname || person.username, reason: '演示策略审批人' })) } };
 }
 
 export function prepareMockAccess(def: WorkflowDefinition, raw: Record<string, unknown>, actorId: number) {
