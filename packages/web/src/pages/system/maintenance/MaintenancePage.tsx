@@ -20,7 +20,7 @@ function MaintenanceHistory() {
     dateTimeColumn('计划开始','scheduledStartAt'), dateTimeColumn('实际开始','startedAt'), dateTimeColumn('结束时间','endedAt'),
     { title: '维护提示', dataIndex: 'message', render: renderEllipsis },
     { title: '状态', dataIndex: 'status', width: 110, render: (value) => MAINTENANCE_LOG_STATUS_OPTIONS.find((item) => item.value === value)?.label },
-    { title: '开启人', dataIndex: 'startedByName', width: 120 },
+    { title: '开启人', dataIndex: 'startedByName', width: 180, render: renderEllipsis },
     createOperationColumn({ width: 80, actions: (row) => [{ key: 'detail', label: '详情', onClick: () => setDetail(row) }] }),
   ];
   return <><ListSearchToolbar page={page} filters={['keyword','status',['startTime','endTime']]} /><ConfigurableTable columns={columns} {...page.tableProps} />
