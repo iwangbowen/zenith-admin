@@ -88,6 +88,113 @@
   margin-bottom: 12px;
 }
 
+.maintenance-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  min-width: 0;
+  padding-bottom: 8px;
+  overflow-wrap: anywhere;
+}
+
+.maintenance-detail-section {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+.maintenance-detail-description {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+}
+
+.maintenance-detail-description > div {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 16px;
+  line-height: 1.7;
+}
+
+.maintenance-detail-description dt {
+  color: var(--semi-color-text-2);
+}
+
+.maintenance-detail-description dd {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.maintenance-detail-times {
+  --auto-grid-cols: 2;
+  --auto-grid-min: 230px;
+  --auto-grid-row-gap: 16px;
+}
+
+.maintenance-detail-times > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.maintenance-detail-timeline .semi-timeline-item-content {
+  min-width: 0;
+}
+
+.maintenance-detail-event {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.maintenance-detail-event-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+
+.maintenance-detail-reason {
+  margin-top: 4px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.maintenance-detail-snapshot {
+  border: 0;
+}
+
+.maintenance-detail-snapshot .semi-collapse-item {
+  border: 0;
+}
+
+.maintenance-detail-snapshot .semi-collapse-header {
+  justify-content: flex-start;
+  gap: 6px;
+  margin: 0;
+  padding: 4px 0;
+  color: var(--semi-color-primary);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.maintenance-detail-snapshot .semi-collapse-header-right {
+  margin-left: 0;
+}
+
+.maintenance-detail-snapshot .semi-collapse-content {
+  padding: 8px 0 0;
+}
+
+.maintenance-detail-copy {
+  white-space: pre-wrap;
+}
+
 @media (width <= 768px) {
   .maintenance-editor {
     gap: 20px;
@@ -104,5 +211,15 @@
   .maintenance-diagnosis-inputs .maintenance-path {
     flex-basis: calc(100% - 118px);
     min-width: 0;
+  }
+
+  .maintenance-detail-event-heading {
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .maintenance-detail-description > div {
+    grid-template-columns: 64px minmax(0, 1fr);
+    gap: 12px;
   }
 }

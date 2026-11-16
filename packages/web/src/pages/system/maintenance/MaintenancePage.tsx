@@ -1,18 +1,17 @@
 import { useState } from 'react';
-import { Banner, Button, Descriptions, SideSheet, Space, Spin, TabPane, Tabs, Typography } from '@douyinfe/semi-ui';
+import { Banner, Button, SideSheet, Space, Spin, TabPane, Tabs } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { maintenanceContract, MAINTENANCE_LOG_STATUS_OPTIONS, MAINTENANCE_ACTION_LABELS, type MaintenanceLog } from '@zenith/shared/ops';
+import { maintenanceContract, MAINTENANCE_LOG_STATUS_OPTIONS, type MaintenanceLog } from '@zenith/shared/ops';
 import { useMaintenanceAccess, useMaintenanceStatus, useMaintenanceLogs } from '@/hooks/queries/maintenance';
 import MaintenanceEditor from './MaintenanceEditor';
+import MaintenanceDetail from './MaintenanceDetail';
 import { ListSearchToolbar } from '@/components/list-page';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { useListPage } from '@/hooks/useListPage';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
-import DateTimeText from '@/components/DateTimeText';
 import './maintenance.css';
-const { Text } = Typography;
 
 function MaintenanceHistory() {
   const page = useListPage({ op: maintenanceContract.logs, useList: useMaintenanceLogs });
@@ -25,10 +24,9 @@ function MaintenanceHistory() {
     createOperationColumn({ width: 80, actions: (row) => [{ key: 'detail', label: '详情', onClick: () => setDetail(row) }] }),
   ];
   return <><ListSearchToolbar page={page} filters={['keyword','status',['startTime','endTime']]} /><ConfigurableTable columns={columns} {...page.tableProps} />
-    <SideSheet title="维护详情" visible={!!detail} onCancel={() => setDetail(null)} width={680} closeOnEsc>{detail ? <>
-      <Descriptions data={[{ key: '原因', value: detail.reason },{ key: '结束原因', value: detail.endReason ?? '—' },{ key: '提示', value: detail.message }]} />
-      {detail.changes.map((change, index) => <div key={index} style={{ marginTop: 16, overflowWrap: 'anywhere' }}><Text strong>{MAINTENANCE_ACTION_LABELS[change.action] ?? change.action} · {change.actor}</Text><div><DateTimeText value={change.at} mode="absolute" /> · {change.reason}</div><Text type="tertiary">{change.message}</Text><div>预计结束：<DateTimeText value={change.estimatedEndAt} mode="absolute" />；自动恢复：<DateTimeText value={change.autoEndAt} mode="absolute" /></div></div>)}
-    </> : null}</SideSheet></>;
+    <SideSheet title="维护详情" visible={!!detail} onCancel={() => setDetail(null)} width={720} closeOnEsc>
+      {detail ? <MaintenanceDetail key={detail.id} detail={detail} /> : null}
+    </SideSheet></>;
 }
 export default function MaintenancePage() {
   const access = useMaintenanceAccess();
