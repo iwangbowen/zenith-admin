@@ -49,7 +49,7 @@ import { usePublishedWorkflowDefinitions } from '@/hooks/queries/workflow-defini
 import { deleteAction, ListSearchToolbar, useRowSelection } from '@/components/list-page';
 import { confirmDanger } from '@/utils/confirm';
 import { workflowInstanceStatusColumn } from '@/components/workflow/WorkflowInstanceListColumns';
-import { FilterSelect } from '@/components/search-filters';
+import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { useListPage } from '@/hooks/useListPage';
 
 function InstanceDetailDrawer({
@@ -660,9 +660,11 @@ export default function MyApplicationsPage() {
         }}
       />
       <ListSearchToolbar
+        className="workflow-approval-search"
         page={page}
         filters={['keyword', 'status', 'priority']}
         overrides={{
+          keyword: (p) => <KeywordInput placeholder="搜索申请标题 / 业务编号 / 流程名称" {...p.bindKeyword('keyword')} width={360} />,
           // 派生 FilterSelect 宽 120 装不下 6 字占位「全部实例状态」，此处仅加宽（占位与契约 description 保持一致）
           status: (p) => (
             <FilterSelect placeholder="全部实例状态" items={WORKFLOW_INSTANCE_STATUS_OPTIONS} {...p.bind('status')} width={140} />

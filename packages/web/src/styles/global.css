@@ -821,6 +821,19 @@ body[theme-mode='dark'] .semi-json-viewer-view-line {
   .responsive-toolbar__mobile-primary {
     min-width: 260px;
   }
+
+  /* 审批中心长关键字提示占满首行，查询与筛选换行，避免窄屏再次截断。 */
+  .workflow-approval-search .responsive-toolbar__mobile-primary {
+    flex: 1 0 100%;
+  }
+
+  .workflow-approval-search .responsive-toolbar__mobile-primary .semi-space {
+    flex-wrap: wrap !important;
+  }
+
+  .workflow-approval-search .responsive-toolbar__mobile-primary .semi-space > .semi-input-wrapper:first-child {
+    flex: 1 0 100%;
+  }
 }
 
 @media (--xs-down) {

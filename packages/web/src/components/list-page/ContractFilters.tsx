@@ -103,11 +103,10 @@ export function deriveFilterControls<TSearch>({ page, specs, overrides }: Contra
       filters.push(override ? <Fragment key={specKey(spec)}>{override(page)}</Fragment> : <DateRangeFilter key={specKey(spec)} {...page.bindRange(spec)} />);
       continue;
     }
-    const override = overrides?.[spec];
-    if (override) { filters.push(<Fragment key={spec}>{override(page)}</Fragment>); continue; }
     const field = shape[spec] as z.ZodType | undefined;
     const meta = filterMetaOf(field);
-    const node = renderControl(page, spec, field, meta);
+    const override = overrides?.[spec];
+    const node = override ? <Fragment key={spec}>{override(page)}</Fragment> : renderControl(page, spec, field, meta);
     (meta?.kind === 'keyword' ? keyword : filters).push(node);
   }
   return { keyword, filters };
