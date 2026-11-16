@@ -9,6 +9,7 @@ import {
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { EditFormModal } from '@/components/EditFormModal';
 import { ListSearchToolbar } from '@/components/list-page';
+import { FilterSelect } from '@/components/search-filters';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { RefreshButton } from '@/components/toolbar-controls';
 import { useAuth } from '@/hooks/useAuth';
@@ -103,7 +104,11 @@ export default function AccessReviews({ onDetail }: Readonly<{ onDetail: (item: 
     <SideSheet title={"复核批次 · " + (batch?.name ?? "#" + campaignId)} visible={campaignId !== null} width={1080} closeOnEsc onCancel={() => setCampaignId(null)}>
     {batch?.status === 'preparing' && <Banner type="info" closeIcon={null} description="正在分批采集权限来源，列表会自动刷新；准备完成后即可处置。" style={{ marginBottom: 12 }} />}
     {batch?.failureReason && <Banner type="danger" closeIcon={null} description={batch.failureReason} style={{ marginBottom: 12 }} />}
-    <ListSearchToolbar page={items} filters={['decision', 'riskLevel', 'sourceType', 'userId']} />
+    <ListSearchToolbar page={items} filters={['decision', 'riskLevel', 'sourceType', 'userId']} overrides={{
+      decision: p => <FilterSelect placeholder="全部复核结果" items={createLabelOptionsFromMap(ACCESS_REVIEW_DECISION_LABELS)} {...p.bind('decision')} width={160} />,
+      riskLevel: p => <FilterSelect placeholder="全部风险等级" items={createLabelOptionsFromMap(ACCESS_RISK_LABELS)} {...p.bind('riskLevel')} width={160} />,
+      sourceType: p => <FilterSelect placeholder="全部授权来源" items={createLabelOptionsFromMap(ACCESS_REVIEW_SOURCE_LABELS)} {...p.bind('sourceType')} width={180} />,
+    }} />
     <ConfigurableTable columns={singleLineColumns(itemColumns)} {...items.tableProps} />
     </SideSheet>
     <EditFormModal modal={createModal} width={620}>

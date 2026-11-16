@@ -10,6 +10,7 @@ import DateTimeText from '@/components/DateTimeText';
 import { EditFormModal } from '@/components/EditFormModal';
 import JsonBlock from '@/components/JsonBlock';
 import { ListSearchToolbar } from '@/components/list-page';
+import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { DATA_SCOPE_OPTIONS } from '@/components/permissions/DataScopePanel';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { RefreshButton } from '@/components/toolbar-controls';
@@ -346,7 +347,11 @@ function RequestsTab() {
       { key: 'retry', label: '重试发放', hidden: !hasPermission('system:access-governance:grant') || row.provisionStatus !== 'failed' || row.status !== 'approved', loading: retry.isPending, onClick: () => void retry.mutateAsync({ params: { id: row.id } }) },
     ] }),
   ];
-  return <><ListSearchToolbar page={page} filters={['keyword', 'provisionStatus', 'riskLevel', 'targetUserId', ['startTime', 'endTime']]} actions={<RefreshButton onClick={() => void page.listQuery.refetch()} loading={page.listQuery.isFetching} />} /><ConfigurableTable columns={singleLineColumns(columns)} {...page.tableProps} /><RequestDetailSheet record={page.listQuery.data?.list.find(row => row.id === detail?.id) ?? detail} onClose={() => setDetail(null)} /></>;
+  return <><ListSearchToolbar page={page} filters={['keyword', 'provisionStatus', 'riskLevel', 'targetUserId', ['startTime', 'endTime']]} overrides={{
+    keyword: p => <KeywordInput placeholder="搜索申请标题 / 业务编号 / 原因" {...p.bindKeyword('keyword')} width={320} />,
+    provisionStatus: p => <FilterSelect placeholder="全部发放状态" items={createLabelOptionsFromMap(ACCESS_PROVISION_STATUS_LABELS)} {...p.bind('provisionStatus')} width={160} />,
+    riskLevel: p => <FilterSelect placeholder="全部风险等级" items={RISK_OPTIONS} {...p.bind('riskLevel')} width={160} />,
+  }} actions={<RefreshButton onClick={() => void page.listQuery.refetch()} loading={page.listQuery.isFetching} />} /><ConfigurableTable columns={singleLineColumns(columns)} {...page.tableProps} /><RequestDetailSheet record={page.listQuery.data?.list.find(row => row.id === detail?.id) ?? detail} onClose={() => setDetail(null)} /></>;
 }
 
 function GrantsTab() {
@@ -373,7 +378,10 @@ function GrantsTab() {
       { key: 'revoke', label: '撤销整包', danger: true, hidden: !hasPermission('system:access-governance:revoke') || !['scheduled', 'active'].includes(row.status), loading: revoke.isPending, onClick: () => revokeModal.openEdit(row) },
     ] }),
   ];
-  return <><ListSearchToolbar page={page} filters={['keyword', 'status', 'riskLevel', 'userId']} actions={<RefreshButton onClick={() => void page.listQuery.refetch()} loading={page.listQuery.isFetching} />} /><ConfigurableTable columns={singleLineColumns(columns)} {...page.tableProps} /><GrantDetailSheet record={page.listQuery.data?.list.find(row => row.id === detail?.id) ?? detail} onClose={() => setDetail(null)} /><EditFormModal modal={revokeModal} title="撤销整个授权包" okText="撤销整包" width={580} header={<Banner type="warning" closeIcon={null} description="这会立即回收该授权包中的全部有效权限。只需回收某一项时，请在授权详情中选择“撤销此项”。其他独立授权来源保留。" />}><Form.TextArea field="reason" label="撤销原因" rows={3} maxCount={1000} rules={[{ required: true, message: '请填写撤销原因' }, { min: 2, message: '至少填写两个字' }]} /></EditFormModal></>;
+  return <><ListSearchToolbar page={page} filters={['keyword', 'status', 'riskLevel', 'userId']} overrides={{
+    status: p => <FilterSelect placeholder="全部授权状态" items={createLabelOptionsFromMap(GRANT_STATUS_LABELS)} {...p.bind('status')} width={160} />,
+    riskLevel: p => <FilterSelect placeholder="全部风险等级" items={RISK_OPTIONS} {...p.bind('riskLevel')} width={160} />,
+  }} actions={<RefreshButton onClick={() => void page.listQuery.refetch()} loading={page.listQuery.isFetching} />} /><ConfigurableTable columns={singleLineColumns(columns)} {...page.tableProps} /><GrantDetailSheet record={page.listQuery.data?.list.find(row => row.id === detail?.id) ?? detail} onClose={() => setDetail(null)} /><EditFormModal modal={revokeModal} title="撤销整个授权包" okText="撤销整包" width={580} header={<Banner type="warning" closeIcon={null} description="这会立即回收该授权包中的全部有效权限。只需回收某一项时，请在授权详情中选择“撤销此项”。其他独立授权来源保留。" />}><Form.TextArea field="reason" label="撤销原因" rows={3} maxCount={1000} rules={[{ required: true, message: '请填写撤销原因' }, { min: 2, message: '至少填写两个字' }]} /></EditFormModal></>;
 }
 
 function ReviewsTab() {
@@ -405,7 +413,10 @@ function PoliciesTab() {
       { key: 'edit', label: '编辑策略', onClick: () => modal.openEdit(row) },
     ] }),
   ];
-  return <><div style={{ marginBottom: 12 }}><Text type="tertiary">策略约束后续申请、审批、发放及延期；关闭本人申请不会撤销已授权限，立即收权请到授权台账撤销。</Text></div><ListSearchToolbar page={page} filters={['keyword', 'riskLevel', 'approvalPolicy']} actions={<RefreshButton onClick={() => void page.listQuery.refetch()} loading={page.listQuery.isFetching} />} /><ConfigurableTable columns={singleLineColumns(columns)} {...page.tableProps} /><PolicyDetailSheet record={detail} onClose={() => setDetail(null)} /><EditFormModal modal={modal} width={620} header={<Banner type="info" closeIcon={null} description={`目录最低风险：${modal.editing ? RISK_LABELS[modal.editing.minimumRiskLevel] : '—'}。高危及极高危的审批、MFA 和复核要求不能低于目录底线；未覆盖时继承基线策略。`} />} formProps={{ onValueChange: next => {
+  return <><div style={{ marginBottom: 12 }}><Text type="tertiary">策略约束后续申请、审批、发放及延期；关闭本人申请不会撤销已授权限，立即收权请到授权台账撤销。</Text></div><ListSearchToolbar page={page} filters={['keyword', 'riskLevel', 'approvalPolicy']} overrides={{
+    riskLevel: p => <FilterSelect placeholder="全部风险等级" items={RISK_OPTIONS} {...p.bind('riskLevel')} width={160} />,
+    approvalPolicy: p => <FilterSelect placeholder="全部审批策略" items={APPROVAL_OPTIONS} {...p.bind('approvalPolicy')} width={300} />,
+  }} actions={<RefreshButton onClick={() => void page.listQuery.refetch()} loading={page.listQuery.isFetching} />} /><ConfigurableTable columns={singleLineColumns(columns)} {...page.tableProps} /><PolicyDetailSheet record={detail} onClose={() => setDetail(null)} /><EditFormModal modal={modal} width={620} header={<Banner type="info" closeIcon={null} description={`目录最低风险：${modal.editing ? RISK_LABELS[modal.editing.minimumRiskLevel] : '—'}。高危及极高危的审批、MFA 和复核要求不能低于目录底线；未覆盖时继承基线策略。`} />} formProps={{ onValueChange: next => {
       const values = next as Partial<UpdatePermissionPolicyInput>;
       const risk = values.riskLevel;
       if (!risk) return;
