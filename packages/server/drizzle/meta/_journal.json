@@ -85,6 +85,13 @@
       "when": 1794802166719,
       "tag": "0011_unify_access_workflow",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1794804417666,
+      "tag": "0012_retire_access_ui_permissions",
+      "breakpoints": true
     }
   ]
 }

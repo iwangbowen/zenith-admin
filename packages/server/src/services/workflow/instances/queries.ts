@@ -4,7 +4,7 @@ import { workflowInstanceContract, workflowTaskContract, WORKFLOW_INSTANCE_STATU
 import type { QueryOutputOf } from '@zenith/shared/core';
 // ─── 实例/待办/已办/抄送列表查询与详情（拆分自 workflow-instances.service.ts）───
 import { formatDateTime, formatNullableDateTime } from '../../../lib/datetime';
-import { count, countDistinct, eq, and, asc, desc, min, or, inArray, lte, sql, exists, type SQL } from 'drizzle-orm';
+import { count, countDistinct, eq, and, asc, desc, min, or, inArray, lte, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { keywordCondition, withPagination, dateRangeConditions, buildWhere } from '../../../lib/where-helpers';
 import { db } from '../../../db';
@@ -94,7 +94,13 @@ export async function listMyInstances(query: QueryOutputOf<typeof workflowInstan
     status ? eq(workflowInstances.status, status) : undefined,
     priority ? eq(workflowInstances.priority, priority) : undefined,
     definitionId !== undefined ? eq(workflowInstances.definitionId, definitionId) : undefined,
-    keyword ? or(keywordCondition(keyword, [workflowInstances.title, workflowInstances.serialNo], 'ilike'), exists(db.select({ id: workflowDefinitions.id }).from(workflowDefinitions).where(and(eq(workflowDefinitions.id, workflowInstances.definitionId), keywordCondition(keyword, [workflowDefinitions.name], 'ilike'))))) : undefined,
+    keyword ? or(
+      keywordCondition(keyword, [workflowInstances.title, workflowInstances.serialNo], 'ilike'),
+      // Keep the subquery independent of the outer table alias used by relational queries.
+      inArray(workflowInstances.definitionId, db.select({ id: workflowDefinitions.id })
+        .from(workflowDefinitions)
+        .where(keywordCondition(keyword, [workflowDefinitions.name], 'ilike'))),
+    ) : undefined,
   );
   return buildListResult({
     page,

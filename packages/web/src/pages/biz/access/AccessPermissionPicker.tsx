@@ -18,6 +18,7 @@ interface Props {
 function AccessPermissionPicker({ menus, coveredPermissionCodes, value = [], onChange }: Props) {
   const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
   const [search, setSearch] = useState('');
+  const [searchExpandedKeys, setSearchExpandedKeys] = useState<string[]>([]);
   usePinyinReady();
   const covered = new Set(coveredPermissionCodes);
   const index = useMemo(() => new Map(menus.map(menu => [menu.id, menu])), [menus]);
@@ -57,8 +58,9 @@ function AccessPermissionPicker({ menus, coveredPermissionCodes, value = [], onC
       <Button size="small" theme="borderless" disabled={!value.length} onClick={() => onChange?.([])}>清空直接申请项</Button>
     </div>
     <Tree treeData={treeData} value="" expandAction="click"
-      expandedKeys={expandedKeys} onExpand={keys => { if (!search) setExpandedKeys(keys); }}
-      onSearch={input => setSearch(input)}
+      expandedKeys={search ? searchExpandedKeys : expandedKeys}
+      onExpand={keys => { if (search) setSearchExpandedKeys(keys); else setExpandedKeys(keys); }}
+      onSearch={(input, keys) => { setSearch(input); setSearchExpandedKeys(keys); }}
       filterTreeNode={(input, _node, data) => textMatches(String(data?.filterLabel ?? ''), String(input))}
       showFilteredOnly searchPlaceholder="搜索名称、完整路径或权限码" virtualize={{ height: 288, itemSize: 36 }} />
     {selected.length > 0 && <div style={{ marginTop: 12, display: 'grid', gap: 6 }} aria-label="直接申请的权限清单">

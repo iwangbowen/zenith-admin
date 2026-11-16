@@ -26,7 +26,10 @@ export function registerAccessTaskHandlers(): void {
       if (!positiveId(requestId)) return;
       const provisionStatus = task.cancelRequested || task.status === 'cancelled' ? 'terminated' : task.status === 'failed' ? 'failed' : task.status === 'running' ? 'running' : 'pending';
       if (task.status === 'success') return;
-      await tx.update(identityAccessRequests).set({ provisionStatus, failureReason: task.errorMessage ?? (provisionStatus === 'terminated' ? '授权发放任务已取消' : null) })
+      // Applicants can read this field; infrastructure diagnostics stay in the governed task.
+      const failureReason = provisionStatus === 'terminated' ? `授权发放已终止，请联系权限治理人员查看任务 #${task.id}`
+        : task.errorMessage ? `授权发放执行失败，请联系权限治理人员查看任务 #${task.id} 并重试` : null;
+      await tx.update(identityAccessRequests).set({ provisionStatus, failureReason })
         .where(and(eq(identityAccessRequests.id, requestId), exactTenantCondition(identityAccessRequests.tenantId, task.tenantId), eq(identityAccessRequests.status, 'approved'),
           inArray(identityAccessRequests.provisionStatus, ['not_started', 'pending', 'running', 'failed'])));
     },
