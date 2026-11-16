@@ -126,4 +126,4 @@ API 时间遵循项目统一格式 `YYYY-MM-DD HH:mm:ss`，由公共日期工具
 
 可选脚本 `packages/server/scripts/verify-access-workflow.mjs` 只面向显式的开发环境（`NODE_ENV=development`）与本机 API；凭据和状态文件通过 `ZENITH_QA_ADMIN_PASSWORD`、`ZENITH_QA_STATE` 提供，不保存到仓库。依次执行 `setup`、`run`、`extended` 可覆盖多角色审批、MFA、逐项撤权、预约、永久、到期、复核延期和普通流程。
 
-`failure` 会对本次申请临时注入数据库写入故障，并在 `finally` 中移除故障触发器；只在允许创建测试数据的开发数据库运行。确认失败后，从治理页重试并核对结果，再执行 `cleanup` 回收有效测试授权、恢复原策略、停用测试账号及角色。流程和复核审计记录保留。具体浏览器覆盖见 [统一入口回归记录](./access-workflow-qa-2026-11-16.md)。
+`failure` 会对本次申请临时注入数据库写入故障，并在 `finally` 中移除故障触发器；只在允许创建测试数据的开发数据库运行。确认失败后，从治理页重试并核对结果，再执行 `cleanup` 回收有效测试授权、恢复原策略、停用测试账号及角色。流程和复核审计记录保留。
