@@ -818,6 +818,14 @@ CREATE TABLE "async_tasks" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "export_daily_usage" (
+	"key" varchar(128) PRIMARY KEY NOT NULL,
+	"period" varchar(10) NOT NULL,
+	"job_count" integer DEFAULT 0 NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "export_job_downloads" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "export_job_downloads_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"job_id" integer NOT NULL,
@@ -835,8 +843,19 @@ CREATE TABLE "export_jobs" (
 	"format" "export_job_format" NOT NULL,
 	"status" "export_job_status" DEFAULT 'pending' NOT NULL,
 	"execution_mode" "export_job_execution_mode" DEFAULT 'async' NOT NULL,
+	"task_id" integer,
+	"execution_token" uuid,
+	"cancel_requested" boolean DEFAULT false NOT NULL,
+	"stage" varchar(32) DEFAULT 'pending' NOT NULL,
+	"sha256" varchar(64),
 	"query" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"columns" jsonb,
+	"scope" varchar(16) DEFAULT 'filtered' NOT NULL,
+	"row_ids" jsonb,
+	"request_key" varchar(128),
+	"split_rows" integer DEFAULT 0 NOT NULL,
+	"manifest" jsonb,
+	"authorization" jsonb,
 	"row_count" integer,
 	"processed_rows" integer DEFAULT 0 NOT NULL,
 	"total_rows" integer,
@@ -858,6 +877,26 @@ CREATE TABLE "export_jobs" (
 	"updated_by" integer,
 	"started_at" timestamp with time zone,
 	"completed_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "export_presets" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "export_presets_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"name" varchar(64) NOT NULL,
+	"entity" varchar(128) NOT NULL,
+	"format" "export_job_format" NOT NULL,
+	"columns" jsonb,
+	"query" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"shared" boolean DEFAULT false NOT NULL,
+	"cron" varchar(100),
+	"next_run_at" timestamp with time zone,
+	"lease_until" timestamp with time zone,
+	"last_job_id" integer,
+	"last_error" text,
+	"tenant_id" integer,
+	"created_by" integer,
+	"updated_by" integer,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
@@ -907,24 +946,34 @@ CREATE TABLE "maintenance_logs" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "maintenance_logs_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"message" varchar(512) NOT NULL,
 	"estimated_end_at" timestamp with time zone,
-	"started_at" timestamp with time zone NOT NULL,
+	"status" varchar(16) NOT NULL,
+	"scheduled_start_at" timestamp with time zone,
+	"auto_end_at" timestamp with time zone,
+	"started_at" timestamp with time zone,
+	"reason" varchar(500) NOT NULL,
+	"end_reason" varchar(500),
+	"notify_user_ids" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"remind_minutes" integer DEFAULT 15 NOT NULL,
+	"reminder_sent" boolean DEFAULT false NOT NULL,
+	"changes" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"started_by_id" integer,
 	"started_by_name" varchar(64),
 	"ended_at" timestamp with time zone,
 	"ended_by_id" integer,
 	"ended_by_name" varchar(64),
 	"duration_seconds" integer,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "maintenance_period_status_check" CHECK ("maintenance_logs"."status" in ('scheduled', 'ongoing', 'completed', 'cancelled'))
 );
 --> statement-breakpoint
 CREATE TABLE "maintenance_mode" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "maintenance_mode_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
-	"enabled" boolean DEFAULT false NOT NULL,
+	"key" varchar(32) DEFAULT 'global' NOT NULL,
+	"version" integer DEFAULT 0 NOT NULL,
 	"message" varchar(512) DEFAULT '系统维护中，请稍后重试' NOT NULL,
 	"estimated_end_at" timestamp with time zone,
-	"started_at" timestamp with time zone,
-	"started_by_name" varchar(64),
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "maintenance_mode_key_unique" UNIQUE("key")
 );
 --> statement-breakpoint
 CREATE TABLE "regions" (
@@ -1146,6 +1195,7 @@ CREATE TABLE "rate_limit_rules" (
 	"priority" integer DEFAULT 0 NOT NULL,
 	"alert_threshold" integer,
 	"blocked_message" varchar(255),
+	"options" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"path_patterns" text[] DEFAULT '{}' NOT NULL,
 	"created_by" integer,
 	"updated_by" integer,
@@ -1674,6 +1724,9 @@ CREATE TABLE "ip_access_logs" (
 	"path" varchar(256) NOT NULL,
 	"method" varchar(16) NOT NULL,
 	"block_type" varchar(16) NOT NULL,
+	"matched_entry" varchar(64),
+	"policy_version" integer,
+	"correlation_id" varchar(64),
 	"user_agent" varchar(512),
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
@@ -9329,6 +9382,7 @@ CREATE TABLE "event_outbox" (
 --> statement-breakpoint
 CREATE UNIQUE INDEX "async_tasks_idem_tenant_uq" ON "async_tasks" USING btree ("tenant_id",coalesce("created_by", 0),"task_type","idempotency_key") WHERE "async_tasks"."idempotency_key" is not null and "async_tasks"."tenant_id" is not null;--> statement-breakpoint
 CREATE UNIQUE INDEX "async_tasks_idem_platform_uq" ON "async_tasks" USING btree (coalesce("created_by", 0),"task_type","idempotency_key") WHERE "async_tasks"."idempotency_key" is not null and "async_tasks"."tenant_id" is null;--> statement-breakpoint
+CREATE UNIQUE INDEX "maintenance_one_open_period" ON "maintenance_logs" USING btree ((1)) WHERE "maintenance_logs"."status" in ('scheduled', 'ongoing');--> statement-breakpoint
 CREATE UNIQUE INDEX "impersonation_sessions_token_uq" ON "impersonation_sessions" USING btree ("token_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "user_trusted_devices_user_device_uq" ON "user_trusted_devices" USING btree ("user_id","device_id_hash");--> statement-breakpoint
 CREATE UNIQUE INDEX "identity_access_review_items_pending_source_unique" ON "identity_access_review_items" USING btree (coalesce("tenant_id", 0),"user_id","source_type","source_id") WHERE "identity_access_review_items"."decision" = 'pending';--> statement-breakpoint
@@ -9601,10 +9655,15 @@ ALTER TABLE "async_tasks" ADD CONSTRAINT "async_tasks_updated_by_users_id_fk" FO
 ALTER TABLE "export_job_downloads" ADD CONSTRAINT "export_job_downloads_job_id_export_jobs_id_fk" FOREIGN KEY ("job_id") REFERENCES "public"."export_jobs"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "export_job_downloads" ADD CONSTRAINT "export_job_downloads_downloaded_by_users_id_fk" FOREIGN KEY ("downloaded_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "export_job_downloads" ADD CONSTRAINT "export_job_downloads_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "export_jobs" ADD CONSTRAINT "export_jobs_task_id_async_tasks_id_fk" FOREIGN KEY ("task_id") REFERENCES "public"."async_tasks"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "export_jobs" ADD CONSTRAINT "export_jobs_file_id_managed_files_id_fk" FOREIGN KEY ("file_id") REFERENCES "public"."managed_files"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "export_jobs" ADD CONSTRAINT "export_jobs_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "export_jobs" ADD CONSTRAINT "export_jobs_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "export_jobs" ADD CONSTRAINT "export_jobs_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "export_presets" ADD CONSTRAINT "export_presets_last_job_id_export_jobs_id_fk" FOREIGN KEY ("last_job_id") REFERENCES "public"."export_jobs"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "export_presets" ADD CONSTRAINT "export_presets_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "export_presets" ADD CONSTRAINT "export_presets_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "export_presets" ADD CONSTRAINT "export_presets_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "cron_job_logs" ADD CONSTRAINT "cron_job_logs_job_id_cron_jobs_id_fk" FOREIGN KEY ("job_id") REFERENCES "public"."cron_jobs"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "cron_job_logs" ADD CONSTRAINT "cron_job_logs_triggered_by_users_id_fk" FOREIGN KEY ("triggered_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "cron_jobs" ADD CONSTRAINT "cron_jobs_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
@@ -11155,9 +11214,11 @@ CREATE INDEX "async_tasks_created_at_idx" ON "async_tasks" USING btree ("created
 CREATE INDEX "async_tasks_correlation_idx" ON "async_tasks" USING btree ("correlation_id");--> statement-breakpoint
 CREATE INDEX "async_tasks_payload_trgm_idx" ON "async_tasks" USING gin (("payload"::text) gin_trgm_ops);--> statement-breakpoint
 CREATE INDEX "async_tasks_result_trgm_idx" ON "async_tasks" USING gin (("result"::text) gin_trgm_ops);--> statement-breakpoint
+CREATE INDEX "export_daily_usage_period_idx" ON "export_daily_usage" USING btree ("period");--> statement-breakpoint
 CREATE INDEX "export_job_downloads_tenant_idx" ON "export_job_downloads" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "export_job_downloads_job_idx" ON "export_job_downloads" USING btree ("job_id");--> statement-breakpoint
 CREATE INDEX "export_job_downloads_downloaded_by_idx" ON "export_job_downloads" USING btree ("downloaded_by");--> statement-breakpoint
+CREATE INDEX "export_jobs_task_idx" ON "export_jobs" USING btree ("task_id");--> statement-breakpoint
 CREATE INDEX "export_jobs_entity_idx" ON "export_jobs" USING btree ("entity");--> statement-breakpoint
 CREATE INDEX "export_jobs_status_idx" ON "export_jobs" USING btree ("status");--> statement-breakpoint
 CREATE INDEX "export_jobs_status_started_idx" ON "export_jobs" USING btree ("status","started_at");--> statement-breakpoint
@@ -11165,6 +11226,8 @@ CREATE INDEX "export_jobs_status_completed_idx" ON "export_jobs" USING btree ("s
 CREATE INDEX "export_jobs_created_by_idx" ON "export_jobs" USING btree ("created_by");--> statement-breakpoint
 CREATE INDEX "export_jobs_tenant_idx" ON "export_jobs" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "export_jobs_expires_at_idx" ON "export_jobs" USING btree ("expires_at");--> statement-breakpoint
+CREATE INDEX "export_presets_due_idx" ON "export_presets" USING btree ("next_run_at");--> statement-breakpoint
+CREATE INDEX "export_presets_owner_idx" ON "export_presets" USING btree ("created_by");--> statement-breakpoint
 CREATE INDEX "cron_job_logs_started_at_idx" ON "cron_job_logs" USING btree ("started_at");--> statement-breakpoint
 CREATE INDEX "cron_job_logs_job_idx" ON "cron_job_logs" USING btree ("job_id");--> statement-breakpoint
 CREATE INDEX "cron_job_logs_job_started_idx" ON "cron_job_logs" USING btree ("job_id","started_at" DESC NULLS LAST);--> statement-breakpoint

@@ -153,6 +153,12 @@ CREATE TRIGGER user_groups_permission_cache_invalidate
   AFTER INSERT OR UPDATE OR DELETE ON "user_groups"
   FOR EACH ROW EXECUTE FUNCTION notify_cache_invalidate();--> statement-breakpoint
 
+-- 维护状态和限流规则变更后通知各实例更新运行时缓存。
+CREATE TRIGGER rate_limit_rules_cache_invalidate AFTER INSERT OR UPDATE OR DELETE ON "rate_limit_rules"
+  FOR EACH ROW EXECUTE FUNCTION notify_cache_invalidate();--> statement-breakpoint
+CREATE TRIGGER maintenance_mode_cache_invalidate AFTER INSERT OR UPDATE OR DELETE ON "maintenance_mode" FOR EACH ROW EXECUTE FUNCTION notify_cache_invalidate();--> statement-breakpoint
+CREATE TRIGGER maintenance_logs_cache_invalidate AFTER INSERT OR UPDATE OR DELETE ON "maintenance_logs" FOR EACH ROW EXECUTE FUNCTION notify_cache_invalidate();--> statement-breakpoint
+
 -- 设置修订不可变；仅允许随已删除的设置主记录级联删除。
 CREATE OR REPLACE FUNCTION protect_settings_revision() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
@@ -300,6 +306,3 @@ BEGIN
     END;
   END IF;
 END $$;
-
-CREATE TRIGGER rate_limit_rules_cache_invalidate AFTER INSERT OR UPDATE OR DELETE ON "rate_limit_rules"
-  FOR EACH ROW EXECUTE FUNCTION notify_cache_invalidate();--> statement-breakpoint

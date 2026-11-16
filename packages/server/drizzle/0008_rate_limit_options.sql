@@ -1,1 +1,0 @@
-ALTER TABLE "rate_limit_rules" ADD COLUMN "options" jsonb DEFAULT '{}'::jsonb NOT NULL;

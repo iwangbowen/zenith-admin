@@ -5,92 +5,15 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1794024097333,
+      "when": 1794828204059,
       "tag": "0000_baseline",
       "breakpoints": true
     },
     {
       "idx": 1,
       "version": "7",
-      "when": 1794024137526,
+      "when": 1794828278355,
       "tag": "0001_extensions",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1794627389206,
-      "tag": "0002_daily_snowbird",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1794627851501,
-      "tag": "0003_acoustic_marrow",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1794629333032,
-      "tag": "0004_tan_hairball",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "7",
-      "when": 1794630452877,
-      "tag": "0005_aspiring_the_phantom",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "7",
-      "when": 1794643050993,
-      "tag": "0006_cool_invisible_woman",
-      "breakpoints": true
-    },
-    {
-      "idx": 7,
-      "version": "7",
-      "when": 1794712662074,
-      "tag": "0007_rate_limit_runtime",
-      "breakpoints": true
-    },
-    {
-      "idx": 8,
-      "version": "7",
-      "when": 1794713121035,
-      "tag": "0008_rate_limit_options",
-      "breakpoints": true
-    },
-    {
-      "idx": 9,
-      "version": "7",
-      "when": 1794732196238,
-      "tag": "0009_mixed_magik",
-      "breakpoints": true
-    },
-    {
-      "idx": 10,
-      "version": "7",
-      "when": 1794740146294,
-      "tag": "0010_maintenance_lifecycle",
-      "breakpoints": true
-    },
-    {
-      "idx": 11,
-      "version": "7",
-      "when": 1794802166719,
-      "tag": "0011_unify_access_workflow",
-      "breakpoints": true
-    },
-    {
-      "idx": 12,
-      "version": "7",
-      "when": 1794804417666,
-      "tag": "0012_retire_access_ui_permissions",
       "breakpoints": true
     }
   ]
