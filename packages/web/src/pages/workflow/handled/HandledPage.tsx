@@ -77,7 +77,7 @@ export default function HandledPage() {
         onApply={(filters) => applySearch({ keyword: typeof filters.keyword === 'string' ? filters.keyword : '' })}
       />
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索标题 / 流程名称" {...bindKeyword('keyword')} />}
+        keyword={<KeywordInput placeholder="搜索申请标题 / 业务编号 / 流程名称" {...bindKeyword('keyword')} />}
         onSearch={handleSearch}
         onReset={handleReset}
       />

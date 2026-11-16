@@ -32,3 +32,9 @@ export async function cancelBusinessApproval(tx: DbTransaction, id: number, tena
 }
 /** Workflow commands retain their queue pickup and transaction-effect semantics. */
 export const businessApprovalTransaction = workflowTransaction;
+
+/** 权限业务结果沿用精确实例的参与关系、租户和字段查看规则。 */
+export async function requireAccessWorkflowViewer(id: number, bizType: string, bizId: string) {
+  const { requireBusinessApprovalInstance } = await import('../workflow-business-context.service');
+  return requireBusinessApprovalInstance(id, bizType, bizId);
+}

@@ -37,6 +37,7 @@
   "GET /api/access-governance/review-options",
   "GET /api/access-governance/users/:id/overview",
   "GET /api/access-governance/workflow-options",
+  "GET /api/access-governance/workflow/:id/result",
   "GET /api/api-catalog",
   "GET /api/api-tokens",
   "GET /api/auth/captcha",

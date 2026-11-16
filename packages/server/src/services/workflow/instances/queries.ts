@@ -4,7 +4,7 @@ import { workflowInstanceContract, workflowTaskContract, WORKFLOW_INSTANCE_STATU
 import type { QueryOutputOf } from '@zenith/shared/core';
 // ─── 实例/待办/已办/抄送列表查询与详情（拆分自 workflow-instances.service.ts）───
 import { formatDateTime, formatNullableDateTime } from '../../../lib/datetime';
-import { count, countDistinct, eq, and, asc, desc, min, or, inArray, lte, sql, type SQL } from 'drizzle-orm';
+import { count, countDistinct, eq, and, asc, desc, min, or, inArray, lte, sql, exists, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { keywordCondition, withPagination, dateRangeConditions, buildWhere } from '../../../lib/where-helpers';
 import { db } from '../../../db';
@@ -33,7 +33,7 @@ const priorityRankOrder = sql`CASE ${workflowInstances.priority} WHEN 'urgent' T
 
 /** 实例标题或流程名称模糊匹配条件（需联表 workflowDefinitions） */
 function titleOrDefinitionNameLike(keyword: string) {
-  return keywordCondition(keyword, [workflowInstances.title, workflowDefinitions.name], 'ilike')!;
+  return keywordCondition(keyword, [workflowInstances.title, workflowInstances.serialNo, workflowDefinitions.name], 'ilike')!;
 }
 
 /** 任务联实例/定义/发起人的行选择（待办/抄送/已办列表共用） */
@@ -87,13 +87,14 @@ async function loadActiveNodeKeysByInstance(instanceIds: number[]): Promise<Map<
 
 export async function listMyInstances(query: QueryOutputOf<typeof workflowInstanceContract.list>) {
   const user = currentUser();
-  const { page, pageSize, status, priority, definitionId } = query;
+  const { page, pageSize, status, priority, definitionId, keyword } = query;
   const where = buildWhere(
     eq(workflowInstances.initiatorId, user.userId),
     tenantCondition(workflowInstances, user),
     status ? eq(workflowInstances.status, status) : undefined,
     priority ? eq(workflowInstances.priority, priority) : undefined,
     definitionId !== undefined ? eq(workflowInstances.definitionId, definitionId) : undefined,
+    keyword ? or(keywordCondition(keyword, [workflowInstances.title, workflowInstances.serialNo], 'ilike'), exists(db.select({ id: workflowDefinitions.id }).from(workflowDefinitions).where(and(eq(workflowDefinitions.id, workflowInstances.definitionId), keywordCondition(keyword, [workflowDefinitions.name], 'ilike'))))) : undefined,
   );
   return buildListResult({
     page,

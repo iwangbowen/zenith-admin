@@ -651,8 +651,9 @@ export default function MyApplicationsPage() {
         currentFilters={submittedParams as unknown as Record<string, unknown>}
         onApply={(filters) => {
           // 保存的视图存的是裸字符串：按契约枚举校验后再回填（非法值当作未选）
-          const saved = filters as Partial<{ status?: string; priority?: string }>;
+          const saved = filters as Partial<{ status?: string; priority?: string; keyword?: string }>;
           applySearch({
+            keyword: typeof saved.keyword === 'string' ? saved.keyword : '',
             status: enumValueOf(WORKFLOW_INSTANCE_STATUSES, saved.status),
             priority: enumValueOf(WORKFLOW_INSTANCE_PRIORITIES, saved.priority),
           });
@@ -660,7 +661,7 @@ export default function MyApplicationsPage() {
       />
       <ListSearchToolbar
         page={page}
-        filters={['status', 'priority']}
+        filters={['keyword', 'status', 'priority']}
         overrides={{
           // 派生 FilterSelect 宽 120 装不下 6 字占位「全部实例状态」，此处仅加宽（占位与契约 description 保持一致）
           status: (p) => (

@@ -18,6 +18,7 @@ import { abortSubmit } from '@/lib/abort-submit';
 import { formatDateTimeForApi, parseDateTimeParam } from '@/utils/date';
 import { singleLineColumns } from '@/utils/table-columns';
 import { FormAccessPermissionPicker } from './AccessPermissionPicker';
+import AccessWorkflowResult from './AccessWorkflowResult';
 
 const { Text } = Typography;
 const TYPE_OPTIONS = createLabelOptionsFromMap(ACCESS_REQUEST_TYPE_LABELS);
@@ -73,7 +74,7 @@ function ReadonlyAccessRequest({ value }: Readonly<{ value: Record<string, unkno
   </div>;
 }
 
-export default function AccessRequestWorkflowForm({ mode, value, getFormApi, onValuesChange }: Readonly<WorkflowBusinessFormProps>) {
+export default function AccessRequestWorkflowForm({ mode, value, instanceId, bizId, getFormApi, onValuesChange }: Readonly<WorkflowBusinessFormProps>) {
   const optionsQuery = useAccessWorkflowOptions(mode === 'create');
   const formApi = useRef<FormApi | null>(null);
   const [defaults] = useState(() => initialValues(value));
@@ -109,7 +110,7 @@ export default function AccessRequestWorkflowForm({ mode, value, getFormApi, onV
     if (expiry !== undefined && expiry > limit) api.setValue('expiresAt', new Date(limit));
   }, [maxMinutes, startTimestamp, values.validityMode]);
 
-  if (mode !== 'create') return <ReadonlyAccessRequest value={value} />;
+  if (mode !== 'create') return <><ReadonlyAccessRequest value={value} />{instanceId && bizId ? <AccessWorkflowResult instanceId={instanceId} /> : null}</>;
   if (optionsQuery.isLoading) return <Spin />;
   if (optionsQuery.error) return <Banner type="warning" closeIcon={null} description={optionsQuery.error.message} />;
 

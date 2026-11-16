@@ -288,7 +288,7 @@ export default function PendingApprovalsPage() {
         }}
       />
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="请输入审批标题" {...bindKeyword('keyword')} width={200} />}
+        keyword={<KeywordInput placeholder="搜索申请标题 / 业务编号 / 流程名称" {...bindKeyword('keyword')} width={200} />}
         filters={(
           <FilterSelect<number>
             placeholder="全部流程类型"

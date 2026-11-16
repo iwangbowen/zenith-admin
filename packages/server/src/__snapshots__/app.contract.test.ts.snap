@@ -317,6 +317,7 @@ exports[`路由表快照 > 完整路由表保持不变 1`] = `
   "GET /api/access-governance/review-options",
   "GET /api/access-governance/users/:id/overview",
   "GET /api/access-governance/workflow-options",
+  "GET /api/access-governance/workflow/:id/result",
   "GET /api/ai/agents",
   "GET /api/ai/agents/:id",
   "GET /api/ai/agents/builtin",

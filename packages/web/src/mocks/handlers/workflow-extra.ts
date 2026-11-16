@@ -423,7 +423,7 @@ export const workflowExtraHandlers = [
   mock(workflowInstanceContract.ccMine, ({ query, ok, paginate }) => {
     const keyword = (query.keyword ?? '').toLowerCase();
     let all = mockWorkflowInstances.filter((i) => i.status !== 'draft');
-    if (keyword) all = filterByKeyword(all, keyword, [(i) => i.title, (i) => i.definitionName], { caseInsensitive: true });
+    if (keyword) all = filterByKeyword(all, keyword, [(i) => i.title, (i) => i.serialNo, (i) => i.definitionName], { caseInsensitive: true });
     const list: WorkflowInstance[] = all.map((i, idx) => {
       const ccTaskId = 90000 + idx;
       return { ...i, ccTaskId, ccReadAt: ccReadState.has(ccTaskId) ? mockDateTime() : null };
@@ -473,7 +473,7 @@ export const workflowExtraHandlers = [
         status: task.status, actionAt: task.actionAt, decision: task.decision ?? null,
       } }];
     });
-    if (keyword) list = filterByKeyword(list, keyword, [(i) => i.title, (i) => i.definitionName], { caseInsensitive: true });
+    if (keyword) list = filterByKeyword(list, keyword, [(i) => i.title, (i) => i.serialNo, (i) => i.definitionName], { caseInsensitive: true });
     list.sort((a, b) => (b.myActionAt ?? '').localeCompare(a.myActionAt ?? '') || b.handledTask.id - a.handledTask.id);
     return ok(paginate(list));
   }),

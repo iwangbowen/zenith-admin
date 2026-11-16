@@ -451,18 +451,19 @@ export type WorkflowInstanceBatchActionResponse = z.infer<typeof workflowInstanc
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 
 export const workflowMyInstanceListQuery = paginationQuery.extend({
+  keyword: keywordQuery('申请标题 / 业务编号 / 流程名称'),
   status: queryEnum(WORKFLOW_INSTANCE_STATUS_FILTERS, { description: '实例状态', options: WORKFLOW_INSTANCE_STATUS_OPTIONS }),
   priority: queryEnum(WORKFLOW_INSTANCE_PRIORITIES, { description: '优先级', options: WORKFLOW_INSTANCE_PRIORITY_OPTIONS }),
   definitionId: idQuery(),
 });
 
 export const workflowPendingMineQuery = paginationQuery.extend({
-  keyword: keywordQuery(),
+  keyword: keywordQuery('申请标题 / 业务编号 / 流程名称'),
   definitionId: idQuery(),
 });
 
 export const workflowKeywordPageQuery = paginationQuery.extend({
-  keyword: keywordQuery(),
+  keyword: keywordQuery('申请标题 / 业务编号 / 流程名称'),
 });
 
 export const workflowInstanceMonitorQuery = paginationQuery.extend({

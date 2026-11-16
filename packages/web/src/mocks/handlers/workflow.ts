@@ -1752,6 +1752,7 @@ export const workflowHandlers = [
     let list = mockWorkflowInstances.filter(i => i.initiatorId === 1);
     if (query.status) list = list.filter(i => i.status === query.status);
     if (query.definitionId) list = list.filter(i => i.definitionId === query.definitionId);
+    if (query.keyword) list = filterByKeyword(list, query.keyword, [(i) => i.title, (i) => i.serialNo, (i) => i.definitionName]);
     list = [...list].sort((a, b) => b.id - a.id);
 
     const page = paginate(list);
@@ -1833,7 +1834,7 @@ export const workflowHandlers = [
       return [{ ...toInstanceListItem(inst), pendingTaskId: taskId, pendingSignaturePolicy: signaturePolicy, requiresIndividual, ...sla, summary }];
     });
 
-    if (keyword) list = filterByKeyword(list, keyword, [(i) => i.title]);
+    if (keyword) list = filterByKeyword(list, keyword, [(i) => i.title, (i) => i.serialNo, (i) => i.definitionName]);
     if (definitionId !== null) list = list.filter(i => i.definitionId === definitionId);
 
     return ok(paginate(list));

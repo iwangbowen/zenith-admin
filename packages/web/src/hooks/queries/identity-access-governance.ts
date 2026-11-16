@@ -15,6 +15,7 @@ export type AccessReviewItemListQuery = NonNullable<QueryOf<typeof accessGoverna
 export type PermissionPolicyListQuery = NonNullable<QueryOf<typeof accessGovernanceContract.policyList>>;
 
 export const identityAccessGovernanceKeys = {
+  workflowResults: contractKey(accessGovernanceContract.workflowResult),
   workflowOptions: contractKey(accessGovernanceContract.workflowOptions),
   all: ['identity-access-governance'] as const,
   myRequests: contractKey(accessGovernanceContract.myRequests),
@@ -30,6 +31,13 @@ export const identityAccessGovernanceKeys = {
   grantDetail: (id: number | null | undefined) => contractKey(accessGovernanceContract.grantDetail, { params: { id: id ?? 0 } }),
   userOverview: (id: number | null | undefined) => contractKey(accessGovernanceContract.userOverview, { params: { id: id ?? 0 } }),
 };
+
+export function useAccessWorkflowResult(instanceId: number | null | undefined) {
+  return useApiQuery(accessGovernanceContract.workflowResult, { params: { id: instanceId ?? 0 } }, {
+    enabled: instanceId != null,
+    refetchInterval: state => state.state.data && ['pending', 'running'].includes(state.state.data.request.provisionStatus) ? 3000 : 30_000,
+  });
+}
 
 export function useAccessWorkflowOptions(enabled = true) {
   return useApiQuery(accessGovernanceContract.workflowOptions, undefined, { enabled, staleTime: 0, refetchOnMount: 'always' });
@@ -75,10 +83,12 @@ export function useAccessUserOverview(id: number | null | undefined, enabled = t
 }
 
 export function invalidateAccessRequests(qc: QueryClient): void {
+  void qc.invalidateQueries({ queryKey: identityAccessGovernanceKeys.workflowResults });
   for (const queryKey of [identityAccessGovernanceKeys.requests, identityAccessGovernanceKeys.myRequests, contractKey(accessGovernanceContract.requestDetail)]) void qc.invalidateQueries({ queryKey });
 }
 
 function invalidateAccessGrants(qc: QueryClient, userId: number): void {
+  void qc.invalidateQueries({ queryKey: identityAccessGovernanceKeys.workflowResults });
   for (const queryKey of [identityAccessGovernanceKeys.grants, identityAccessGovernanceKeys.myGrants, contractKey(accessGovernanceContract.grantDetail), identityAccessGovernanceKeys.userOverview(userId), userKeys.effectivePermissions(userId), userKeys.dataPermission(userId)]) void qc.invalidateQueries({ queryKey });
   invalidateCurrentUserAccess(qc);
 }

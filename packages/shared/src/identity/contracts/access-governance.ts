@@ -102,6 +102,13 @@ export const accessGrantSchema = z.object({
 
 export type AccessGrant = z.infer<typeof accessGrantSchema>;
 
+/** 实例提交内容与当前授权账本分离；审批通过不代表发放成功。 */
+export const accessWorkflowResultSchema = z.object({
+  request: accessRequestSchema,
+  grant: accessGrantSchema.nullable(),
+}).meta({ id: 'IdentityAccessWorkflowResult' });
+export type AccessWorkflowResult = z.infer<typeof accessWorkflowResultSchema>;
+
 export const accessReviewCampaignSchema = z.object({
   id: z.int(),
   tenantId: z.int().nullable().optional(),
@@ -190,6 +197,7 @@ const reviewListQuery = paginationQuery.extend({
 });
 
 export const accessGovernanceContract = defineContract('/api/access-governance', {
+  workflowResult: op.get('/workflow/{id}/result', { access: 'authenticated', params: idParam, response: accessWorkflowResultSchema, summary: '按流程参与关系查看权限申请与实时授权结果' }),
   workflowOptions: op.get('/workflow-options', { access: 'authenticated', response: accessWorkflowOptionsSchema, summary: '权限申请工作流选项' }),
   workflowPreview: op.post('/workflow-preview', { access: 'authenticated', body: accessWorkflowPreviewInputSchema, response: accessWorkflowPreviewSchema, summary: '评估权限申请及实际审批计划' }),
   requestList: op.get('/requests', { access: { permission: 'system:access-governance:view' }, query: requestListQuery, response: paginated(accessRequestSchema), summary: '权限申请列表' }),
