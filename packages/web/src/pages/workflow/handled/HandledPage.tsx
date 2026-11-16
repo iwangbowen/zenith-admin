@@ -59,7 +59,7 @@ export default function HandledPage() {
       render: (_value, record) => <WorkflowHandledTaskTag task={record.handledTask} />,
     },
     dateTimeColumn('处理时间', 'myActionAt'),
-    workflowInstanceStatusColumn<WorkflowHandledInstanceItem>({ title: '流程状态' }),
+    workflowInstanceStatusColumn<WorkflowHandledInstanceItem>(),
     createOperationColumn<WorkflowHandledInstanceItem>({
       width: 100,
       desktopInlineKeys: ['detail'],
