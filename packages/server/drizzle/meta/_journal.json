@@ -29,6 +29,13 @@
       "when": 1794894791885,
       "tag": "0003_white_zuras",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794902058607,
+      "tag": "0004_silent_ser_duncan",
+      "breakpoints": true
     }
   ]
 }

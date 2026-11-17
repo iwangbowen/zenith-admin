@@ -18,6 +18,16 @@
       ]
     }
   },
+  "services/workflow/instances/cc-urge.ts": {
+    "purpose": "Urge records snapshot the notified assignee and history falls back to the task assignee; identity writes are forbidden.",
+    "tables": {
+      "users": [
+        "id",
+        "nickname",
+        "username"
+      ]
+    }
+  },
   "services/workflow/instances/diagnostics.ts": {
     "purpose": "Read-only workflow lists and diagnostics join actor labels.",
     "tables": {

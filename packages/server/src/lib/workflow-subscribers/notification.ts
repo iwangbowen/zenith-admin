@@ -105,7 +105,7 @@ export function registerNotificationWorkflowSubscriber(): void {
 
   registerWorkflowEventConsumer('workflow.notification', ['task.urged'], async (tx, event, fact) => {
     const task = event.task;
-    if (!task.assigneeId) return;
+    if (!task.assigneeId || event.notify === false) return;
 
       const { label } = loadNotifyContext(fact);
       await notifyWithin(tx, 'workflow.task.urged', {

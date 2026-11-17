@@ -65,6 +65,7 @@ import { currentMockSession } from '@/mocks/utils/auth';
 const batchActionCache = new Map<string, { data: WorkflowBatchActionResponse; message: string }>();
 
 const mockInstanceMigrations: WorkflowInstanceMigration[] = [];
+let batchUrgeIdSeq = 1;
 
 // ── 内存态数据 ──
 const mockComments: WorkflowComment[] = [];
@@ -492,12 +493,35 @@ export const workflowExtraHandlers = [
     const succeeded = results.filter((r) => r.success).length;
     return ok({ succeeded, failed: results.length - succeeded, results }, `成功 ${succeeded} 条，失败 ${results.length - succeeded} 条`);
   }),
-  mock(workflowInstanceContract.batchUrge, ({ body, ok }) => {
+  mock(workflowInstanceContract.batchUrge, ({ body, ok, request }) => {
+    const sessionUser = currentMockSession(request)?.user;
     const results = body.instanceIds.map((instanceId) => {
       const inst = mockWorkflowInstances.find((i) => i.id === instanceId);
-      if (!inst) return { instanceId, success: false, message: '流程不存在' };
-      if (inst.status !== 'running') return { instanceId, success: false, message: '流程已结束，无需催办' };
-      return { instanceId, success: true, message: '已催办 1 人' };
+      if (!inst) return { instanceId, instanceTitle: null, success: false, message: '流程不存在', urged: [], skipped: [] };
+      if (inst.status !== 'running') return { instanceId, instanceTitle: inst.title, success: false, message: '流程已结束，无需催办', urged: [], skipped: [] };
+      const pendings = mockWorkflowTasks.filter((task) => task.instanceId === instanceId && task.status === 'pending');
+      const urged = pendings.map((task) => {
+        const assignee = mockUsers.find((user) => user.id === task.assigneeId);
+        return {
+          id: batchUrgeIdSeq++,
+          taskId: task.id,
+          instanceId,
+          urgerId: sessionUser?.id ?? 1,
+          urgerName: sessionUser?.username ?? 'admin',
+          assigneeId: task.assigneeId ?? null,
+          assigneeName: task.assigneeName ?? assignee?.nickname ?? null,
+          nodeKey: task.nodeKey,
+          nodeName: task.nodeName,
+          message: body.message?.trim() || null,
+          createdAt: mockDateTime(),
+        };
+      });
+      const people = new Set(urged.map((row) => row.assigneeId).filter((id): id is number => id != null)).size;
+      const message = urged.length === 0 ? '没有待办任务可催办' : `已催办 ${people} 人（${urged.length} 个待办）`;
+      return {
+        instanceId, instanceTitle: inst.title, success: urged.length > 0,
+        message, urged, skipped: [],
+      };
     });
     const succeeded = results.filter((r) => r.success).length;
     return ok({ succeeded, failed: results.length - succeeded, results }, `成功 ${succeeded} 条，失败 ${results.length - succeeded} 条`);

@@ -376,8 +376,9 @@ function TaskDetailContent() {
   const urge = async () => {
     if (!detail) return;
     try {
-      await urgeMutation.mutateAsync({ id: detail.id });
-      Toast.success('已发送催办提醒');
+      const result = await urgeMutation.mutateAsync({ id: detail.id });
+      const names = result.urged.map((row) => row.assigneeName ?? '处理人').join('、');
+      Toast.success(names ? `已催办：${names}` : result.message);
     } catch { /* request 层已 Toast */ }
   };
 

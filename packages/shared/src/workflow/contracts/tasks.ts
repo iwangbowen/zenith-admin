@@ -19,7 +19,7 @@ import {
   urgeWorkflowTaskSchema,
   workflowHandoverSchema,
 } from '../validation';
-import { workflowInstanceSchema, workflowTaskConsultSchema, workflowTaskSchema, workflowTaskUrgeSchema } from './instances';
+import { workflowInstanceSchema, workflowTaskConsultSchema, workflowTaskSchema, workflowTaskUrgeSchema, workflowUrgeResultSchema } from './instances';
 import { workflowSignGroupSchema } from './approval-state';
 
 export const workflowAddSignResultSchema = z.object({ group: workflowSignGroupSchema, created: z.array(workflowTaskSchema), instance: workflowInstanceSchema }).meta({ id: 'WorkflowAddSignResult' });
@@ -185,6 +185,6 @@ export const workflowTaskContract = defineContract('/api/workflows', {
   addSign: op.post('/tasks/{taskId}/add-sign', { access: { permission: 'workflow:task:handle' }, audit: { description: '创建补充加签组', recordResponseBody: false }, params: workflowTaskIdParam, body: addSignWorkflowTaskSchema, response: workflowAddSignResultSchema, summary: '创建补充加签组' }),
   reduceSign: op.post('/sign-groups/{groupId}/reduce', { access: { permission: ['workflow:task:handle', 'workflow:instance:cancel'] }, audit: { description: '移除未办加签席位', recordResponseBody: false }, params: workflowSignGroupIdParam, body: reduceSignWorkflowTaskSchema, response: workflowReduceSignResultSchema, summary: '组级减签' }),
   returnTask: op.post('/tasks/{taskId}/return', { access: { permission: 'workflow:task:handle' }, audit: { description: '退回任务', recordResponseBody: false }, params: workflowTaskIdParam, body: returnWorkflowTaskSchema, response: workflowInstanceSchema, summary: '退回' }),
-  urgeTask: op.post('/tasks/{taskId}/urge', { access: { permission: 'workflow:instance:create' }, audit: '催办任务', params: workflowTaskIdParam, body: urgeWorkflowTaskSchema, response: workflowTaskUrgeSchema, summary: '催办' }),
+  urgeTask: op.post('/tasks/{taskId}/urge', { access: { permission: 'workflow:instance:create' }, audit: '催办任务', params: workflowTaskIdParam, body: urgeWorkflowTaskSchema, response: workflowUrgeResultSchema, summary: '催办' }),
   taskUrges: op.get('/tasks/{taskId}/urges', { access: { permission: 'workflow:instance:list' }, params: workflowTaskIdParam, response: z.array(workflowTaskUrgeSchema), summary: '查询任务催办历史' }),
 }, { auditModule: '工作流管理', tags: ['WorkflowInstances'] });

@@ -40,8 +40,9 @@ export default function WorkflowHealthPage() {
 
   // 与任务监控同一入口：非 0 code（如催办限频）由 api() 抛错走全局提示
   const urgeMutation = useApiMutation(workflowTaskContract.urgeTask, {
-    onSuccess: () => {
-      Toast.success('已催办');
+    onSuccess: (result) => {
+      const names = result.urged.map((row) => row.assigneeName ?? '处理人').join('、');
+      Toast.success(names ? `已催办：${names}` : result.message);
     },
   });
 

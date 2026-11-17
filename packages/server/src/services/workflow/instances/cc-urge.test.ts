@@ -17,6 +17,10 @@ const harness = vi.hoisted(() => ({
 vi.mock('../../../db', () => ({ db: harness.db }));
 vi.mock('../../../lib/context', () => ({ currentUser: () => ({ userId: 1, username: '发起人', roles: [] }) }));
 vi.mock('./mapping', () => ({ mapTask: (row: unknown) => row }));
+vi.mock('../../../lib/user-nicknames', () => ({
+  resolveUserNames: async (ids: Iterable<number | null | undefined>) =>
+    new Map([...ids].filter((id): id is number => typeof id === 'number').map((id) => [id, `user-${id}`])),
+}));
 vi.mock('../../../lib/workflow-jobs/lease', () => ({
   workflowTransaction: (fn: (tx: DbTransaction) => Promise<unknown>) => harness.transaction(fn),
 }));
@@ -76,7 +80,7 @@ function executor(state: () => State): DbTransaction {
 beforeEach(() => {
   harness.instance = { id: 10, definitionId: 3, initiatorId: 1, status: 'running', tenantId: 7,
     definitionSnapshot: { flowData: { nodes: [{ data: { key: 'cc', type: 'ccNode', label: '知会' } }] } } };
-  committed = { tasks: [{ id: 20, instanceId: 10, assigneeId: 2, status: 'pending', nodeType: 'approve' }], urges: [], events: [], nextId: 30 };
+  committed = { tasks: [{ id: 20, instanceId: 10, assigneeId: 2, status: 'pending', nodeType: 'approve', nodeKey: 'review', nodeName: '复核' }], urges: [], events: [], nextId: 30 };
   harness.failEventAt = 0; harness.eventCalls = 0; harness.working.clear();
   Object.assign(harness.db, executor(() => committed));
   let previous: Promise<unknown> = Promise.resolve();
@@ -121,7 +125,25 @@ describe('CC and urge transaction handoff', () => {
     harness.failEventAt = 0;
     await urgeTask(20, '请处理');
     expect(committed.urges).toHaveLength(1);
-    expect(committed.events[0]).toMatchObject({ type: 'task.urged', meta: { tenantId: 7, comment: '请处理' } });
+    expect(committed.urges[0]).toMatchObject({
+      assigneeId: 2, assigneeName: 'user-2', nodeKey: 'review', nodeName: '复核',
+    });
+    expect(committed.events[0]).toMatchObject({ type: 'task.urged', meta: { tenantId: 7, comment: '请处理', notify: true } });
+  });
+
+  it('honors assignees already notified by an earlier batch item', async () => {
+    await urgeInstance(10, '请处理', new Set([2]));
+    expect(committed.urges).toHaveLength(1);
+    expect(committed.events[0].meta.notify).toBe(false);
+  });
+
+  it('same assignee on multiple tasks keeps per-task rows but only one notifying event', async () => {
+    committed.tasks.push({ id: 21, instanceId: 10, assigneeId: 2, status: 'pending', nodeType: 'approve', nodeKey: 'review2', nodeName: '复核2' });
+    const result = await urgeInstance(10);
+    expect(result.urged).toHaveLength(2);
+    expect(committed.urges).toHaveLength(2);
+    expect(committed.events).toHaveLength(2);
+    expect(committed.events.filter((event) => event.meta.notify !== false)).toHaveLength(1);
   });
 
   it('single and bulk urges share the cooldown transaction and cannot both notify', async () => {

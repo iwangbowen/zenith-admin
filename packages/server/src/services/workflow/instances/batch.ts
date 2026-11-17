@@ -3,7 +3,7 @@ import type { SignatureInput } from '@zenith/shared/core';
 import { eq, and, inArray } from 'drizzle-orm';
 import { db } from '../../../db';
 import { workflowInstances, workflowTasks } from '../../../db/schema';
-import type { WorkflowFlowData, WorkflowBatchActionResult } from '@zenith/shared/workflow';
+import type { WorkflowFlowData, WorkflowBatchActionResult, WorkflowUrgeBatchResult } from '@zenith/shared/workflow';
 import { findNextApproverSelectNodes } from '@zenith/shared/workflow';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../../lib/context';
@@ -149,14 +149,24 @@ export async function batchWithdrawInstances(instanceIds: number[], _comment?: s
   return results;
 }
 
-export async function batchUrgeInstances(instanceIds: number[], message?: string): Promise<import('@zenith/shared').WorkflowInstanceBatchActionResult[]> {
-  const results: import('@zenith/shared').WorkflowInstanceBatchActionResult[] = [];
+export async function batchUrgeInstances(instanceIds: number[], message?: string): Promise<WorkflowUrgeBatchResult[]> {
+  const results: WorkflowUrgeBatchResult[] = [];
+  // 整批同一人只发一次通知；仅在一批成功后记账，失败实例不影响后续实例通知
+  const notifySeen = new Set<number>();
   for (const instanceId of instanceIds) {
     try {
-      const r = await urgeInstance(instanceId, message);
-      results.push({ instanceId, success: true, message: r.message });
+      const r = await urgeInstance(instanceId, message, notifySeen);
+      for (const row of r.urged) if (row.assigneeId != null) notifySeen.add(row.assigneeId);
+      results.push({ ...r, success: true });
     } catch (err) {
-      results.push({ instanceId, success: false, message: err instanceof HTTPException ? err.message : '催办失败' });
+      results.push({
+        instanceId,
+        instanceTitle: null,
+        success: false,
+        message: err instanceof HTTPException ? err.message : '催办失败',
+        urged: [],
+        skipped: [],
+      });
     }
   }
   return results;

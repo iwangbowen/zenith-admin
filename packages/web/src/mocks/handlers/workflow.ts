@@ -44,6 +44,7 @@ import type {
   WorkflowSimulationResult,
   WorkflowTask,
   WorkflowTaskUrge,
+  WorkflowUrgeSkipped,
 } from '@zenith/shared/workflow';
 import {
   buildWorkflowEngineIssues,
@@ -2661,11 +2662,16 @@ export const workflowHandlers = [
       instanceId: inst.id,
       urgerId: 1,
       urgerName: 'admin',
+      assigneeId: task.assigneeId ?? null,
+      assigneeName: task.assigneeName ?? null,
+      nodeKey: task.nodeKey,
+      nodeName: task.nodeName,
       message: body.message?.trim() || null,
       createdAt: mockDateTime(),
     };
     mockWorkflowUrges.push(row);
-    return ok(row, '已催办');
+    const message = '已催办 1 人（1 个待办）';
+    return ok({ instanceId: inst.id, instanceTitle: inst.title, urged: [row], skipped: [], message }, message);
   }),
 
   // 催办：单任务历史
@@ -2691,11 +2697,21 @@ export const workflowHandlers = [
     const now = mockDateTime();
     const nowMs = Date.now();
     const created: WorkflowTaskUrge[] = [];
-    let skipped = 0;
+    const skipped: WorkflowUrgeSkipped[] = [];
     pendings.forEach((task) => {
+      if (task.assigneeId == null) {
+        skipped.push({
+          taskId: task.id, assigneeId: null, assigneeName: null,
+          nodeKey: task.nodeKey, nodeName: task.nodeName, reason: 'noAssignee',
+        });
+        return;
+      }
       const last = mockWorkflowUrges.filter(u => u.taskId === task.id).sort((a, b) => b.id - a.id)[0];
       if (last && nowMs - new Date(last.createdAt).getTime() < URGE_MIN_INTERVAL_MS) {
-        skipped += 1;
+        skipped.push({
+          taskId: task.id, assigneeId: task.assigneeId, assigneeName: task.assigneeName ?? null,
+          nodeKey: task.nodeKey, nodeName: task.nodeName, reason: 'cooldown',
+        });
         return;
       }
       const row: WorkflowTaskUrge = {
@@ -2704,16 +2720,21 @@ export const workflowHandlers = [
         instanceId: instId,
         urgerId: 1,
         urgerName: 'admin',
+        assigneeId: task.assigneeId,
+        assigneeName: task.assigneeName ?? null,
+        nodeKey: task.nodeKey,
+        nodeName: task.nodeName,
         message: body.message?.trim() || null,
         createdAt: now,
       };
       mockWorkflowUrges.push(row);
       created.push(row);
     });
-    const msg = skipped > 0
-      ? `已催办 ${created.length} 人，${skipped} 人催办过于频繁已跳过`
-      : `已催办 ${created.length} 人`;
-    return ok(created, msg);
+    const people = new Set(created.map((row) => row.assigneeId).filter((id): id is number => id != null)).size;
+    const msg = skipped.length > 0
+      ? `已催办 ${people} 人（${created.length} 个待办），${skipped.length} 个待办已跳过`
+      : `已催办 ${people} 人（${created.length} 个待办）`;
+    return ok({ instanceId: inst.id, instanceTitle: inst.title, urged: created, skipped, message: msg }, msg);
   }),
 
   // 动态补加抄送

@@ -30,7 +30,8 @@ export const urgeRoute = defineContractRoute(workflowTaskContract.urgeTask, {
   handler: async (c) => {
     const { taskId } = c.req.valid('param');
     const { message } = c.req.valid('json');
-    return c.json(okBody(await urgeTask(taskId, message), '已催办'), 200);
+    const r = await urgeTask(taskId, message);
+    return c.json(okBody(r, r.message), 200);
   },
 });
 
@@ -47,7 +48,7 @@ export const urgeInstanceRoute = defineContractRoute(workflowInstanceContract.ur
     const { id } = c.req.valid('param');
     const { message } = c.req.valid('json');
     const r = await urgeInstance(id, message);
-    return c.json(okBody(r.list, r.message), 200);
+    return c.json(okBody(r, r.message), 200);
   },
 });
 

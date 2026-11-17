@@ -952,6 +952,8 @@ export interface WorkflowTaskEventPayload extends WorkflowEventBase {
   type: 'task.created' | 'task.assigned' | 'task.approved' | 'task.rejected' | 'task.skipped' | 'task.transferred' | 'task.addSigned' | 'task.reduceSigned' | 'task.urged';
   task: WorkflowTask;
   comment?: string | null;
+  /** false = 同一催办批次中该处理人已有代表事件，仅保留事件/审计，不再重复发通知 */
+  notify?: boolean;
 }
 
 export type WorkflowEvent =

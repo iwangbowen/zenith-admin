@@ -656,6 +656,11 @@ export const workflowTaskUrges = pgTable('workflow_task_urges', {
   instanceId: integer().notNull().references(() => workflowInstances.id, { onDelete: 'cascade' }),
   urgerId: integer().references(() => users.id, { onDelete: 'set null' }),
   urgerName: varchar({ length: 64 }),
+  /** 被催办人快照：转办 / 改派后仍保留当时实际通知对象 */
+  assigneeId: integer().references(() => users.id, { onDelete: 'set null' }),
+  assigneeName: varchar({ length: 64 }),
+  nodeKey: varchar({ length: 64 }),
+  nodeName: varchar({ length: 64 }),
   message: varchar({ length: 256 }),
   createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [index('workflow_task_urges_task_idx').on(t.taskId), index('workflow_task_urges_instance_idx').on(t.instanceId)]);

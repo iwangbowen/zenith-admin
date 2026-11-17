@@ -77,8 +77,9 @@ export default function WorkflowTasksMonitorView({ onOpenInstance }: Props) {
 
   // 非 0 code（如 429 催办限频）由 api() 抛错走全局错误提示，避免同时弹「已催办」
   const urgeMutation = useApiMutation(workflowTaskContract.urgeTask, {
-    onSuccess: () => {
-      Toast.success('已催办');
+    onSuccess: (result) => {
+      const names = result.urged.map((row) => row.assigneeName ?? '处理人').join('、');
+      Toast.success(names ? `已催办：${names}` : result.message);
       void queryClient.invalidateQueries({ queryKey: workflowMonitorKeys.taskMonitorLists });
     },
   });

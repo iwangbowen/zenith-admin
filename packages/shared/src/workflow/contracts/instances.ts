@@ -92,13 +92,56 @@ export const workflowTaskUrgeSchema = z.object({
   id: z.int(),
   taskId: z.int(),
   instanceId: z.int(),
+  /** 催办人 */
   urgerId: z.int().nullable(),
   urgerName: z.string().nullable(),
+  /** 被催办人快照：转办 / 改派后仍保留当时实际通知对象 */
+  assigneeId: z.int().nullable(),
+  assigneeName: z.string().nullable(),
+  nodeKey: z.string().nullable(),
+  nodeName: z.string().nullable(),
   message: z.string().nullable(),
   createdAt: z.string(),
 }).meta({ id: 'WorkflowTaskUrge' });
 
 export type WorkflowTaskUrge = z.infer<typeof workflowTaskUrgeSchema>;
+
+/** 催办被跳过的待办及原因 */
+export const workflowUrgeSkippedSchema = z.object({
+  taskId: z.int(),
+  assigneeId: z.int().nullable(),
+  assigneeName: z.string().nullable(),
+  nodeKey: z.string().nullable(),
+  nodeName: z.string().nullable(),
+  reason: z.enum(['cooldown', 'notPending', 'noAssignee']),
+}).meta({ id: 'WorkflowUrgeSkipped' });
+
+export type WorkflowUrgeSkipped = z.infer<typeof workflowUrgeSkippedSchema>;
+
+/** 单次催办结果：按任务保留明细，按人聚合展示由前端完成 */
+export const workflowUrgeResultSchema = z.object({
+  instanceId: z.int(),
+  instanceTitle: z.string().nullable(),
+  urged: z.array(workflowTaskUrgeSchema),
+  skipped: z.array(workflowUrgeSkippedSchema),
+  message: z.string(),
+}).meta({ id: 'WorkflowUrgeResult' });
+
+export type WorkflowUrgeResult = z.infer<typeof workflowUrgeResultSchema>;
+
+export const workflowUrgeBatchResultSchema = workflowUrgeResultSchema.extend({
+  success: z.boolean(),
+}).meta({ id: 'WorkflowUrgeBatchResult' });
+
+export type WorkflowUrgeBatchResult = z.infer<typeof workflowUrgeBatchResultSchema>;
+
+export const workflowUrgeBatchResponseSchema = z.object({
+  succeeded: z.int(),
+  failed: z.int(),
+  results: z.array(workflowUrgeBatchResultSchema),
+}).meta({ id: 'WorkflowUrgeBatchResponse' });
+
+export type WorkflowUrgeBatchResponse = z.infer<typeof workflowUrgeBatchResponseSchema>;
 
 /** 流程评论 / 沟通时间线条目 */
 export const workflowCommentSchema = z.object({
@@ -542,7 +585,7 @@ export const workflowInstanceContract = defineContract('/api/workflows', {
   analytics: op.get('/instances/analytics', { access: { permission: 'workflow:instance:monitor' }, query: workflowAnalyticsQuery, response: workflowAnalyticsSchema, summary: '流程数据分析' }),
   overdue: op.get('/instances/overdue', { access: { permission: 'workflow:instance:monitor' }, query: workflowOverdueQuery, response: paginated(workflowOverdueTaskSchema), summary: '超时待办预警列表' }),
   batchWithdraw: op.post('/instances/batch-withdraw', { access: { permission: 'workflow:instance:create' }, audit: { description: '批量撤回流程', module: '工作流管理' }, body: batchWithdrawWorkflowInstanceSchema, response: workflowInstanceBatchActionResponseSchema, summary: '批量撤回' }),
-  batchUrge: op.post('/instances/batch-urge', { access: { permission: 'workflow:instance:list' }, audit: { description: '批量催办流程', module: '工作流管理' }, body: batchUrgeWorkflowInstanceSchema, response: workflowInstanceBatchActionResponseSchema, summary: '批量催办' }),
+  batchUrge: op.post('/instances/batch-urge', { access: { permission: 'workflow:instance:list' }, audit: { description: '批量催办流程', module: '工作流管理' }, body: batchUrgeWorkflowInstanceSchema, response: workflowUrgeBatchResponseSchema, summary: '批量催办' }),
   ccRead: op.post('/instances/cc/{ccTaskId}/read', { access: { permission: 'workflow:instance:list' }, params: workflowCcTaskParam, summary: '标记抄送已读' }),
   detail: op.get('/instances/{id}', { access: { permission: ['workflow:instance:list', 'workflow:task:handle', 'workflow:instance:monitor'] }, params: idParam, response: workflowInstanceSchema, summary: '实例详情' }),
   print: op.get('/instances/{id}/print', { access: { permission: ['workflow:instance:list', 'workflow:task:handle', 'workflow:instance:monitor', 'workflow:instance:print'] }, audit: { description: '打印审批单', module: '工作流', recordBody: false, recordResponseBody: false }, params: idParam, query: workflowInstancePrintQuery, kind: 'file', summary: '审批单 PDF（预览 / 打印 / 下载同一份文件；有归档件时默认返回归档件）' }),
@@ -558,6 +601,6 @@ export const workflowInstanceContract = defineContract('/api/workflows', {
   cancel: op.post('/instances/{id}/cancel', { access: { permission: 'workflow:instance:cancel' }, audit: { description: '取消流程', module: '工作流管理', recordResponseBody: false }, params: idParam, response: workflowInstanceSchema, summary: '取消流程（管理员强制终止）' }),
   remove: op.delete('/instances/{id}', { access: { permission: 'workflow:instance:delete' }, audit: { description: '删除流程实例', module: '工作流管理' }, params: idParam, summary: '删除流程实例' }),
   urges: op.get('/instances/{id}/urges', { access: { permission: 'workflow:instance:list' }, params: idParam, response: z.array(workflowTaskUrgeSchema), summary: '查询实例催办历史' }),
-  urge: op.post('/instances/{id}/urge', { access: { permission: 'workflow:instance:create' }, audit: { description: '实例批量催办', module: '工作流管理' }, params: idParam, body: urgeWorkflowTaskSchema, response: z.array(workflowTaskUrgeSchema), summary: '实例批量催办' }),
+  urge: op.post('/instances/{id}/urge', { access: { permission: 'workflow:instance:create' }, audit: { description: '实例批量催办', module: '工作流管理' }, params: idParam, body: urgeWorkflowTaskSchema, response: workflowUrgeResultSchema, summary: '实例批量催办' }),
   addCc: op.post('/instances/{id}/cc/add', { access: { permission: 'workflow:instance:create' }, audit: { description: '动态补加抄送', module: '工作流管理', recordResponseBody: false }, params: idParam, body: addInstanceCcSchema, response: z.array(workflowTaskSchema), summary: '运行中动态补加抄送' }),
 }, { tags: ['WorkflowInstances'] });

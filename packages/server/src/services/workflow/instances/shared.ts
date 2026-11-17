@@ -108,7 +108,7 @@ export async function emitInstanceEvent(
 export function emitTaskEvent(
   type: 'task.created' | 'task.approved' | 'task.rejected' | 'task.skipped' | 'task.transferred' | 'task.assigned' | 'task.addSigned' | 'task.reduceSigned' | 'task.urged',
   task: WorkflowTaskDto,
-  meta: { definitionId: number; tenantId: number | null; actor?: { userId: number; name?: string | null }; comment?: string | null },
+  meta: { definitionId: number; tenantId: number | null; actor?: { userId: number; name?: string | null }; comment?: string | null; notify?: boolean },
   executor: DbTransaction,
 ): Promise<unknown> {
   const ev = {
@@ -119,6 +119,7 @@ export function emitTaskEvent(
     actor: meta.actor,
     task,
     comment: meta.comment,
+    notify: meta.notify,
   } as Parameters<typeof workflowEventBus.emitInTx>[0];
   return workflowEventBus.emitInTx(ev, executor);
 }

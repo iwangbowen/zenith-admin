@@ -16,7 +16,7 @@ import {
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ExternalLink, Megaphone, Plus, Undo2 } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { WORKFLOW_INSTANCE_PRIORITIES, WORKFLOW_INSTANCE_STATUSES, WORKFLOW_INSTANCE_STATUS_OPTIONS, workflowInstanceContract, type WorkflowDefinition, type WorkflowInstance } from '@zenith/shared/workflow';
+import { WORKFLOW_INSTANCE_PRIORITIES, WORKFLOW_INSTANCE_STATUSES, WORKFLOW_INSTANCE_STATUS_OPTIONS, workflowInstanceContract, type WorkflowDefinition, type WorkflowInstance, type WorkflowUrgeResult } from '@zenith/shared/workflow';
 import { buildWorkflowSummaryItems } from '@zenith/shared/workflow';
 import { enumValueOf } from '@zenith/shared/core';
 import SavedViewsBar from '@/components/workflow/SavedViewsBar';
@@ -25,6 +25,7 @@ import ExportButton from '@/components/ExportButton';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { AppModal } from '@/components/AppModal';
 import WorkflowInstanceDetailPanel from '@/components/workflow/WorkflowInstanceDetailPanel';
+import UrgeModal, { type UrgeTarget } from '@/components/workflow/UrgeModal';
 import WorkflowLaunchForm, { type WorkflowLaunchFormHandle } from '@/components/workflow/WorkflowLaunchForm';
 import WorkflowPriorityTag, {} from '@/components/workflow/WorkflowPriorityTag';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
@@ -51,6 +52,18 @@ import { confirmDanger } from '@/utils/confirm';
 import { workflowInstanceStatusColumn } from '@/components/workflow/WorkflowInstanceListColumns';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { useListPage } from '@/hooks/useListPage';
+
+function pendingUrgeTargets(instance: WorkflowInstance | null | undefined): UrgeTarget[] {
+  return (instance?.tasks ?? [])
+    .filter((task) => task.status === 'pending')
+    .map((task) => ({
+      taskId: task.id,
+      assigneeId: task.assigneeId ?? null,
+      assigneeName: task.assigneeName ?? null,
+      nodeName: task.nodeName ?? null,
+      instanceTitle: instance?.title ?? null,
+    }));
+}
 
 function InstanceDetailDrawer({
   instanceId,
@@ -97,14 +110,18 @@ function InstanceDetailDrawer({
 
   const [urgeVisible, setUrgeVisible] = useState(false);
   const [urgeMessage, setUrgeMessage] = useState('');
+  const [urgeResult, setUrgeResult] = useState<WorkflowUrgeResult | null>(null);
   const handleUrge = async () => {
     if (!viewId) return;
     try {
-      await urgeMutation.mutateAsync({ params: { id: viewId }, body: { message: urgeMessage || undefined } });
-      Toast.success('已催办');
-      setUrgeVisible(false);
-      setUrgeMessage('');
+      const result = await urgeMutation.mutateAsync({ params: { id: viewId }, body: { message: urgeMessage || undefined } });
+      setUrgeResult(result);
     } catch { /* request 层已提示 */ }
+  };
+  const closeUrgeModal = () => {
+    setUrgeVisible(false);
+    setUrgeMessage('');
+    setUrgeResult(null);
   };
 
   const ccNodeOptions = (definition?.flowData?.nodes ?? [])
@@ -155,7 +172,7 @@ function InstanceDetailDrawer({
       footer={
         data?.status === 'running' ? (
           <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
-            <Button onClick={() => { setUrgeMessage(''); setUrgeVisible(true); }}>催办</Button>
+            <Button onClick={() => { setUrgeMessage(''); setUrgeResult(null); setUrgeVisible(true); }}>催办</Button>
             {ccNodeOptions.length > 0 && (
               <Button onClick={() => openCcModal()}>添加抄送人</Button>
             )}
@@ -193,24 +210,16 @@ function InstanceDetailDrawer({
           />
         )}
       </div>
-      <AppModal
-        title="催办"
+      <UrgeModal
         visible={urgeVisible}
-        onCancel={() => setUrgeVisible(false)}
-        onOk={() => void handleUrge()}
+        targets={pendingUrgeTargets(data)}
+        message={urgeMessage}
+        onMessageChange={setUrgeMessage}
+        onSubmit={() => void handleUrge()}
+        onClose={closeUrgeModal}
         confirmLoading={urgeMutation.isPending}
-        okText="发送催办"
-      >
-        <Typography.Text type="tertiary" size="small">将对当前实例所有待办人发起催办（5 分钟内已被催办过的人员会被跳过）</Typography.Text>
-        <TextArea
-          value={urgeMessage}
-          onChange={setUrgeMessage}
-          placeholder="可选留言（最多 256 个字符）"
-          maxLength={256}
-          rows={3}
-          style={{ marginTop: 8 }}
-        />
-      </AppModal>
+        result={urgeResult}
+      />
       <AppModal
         title="添加抄送人"
         visible={ccVisible}
@@ -269,6 +278,7 @@ export default function MyApplicationsPage() {
   const [batchWithdrawComment, setBatchWithdrawComment] = useState('');
   const [batchUrgeVisible, setBatchUrgeVisible] = useState(false);
   const [batchUrgeMessage, setBatchUrgeMessage] = useState('');
+  const [batchUrgeResult, setBatchUrgeResult] = useState<WorkflowUrgeResult | null>(null);
   const { categories } = useWorkflowCategories();
   // draft editing state
   const [editingDraft, setEditingDraft] = useState<WorkflowInstance | null>(null);
@@ -455,16 +465,22 @@ export default function MyApplicationsPage() {
   // 单条催办：与详情面板内的催办共用同一契约操作，留言可选
   const [rowUrgeId, setRowUrgeId] = useState<number | null>(null);
   const [rowUrgeMessage, setRowUrgeMessage] = useState('');
+  const [rowUrgeResult, setRowUrgeResult] = useState<WorkflowUrgeResult | null>(null);
+  const rowDetailQuery = useWorkflowInstanceWithDefinition(rowUrgeId ?? 0, rowUrgeId !== null);
   const openRowUrge = (id: number) => {
     setRowUrgeId(id);
     setRowUrgeMessage('');
+    setRowUrgeResult(null);
+  };
+  const closeRowUrge = () => {
+    setRowUrgeId(null);
+    setRowUrgeMessage('');
+    setRowUrgeResult(null);
   };
   const handleRowUrge = async () => {
     if (!rowUrgeId) return;
-    await urgeMutation.mutateAsync({ params: { id: rowUrgeId }, body: { message: rowUrgeMessage.trim() || undefined } });
-    Toast.success('已催办');
-    setRowUrgeId(null);
-    setRowUrgeMessage('');
+    const result = await urgeMutation.mutateAsync({ params: { id: rowUrgeId }, body: { message: rowUrgeMessage.trim() || undefined } });
+    setRowUrgeResult(result);
   };
 
   const selectedRunningIds = selectedRowKeys.filter((id) => (data?.list ?? []).some((item) => item.id === id && item.status === 'running'));
@@ -502,7 +518,13 @@ export default function MyApplicationsPage() {
       return;
     }
     setBatchUrgeMessage('');
+    setBatchUrgeResult(null);
     setBatchUrgeVisible(true);
+  };
+  const closeBatchUrge = () => {
+    setBatchUrgeVisible(false);
+    setBatchUrgeMessage('');
+    setBatchUrgeResult(null);
   };
 
   const handleBatchUrge = async () => {
@@ -512,9 +534,16 @@ export default function MyApplicationsPage() {
       return;
     }
     const res = await batchUrgeMutation.mutateAsync({ body: { instanceIds, message: batchUrgeMessage.trim() || undefined } });
-    Toast.success(`成功 ${res.succeeded} 条，失败 ${res.failed} 条`);
-    setBatchUrgeVisible(false);
-    setBatchUrgeMessage('');
+    const urged = res.results.flatMap((item) => item.urged);
+    const skipped = res.results.flatMap((item) => item.skipped);
+    const people = new Set(urged.map((item) => item.assigneeId).filter((id): id is number => id != null)).size;
+    setBatchUrgeResult({
+      instanceId: 0,
+      instanceTitle: null,
+      urged,
+      skipped,
+      message: `成功 ${res.succeeded} 个实例，失败 ${res.failed} 个；已催办 ${people} 人（${urged.length} 个待办）${skipped.length > 0 ? `，${skipped.length} 个待办已跳过` : ''}`,
+    });
     clearSelection();
   };
 
@@ -811,43 +840,27 @@ export default function MyApplicationsPage() {
         />
       </AppModal>
 
-      <AppModal
-        title="催办"
+      <UrgeModal
         visible={rowUrgeId !== null}
-        onCancel={() => setRowUrgeId(null)}
-        onOk={() => void handleRowUrge()}
+        targets={pendingUrgeTargets(rowDetailQuery.data?.instance)}
+        message={rowUrgeMessage}
+        onMessageChange={setRowUrgeMessage}
+        onSubmit={() => void handleRowUrge()}
+        onClose={closeRowUrge}
         confirmLoading={urgeMutation.isPending}
-        okText="发送催办"
-      >
-        <Typography.Text type="tertiary" size="small">将对当前实例所有待办人发起催办（5 分钟内已被催办过的人员会被跳过）</Typography.Text>
-        <TextArea
-          value={rowUrgeMessage}
-          onChange={setRowUrgeMessage}
-          placeholder="可选留言（最多 256 个字符）"
-          maxLength={256}
-          rows={3}
-          style={{ marginTop: 8 }}
-        />
-      </AppModal>
+        result={rowUrgeResult}
+      />
 
-      <AppModal
+      <UrgeModal
         title="批量催办"
         visible={batchUrgeVisible}
-        onCancel={() => setBatchUrgeVisible(false)}
-        onOk={() => void handleBatchUrge()}
+        message={batchUrgeMessage}
+        onMessageChange={setBatchUrgeMessage}
+        onSubmit={() => void handleBatchUrge()}
+        onClose={closeBatchUrge}
         confirmLoading={batchUrgeMutation.isPending}
-        okText="发送催办"
-      >
-        <Typography.Text type="tertiary" size="small">将对选中的运行中申请发起催办（5 分钟内已被催办过的人员会被跳过）</Typography.Text>
-        <TextArea
-          value={batchUrgeMessage}
-          onChange={setBatchUrgeMessage}
-          placeholder="可选留言（最多 256 个字符）"
-          maxLength={256}
-          rows={3}
-          style={{ marginTop: 12 }}
-        />
-      </AppModal>
+        result={batchUrgeResult}
+      />
     </div>
   );
 }

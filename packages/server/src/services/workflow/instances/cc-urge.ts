@@ -3,14 +3,16 @@ import { uniquePositiveInts } from '@zenith/shared/core';
 import { formatDateTime } from '../../../lib/datetime';
 import { eq, and, desc, inArray } from 'drizzle-orm';
 import { db } from '../../../db';
-import { workflowTasks, workflowTaskUrges } from '../../../db/schema';
+import { users, workflowTasks, workflowTaskUrges } from '../../../db/schema';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../../lib/context';
 import { mapTask } from './mapping';
 import { emitTaskEvent, lockInstanceExpecting, requireVisibleInstance } from './shared';
 import { requireRow } from '../../../lib/db-assert';
 import { workflowTransaction } from '../../../lib/workflow-jobs/lease';
-import type { WorkflowTaskUrge } from '@zenith/shared/workflow';
+import { resolveUserNames } from '../../../lib/user-nicknames';
+import type { DbExecutor } from '../../../db/types';
+import type { WorkflowTaskUrge, WorkflowUrgeResult, WorkflowUrgeSkipped } from '@zenith/shared/workflow';
 
 /** T1-2 标记抄送已读：仅本人 ccNode 任务可标记 */
 export async function markCcRead(ccTaskId: number): Promise<void> {
@@ -78,38 +80,89 @@ export async function forwardInstance(instanceId: number, userIds: number[], not
 /** 同一任务两次催办的最小间隔（毫秒） */
 const URGE_MIN_INTERVAL_MS = 5 * 60 * 1000;
 
-function mapTaskUrge(row: typeof workflowTaskUrges.$inferSelect): WorkflowTaskUrge {
+interface UrgeCandidate {
+  task: typeof workflowTasks.$inferSelect;
+  assigneeId: number | null;
+  assigneeName: string | null;
+  nodeKey: string;
+  nodeName: string;
+}
+
+function mapTaskUrge(
+  row: typeof workflowTaskUrges.$inferSelect,
+  fallback?: Partial<Pick<WorkflowTaskUrge, 'assigneeId' | 'assigneeName' | 'nodeKey' | 'nodeName'>>,
+): WorkflowTaskUrge {
   return {
     id: row.id,
     taskId: row.taskId,
     instanceId: row.instanceId,
     urgerId: row.urgerId ?? null,
     urgerName: row.urgerName ?? null,
+    assigneeId: row.assigneeId ?? fallback?.assigneeId ?? null,
+    assigneeName: row.assigneeName ?? fallback?.assigneeName ?? null,
+    nodeKey: row.nodeKey ?? fallback?.nodeKey ?? null,
+    nodeName: row.nodeName ?? fallback?.nodeName ?? null,
     message: row.message ?? null,
     createdAt: formatDateTime(row.createdAt),
   };
 }
 
-/** 催办：仅发起人或管理员可催办 pending 任务；同任务 5 分钟内不可重复 */
-export async function urgeTask(taskId: number, message?: string) {
+function assertCanUrge(inst: { initiatorId: number }, user: { userId: number; roles?: string[] }) {
+  const isInitiator = inst.initiatorId === user.userId;
+  const isAdmin = (user.roles ?? []).some((r) => r === 'super_admin' || r === 'tenant_admin');
+  if (!isInitiator && !isAdmin) throw new HTTPException(403, { message: '仅发起人或管理员可催办' });
+}
+
+async function resolveUrgeCandidates(
+  tasks: Array<typeof workflowTasks.$inferSelect>,
+  executor: DbExecutor,
+): Promise<UrgeCandidate[]> {
+  const names = await resolveUserNames(tasks.map((task) => task.assigneeId), executor);
+  return tasks.map((task) => ({
+    task,
+    assigneeId: task.assigneeId ?? null,
+    assigneeName: task.assigneeId != null ? names.get(task.assigneeId) ?? null : null,
+    nodeKey: task.nodeKey,
+    nodeName: task.nodeName,
+  }));
+}
+
+function buildUrgeMessage(inserted: WorkflowTaskUrge[], skipped: WorkflowUrgeSkipped[]): string {
+  const people = new Set(inserted.map((row) => row.assigneeId).filter((id): id is number => id != null)).size;
+  const parts = [`已催办 ${people} 人（${inserted.length} 个待办）`];
+  if (skipped.length > 0) parts.push(`${skipped.length} 个待办已跳过`);
+  return parts.join('，');
+}
+
+function buildUrgeResult(
+  inst: { id: number; title: string },
+  inserted: WorkflowTaskUrge[],
+  skipped: WorkflowUrgeSkipped[],
+): WorkflowUrgeResult {
+  return {
+    instanceId: inst.id,
+    instanceTitle: inst.title,
+    urged: inserted,
+    skipped,
+    message: buildUrgeMessage(inserted, skipped),
+  };
+}
+
+/** 单任务催办：与实例级共用权限、锁、节流、快照和通知逻辑 */
+async function urgeSingleTask(taskId: number, message?: string): Promise<WorkflowUrgeResult> {
   const user = currentUser();
-  const [task] = await db.select().from(workflowTasks)
-    .where(eq(workflowTasks.id, taskId)).limit(1);
+  const [task] = await db.select().from(workflowTasks).where(eq(workflowTasks.id, taskId)).limit(1);
   requireRow(task, '任务不存在');
   if (task.status !== 'pending') throw new HTTPException(400, { message: '仅可催办未处理任务' });
   const inst = await requireVisibleInstance(task.instanceId, '任务不存在或无权操作');
   if (inst.status !== 'running') throw new HTTPException(400, { message: '流程已结束，无需催办' });
-
-  const isInitiator = inst.initiatorId === user.userId;
-  const isAdmin = (user.roles ?? []).some((r) => r === 'super_admin' || r === 'tenant_admin');
-  if (!isInitiator && !isAdmin) {
-    throw new HTTPException(403, { message: '仅发起人或管理员可催办' });
-  }
+  assertCanUrge(inst, user);
 
   return workflowTransaction(async (tx) => {
     await lockInstanceExpecting(tx, inst.id, 'running', '流程已结束，无需催办');
     const [freshTask] = await tx.select().from(workflowTasks).where(eq(workflowTasks.id, taskId)).for('update').limit(1);
     if (!freshTask || freshTask.status !== 'pending') throw new HTTPException(409, { message: '任务状态已变化，无法催办' });
+    if (freshTask.assigneeId == null) throw new HTTPException(400, { message: '任务没有处理人，无法催办' });
     const [last] = await tx.select({ createdAt: workflowTaskUrges.createdAt }).from(workflowTaskUrges)
       .where(eq(workflowTaskUrges.taskId, taskId))
       .orderBy(desc(workflowTaskUrges.createdAt)).limit(1);
@@ -121,57 +174,46 @@ export async function urgeTask(taskId: number, message?: string) {
       }
     }
 
+    const [candidate] = await resolveUrgeCandidates([freshTask], tx);
     const [row] = await tx.insert(workflowTaskUrges).values({
       taskId,
       instanceId: inst.id,
       urgerId: user.userId,
       urgerName: user.username ?? null,
+      assigneeId: candidate.assigneeId,
+      assigneeName: candidate.assigneeName,
+      nodeKey: candidate.nodeKey,
+      nodeName: candidate.nodeName,
       message: message?.trim() || null,
     }).returning();
 
     const actor = { userId: user.userId, name: user.username };
-    await emitTaskEvent('task.urged', mapTask(freshTask), {
+    await emitTaskEvent('task.urged', mapTask(freshTask, candidate.assigneeName), {
       definitionId: inst.definitionId,
       tenantId: inst.tenantId,
       actor,
       comment: row.message ?? undefined,
+      notify: true,
     }, tx);
-    return mapTaskUrge(row);
+    return buildUrgeResult(inst, [mapTaskUrge(row)], []);
   });
 }
 
-/** 查询某任务的催办历史 */
-export async function listTaskUrges(taskId: number) {
-  const rows = await db.select().from(workflowTaskUrges)
-    .where(eq(workflowTaskUrges.taskId, taskId))
-    .orderBy(desc(workflowTaskUrges.createdAt));
-  return rows.map(mapTaskUrge);
-}
-
-/** 查询某实例的全部催办历史 */
-export async function listInstanceUrges(instanceId: number) {
-  const rows = await db.select().from(workflowTaskUrges)
-    .where(eq(workflowTaskUrges.instanceId, instanceId))
-    .orderBy(desc(workflowTaskUrges.createdAt));
-  return rows.map(mapTaskUrge);
-}
-
-/** 实例级批量催办：对实例所有 pending 任务依次催办，节流命中的任务静默跳过 */
-export async function urgeInstance(instanceId: number, message?: string) {
+/** 实例级催办：对实例所有 pending 任务催办；同一人多个待办只发一次通知，但保留每任务明细 */
+async function urgeAllPending(instanceId: number, message?: string, notifySeen?: ReadonlySet<number>): Promise<WorkflowUrgeResult> {
   const user = currentUser();
   const inst = await requireVisibleInstance(instanceId, '流程不存在');
   if (inst.status !== 'running') throw new HTTPException(400, { message: '流程已结束，无需催办' });
-  const isInitiator = inst.initiatorId === user.userId;
-  const isAdmin = (user.roles ?? []).some((r) => r === 'super_admin' || r === 'tenant_admin');
-  if (!isInitiator && !isAdmin) throw new HTTPException(403, { message: '仅发起人或管理员可催办' });
+  assertCanUrge(inst, user);
 
   return workflowTransaction(async (tx) => {
     await lockInstanceExpecting(tx, instanceId, 'running', '流程已结束，无需催办');
     const pendings = await tx.select().from(workflowTasks)
-      .where(and(eq(workflowTasks.instanceId, instanceId), eq(workflowTasks.status, 'pending')));
+      .where(and(eq(workflowTasks.instanceId, instanceId), eq(workflowTasks.status, 'pending')))
+      .for('update');
     if (pendings.length === 0) throw new HTTPException(400, { message: '没有待办任务可催办' });
 
-    const created: WorkflowTaskUrge[] = [];
+    const candidates = await resolveUrgeCandidates(pendings, tx);
     // 一次查出每个任务的最近催办时间做节流判断，再批量插入，避免逐任务 2N 次往返
     const lastUrges = await tx.selectDistinctOn([workflowTaskUrges.taskId], {
       taskId: workflowTaskUrges.taskId,
@@ -181,40 +223,123 @@ export async function urgeInstance(instanceId: number, message?: string) {
       .orderBy(workflowTaskUrges.taskId, desc(workflowTaskUrges.createdAt));
     const lastByTask = new Map(lastUrges.map((r) => [r.taskId, r.createdAt]));
     const now = Date.now();
-    const eligible = pendings.filter((task) => {
-      const last = lastByTask.get(task.id);
-      return !(last && now - new Date(last).getTime() < URGE_MIN_INTERVAL_MS);
-    });
-    const skipped = pendings.length - eligible.length;
-    if (eligible.length > 0) {
-      const rows = await tx.insert(workflowTaskUrges).values(eligible.map((task) => ({
-        taskId: task.id,
-        instanceId,
-        urgerId: user.userId,
-        urgerName: user.username ?? null,
-        message: message?.trim() || null,
-      }))).returning();
-      const taskById = new Map(eligible.map((task) => [task.id, task]));
-      const actor = { userId: user.userId, name: user.username };
-      for (const row of rows) {
-        created.push(mapTaskUrge(row));
-        const task = taskById.get(row.taskId);
-        if (!task) continue;
-        await emitTaskEvent('task.urged', mapTask(task), {
-          definitionId: inst.definitionId,
-          tenantId: inst.tenantId,
-          actor,
-          comment: row.message ?? undefined,
-        }, tx);
+    const eligible: UrgeCandidate[] = [];
+    const skipped: WorkflowUrgeSkipped[] = [];
+    for (const candidate of candidates) {
+      if (candidate.assigneeId == null) {
+        skipped.push({
+          taskId: candidate.task.id, assigneeId: null, assigneeName: null,
+          nodeKey: candidate.nodeKey, nodeName: candidate.nodeName, reason: 'noAssignee',
+        });
+        continue;
       }
+      const last = lastByTask.get(candidate.task.id);
+      if (last && now - new Date(last).getTime() < URGE_MIN_INTERVAL_MS) {
+        skipped.push({
+          taskId: candidate.task.id, assigneeId: candidate.assigneeId, assigneeName: candidate.assigneeName,
+          nodeKey: candidate.nodeKey, nodeName: candidate.nodeName, reason: 'cooldown',
+        });
+        continue;
+      }
+      eligible.push(candidate);
     }
-    return {
-      list: created,
-      message: skipped > 0
-        ? `已催办 ${created.length} 人，${skipped} 人催办过于频繁已跳过`
-        : `已催办 ${created.length} 人`,
-    };
+
+    if (eligible.length === 0) return buildUrgeResult(inst, [], skipped);
+
+    const rows = await tx.insert(workflowTaskUrges).values(eligible.map((candidate) => ({
+      taskId: candidate.task.id,
+      instanceId,
+      urgerId: user.userId,
+      urgerName: user.username ?? null,
+      assigneeId: candidate.assigneeId,
+      assigneeName: candidate.assigneeName,
+      nodeKey: candidate.nodeKey,
+      nodeName: candidate.nodeName,
+      message: message?.trim() || null,
+    }))).returning();
+    const inserted = rows.map((row) => mapTaskUrge(row));
+    const taskById = new Map(eligible.map((candidate) => [candidate.task.id, candidate]));
+    // 同一人多个待办：保留每任务明细，但只发一次通知
+    const peopleCounts = new Map<number, number>();
+    for (const row of inserted) {
+      if (row.assigneeId != null) peopleCounts.set(row.assigneeId, (peopleCounts.get(row.assigneeId) ?? 0) + 1);
+    }
+    // 批量跨实例催办时，调用方传入已通知过的人，保证同一人整批只发一次通知
+    const notified = new Set<number>(notifySeen ?? []);
+    const actor = { userId: user.userId, name: user.username };
+    for (const row of inserted) {
+      const candidate = taskById.get(row.taskId);
+      if (!candidate) continue;
+      const notify = row.assigneeId == null || !notified.has(row.assigneeId);
+      if (row.assigneeId != null) notified.add(row.assigneeId);
+      const count = row.assigneeId != null ? peopleCounts.get(row.assigneeId) ?? 1 : 1;
+      const base = row.message?.trim();
+      const comment = count > 1 && notify
+        ? `${base ? `${base}；` : ''}同一实例共 ${count} 个待办被催办`
+        : base || undefined;
+      await emitTaskEvent('task.urged', mapTask(candidate.task, candidate.assigneeName), {
+        definitionId: inst.definitionId,
+        tenantId: inst.tenantId,
+        actor,
+        comment,
+        notify,
+      }, tx);
+    }
+    return buildUrgeResult(inst, inserted, skipped);
   });
+}
+
+/** 催办：单任务 / 实例下全部待办共用同一套权限、节流、快照与通知逻辑 */
+export async function urgeTask(taskId: number, message?: string): Promise<WorkflowUrgeResult> {
+  return urgeSingleTask(taskId, message);
+}
+
+export async function urgeInstance(instanceId: number, message?: string, notifySeen?: ReadonlySet<number>): Promise<WorkflowUrgeResult> {
+  return urgeAllPending(instanceId, message, notifySeen);
+}
+
+/** 查询某任务的催办历史（旧记录回退到任务当前处理人） */
+export async function listTaskUrges(taskId: number) {
+  const rows = await db.select({
+    urge: workflowTaskUrges,
+    taskAssigneeId: workflowTasks.assigneeId,
+    taskNodeKey: workflowTasks.nodeKey,
+    taskNodeName: workflowTasks.nodeName,
+    userName: users.nickname,
+    username: users.username,
+  }).from(workflowTaskUrges)
+    .leftJoin(workflowTasks, eq(workflowTaskUrges.taskId, workflowTasks.id))
+    .leftJoin(users, eq(users.id, workflowTasks.assigneeId))
+    .where(eq(workflowTaskUrges.taskId, taskId))
+    .orderBy(desc(workflowTaskUrges.createdAt));
+  return rows.map(({ urge, ...fallback }) => mapTaskUrge(urge, {
+    assigneeId: fallback.taskAssigneeId,
+    assigneeName: fallback.userName ?? fallback.username,
+    nodeKey: fallback.taskNodeKey,
+    nodeName: fallback.taskNodeName,
+  }));
+}
+
+/** 查询某实例的全部催办历史（旧记录回退到任务当前处理人） */
+export async function listInstanceUrges(instanceId: number) {
+  const rows = await db.select({
+    urge: workflowTaskUrges,
+    taskAssigneeId: workflowTasks.assigneeId,
+    taskNodeKey: workflowTasks.nodeKey,
+    taskNodeName: workflowTasks.nodeName,
+    userName: users.nickname,
+    username: users.username,
+  }).from(workflowTaskUrges)
+    .leftJoin(workflowTasks, eq(workflowTaskUrges.taskId, workflowTasks.id))
+    .leftJoin(users, eq(users.id, workflowTasks.assigneeId))
+    .where(eq(workflowTaskUrges.instanceId, instanceId))
+    .orderBy(desc(workflowTaskUrges.createdAt));
+  return rows.map(({ urge, ...fallback }) => mapTaskUrge(urge, {
+    assigneeId: fallback.taskAssigneeId,
+    assigneeName: fallback.userName ?? fallback.username,
+    nodeKey: fallback.taskNodeKey,
+    nodeName: fallback.taskNodeName,
+  }));
 }
 
 /** 动态补加抄送：运行中实例为指定 ccNode 节点补加抄送人（去重 + 校验节点类型） */
