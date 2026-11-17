@@ -2,7 +2,7 @@ import { FormPasswordInput } from '@/components/PasswordInput';
 import { EntityContextSheet } from '@/components/entity-relations/EntityRelationButton';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from 'react';
-import { Button, Select, Space, Form, Toast, Tag, Row, Col, Tree } from '@douyinfe/semi-ui';
+import { Button, Select, Space, Form, Toast, Tag, Row, Col, Tree, Tooltip, Highlight } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { ChevronsUpDown, ChevronsDownUp, Building2, KeyRound } from 'lucide-react';
 import type { CreateUserInput, User, Role, Department, Position, UserOnlineStatus } from '@zenith/shared/identity';
@@ -665,6 +665,16 @@ export default function UsersPage() {
       </MasterDetailLayout.Header>
       <Tree
         treeData={departmentTreeData}
+        labelEllipsis
+        renderLabel={(label, _node, searchWord) => (
+          <Tooltip content={label}>
+            <span className="users-dept-tree-label">
+              {typeof label === 'string' && searchWord ? (
+                <Highlight sourceString={label} searchWords={[searchWord]} highlightClassName="semi-tree-option-highlight" component="span" />
+              ) : label}
+            </span>
+          </Tooltip>
+        )}
         expandedKeys={deptTreeExpandedKeys}
         value={draftParams.departmentId === undefined ? undefined : String(draftParams.departmentId)}
         filterTreeNode

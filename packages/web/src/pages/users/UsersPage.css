@@ -1,8 +1,21 @@
 .users-dept-sidebar {
   flex: 1;
+  min-width: 0;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
+}
+
+.users-dept-sidebar .semi-tree-option-label,
+.users-dept-sidebar .semi-tree-option-label-text {
+  min-width: 0;
+}
+
+.users-dept-tree-label {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .users-dept-sidebar-title {
