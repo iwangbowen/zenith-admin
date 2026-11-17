@@ -578,7 +578,8 @@ export async function advanceAndMaterialize(
       const method = basis.find((row) => row.approveMethod)?.approveMethod ?? (basis.length > 0 ? 'and' : null);
       const ratio = method === 'ratio' ? basis.find((row) => row.approveRatio != null)?.approveRatio ?? 51 : null;
       const required = method === 'or' ? Math.min(1, basis.length) : method === 'ratio' ? Math.ceil(basis.length * ratio! / 100) : basis.length;
-      await exec.insert(workflowNodeActivations).values({ id: activationId, instanceId: ctx.instanceId, tokenId: tokenByNode.get(nodeKey) ?? null, nodeKey, nodeName: rows[0].nodeName, status: tokenByNode.has(nodeKey) ? 'active' : 'approved', approveMethod: method, approveRatio: ratio, baseTotal: basis.length, baseRequired: required, tenantId: ctx.tenantId ?? null });
+      const nodeConfig = ctx.flowData.nodes.find((node) => node.data.key === nodeKey)?.data;
+      await exec.insert(workflowNodeActivations).values({ id: activationId, instanceId: ctx.instanceId, tokenId: tokenByNode.get(nodeKey) ?? null, nodeKey, nodeName: rows[0].nodeName, status: tokenByNode.has(nodeKey) ? 'active' : 'approved', approveMethod: method, approveRatio: ratio, baseTotal: basis.length, baseRequired: required, includeInEfficiencyStats: nodeConfig?.includeInEfficiencyStats ?? true, tenantId: ctx.tenantId ?? null });
       for (const expandedRow of rows) {
         const { taskOrder, approveMethod: _method, approveRatio: _ratio, taskKind: specifiedKind, ...row } = expandedRow;
         const kind = specifiedKind ?? (row.nodeType === 'ccNode' ? 'cc' : row.nodeType === 'approve' || row.nodeType === 'handler' ? 'approval' : 'system');

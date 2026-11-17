@@ -133,7 +133,7 @@ export const workflowNodeConfigSchema = z.strictObject({
   isDefault: z.boolean().optional(),
   assigneeType: workflowAssigneeTypeSchema.optional(),
   approvalType: workflowApprovalTypeSchema.optional(),
-  excludeFromStats: z.boolean().optional(),
+  includeInEfficiencyStats: z.boolean().optional(),
   userIds: z.array(z.number().int()).nullable().optional(),
   roleIds: z.array(z.number().int()).nullable().optional(),
   deptIds: z.array(z.number().int()).nullable().optional(),

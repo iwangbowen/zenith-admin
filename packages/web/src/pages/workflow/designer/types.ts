@@ -143,7 +143,7 @@ export type DeduplicateStrategy =
 /** 审批人节点 Props */
 export interface ApproverNodeProps {
   approvalType?: ApprovalType;            // 审批类型（默认 manual）
-  excludeFromStats?: boolean;             // 不计入审批效率统计
+  includeInEfficiencyStats?: boolean;     // 是否计入审批效率统计（默认 true）
   assigneeType: AssigneeType;
   assigneeIds?: number[];                 // user 策略
   assigneeNames?: string[];

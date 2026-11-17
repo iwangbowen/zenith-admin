@@ -410,7 +410,7 @@ function configuredApproverPreview(definition: WorkflowDefinition, initiatorId: 
     return { nodeKey: data.key, nodeName: data.label, nodeType: data.type, approvers,
       status: planned?.status ?? 'excluded', reason: planned?.reason ?? '不在本次路径中',
       approverReason: data.approveMethod === 'random' ? '到达节点后随机分配，当前不预选' : selectionRequired ? '发起前预选审批人，实际经过时启用' : approvers.length ? '按当前人员配置解析' : '处理人将在到达节点时确定',
-      approveMethod: data.approveMethod ?? null, empty: approvers.length === 0,
+      approveMethod: data.approveMethod ?? null, approverState: approvers.length > 0 ? 'known' : 'unknown',
       ...(selectionRequired ? { selectionRequired: true, selectableApprovers: candidates.map((user) => ({ id: user.id, name: user.nickname ?? user.username })) } : {}),
     };
   });

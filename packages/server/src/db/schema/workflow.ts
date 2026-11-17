@@ -586,6 +586,8 @@ export const workflowNodeActivations = pgTable('workflow_node_activations', {
   approveRatio: integer(),
   baseTotal: integer().notNull(),
   baseRequired: integer().notNull(),
+  /** 是否计入审批效率统计（激活时冻结；不影响任务数 / 审计 / 工作量） */
+  includeInEfficiencyStats: boolean().notNull().default(true),
   settledAt: timestamptz(),
   tenantId: tenantIdColumn(),
   ...auditColumns(), ...timestampColumns(),

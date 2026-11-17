@@ -1,0 +1,1 @@
+ALTER TABLE "workflow_node_activations" ADD COLUMN "include_in_efficiency_stats" boolean DEFAULT true NOT NULL;

@@ -2,7 +2,7 @@ import { workflowInstanceContract } from '@zenith/shared/workflow';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { asc, eq, gte, desc, inArray, sql } from 'drizzle-orm';
 import { db } from '../../db';
-import { workflowInstances, workflowTasks, workflowDefinitions, workflowCategories, workflowJobs, users } from '../../db/schema';
+import { workflowInstances, workflowTasks, workflowDefinitions, workflowCategories, workflowJobs, users, workflowNodeActivations } from '../../db/schema';
 import { currentUser } from '../../lib/context';
 import { tenantCondition } from '../../lib/tenant';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
@@ -80,16 +80,17 @@ export async function getWorkflowAnalytics(query: { definitionId?: number } = {}
       definitionName: workflowDefinitions.name,
       nodeKey: workflowTasks.nodeKey,
       nodeName: workflowTasks.nodeName,
-      avgHandleSec: sql<number | null>`avg(extract(epoch from (${workflowTasks.actionAt} - ${workflowTasks.createdAt}))) filter (where ${workflowTasks.actionAt} is not null)`,
+      avgHandleSec: sql<number | null>`avg(extract(epoch from (${workflowTasks.actionAt} - coalesce(${workflowTasks.activatedAt}, ${workflowTasks.createdAt})))) filter (where ${workflowTasks.actionAt} is not null)`,
       pendingCount: sql<number>`count(*) filter (where ${workflowTasks.status}::text = 'pending')::int`,
       doneCount: sql<number>`count(*) filter (where ${workflowTasks.status}::text in ('approved','rejected'))::int`,
     })
       .from(workflowTasks)
       .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
       .innerJoin(workflowDefinitions, eq(workflowInstances.definitionId, workflowDefinitions.id))
-      .where(buildWhere(instTenant, instDefinition, inArray(workflowTasks.nodeType, ['approve', 'handler'])))
+      .innerJoin(workflowNodeActivations, eq(workflowTasks.activationId, workflowNodeActivations.id))
+      .where(buildWhere(instTenant, instDefinition, inArray(workflowTasks.nodeType, ['approve', 'handler']), eq(workflowNodeActivations.includeInEfficiencyStats, true)))
       .groupBy(workflowInstances.definitionId, workflowDefinitions.name, workflowTasks.nodeKey, workflowTasks.nodeName)
-      .orderBy(desc(sql`count(*) filter (where ${workflowTasks.status}::text = 'pending')`), desc(sql`avg(extract(epoch from (${workflowTasks.actionAt} - ${workflowTasks.createdAt})))`))
+      .orderBy(desc(sql`count(*) filter (where ${workflowTasks.status}::text = 'pending')`), desc(sql`avg(extract(epoch from (${workflowTasks.actionAt} - coalesce(${workflowTasks.activatedAt}, ${workflowTasks.createdAt}))))`))
       .limit(10),
     // 7. 审批人工作量（待办 + 已处理）
     db.select({

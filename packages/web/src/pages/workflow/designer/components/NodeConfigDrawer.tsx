@@ -359,7 +359,7 @@ export default function NodeConfigDrawer({
                 <ApproverSettingsTab
                   nodeType={node?.type ?? 'approver'}
                   approvalType={(props.approvalType as ApprovalType) ?? 'manual'}
-                  excludeFromStats={(props.excludeFromStats as boolean) ?? false}
+                  includeInEfficiencyStats={(props.includeInEfficiencyStats as boolean) ?? true}
                   assigneeType={(props.assigneeType as AssigneeType) ?? 'user'}
                   assigneeIds={(props.assigneeIds as number[]) ?? []}
                   roleIds={(props.roleIds as number[]) ?? []}

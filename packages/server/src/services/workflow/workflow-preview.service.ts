@@ -20,6 +20,7 @@ import { toDefinitionSnapshot } from './instances/shared';
 
 const APPROVER_TYPES = new Set(['approve', 'handler']);
 const INITIATOR_SELECT_TYPES = new Set(['initiatorSelect', 'initiatorSelectScope']);
+const DYNAMIC_ASSIGNEE_TYPES = new Set(['formUser', 'formDepartment', 'expression', 'nodeApprover', 'decision', 'approverSelect', ...INITIATOR_SELECT_TYPES]);
 
 export async function previewFlow(
   definitionId: number,
@@ -87,6 +88,11 @@ export async function previewFlowData(
     const isInitiatorSelect = INITIATOR_SELECT_TYPES.has(config.assigneeType ?? '');
     const selectionRequired = isInitiatorSelect && node.status !== 'excluded';
     const approvers = prediction?.estimatedApprovers ?? [];
+    const dynamicApprover = config.approveMethod === 'random' || DYNAMIC_ASSIGNEE_TYPES.has(config.assigneeType ?? '');
+    const approverState: 'known' | 'empty' | 'unknown' =
+      automaticAction || approvers.length > 0 ? 'known'
+        : node.status === 'excluded' || node.nodeType === 'subProcess' || dynamicApprover || selectionRequired ? 'unknown'
+          : 'empty';
     return {
       nodeKey: node.nodeKey,
       nodeName: node.nodeName,
@@ -102,13 +108,13 @@ export async function previewFlowData(
       approveMethod: automaticAction ? null : config.approveMethod ?? null,
       automaticAction,
       branchLabel: plan.branches.find(branch => branch.target === node.nodeId)?.label ?? null,
-      empty: !automaticAction && node.status !== 'excluded' && APPROVER_TYPES.has(node.nodeType) && !approvers.length && !selectionRequired,
+      approverState,
     };
   }));
   return [{
     nodeKey: '__initiator__', nodeName: '发起人', nodeType: 'start',
     approvers: [{ id: user.userId, name: initiatorNames.get(user.userId) ?? user.username }],
     status: 'matched', reason: '当前发起人', approverReason: null,
-    approveMethod: null, branchLabel: null, empty: false,
+    approveMethod: null, branchLabel: null, approverState: 'known',
   }, ...nodes];
 }

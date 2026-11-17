@@ -108,7 +108,7 @@ function ChainSection({
     } else {
       body = (
         <Typography.Text size="small" type="warning">
-          {n.empty ? '审批人将在运行时确定（自选/上级/空处理）' : '—'}
+          {n.approverState === 'empty' ? '无人可派，将按空审批人策略处理' : n.approverState === 'unknown' ? '审批人将在运行时确定' : '—'}
         </Typography.Text>
       );
     }

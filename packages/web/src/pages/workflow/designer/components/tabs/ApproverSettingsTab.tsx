@@ -106,7 +106,7 @@ function AssigneeTypePicker({ assigneeType, onChange }: Readonly<{ assigneeType:
 interface ApproverSettingsTabProps {
   nodeType: FlowNodeType;
   approvalType?: ApprovalType;
-  excludeFromStats?: boolean;
+  includeInEfficiencyStats?: boolean;
   assigneeType: AssigneeType;
   assigneeIds: number[];
   roleIds: number[];
@@ -153,7 +153,7 @@ interface ApproverSettingsTabProps {
 export default function ApproverSettingsTab({
   nodeType,
   approvalType = 'manual',
-  excludeFromStats = false,
+  includeInEfficiencyStats = true,
   assigneeType,
   assigneeIds,
   roleIds,
@@ -220,11 +220,11 @@ export default function ApproverSettingsTab({
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <Typography.Title heading={6} style={{ margin: 0 }}>审批类型</Typography.Title>
             <Checkbox
-              checked={excludeFromStats}
-              onChange={(e) => onChange({ excludeFromStats: !!e.target.checked })}
+              checked={includeInEfficiencyStats}
+              onChange={(e) => onChange({ includeInEfficiencyStats: !!e.target.checked })}
               style={{ fontSize: 12 }}
             >
-              不计入审批效率统计
+              计入审批效率统计
             </Checkbox>
           </div>
           <RadioGroup

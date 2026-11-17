@@ -259,7 +259,8 @@ export interface WorkflowNodeConfig {
   /** 审批人来源类型（人工节点） */
   assigneeType?: WorkflowAssigneeType;
   approvalType?: WorkflowApprovalType;
-  excludeFromStats?: boolean;
+  /** 是否计入审批效率统计（人工时长 / SLA）；默认 true，不影响审计与工作量计数 */
+  includeInEfficiencyStats?: boolean;
   /** 当 assigneeType = 'user' 时指定的成员 IDs */
   userIds?: number[] | null;
   /** 当 assigneeType = 'role' 时指定的角色 IDs */

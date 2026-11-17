@@ -238,7 +238,7 @@ export function WorkflowApprovalChain({
     }
     return (
       <Typography.Text size="small" type="warning">
-        {n.approverReason ?? (n.empty ? '审批人将在运行时确定' : '—')}
+        {n.approverReason ?? (n.approverState === 'empty' ? '无人可派，将按空审批人策略处理' : n.approverState === 'unknown' ? '节点到达时确定' : '—')}
       </Typography.Text>
     );
   };

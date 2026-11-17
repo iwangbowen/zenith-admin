@@ -172,7 +172,7 @@ export const workflowApproverPreviewNodeSchema = z.object({
   approveMethod: z.string().nullable().optional().meta({ description: '多人审批方式（and/or/sequential/ratio）' }),
   automaticAction: z.enum(['approve', 'reject']).nullable().optional(),
   branchLabel: z.string().nullable().optional().meta({ description: '所在分支标签（条件 / 并行分支时）' }),
-  empty: z.boolean().optional().meta({ description: '审批人为空（需按节点空处理策略兜底）' }),
+  approverState: z.enum(['known', 'empty', 'unknown']).optional().meta({ description: 'known=已确定；empty=已确定无人；unknown=节点到达时才能确定' }),
 }).meta({ id: 'WorkflowApproverPreviewNode' });
 
 export type WorkflowApproverPreviewNode = z.infer<typeof workflowApproverPreviewNodeSchema>;
