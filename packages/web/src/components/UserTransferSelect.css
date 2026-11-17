@@ -1,0 +1,27 @@
+.user-transfer-select {
+  min-width: 0;
+}
+
+/* Allow text to shrink through Semi's checkbox and tree label wrappers. */
+.user-transfer-select .semi-transfer-left,
+.user-transfer-select .semi-transfer-right,
+.user-transfer-select .semi-checkbox-content,
+.user-transfer-select .semi-checkbox-addon,
+.user-transfer-select .semi-tree-option-label,
+.user-transfer-select .semi-tree-option-label-text {
+  min-width: 0;
+}
+
+.user-transfer-select .semi-transfer-left-list,
+.user-transfer-select .semi-transfer-right-list {
+  overflow-x: hidden;
+}
+
+.user-transfer-select__text {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

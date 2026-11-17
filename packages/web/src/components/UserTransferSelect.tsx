@@ -5,6 +5,7 @@ import type { Department } from '@zenith/shared/identity';
 import { usePinyinReady } from '@/hooks/usePinyinReady';
 import { textMatches } from '@/utils/pinyin';
 import { UserAvatar } from './UserAvatar';
+import './UserTransferSelect.css';
 
 export interface UserTransferUser {
   id: number;
@@ -179,19 +180,19 @@ export function UserTransferSelect({
       <Checkbox
         onChange={() => item.onChange(item.value)}
         checked={item.checked}
-        style={{ display: 'flex', alignItems: 'center', width: '100%' }}
+        style={{ display: 'flex', alignItems: 'center', width: '100%', minWidth: 0 }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
           <UserAvatar name={item.label} avatar={item._avatar} size={32} semiSize="small" style={{ flexShrink: 0 }} />
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 14, lineHeight: '20px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div title={`${item.label} ${item._username}`} style={{ fontSize: 14, lineHeight: '20px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {item.label}
               <span style={{ fontSize: 12, color: 'var(--semi-color-text-2)', marginLeft: 4, fontWeight: 400 }}>
                 {item._username}
               </span>
             </div>
             {item._departmentName && (
-              <div style={{ fontSize: 12, lineHeight: '16px', color: 'var(--semi-color-text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <div title={item._departmentName} style={{ fontSize: 12, lineHeight: '16px', color: 'var(--semi-color-text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {item._departmentName}
               </div>
             )}
@@ -209,14 +210,14 @@ export function UserTransferSelect({
     >
       <UserAvatar name={item.label} avatar={item._avatar} size={32} semiSize="small" style={{ flexShrink: 0 }} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 14, lineHeight: '20px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <div title={`${item.label} ${item._username}`} style={{ fontSize: 14, lineHeight: '20px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {item.label}
           <span style={{ fontSize: 12, color: 'var(--semi-color-text-2)', marginLeft: 4, fontWeight: 400 }}>
             {item._username}
           </span>
         </div>
         {item._departmentName && (
-          <div style={{ fontSize: 12, lineHeight: '16px', color: 'var(--semi-color-text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <div title={item._departmentName} style={{ fontSize: 12, lineHeight: '16px', color: 'var(--semi-color-text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {item._departmentName}
           </div>
         )}
@@ -253,13 +254,15 @@ export function UserTransferSelect({
     (label: React.ReactNode, nodeData: Record<string, unknown>) => {
       const item = nodeData as Partial<TransferDataItem>;
       if (!item._username) {
-        return <span style={{ fontSize: 13, fontWeight: 500 }}>{label}</span>;
+        return <span className="user-transfer-select__text" title={item.label} style={{ fontSize: 13, fontWeight: 500 }}>{label}</span>;
       }
       return (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
           <UserAvatar name={item.label ?? ''} avatar={item._avatar} size={24} semiSize="extra-small" style={{ flexShrink: 0 }} />
-          <span style={{ fontSize: 14 }}>{item.label}</span>
-          <span style={{ fontSize: 12, color: 'var(--semi-color-text-2)' }}>{item._username}</span>
+          <span className="user-transfer-select__text" title={`${item.label ?? ''} ${item._username}`} style={{ fontSize: 14 }}>
+            {item.label}
+            <span style={{ fontSize: 12, color: 'var(--semi-color-text-2)', marginLeft: 4 }}>{item._username}</span>
+          </span>
         </div>
       );
     },
@@ -267,6 +270,7 @@ export function UserTransferSelect({
   );
 
   const sharedProps = {
+    className: 'user-transfer-select',
     style: { width: '100%' },
     value,
     onChange: (values: Array<string | number>) => onChange((values as number[]) || []),
@@ -304,6 +308,7 @@ export function UserTransferSelect({
           dataSource={treeData as any}
           filter
           treeProps={{
+            labelEllipsis: true,
             filterTreeNode: filterTreeNode as unknown as never,
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             renderLabel: renderTreeLabel as any,
