@@ -44,7 +44,7 @@ interface ApprovalTimelineProps {
   /** 实例状态（终态时展示底部「流程结束」节点） */
   instanceStatus?: WorkflowInstanceStatus;
   finishedAt?: string | null;
-  /** 当前登录人 ID：用于高亮「轮到你处理」的待办节点 */
+  /** 当前登录人 ID：用于标记「待你处理」的待办节点 */
   currentUserId?: number | null;
 }
 
@@ -172,8 +172,7 @@ export default function ApprovalTimeline({ tasks, consults = [], approvalActivat
         return (
           <Timeline.Item key={task.id} dot={dot}>
             <div style={isMine ? {
-              background: 'color-mix(in srgb, var(--semi-color-warning) 8%, transparent)',
-              border: '1px solid color-mix(in srgb, var(--semi-color-warning) 28%, transparent)',
+              border: '2px dashed var(--semi-color-warning)',
               borderRadius: 'var(--semi-border-radius-medium)',
               padding: '8px 10px',
             } : undefined}>
