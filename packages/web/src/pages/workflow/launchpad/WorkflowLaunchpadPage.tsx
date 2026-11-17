@@ -56,6 +56,12 @@ export default function WorkflowLaunchpadPage() {
     return map;
   }, [categories]);
 
+  const categoryColor = useMemo(() => {
+    const map = new Map<number, string | null>();
+    for (const c of categories) map.set(c.id, c.color ?? null);
+    return map;
+  }, [categories]);
+
   // 拼音词典就绪后重算分组过滤，补上已提交关键字的拼音命中；pinyinReady 仅作为重算信号
   const pinyinReady = usePinyinReady();
   const grouped = useMemo(() => {
@@ -72,10 +78,11 @@ export default function WorkflowLaunchpadPage() {
     return Array.from(groups.entries()).map(([cid, defs]) => ({
       categoryId: cid,
       categoryName: cid === UNCATEGORIZED ? '未分类' : (categoryName.get(cid) ?? '未分类'),
+      categoryColor: cid === UNCATEGORIZED ? null : (categoryColor.get(cid) ?? null),
       defs,
     }));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [definitions, activeKeyword, categoryName, pinyinReady]);
+  }, [definitions, activeKeyword, categoryName, categoryColor, pinyinReady]);
 
   const openApply = (def: WorkflowDefinition) => {
     if (def.formType === 'external') {
@@ -200,7 +207,12 @@ export default function WorkflowLaunchpadPage() {
       <div style={{ padding: '4px 0 16px' }}>
         {grouped.map((group) => (
           <div key={group.categoryId} style={{ marginBottom: 24 }}>
-            <Typography.Title heading={6} style={{ margin: '8px 0 12px' }}>{group.categoryName}</Typography.Title>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {group.categoryColor && (
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: group.categoryColor, flexShrink: 0 }} />
+              )}
+              <Typography.Title heading={6} style={{ margin: '8px 0 12px' }}>{group.categoryName}</Typography.Title>
+            </div>
             <List
               grid={{ gutter: 12, xs: 24, sm: 12, md: 8, lg: 6, xl: 6, xxl: 4 }}
               dataSource={group.defs}

@@ -193,7 +193,10 @@ export async function listPublishedDefinitions() {
         ne(workflowDefinitions.formType, 'external'),
         tenantCondition(workflowDefinitions, user),
       ),
-      with: { form: { columns: { name: true, schema: true } } },
+      with: {
+        category: { columns: { name: true, color: true, icon: true } },
+        form: { columns: { name: true, schema: true } },
+      },
       orderBy: desc(workflowDefinitions.updatedAt),
     }),
     db.select({ departmentId: users.departmentId }).from(users).where(eq(users.id, user.userId)).limit(1),
