@@ -1,4 +1,23 @@
-import type { AssigneeType } from './types';
+import type { AssigneeType, EmptyAssigneeStrategy } from './types';
+
+export type EmptyAssigneeChoice = EmptyAssigneeStrategy | 'notify';
+
+/** 设计器只展示当前生效的无人审批处理方式，节点异常处理优先于 emptyStrategy。 */
+export function resolveEmptyAssigneeChoice(emptyStrategy: EmptyAssigneeStrategy, catchAction?: 'toAdmin' | 'notify' | 'terminate'): EmptyAssigneeChoice {
+  if (catchAction === 'toAdmin') return 'assignToAdmin';
+  if (catchAction === 'terminate') return 'reject';
+  return catchAction ?? emptyStrategy;
+}
+
+/** 切换生效规则时保留已选人员；等效的节点异常处理保留原优先级。 */
+export function emptyAssigneeChoicePatch(choice: EmptyAssigneeChoice, catchAction?: 'toAdmin' | 'notify' | 'terminate') {
+  const preserveCatchAction = (choice === 'assignToAdmin' && catchAction === 'toAdmin')
+    || (choice === 'reject' && catchAction === 'terminate');
+  return {
+    emptyStrategy: choice === 'notify' ? 'autoApprove' as const : choice,
+    catchAction: choice === 'notify' ? 'notify' as const : preserveCatchAction ? catchAction : undefined,
+  };
+}
 
 /**
  * 只允许当前审批人来源拥有自己的配置字段。

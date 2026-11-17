@@ -21,6 +21,36 @@ const formFields = flattenWorkflowValueFields(fields);
 const permissionFields = flattenAllFields(fields);
 
 describe('node configuration field scopes', () => {
+  it('preserves all approval rules and original exception priority when saving without edits', () => {
+    const rules = {
+      approvalType: 'manual', assigneeType: 'user', assigneeIds: [1], approveMethod: 'or',
+      rejectStrategy: 'returnToNode', rejectToNodeKey: 'previous', returnMode: 'backToOrigin',
+      emptyStrategy: 'assignTo', emptyAssignToIds: [2, 3], emptyAssignToNames: ['甲', '乙'], catchAction: 'terminate', catchNotifyUserIds: [4],
+      sameInitiatorStrategy: 'toDeptHead', deduplicateStrategy: 'repeatApprove',
+      timeout: { enabled: true, duration: 2, unit: 'days', action: 'remind', remindCount: 3, escalateAction: 'transferToManager', escalateManagerLevel: 2, escalateFallbackAction: 'autoReject' },
+      externalApproval: { enabled: true, url: 'https://example.com/approval', secret: 'test-secret', signMode: 'hmacSha256', timeoutMs: 15000, fallbackStrategy: 'manual' },
+    };
+    const onSave = vi.fn();
+    render(<NodeConfigDrawer visible node={{ id: 'approval', key: 'approval', type: 'approver', name: '审批', props: rules }}
+      users={[]} roles={[]} formFields={[]} permissionFields={[]} onSave={onSave} onCancel={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    expect(onSave).toHaveBeenCalledWith('approval', expect.objectContaining({ key: 'approval', props: expect.objectContaining(rules) }));
+  });
+
+  it('saves one effective empty-assignee action while preserving configured recipient lists', () => {
+    const onSave = vi.fn();
+    render(<NodeConfigDrawer visible node={{ id: 'approval', key: 'approval', type: 'approver', name: '审批', props: {
+      approvalType: 'manual', assigneeType: 'user', assigneeIds: [1], emptyStrategy: 'assignTo', emptyAssignToIds: [2, 3],
+      emptyAssignToNames: ['甲', '乙'], catchAction: 'notify', catchNotifyUserIds: [4],
+    } }} users={[]} roles={[]} formFields={[]} permissionFields={[]} onSave={onSave} onCancel={vi.fn()} />);
+    const group = screen.getByRole('radiogroup', { name: '审批人为空时' });
+    fireEvent.click(within(group).getByRole('radio', { name: /^自动拒绝$/ }));
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    expect(onSave).toHaveBeenCalledWith('approval', expect.objectContaining({ props: expect.objectContaining({
+      emptyStrategy: 'reject', catchAction: undefined, catchNotifyUserIds: [4], emptyAssignToIds: [2, 3], emptyAssignToNames: ['甲', '乙'],
+    }) }));
+  });
+
   it('opens a persisted trigger with its saved values and preserves them on confirmation', async () => {
     const config = { triggerType: 'webhook' as const, webhookUrl: 'http://localhost/saved', headers: { 'X-Test': 'saved' },
       bodyTemplate: '{"saved":true}', httpMethod: 'PUT' as const, timeoutMs: 5000, onFailure: 'block' as const };

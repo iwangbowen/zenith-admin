@@ -2171,7 +2171,85 @@ td.fd-action-button-table__action {
   opacity: 0.6;
 }
 
-/* ─── 兜底策略折叠面板（头部常驻策略摘要） ─────────────────────────── */
+/* ─── 兜底策略：选项直接展示，附加配置按策略联动 ───────────────────── */
+
+.fd-fallback-section {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px 16px;
+  padding: 14px 0;
+}
+
+.fd-fallback-section + .fd-fallback-section {
+  border-top: 1px solid var(--semi-color-border);
+}
+
+.fd-fallback-section:first-child {
+  padding-top: 4px;
+}
+
+.fd-fallback-section__title {
+  color: var(--semi-color-text-0);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 4px 0;
+}
+
+.fd-fallback-section__header {
+  display: contents;
+}
+
+.fd-fallback-section__header .semi-switch {
+  justify-self: start;
+  margin-top: 5px;
+}
+
+.fd-fallback-details {
+  grid-column: 2;
+  min-width: 0;
+}
+
+.fd-fallback-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 12px;
+  width: 100%;
+}
+
+.fd-fallback-options .semi-radio {
+  margin-right: 0;
+  padding: 4px 0;
+  min-width: 0;
+  font-size: 13px;
+}
+
+@media (width <= 480px) {
+  .fd-fallback-section {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .fd-fallback-section__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .fd-fallback-details {
+    grid-column: 1;
+  }
+
+  .fd-fallback-options {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fd-fallback-section .fd-timeout-inline {
+    flex-wrap: wrap;
+  }
+}
+
+/* ─── 外部审批折叠面板 ───────────────────────────────────────────── */
 
 .fd-advanced-collapse .semi-collapse-item {
   border: 1px solid var(--semi-color-border);

@@ -1,14 +1,14 @@
 /**
- * 审批人节点 — 高级分区（带摘要的折叠面板）
+ * 审批人节点 — 直接展示的审批规则
  *
  * 不自带外层 fd-drawer-tab-content 包裹，直接内联在「审批人」面板里随主配置一起滚动。
  * 分区：审批人拒绝时 / 审批人超时未处理时 / 审批人为空时 / 审批人与提交人为同一人时 / 审批人去重。
- * 默认全部收起，面板头常驻当前策略摘要（收起 ≠ 隐藏信息）；偏离默认值的面板以「已配置」标签标记；
- * 配置不完整（如退回目标节点未选）的面板初始自动展开，避免必填项被折叠遮蔽。
+ * 策略选项常驻可见，仅在选中对应策略或启用超时后展示附加配置。
  */
-import { useState, type ReactNode } from 'react';
-import { Collapse, Form, InputNumber, Select, Switch, Tag, Typography, RadioGroup, Radio } from '@douyinfe/semi-ui';
+import type { ReactNode } from 'react';
+import { Form, InputNumber, Select, Switch, Typography, RadioGroup, Radio } from '@douyinfe/semi-ui';
 import { Minus, Plus } from 'lucide-react';
+import { emptyAssigneeChoicePatch, resolveEmptyAssigneeChoice, type EmptyAssigneeChoice } from '../../assignee-props';
 import type {
   RejectStrategy,
   EmptyAssigneeStrategy,
@@ -40,17 +40,6 @@ interface ApproverAdvancedSectionsProps {
   timeout?: TimeoutConfig;
   users: UserOption[];
   onChange: (updates: Record<string, unknown>) => void;
-}
-
-/** 折叠面板头：标题 + 当前策略摘要(右侧常驻);偏离默认值时展示「已配置」标签 */
-function PanelHeader({ title, summary, modified }: Readonly<{ title: string; summary: string; modified?: boolean }>) {
-  return (
-    <div className="fd-collapse-head">
-      <span className="fd-collapse-head__title">{title}</span>
-      {modified && <Tag size="small" color="blue" className="fd-collapse-head__tag">已配置</Tag>}
-      <span className="fd-collapse-head__summary">{summary}</span>
-    </div>
-  );
 }
 
 /** 必填星号 */
@@ -125,63 +114,28 @@ export default function ApproverAdvancedSections({
 
   const timeoutEnabled = timeout?.enabled ?? false;
   const timeoutAction = timeout?.action ?? 'remind';
-
-  // ── 各面板摘要与「偏离默认」判定(收起时头部常驻,信息不因折叠而丢失) ──
-  const rejectLabel = REJECT_STRATEGY_OPTIONS.find((o) => o.value === rejectStrategy)?.label ?? rejectStrategy;
-  const rejectTargetName = rejectStrategy === 'returnToNode'
-    ? availableRejectNodes.find((n) => (n.key || n.id) === rejectToNodeKey)?.name
-    : undefined;
-  const rejectSummary = rejectStrategy === 'returnToNode'
-    ? `${rejectLabel}：${rejectTargetName ?? '未选择节点'}`
-    : rejectLabel;
-  const rejectModified = rejectStrategy !== 'terminate' || returnMode !== 'reexecute';
-  const rejectIncomplete = rejectStrategy === 'returnToNode' && !rejectToNodeKey;
-
-  const TIMEOUT_UNIT_LABELS = { minutes: '分钟', hours: '小时', days: '天' } as const;
-  const timeoutActionLabel = timeoutAction === 'remind' ? '自动提醒' : AUTO_DECISION_LABELS[timeoutAction as 'autoApprove' | 'autoReject'];
-  const timeoutSummary = timeoutEnabled
-    ? `超过 ${timeout?.duration ?? 6} ${TIMEOUT_UNIT_LABELS[timeout?.unit ?? 'hours']}后${timeoutActionLabel}`
-    : '未启用';
-
-  const emptyLabel = EMPTY_ASSIGNEE_OPTIONS.find((o) => o.value === emptyStrategy)?.label ?? emptyStrategy;
-  const emptySummary = catchAction ? `${emptyLabel} · 异常兜底已启用` : emptyLabel;
-  const emptyModified = emptyStrategy !== 'autoApprove' || !!catchAction;
-  const emptyIncomplete = emptyStrategy === 'assignTo' && (emptyAssignToIds?.length ?? 0) === 0;
-
-  const sameSummary = SAME_INITIATOR_OPTIONS.find((o) => o.value === sameInitiatorStrategy)?.label ?? sameInitiatorStrategy;
-  const dedupSummary = DEDUPLICATE_OPTIONS.find((o) => o.value === deduplicateStrategy)?.label ?? deduplicateStrategy;
-
-  // 默认全部收起;配置不完整的面板初始展开,避免必填项被折叠遮蔽
-  const [activeKeys, setActiveKeys] = useState<string[]>(() => {
-    const keys: string[] = [];
-    if (rejectIncomplete) keys.push('reject');
-    if (emptyIncomplete) keys.push('empty');
-    return keys;
-  });
+  const emptyChoice = resolveEmptyAssigneeChoice(emptyStrategy, catchAction);
 
   return (
     <>
-      <Typography.Title heading={6} style={{ margin: '20px 0 10px' }}>兜底策略</Typography.Title>
-      <Collapse
-        className="fd-advanced-collapse"
-        activeKey={activeKeys}
-        onChange={(keys) => setActiveKeys(Array.isArray(keys) ? keys as string[] : [keys as string])}
-        keepDOM
-      >
+      <Typography.Title heading={6} style={{ margin: '20px 0 10px' }}>审批规则</Typography.Title>
+      <div className="fd-fallback-sections">
       {/* ─── 审批人拒绝时 ─────────────────────────────────────── */}
-      <Collapse.Panel itemKey="reject" header={<PanelHeader title="审批人拒绝时" summary={rejectSummary} modified={rejectModified} />}>
+      <section className="fd-fallback-section" aria-label="审批人拒绝时">
+      <div className="fd-fallback-section__title">审批人拒绝时</div>
       <RadioGroup
         value={rejectStrategy}
         onChange={(e) => onChange({ rejectStrategy: e.target.value })}
-        direction="vertical"
-        className="fd-radio-list"
+        direction="horizontal"
+        className="fd-fallback-options"
+        aria-label="审批人拒绝时"
       >
         {REJECT_STRATEGY_OPTIONS.map((o) => (
           <Radio key={o.value} value={o.value}>{o.label}</Radio>
         ))}
       </RadioGroup>
       {rejectStrategy === 'returnToNode' && (
-        <div style={{ marginTop: 4, marginBottom: 8 }}>
+        <div className="fd-fallback-details">
           <ReqLabel>驳回节点</ReqLabel>
           <Select
             value={rejectToNodeKey}
@@ -200,7 +154,7 @@ export default function ApproverAdvancedSections({
         </div>
       )}
       {(rejectStrategy === 'returnPrev' || rejectStrategy === 'returnToNode') && (
-        <div style={{ marginTop: 4, marginBottom: 8 }}>
+        <div className="fd-fallback-details">
           <div className="fd-field-label">退回后</div>
           <RadioGroup
             value={returnMode}
@@ -213,19 +167,17 @@ export default function ApproverAdvancedSections({
           </RadioGroup>
         </div>
       )}
-      </Collapse.Panel>
+      </section>
 
       {/* ─── 审批人超时未处理时 ───────────────────────────────── */}
-      <Collapse.Panel itemKey="timeout" header={<PanelHeader title="超时未处理" summary={timeoutSummary} modified={timeoutEnabled} />}>
-      <ReqLabel>启用开关</ReqLabel>
-      <div className="fd-switch-row">
-        <span className={`fd-switch-row__txt ${!timeoutEnabled ? 'fd-switch-row__txt--active' : ''}`}>关闭</span>
-        <Switch checked={timeoutEnabled} onChange={(v) => handleTimeoutChange({ enabled: v })} />
-        <span className={`fd-switch-row__txt ${timeoutEnabled ? 'fd-switch-row__txt--active' : ''}`}>开启</span>
+      <section className="fd-fallback-section" aria-label="超时未处理">
+      <div className="fd-fallback-section__header">
+        <div className="fd-fallback-section__title">超时未处理</div>
+        <Switch checked={timeoutEnabled} onChange={(v) => handleTimeoutChange({ enabled: v })} aria-label="启用超时处理" size="small" />
       </div>
 
       {timeoutEnabled && (
-        <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div className="fd-fallback-details" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div>
             <ReqLabel>执行动作</ReqLabel>
             <RadioGroup
@@ -331,22 +283,25 @@ export default function ApproverAdvancedSections({
           )}
         </div>
       )}
-      </Collapse.Panel>
+      </section>
 
       {/* ─── 审批人为空时 ─────────────────────────────────────── */}
-      <Collapse.Panel itemKey="empty" header={<PanelHeader title="审批人为空时" summary={emptySummary} modified={emptyModified} />}>
+      <section className="fd-fallback-section" aria-label="审批人为空时">
+      <div className="fd-fallback-section__title">审批人为空时</div>
       <RadioGroup
-        value={emptyStrategy}
-        onChange={(e) => onChange({ emptyStrategy: e.target.value })}
-        direction="vertical"
-        className="fd-radio-list"
+        value={emptyChoice}
+        onChange={(e) => onChange(emptyAssigneeChoicePatch(e.target.value as EmptyAssigneeChoice, catchAction))}
+        direction="horizontal"
+        className="fd-fallback-options"
+        aria-label="审批人为空时"
       >
         {EMPTY_ASSIGNEE_OPTIONS.map((o) => (
           <Radio key={o.value} value={o.value}>{o.label}</Radio>
         ))}
+        <Radio value="notify">通知后自动通过</Radio>
       </RadioGroup>
-      {emptyStrategy === 'assignTo' && (
-        <div style={{ marginTop: 4, marginBottom: 8 }}>
+      {emptyChoice === 'assignTo' && (
+        <div className="fd-fallback-details">
           <Form.Slot label="转交给（可多选，多人时生成会签任务）">
             <Select
               value={emptyAssignToIds ?? []}
@@ -370,69 +325,55 @@ export default function ApproverAdvancedSections({
         </div>
       )}
 
-      <div style={{ marginTop: 8 }}>
-        <div className="fd-field-label">异常兜底（审批人为空时的额外处理）</div>
-        <Select
-          value={catchAction ?? ''}
-          onChange={(v) => onChange({ catchAction: v === '' ? undefined : v })}
-          style={{ width: '100%' }}
-          placeholder="不启用（按上方策略处理）"
-          optionList={[
-            { value: '', label: '不启用（按上方策略处理）' },
-            { value: 'toAdmin', label: '转交管理员处理' },
-            { value: 'notify', label: '通知相关人并自动通过' },
-            { value: 'terminate', label: '终止流程' },
-          ]}
-        />
-        <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginTop: 6 }}>
-          启用后，当审批人解析为空时优先执行此异常处理。
-        </Typography.Text>
-        {catchAction === 'notify' && (
-          <div style={{ marginTop: 8 }}>
+        {emptyChoice === 'notify' && (
+          <div className="fd-fallback-details">
             <div className="fd-field-label">通知人</div>
             <Select
               multiple
               filter
               style={{ width: '100%' }}
               maxTagCount={2} showRestTagsPopover
-              placeholder="请选择异常通知人"
+              placeholder="不选则通知发起人与管理员"
               value={catchNotifyUserIds ?? []}
               onChange={(v) => onChange({ catchNotifyUserIds: (v as number[]) ?? [] })}
               optionList={users.map((u) => ({ value: u.id, label: u.nickname }))}
             />
           </div>
         )}
-      </div>
-      </Collapse.Panel>
+      </section>
 
       {/* ─── 审批人与提交人为同一人时 ─────────────────────────── */}
-      <Collapse.Panel itemKey="sameInitiator" header={<PanelHeader title="与提交人同一人" summary={sameSummary} modified={sameInitiatorStrategy !== 'autoSkip'} />}>
+      <section className="fd-fallback-section" aria-label="与提交人同一人">
+      <div className="fd-fallback-section__title">与提交人同一人</div>
       <RadioGroup
         value={sameInitiatorStrategy}
         onChange={(e) => onChange({ sameInitiatorStrategy: e.target.value })}
-        direction="vertical"
-        className="fd-radio-list"
+        direction="horizontal"
+        className="fd-fallback-options"
+        aria-label="与提交人同一人"
       >
         {SAME_INITIATOR_OPTIONS.map((o) => (
           <Radio key={o.value} value={o.value}>{o.label}</Radio>
         ))}
       </RadioGroup>
-      </Collapse.Panel>
+      </section>
 
       {/* ─── 审批人去重 ───────────────────────────────────────── */}
-      <Collapse.Panel itemKey="dedup" header={<PanelHeader title="审批人去重" summary={dedupSummary} modified={deduplicateStrategy !== 'inherit'} />}>
-      <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 8 }}>
-        当同一审批人出现在多个审批节点时的处理方式
-      </Typography.Text>
-      <Select
+      <section className="fd-fallback-section" aria-label="审批人去重">
+      <div className="fd-fallback-section__title">审批人去重</div>
+      <RadioGroup
         value={deduplicateStrategy}
-        onChange={(v) => onChange({ deduplicateStrategy: v })}
-        style={{ width: '100%' }}
-        optionList={DEDUPLICATE_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
-        placeholder="请选择去重策略"
-      />
-      </Collapse.Panel>
-      </Collapse>
+        onChange={(e) => onChange({ deduplicateStrategy: e.target.value })}
+        direction="vertical"
+        className="fd-fallback-options"
+        aria-label="审批人去重"
+      >
+        {DEDUPLICATE_OPTIONS.map((o) => (
+          <Radio key={o.value} value={o.value}>{o.value === 'autoSkip' ? '后续节点自动通过' : o.label}</Radio>
+        ))}
+      </RadioGroup>
+      </section>
+      </div>
     </>
   );
 }
