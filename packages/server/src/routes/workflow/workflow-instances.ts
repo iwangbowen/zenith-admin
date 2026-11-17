@@ -5,7 +5,7 @@ import { OpenAPIHono } from '@hono/zod-openapi';
 import { validationHook } from '../../lib/openapi-schemas';
 import {
   listRoute, pendingMineRoute, pendingMineCountRoute, allRoute, ccMineRoute, handledMineRoute,
-  ccUnreadCountRoute, workbenchSummaryRoute, relationOptionsRoute, detailRoute, printRoute, printVerifyRoute, analyticsRoute, overdueRoute, selectableUsersRoute,
+  ccUnreadCountRoute, workbenchSummaryRoute, relationOptionsRoute, detailRoute, printRoute, printVerifyRoute, analyticsRoute, overdueRoute, selectableUsersRoute, selectableDepartmentsRoute,
   tasksMonitorRoute, pendingDefinitionOptionsRoute, mySignGroupsRoute,
 } from './instances/queries';
 import {
@@ -37,7 +37,7 @@ import {
 const router = new OpenAPIHono({ defaultHook: validationHook });
 router.openapiRoutes([mySignGroupsRoute] as const);
 
-router.openapiRoutes([listRoute, pendingMineRoute, pendingMineCountRoute, pendingDefinitionOptionsRoute, allRoute, ccMineRoute, handledMineRoute, ccUnreadCountRoute, workbenchSummaryRoute, relationOptionsRoute, analyticsRoute, overdueRoute, tasksMonitorRoute, selectableUsersRoute, myConsultsRoute, batchWithdrawRoute, batchUrgeRoute, ccReadRoute, diagnosticsRoute, traceRoute, tokensRoute, diagnosticBundleRoute, detailRoute, printRoute, printVerifyRoute, listCommentsRoute, addCommentRoute, createInstanceRoute, updateDraftRoute, submitDraftRoute, resubmitRoute] as const);
+router.openapiRoutes([listRoute, pendingMineRoute, pendingMineCountRoute, pendingDefinitionOptionsRoute, allRoute, ccMineRoute, handledMineRoute, ccUnreadCountRoute, workbenchSummaryRoute, relationOptionsRoute, analyticsRoute, overdueRoute, tasksMonitorRoute, selectableUsersRoute, selectableDepartmentsRoute, myConsultsRoute, batchWithdrawRoute, batchUrgeRoute, ccReadRoute, diagnosticsRoute, traceRoute, tokensRoute, diagnosticBundleRoute, detailRoute, printRoute, printVerifyRoute, listCommentsRoute, addCommentRoute, createInstanceRoute, updateDraftRoute, submitDraftRoute, resubmitRoute] as const);
 router.openapiRoutes([withdrawRoute, forwardRoute, cancelInstanceRoute, jumpInstanceRoute, suspendInstanceRoute, resumeInstanceRoute, handoverPreviewRoute, handoverRoute, tokenSkipRoute, tokenReplayRoute, batchSkipStuckRoute, deleteInstanceRoute, batchApproveRoute, batchRejectRoute, approveRoute, selectableNextApproversRoute, rejectRoute, transferRoute, reassignRoute, recallRoute, consultRoute, replyConsultRoute, delegateRoute, addSignRoute, reduceSignRoute, returnRoute, urgeRoute, listTaskUrgesRoute, listInstanceUrgesRoute, urgeInstanceRoute, addInstanceCcRoute] as const);
 // 静态路径 /compensation/list 必须在参数化 /compensation/{id} 之前注册（RegExpRouter 按注册顺序解析）
 router.openapiRoutes([migratePreflightRoute, migrateRoute, migrationsRoute, migrateBatchRoute, compensationsRoute, compensationResolveRoute, compensationNoteRoute, compensationRetryRoute, compensationResumeRoute, compensationDetailRoute] as const);

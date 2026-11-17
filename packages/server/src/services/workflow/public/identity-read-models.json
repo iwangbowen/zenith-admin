@@ -214,6 +214,18 @@
       ]
     }
   },
+  "services/workflow/workflow-selectable-users.service.ts": {
+    "purpose": "Workflow collaboration directory exposes minimal user and department labels without management permissions.",
+    "tables": {
+      "departments": [
+        "id",
+        "name",
+        "parentId",
+        "sort",
+        "status"
+      ]
+    }
+  },
   "services/workflow/workflow-simulation.service.ts": {
     "purpose": "Workflow commands verify actor existence and resolve routing or display labels; identity writes are forbidden.",
     "tables": {

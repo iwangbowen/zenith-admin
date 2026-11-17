@@ -15,12 +15,12 @@ import { defineContractRoute } from '../../lib/contract-route';
 import { okBody, validationHook } from '../../lib/openapi-schemas';
 import { requireCallbackTaskContext } from '../../services/workflow/workflow-instances.service';
 import { resumeTriggerTask } from '../../services/workflow/workflow-resume.service';
-import { assertWorkflowCallbackSignature, captureWorkflowCallbackRawBody, getWorkflowCallbackRawBody } from '../../lib/workflow-callback-security';
+import { assertWorkflowCallbackSignature } from '../../lib/workflow-callback-security';
+import { getRawBody } from '../../lib/raw-body-cache';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
 const callback = defineContractRoute(workflowTriggerCallbackContract.callback, {
-  middleware: [captureWorkflowCallbackRawBody] as const,
   handler: async (c) => {
     const { callbackId } = c.req.valid('param');
     const body = c.req.valid('json');
@@ -38,8 +38,7 @@ const callback = defineContractRoute(workflowTriggerCallbackContract.callback, {
       assertWorkflowCallbackSignature({
         secret: cfg.callbackSecret,
         signatureHeader: c.req.header('X-Zenith-Signature'),
-        rawBody: getWorkflowCallbackRawBody(c.req.raw, body),
-        canonicalBody: JSON.stringify(body),
+        rawBody: getRawBody(c.req.raw),
         missingSecretMessage: '回调未配置 secret',
       });
     }

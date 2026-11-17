@@ -1,7 +1,7 @@
 import { signatureSnapshotSchema } from '../../core/signatures';
 import { workflowSignaturePolicySchema } from '../validation';
 import * as z from 'zod';
-import { auditFieldsSchema, idParam, idQuery, keywordQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { auditFieldsSchema, entityStatusSchema, idParam, idQuery, keywordQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { WORKFLOW_INSTANCE_PRIORITIES, WORKFLOW_INSTANCE_PRIORITY_OPTIONS, WORKFLOW_INSTANCE_STATUSES, WORKFLOW_INSTANCE_STATUS_OPTIONS, WORKFLOW_SLA_LEVELS, WORKFLOW_TASK_CONSULT_STATUSES, WORKFLOW_TASK_STATUSES, WORKFLOW_INSTANCE_STATUS_FILTERS, WORKFLOW_INSTANCE_PRINT_SOURCES, WORKFLOW_TASK_DECISION_ACTIONS, WORKFLOW_PATH_STATUSES } from '../constants';
 import {
@@ -316,6 +316,16 @@ export const workflowSelectableUserSchema = z.object({
 
 export type WorkflowSelectableUser = z.infer<typeof workflowSelectableUserSchema>;
 
+/** 工作流协作选部门清单：只暴露选择 / 只读展示所需字段，不复用管理端部门权限。 */
+export const workflowSelectableDepartmentSchema = z.object({
+  id: z.int(),
+  name: z.string(),
+  parentId: z.int(),
+  status: entityStatusSchema,
+}).meta({ id: 'WorkflowSelectableDepartment' });
+
+export type WorkflowSelectableDepartment = z.infer<typeof workflowSelectableDepartmentSchema>;
+
 export const workflowCountSchema = z.object({ count: z.int() }).meta({ id: 'WorkflowCount' });
 
 /**
@@ -518,6 +528,7 @@ export const workflowPrintVerifyParam = z.object({
  */
 export const workflowInstanceContract = defineContract('/api/workflows', {
   selectableUsers: op.get('/selectable-users', { access: { permission: ['workflow:instance:create', 'workflow:task:handle', 'workflow:instance:list'] }, response: z.array(workflowSelectableUserSchema), summary: '工作流协作选人清单' }),
+  selectableDepartments: op.get('/selectable-departments', { access: { permission: ['workflow:instance:create', 'workflow:task:handle', 'workflow:instance:list'] }, response: z.array(workflowSelectableDepartmentSchema), summary: '工作流协作选部门清单' }),
   list: op.get('/instances', { access: { permission: 'workflow:instance:list' }, query: workflowMyInstanceListQuery, response: paginated(workflowInstanceSchema), summary: '我的申请列表' }),
   pendingMine: op.get('/instances/pending-mine', { access: { permission: 'workflow:task:handle' }, query: workflowPendingMineQuery, response: paginated(workflowPendingInstanceItemSchema), summary: '待我审批列表' }),
   pendingMineCount: op.get('/instances/pending-mine/count', { access: { permission: 'workflow:task:handle' }, response: workflowCountSchema, summary: '待我审批总数' }),

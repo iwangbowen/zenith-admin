@@ -33,6 +33,7 @@ import { SessionRevokedException, sessionRevokedBody } from './lib/session-liven
 import { registerZenithMetrics } from './lib/prometheus-metrics';
 import { httpMetricsMiddleware } from './middleware/http-metrics';
 import { httpLoggerMiddleware } from './middleware/http-logger';
+import { captureRawBody } from './lib/raw-body-cache';
 import { apiAccessLogMiddleware } from './middleware/api-access-log';
 import { ipAccessMiddleware } from './middleware/ip-access';
 import { maintenanceMiddleware } from './middleware/maintenance';
@@ -144,6 +145,8 @@ export function createAppWithDomains(routeDomains: readonly RouteDomain[], docCa
     }
     await next();
   });
+  // 公开回调必须先缓存原始字节：日志 / JSON 校验会消费请求体，晚于此处无法恢复原文
+  app.use('/api/public/workflow/*', captureRawBody);
   // HTTP 流量详细日志（对标 Logbook），默认关闭，通过 HTTP_LOG_INCOMING_ENABLED=true 启用
   app.use('*', httpLoggerMiddleware);
   if (config.serverTimingEnabled) {

@@ -1,22 +1,15 @@
 /**
- * 工作流回调签名校验单测（Webhook 回调安全关键，HMAC-SHA256 + 时间戳防重放）。
+ * 工作流回调签名校验单测（HMAC-SHA256 + 时间戳防重放）。
  *
- * 覆盖：
- *  1. assertWorkflowCallbackSignature：缺密钥 500、缺/坏签名头 401、
- *     时间戳过期（±300s）401、签名不匹配 401、原始 body 验签通过、
- *     canonical body 兜底验签（校验器重排 JSON 键的场景）
- *  2. captureWorkflowCallbackRawBody + getWorkflowCallbackRawBody：
- *     捕获原始请求体（保留空格/键序），未捕获时回退 canonical JSON
+ * 关键约束：只接受精确原始字节，原始体缺失或与签名不一致必须失败关闭；
+ * 不允许回退到 JSON.stringify 的规范化结果。
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { createHmac } from 'node:crypto';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import {
-  assertWorkflowCallbackSignature,
-  captureWorkflowCallbackRawBody,
-  getWorkflowCallbackRawBody,
-} from './workflow-callback-security';
+import { assertWorkflowCallbackSignature } from './workflow-callback-security';
+import { captureRawBody, getRawBody } from './raw-body-cache';
 
 const SECRET = 'callback-secret';
 
@@ -37,7 +30,6 @@ describe('assertWorkflowCallbackSignature', () => {
       secret: SECRET,
       signatureHeader: signHeader(SECRET, body),
       rawBody: body,
-      canonicalBody: body,
       missingSecretMessage: '未配置回调密钥',
       ...overrides,
     });
@@ -67,6 +59,12 @@ describe('assertWorkflowCallbackSignature', () => {
     expect(() => assertWith({ signatureHeader: bad })).toThrow(expect.objectContaining({ status: 401 }));
   });
 
+  it('原始体缺失 → 401，不回退 canonical JSON', () => {
+    expect(() => assertWith({ rawBody: undefined })).toThrow(
+      expect.objectContaining({ status: 401, message: '缺少原始请求体，无法验签' }),
+    );
+  });
+
   it('时间戳过期（301 秒前）→ 401 防重放', () => {
     const old = Math.floor(Date.now() / 1000) - 301;
     expect(() => assertWith({ signatureHeader: signHeader(SECRET, body, old) })).toThrow(
@@ -93,9 +91,22 @@ describe('assertWorkflowCallbackSignature', () => {
   });
 
   it('body 被篡改 → 401', () => {
-    expect(() => assertWith({ rawBody: '{"instanceId":2,"action":"approve"}', canonicalBody: '{"instanceId":2,"action":"approve"}' })).toThrow(
+    expect(() => assertWith({ rawBody: '{"instanceId":2,"action":"approve"}' })).toThrow(
       expect.objectContaining({ status: 401 }),
     );
+  });
+
+  it('签名按规范化 JSON 生成但原文不同 → 401', () => {
+    const canonical = '{"a":1,"b":2}';
+    const rawWithSpaces = '{ "a": 1, "b": 2 }';
+    expect(() =>
+      assertWorkflowCallbackSignature({
+        secret: SECRET,
+        signatureHeader: signHeader(SECRET, canonical),
+        rawBody: rawWithSpaces,
+        missingSecretMessage: 'x',
+      }),
+    ).toThrow(expect.objectContaining({ status: 401, message: '签名校验失败' }));
   });
 
   it('签名长度不匹配 → 401（不抛 timingSafeEqual 内部错误）', () => {
@@ -104,31 +115,18 @@ describe('assertWorkflowCallbackSignature', () => {
       expect.objectContaining({ status: 401, message: '签名校验失败' }),
     );
   });
-
-  it('原始 body 不匹配但 canonical body 验签通过（validator 消耗过 body 的兜底）', () => {
-    const canonical = '{"a":1,"b":2}';
-    const rawWithSpaces = '{ "a": 1, "b": 2 }';
-    // 调用方用 canonical 签名（客户端发送紧凑 JSON，服务端拿到重排后的 canonical）
-    expect(() =>
-      assertWorkflowCallbackSignature({
-        secret: SECRET,
-        signatureHeader: signHeader(SECRET, canonical),
-        rawBody: rawWithSpaces,
-        canonicalBody: canonical,
-        missingSecretMessage: 'x',
-      }),
-    ).not.toThrow();
-  });
 });
 
-describe('captureWorkflowCallbackRawBody / getWorkflowCallbackRawBody', () => {
-  it('中间件捕获原始请求体（保留空格与键序）', async () => {
+describe('captureRawBody / getRawBody', () => {
+  it('在 JSON 解析前捕获精确原始体，并在响应后清理', async () => {
     const raw = '{ "b": 2, "a": 1 }';
     let seen = '';
+    let capturedReq: Request | undefined;
     const app = new Hono();
-    app.post('/cb', captureWorkflowCallbackRawBody, async (c) => {
-      const parsed = await c.req.json();
-      seen = getWorkflowCallbackRawBody(c.req.raw, parsed);
+    app.post('/cb', captureRawBody, async (c) => {
+      await c.req.json();
+      capturedReq = c.req.raw;
+      seen = getRawBody(c.req.raw) ?? '';
       return c.json({ ok: true });
     });
 
@@ -139,11 +137,12 @@ describe('captureWorkflowCallbackRawBody / getWorkflowCallbackRawBody', () => {
     });
 
     expect(res.status).toBe(200);
-    expect(seen).toBe(raw); // 精确等于线上原文，而非 JSON.stringify 重排结果
+    expect(seen).toBe(raw);
+    expect(capturedReq && getRawBody(capturedReq)).toBeUndefined();
   });
 
-  it('未经过捕获中间件时回退 canonical JSON', () => {
+  it('未经过捕获中间件时返回 undefined，不做 canonical 回退', () => {
     const req = new Request('http://localhost/cb', { method: 'POST' });
-    expect(getWorkflowCallbackRawBody(req, { a: 1 })).toBe('{"a":1}');
+    expect(getRawBody(req)).toBeUndefined();
   });
 });

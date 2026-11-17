@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { TreeSelect } from '@douyinfe/semi-ui';
+import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
 import type { CSSProperties } from 'react';
 import type { Department } from '@zenith/shared/identity';
 import { useDepartmentTree } from '@/hooks/queries/departments';
@@ -32,11 +33,15 @@ export interface DepartmentSelectProps {
   style?: CSSProperties;
 }
 
-/**
- * 部门选择器 — 与系统组织架构集成，复用 useDepartmentTree 域 hook。
- * 支持单选 / 多选，可直接用于 Semi Form（withField 包裹）。
- */
-export default function DepartmentSelect({
+export interface DepartmentTreeSelectProps extends DepartmentSelectProps {
+  treeData: TreeNodeData[];
+  loading?: boolean;
+}
+
+/** 纯展示型部门树选择：数据源由调用方提供，管理端与工作流端共用同一交互。 */
+export function DepartmentTreeSelect({
+  treeData,
+  loading = false,
   value,
   onChange,
   multiple = false,
@@ -44,11 +49,7 @@ export default function DepartmentSelect({
   disabled = false,
   showClear = true,
   style,
-}: Readonly<DepartmentSelectProps>) {
-  const { data: departments, isPending: loading } = useDepartmentTree();
-
-  const treeData = useMemo(() => deptToTree(departments ?? []), [departments]);
-
+}: Readonly<DepartmentTreeSelectProps>) {
   return (
     <TreeSelect
       treeData={treeData}
@@ -63,6 +64,37 @@ export default function DepartmentSelect({
       disabled={disabled || loading}
       showClear={showClear}
       style={{ width: '100%', ...style }}
+    />
+  );
+}
+
+/**
+ * 部门选择器 — 管理端 / 系统组织架构场景，复用 useDepartmentTree 域 hook。
+ * 工作流表单请使用 `WorkflowDeptSelect`（只需工作流权限，不要求部门管理权限）。
+ */
+export default function DepartmentSelect({
+  value,
+  onChange,
+  multiple = false,
+  placeholder = '请选择部门',
+  disabled = false,
+  showClear = true,
+  style,
+}: Readonly<DepartmentSelectProps>) {
+  const { data: departments, isPending: loading } = useDepartmentTree();
+  const treeData = useMemo(() => deptToTree(departments ?? []), [departments]);
+
+  return (
+    <DepartmentTreeSelect
+      treeData={treeData}
+      loading={loading}
+      value={value}
+      onChange={onChange}
+      multiple={multiple}
+      placeholder={placeholder}
+      disabled={disabled}
+      showClear={showClear}
+      style={style}
     />
   );
 }

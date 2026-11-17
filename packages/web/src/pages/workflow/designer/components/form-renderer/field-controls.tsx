@@ -4,7 +4,7 @@ import { AttachmentInstanceContext, AttachmentModeContext, FileCaptureContext, F
  * 接入 Semi Form 的自定义控件：关联审批单 / 远程数据源 / 手写签名 / 人员 / 富文本 / 附件上传，
  * 以及现成组件（地区 / 部门 / 字典 / 颜色 / 评分）的 withField 包装。
  */
-import { lazy, Suspense, useContext, useEffect, useState } from 'react';
+import { lazy, Suspense, useContext, useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { Rating, Select, Spin, Typography, withField } from '@douyinfe/semi-ui';
 import type { WorkflowRelationOption } from '@zenith/shared/workflow';
@@ -12,13 +12,14 @@ import { workflowAttachmentContract } from '@zenith/shared/workflow';
 import FileAttachment from '@/components/FileAttachment';
 import { workflowFileToAttachment, uploadedFileToAttachment, type WorkflowUploadedFile } from '@/components/FileAttachment/utils';
 import RegionSelect from '@/components/RegionSelect';
-import DepartmentSelect from '@/components/DepartmentSelect';
+import { DepartmentTreeSelect, type DepartmentSelectProps } from '@/components/DepartmentSelect';
 import DictSelect from '@/components/DictSelect';
 import ColorPickerInput from '@/components/ColorPickerInput';
 import { UserSelectBase, type UserSelectProps } from '@/components/UserSelect';
 import type { RichTextEditorProps } from '@/components/RichTextEditor';
 import { useWorkflowDesignerRelationOptions, useWorkflowDesignerRemoteDataSourceOptions } from '@/hooks/queries/workflow-designer';
-import { useWorkflowSelectableUsers } from '@/hooks/queries/workflow-shared';
+import { useWorkflowSelectableDepartments, useWorkflowSelectableUsers } from '@/hooks/queries/workflow-shared';
+import { departmentsToTreeData } from '@/hooks/queries/departments';
 import { urlOf } from '@/lib/contract-query';
 import type { SignatureFieldProps } from '@/components/signature/SignatureField';
 import SignaturePad from '@/components/SignaturePad';
@@ -195,6 +196,20 @@ function WorkflowUserSelect(props: Readonly<UserSelectProps>) {
   return <UserSelectBase {...props} users={users} loading={loading} />;
 }
 
+/**
+ * 工作流表单「部门选择」控件的选部门数据源。
+ * 不用管理端 /api/departments（要求 system:department:list，普通发起人 403 拿不到选项），
+ * 统一走 /api/workflows/selectable-departments，与协作选人保持同一权限边界。
+ */
+function WorkflowDeptSelect(props: Readonly<DepartmentSelectProps>) {
+  const { data: departments, isPending: loading } = useWorkflowSelectableDepartments();
+  const treeData = useMemo(
+    () => departmentsToTreeData((departments ?? []).filter((d) => props.disabled || d.status === 'enabled')),
+    [departments, props.disabled],
+  );
+  return <DepartmentTreeSelect {...props} treeData={treeData} loading={loading} />;
+}
+
 // ─── 附件 / 图片上传（接入 Form，存 {name,url,size} 数组） ──────────────
 type UploadedFileValue = WorkflowUploadedFile;
 
@@ -250,7 +265,7 @@ export const FormRichText = withField(RichTextEditorField);
 export const FormSignature = withField(SignatureFieldControl);
 export const FormImageSignature = withField(SignaturePad);
 export const FormUserSelect = withField(WorkflowUserSelect);
-export const FormDeptSelect = withField(DepartmentSelect);
+export const FormDeptSelect = withField(WorkflowDeptSelect);
 export const FormDictSelect = withField(DictSelect);
 export const FormRelationSelect = withField(RelationSelect);
 export const FormDataSourceSelect = withField(DataSourceSelect);

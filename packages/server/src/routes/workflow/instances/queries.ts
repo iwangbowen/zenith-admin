@@ -7,7 +7,7 @@ import { listMyInstances, listPendingMine, listPendingDefinitionOptions, listAll
 import { renderWorkflowInstancePdf, loadPrintVerifyView } from '../../../services/workflow/workflow-print.service';
 import { renderPrintVerifyPage } from './print-verify-page';
 import { getWorkflowAnalytics, listOverdueTasks } from '../../../services/workflow/workflow-analytics.service';
-import { listWorkflowSelectableUsers } from '../../../services/workflow/workflow-selectable-users.service';
+import { listWorkflowSelectableDepartments, listWorkflowSelectableUsers } from '../../../services/workflow/workflow-selectable-users.service';
 import { listMyWorkflowSignGroups } from '../../../services/workflow/workflow-sign-groups.service';
 
 export const mySignGroupsRoute = defineContractRoute(workflowTaskContract.mySignGroups, {
@@ -21,6 +21,11 @@ export const mySignGroupsRoute = defineContractRoute(workflowTaskContract.mySign
  */
 export const selectableUsersRoute = defineContractRoute(workflowInstanceContract.selectableUsers, {
   handler: async (c) => c.json(okBody(await listWorkflowSelectableUsers()), 200),
+});
+
+/** 工作流协作选部门：与 selectableUsers 同权限边界，供表单选择与只读名称解析。 */
+export const selectableDepartmentsRoute = defineContractRoute(workflowInstanceContract.selectableDepartments, {
+  handler: async (c) => c.json(okBody(await listWorkflowSelectableDepartments()), 200),
 });
 
 export const listRoute = defineContractRoute(workflowInstanceContract.list, {

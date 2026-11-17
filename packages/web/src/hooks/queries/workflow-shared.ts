@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 // eslint-disable-next-line no-restricted-imports -- H5 保留：手写 useQuery / useMutation 的理由见本文件对应 hook 的注释；queryKey 仍由 contractKey 生成
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
-import { workflowDefinitionContract, workflowInstanceContract, workflowTaskContract, type WorkflowDefinition, type WorkflowInstance, type WorkflowSelectableUser } from '@zenith/shared/workflow';
+import { workflowDefinitionContract, workflowInstanceContract, workflowTaskContract, type WorkflowDefinition, type WorkflowInstance, type WorkflowSelectableDepartment, type WorkflowSelectableUser } from '@zenith/shared/workflow';
 import { api, apiQueryOptions, contractKey, useApiQuery } from '@/lib/contract-query';
 import { workflowInstanceKeys } from './workflow-instances';
 
@@ -26,6 +26,7 @@ export const workflowSharedKeys = {
       query: search ? { nodeKey: search.nodeKey, keyword: search.keyword } : {},
     }),
   selectableUsers: contractKey(workflowInstanceContract.selectableUsers),
+  selectableDepartments: contractKey(workflowInstanceContract.selectableDepartments),
 };
 
 export async function fetchWorkflowInstanceWithDefinition(instanceId: number): Promise<{
@@ -116,6 +117,19 @@ export function workflowSelectableUsersQueryOptions() {
  */
 export function useWorkflowSelectableUsers(options?: { enabled?: boolean }) {
   return useApiQuery(workflowInstanceContract.selectableUsers, {
+    staleTime: SELECTABLE_USERS_STALE_TIME,
+    enabled: options?.enabled ?? true,
+  });
+}
+
+export type { WorkflowSelectableDepartment };
+
+/**
+ * 工作流选部门数据源。区别于管理端 `useDepartmentTree`（要求 system:department:list）：
+ * 本接口面向普通发起人/审批人开放，返回 id / name / parentId / status，供选择树与只读名称解析。
+ */
+export function useWorkflowSelectableDepartments(options?: { enabled?: boolean }) {
+  return useApiQuery(workflowInstanceContract.selectableDepartments, {
     staleTime: SELECTABLE_USERS_STALE_TIME,
     enabled: options?.enabled ?? true,
   });
