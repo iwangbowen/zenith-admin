@@ -106,7 +106,8 @@ export default function WorkflowDesignerPage({
 
   const [definition, setDefinition] = useState<WorkflowDefinition | null>(null);
   const designPolicy = definition?.designPolicy;
-  const flowReadOnly = readOnly || !!designPolicy;
+  // designPolicy 存在即表示业务托管流程图；lockedSettings 只控制更多设置中的锁定项。
+  const flowReadOnly = readOnly || designPolicy !== undefined;
   const [graphOnly, setGraphOnly] = useState<WorkflowFlowData | null>(null);
   const [graphJson, setGraphJson] = useState('');
   const [graphReason, setGraphReason] = useState('');

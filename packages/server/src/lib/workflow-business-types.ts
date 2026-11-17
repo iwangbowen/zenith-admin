@@ -1,4 +1,4 @@
-import type { WorkflowDefinitionSnapshot, WorkflowFlowData, WorkflowInstance, WorkflowEventActor } from '@zenith/shared/workflow';
+import type { WorkflowDefinitionSnapshot, WorkflowDesignPolicy, WorkflowFlowData, WorkflowInstance, WorkflowEventActor } from '@zenith/shared/workflow';
 import type { workflowInstances, workflowTasks } from '../db/schema';
 import type { DbExecutor, DbTransaction } from '../db/types';
 
@@ -10,9 +10,7 @@ export type PreparedWorkflowBusinessApproval = { assertInTransaction: (executor:
 export interface WorkflowBusinessAdapter {
   readonly businessType: string;
   /** 业务拥有固定的审批语义时，统一声明设计图及不可修改的设置。 */
-  readonly definitionDesign?: {
-    readonly description: string;
-    readonly lockedSettings: string[];
+  readonly definitionDesign?: Readonly<WorkflowDesignPolicy> & {
     readonly normalizeFlow: (flow: WorkflowFlowData | null) => WorkflowFlowData;
   };
   prepare?: (context: {

@@ -5,7 +5,7 @@ import { useRef } from 'react';
 import { Button, Divider, Form, Radio, Select, Space, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { ExternalLink, Plus } from 'lucide-react';
-import type { WorkflowFormField, WorkflowNotifyChannels } from '@zenith/shared/workflow';
+import type { WorkflowDesignPolicy, WorkflowFormField, WorkflowNotifyChannels } from '@zenith/shared/workflow';
 import { WORKFLOW_APPROVER_DEDUP_OPTIONS, WORKFLOW_SUMMARY_MAX_FIELDS, isWorkflowSummaryCapableField, resolveApproverDedupMode } from '@zenith/shared/workflow';
 import { useWorkflowPrintTemplateOptions } from '@/hooks/queries/report-print';
 import { usePermission } from '@/hooks/usePermission';
@@ -18,7 +18,7 @@ interface AdvancedSettingsProps {
   settings: AdvancedSettingsData;
   onChange: (settings: AdvancedSettingsData) => void;
   readOnly?: boolean;
-  lockedSettings?: readonly string[];
+  lockedSettings?: Readonly<WorkflowDesignPolicy['lockedSettings']>;
   /** 当前流程可选表单字段（用于列表摘要字段选择） */
   formFields?: Array<{ key: string; label: string; type: string }>;
   numberingFields?: WorkflowFormField[];
@@ -51,7 +51,7 @@ export default function AdvancedSettingsPanel({ settings, onChange, readOnly = f
   return (
     <div className="fd-basic-info">
       <div className="fd-basic-info__inner">
-        {lockedSettings.length > 0 && <Typography.Paragraph type="tertiary" size="small">灰色配置由业务策略固定，避免自动去重、重新提交或关闭结果通知改变授权审计语义。</Typography.Paragraph>}
+        {lockedSettings.length > 0 && <Typography.Paragraph type="tertiary" size="small">灰色配置由业务策略固定，不支持在设计器中修改。</Typography.Paragraph>}
         <Form
           getFormApi={(api) => { formApiRef.current = api; }}
           initValues={{

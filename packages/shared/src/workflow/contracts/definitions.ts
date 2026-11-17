@@ -1,7 +1,7 @@
 import * as z from 'zod';
 import { auditFieldsSchema, batchIdsBody, idParam, keywordQuery, paginated, paginationQuery, queryEnum, idQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
-import { WORKFLOW_DEFINITION_STATUSES, WORKFLOW_FORM_TYPES, WORKFLOW_FORM_TYPE_OPTIONS, WORKFLOW_SIMULATION_HEALTH_LEVELS, WORKFLOW_SIMULATION_NODE_STATE_STATUSES, WORKFLOW_SIMULATION_RESULT_STATUSES, WORKFLOW_SIMULATION_TIMELINE_STATUSES, WORKFLOW_DEFINITION_STATUS_OPTIONS, WORKFLOW_PATH_STATUSES } from '../constants';
+import { WORKFLOW_DEFINITION_STATUSES, WORKFLOW_DESIGN_LOCKABLE_SETTINGS, WORKFLOW_FORM_TYPES, WORKFLOW_FORM_TYPE_OPTIONS, WORKFLOW_SIMULATION_HEALTH_LEVELS, WORKFLOW_SIMULATION_NODE_STATE_STATUSES, WORKFLOW_SIMULATION_RESULT_STATUSES, WORKFLOW_SIMULATION_TIMELINE_STATUSES, WORKFLOW_DEFINITION_STATUS_OPTIONS, WORKFLOW_PATH_STATUSES } from '../constants';
 import {
   createWorkflowDefinitionSchema,
   importWorkflowDefinitionSchema,
@@ -15,6 +15,14 @@ import {
 import { workflowCustomFormSchema, workflowFlowDataSchema, workflowFormSchemaShape } from './flow-data';
 
 // ─── 实体 ────────────────────────────────────────────────────────────────────
+
+/** 服务端派生的业务托管设计约束：存在即表示流程图及节点配置只读，不代表整份定义只读。 */
+export const workflowDesignPolicySchema = z.strictObject({
+  description: z.string().trim().min(1).meta({ description: '业务托管原因及配置入口说明' }),
+  lockedSettings: z.array(z.enum(WORKFLOW_DESIGN_LOCKABLE_SETTINGS)).meta({ description: '更多设置中由业务固定的配置项；空数组不解除流程图只读' }),
+}).meta({ id: 'WorkflowDesignPolicy', description: '业务托管设计约束；存在即表示流程图及节点配置只读，其余设置按 lockedSettings 控制' });
+
+export type WorkflowDesignPolicy = z.infer<typeof workflowDesignPolicySchema>;
 
 export const workflowDefinitionSchema = z.object({
   id: z.int(),
@@ -33,7 +41,7 @@ export const workflowDefinitionSchema = z.object({
   formSettings: workflowFormSettingsSchema.nullable().optional(),
   formType: z.enum(WORKFLOW_FORM_TYPES).meta({ description: 'designer=表单库，custom=自定义业务页面，external=业务系统主导' }),
   customForm: workflowCustomFormSchema.nullable(),
-  designPolicy: z.object({ description: z.string(), lockedSettings: z.array(z.string()) }).optional(),
+  designPolicy: workflowDesignPolicySchema.optional().meta({ description: '服务端派生，只用于响应；省略表示没有业务托管设计约束，与当前用户权限及整页查看模式独立' }),
   printTemplateId: z.int().nullable().optional().meta({ description: '审批单打印模板 ID（报表打印设计器实体模板）；为空按表单快照自动生成版式' }),
   printTemplateName: z.string().nullable().optional(),
   status: z.enum(WORKFLOW_DEFINITION_STATUSES),

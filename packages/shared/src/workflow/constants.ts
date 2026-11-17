@@ -2,6 +2,7 @@ import { createLabelOptions, createLabelOptionsFromMap } from '../core/enum-opti
 import type {
   NodeListenerEvent,
   WorkflowActionUploadMode,
+  WorkflowAdvancedSettings,
   WorkflowApproveMethod,
   WorkflowApproverDedupMode,
   WorkflowAutomationTrigger,
@@ -21,6 +22,12 @@ import type {
 } from './types';
 
 export const WORKFLOW_DEFINITION_STATUSES = ['draft', 'published', 'disabled'] as const;
+
+/** 设计器支持由业务策略固定的流程设置；其它设置不接受锁定声明。 */
+export const WORKFLOW_DESIGN_LOCKABLE_SETTINGS = [
+  'allowWithdraw', 'allowResubmit', 'notifyInitiator', 'approverDedupMode', 'summaryFields',
+] as const satisfies readonly (keyof WorkflowAdvancedSettings)[];
+export type WorkflowDesignLockableSetting = (typeof WORKFLOW_DESIGN_LOCKABLE_SETTINGS)[number];
 
 export const WORKFLOW_PATH_STATUSES = ['matched', 'excluded', 'unknown'] as const;
 export type WorkflowPathStatus = (typeof WORKFLOW_PATH_STATUSES)[number];
