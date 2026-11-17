@@ -127,20 +127,23 @@ export default function WorkflowHealthCheckDrawer({ visible, flowData, definitio
           {report.branchCoverage.length > 0 && (
             <div style={{ width: '100%' }}>
               <Typography.Title heading={6} style={{ marginBottom: 8 }}>分支覆盖分析（{report.branchCoverage.length} 个网关）</Typography.Title>
-              <Space vertical align="start" style={{ width: '100%' }} spacing={8}>
-                {report.branchCoverage.map((g) => (
-                  <div key={g.nodeKey} style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-medium)' }}>
-                    <Space spacing={8} style={{ flexWrap: 'wrap' }}>
-                      <Typography.Text strong size="small">{g.nodeName}</Typography.Text>
-                      <Tag size="small" color="grey">{g.branchCount} 分支</Tag>
-                      <Tag size="small" color={g.hasDefault ? 'green' : 'orange'}>{g.hasDefault ? '有默认分支' : '无默认分支'}</Tag>
-                    </Space>
-                    {g.issues.length > 0
-                      ? <div style={{ marginTop: 4 }}>{g.issues.map(renderIssue)}</div>
-                      : <Typography.Text size="small" type="success" style={{ display: 'block', marginTop: 4 }}>✓ 覆盖完整</Typography.Text>}
+              <div style={{ width: '100%' }}>
+                {report.branchCoverage.map((g, index) => (
+                  <div key={g.nodeKey} style={{ width: '100%', padding: '10px 0', borderTop: index === 0 ? '1px solid var(--semi-color-border)' : undefined, borderBottom: '1px solid var(--semi-color-border)' }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                      <Space spacing={8} style={{ flexWrap: 'wrap' }}>
+                        <Typography.Text strong size="small">{g.nodeName}</Typography.Text>
+                        <Typography.Text size="small" type="tertiary">{g.branchCount} 个分支</Typography.Text>
+                        <Typography.Text size="small" type={g.hasDefault ? 'success' : 'warning'}>{g.hasDefault ? '有默认分支' : '无默认分支'}</Typography.Text>
+                      </Space>
+                      <Typography.Text size="small" type={g.issues.length > 0 ? 'warning' : 'success'}>
+                        {g.issues.length > 0 ? `${g.issues.length} 项待处理` : '覆盖完整'}
+                      </Typography.Text>
+                    </div>
+                    {g.issues.length > 0 && <div style={{ marginTop: 6 }}>{g.issues.map(renderIssue)}</div>}
                   </div>
                 ))}
-              </Space>
+              </div>
             </div>
           )}
         </Space>
