@@ -150,8 +150,8 @@ export default function DepartmentsPage() {
   });
 
   const columns: ColumnProps<Department>[] = [
-    { title: '部门名称', dataIndex: 'name', minWidth: 220 },
-    { title: '部门编码', dataIndex: 'code', width: 180, render: renderEllipsis },
+    { title: '部门名称', dataIndex: 'name', minWidth: 320, ellipsis: { showTitle: true } },
+    { title: '部门编码', dataIndex: 'code', width: 240, ellipsis: { showTitle: true }, render: renderEllipsis },
     { title: '类别', dataIndex: 'category', width: 90, render: (value: string) => <DictTag dictCode="department_category" value={value} /> },
     { title: '负责人', dataIndex: 'leaderName', width: 180, ellipsis: { showTitle: true }, render: (value) => value || EMPTY_PLACEHOLDER },
     { title: '联系电话', dataIndex: 'phone', width: 140, render: (value) => value || EMPTY_PLACEHOLDER },
