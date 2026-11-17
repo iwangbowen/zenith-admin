@@ -15,6 +15,13 @@
       "when": 1794828278355,
       "tag": "0001_extensions",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794892860518,
+      "tag": "0002_exotic_gideon",
+      "breakpoints": true
     }
   ]
 }

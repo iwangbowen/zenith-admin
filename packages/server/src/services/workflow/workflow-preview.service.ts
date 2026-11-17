@@ -76,13 +76,14 @@ export async function previewFlowData(
       ? Promise.resolve([])
       : resolveAssigneeIds(config, { initiatorId: user.userId, formData: { ...plan.formData } }),
     names: resolveUserNames,
+    initiatorId: user.userId,
   });
   const byKey = new Map(predicted.map(node => [node.key, node]));
   const initiatorNames = await resolveUserNames([user.userId]);
   const nodes = await Promise.all(planned.map(async (node): Promise<WorkflowApproverPreviewNode> => {
     const config = configs.get(node.nodeKey)!;
-    const automaticAction = config.approvalType === 'autoReject' ? 'reject' : config.approvalType === 'autoApprove' || config.approveMethod === 'auto' ? 'approve' : null;
     const prediction = byKey.get(node.nodeKey);
+    const automaticAction = prediction?.policySkipped ? 'approve' : config.approvalType === 'autoReject' ? 'reject' : config.approvalType === 'autoApprove' || config.approveMethod === 'auto' ? 'approve' : null;
     const isInitiatorSelect = INITIATOR_SELECT_TYPES.has(config.assigneeType ?? '');
     const selectionRequired = isInitiatorSelect && node.status !== 'excluded';
     const approvers = prediction?.estimatedApprovers ?? [];

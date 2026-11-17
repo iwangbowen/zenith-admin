@@ -11,6 +11,7 @@ import { advanceTokens, type AdvanceTrigger, type BranchPath } from '../../lib/w
 import { analyzeWorkflowHealth } from '../../lib/workflow-health';
 import { tenantCondition } from '../../lib/tenant';
 import { buildStarterContext, resolveAdminUserId, resolveAssigneeIds } from './workflow-assignee-resolver.service';
+import { applyPreviewAssigneePolicy } from './workflow-path-prediction';
 import { resolveFormSnapshot } from './workflow-forms.service';
 import type { SimulateWorkflowInput, WorkflowConditionGroup, WorkflowEdge, WorkflowEdgeCondition, WorkflowFlowData, WorkflowHealthCheckInput, WorkflowDefinitionHealthReport, WorkflowNodeConfig, WorkflowSimulationEdgeResult, WorkflowSimulationHealthIssue, WorkflowSimulationBlockingPoint, WorkflowSimulationNodeState, WorkflowSimulationResult, WorkflowSimulationTimelineItem, WorkflowStarterContext } from '@zenith/shared/workflow';
 import { requireRow } from '../../lib/db-assert';
@@ -177,10 +178,24 @@ async function expandTaskAction(
     }];
   }
 
-  const assigneeIds = await resolveAssigneeIds(task.nodeConfig, {
+  const resolvedIds = await resolveAssigneeIds(task.nodeConfig, {
     initiatorId: ctx.initiatorId,
     formData: ctx.formData,
   });
+  const policy = await applyPreviewAssigneePolicy(task.nodeConfig, resolvedIds, ctx.initiatorId, (config) =>
+    resolveAssigneeIds(config, { initiatorId: ctx.initiatorId, formData: ctx.formData }));
+  if (policy.policySkipped) {
+    return [{
+      nodeKey: task.nodeKey,
+      nodeName: task.nodeName,
+      nodeType: task.nodeType,
+      assigneeId: null,
+      status: 'approved',
+      nodeConfig: task.nodeConfig,
+      reason: policy.reason ?? '按规则自动跳过',
+    }];
+  }
+  const assigneeIds = policy.ids;
   if (assigneeIds.length > 0) {
     return assigneeIds.map((id) => ({
       nodeKey: task.nodeKey,
@@ -189,6 +204,7 @@ async function expandTaskAction(
       assigneeId: id,
       status: 'pending',
       nodeConfig: task.nodeConfig,
+      ...(policy.reason ? { reason: policy.reason } : {}),
     }));
   }
 
@@ -471,6 +487,10 @@ function simAdvance(ctx: SimulationContext, trigger: { kind: 'seed' } | { kind: 
   ctx.tokens = ctx.tokens.filter((t) => !consumed.has(t.id));
   for (const spec of res.ops.create) {
     ctx.tokens.push({ id: ctx.tokenSeq++, nodeKey: spec.nodeKey, branchPath: spec.branchPath });
+  }
+  for (const pending of res.pendingDecisions) {
+    ctx.warnings.push(`节点「${pending.nodeKey}」使用决策资产，仿真不执行真实规则，后续路径待定`);
+    ctx.nodeStates[pending.nodeKey] = { status: 'pending', message: '规则结果待定，仿真不执行真实决策' };
   }
   return { tasksToCreate: res.tasksToCreate, currentNodeKeys: res.activeNodeKeys, finished: res.finished, rejected: res.rejected };
 }

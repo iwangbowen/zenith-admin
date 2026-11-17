@@ -12,7 +12,7 @@
  * 引擎为纯函数：读入当前 active token 快照 + 一个触发，产出 { 待创建任务, token 操作,
  * finished, rejected }，由 service 层落库（见 workflow-instances.service.ts）。
  */
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { WorkflowFlowData, WorkflowStarterContext } from '@zenith/shared/workflow';
 import { isGatedTrigger } from '@zenith/shared/workflow';
 import {
@@ -68,7 +68,17 @@ export type AdvanceTrigger =
   /** 从某节点出边继续推进（不消费 token；用于 expand 自动通过节点的续接） */
   | { type: 'continue'; nodeKey: string; branchPath: BranchPath; parentTokenId?: number | null }
   /** 直接进入某节点（强制跳转 / 退回 / 异常捕获 / 续接）：处理该节点本身 */
-  | { type: 'enter'; nodeKey: string; branchPath?: BranchPath; parentTokenId?: number | null };
+  | { type: 'enter'; nodeKey: string; branchPath?: BranchPath; parentTokenId?: number | null }
+  /** 决策网关已完成求值并持久化：回到网关按出边条件继续 */
+  | { type: 'resumeDecision'; decisionId: string; nodeKey: string; branchPath: BranchPath; parentTokenId?: number | null };
+
+/** 到达决策网关但尚未求值：由调用方求值、持久化后再 resume。 */
+export interface PendingDecision {
+  decisionId: string;
+  nodeKey: string;
+  branchPath: BranchPath;
+  parentTokenId: number | null;
+}
 
 export interface AdvanceTokensInput {
   flowData: WorkflowFlowData;
@@ -77,6 +87,8 @@ export interface AdvanceTokensInput {
   /** 本实例当前全部 active token（含 parked join token） */
   liveTokens: TokenSnapshot[];
   trigger: AdvanceTrigger;
+  /** 真实实例 ID；用于决策幂等键。仿真 / 纯函数测试可省略。 */
+  instanceId?: number;
   /** 仅供 ccNode onlyOnApprove 判定（上游是否已有完成的审批/办理节点） */
   completedNodeKeys?: Set<string>;
   /** 分支组 id 生成器（默认随机；测试可注入确定性序列） */
@@ -91,12 +103,16 @@ export interface AdvanceTokensResult {
   rejected: boolean;
   /** 活动 frontier 节点 key（用于 currentNodeKey 展示） */
   activeNodeKeys: string[];
+  /** 到达但未求值的决策网关；调用方需逐个求值后以 resumeDecision 继续。 */
+  pendingDecisions: PendingDecision[];
 }
 
 interface Arrival {
   nodeId: string;
   branchPath: BranchPath;
   parentTokenId: number | null;
+  /** resumeDecision 回到网关时跳过 pending 阶段，直接按已持久化的 formData 选边。 */
+  resolved?: boolean;
 }
 
 /** 内部追踪的 parked token（现存或本次新建） */
@@ -122,6 +138,13 @@ function groupKey(path: BranchPath): string | null {
 /**
  * 推进 token。纯函数：不触库，返回待落库的任务与 token 操作。
  */
+function decisionIdFor(instanceId: number | undefined, nodeKey: string, path: BranchPath, parentTokenId: number | null): string {
+  return createHash('sha256')
+    .update(`${instanceId ?? 'sim'}:${nodeKey}:${pathKey(path)}:${parentTokenId ?? 0}`)
+    .digest('hex')
+    .slice(0, 32);
+}
+
 export function advanceTokens(input: AdvanceTokensInput): AdvanceTokensResult {
   const { flowData, formData = {}, starter, liveTokens, trigger } = input;
   const completedNodeKeys = input.completedNodeKeys ?? new Set<string>();
@@ -135,8 +158,13 @@ export function advanceTokens(input: AdvanceTokensInput): AdvanceTokensResult {
   const consume: number[] = [];
   const create: NewTokenSpec[] = [];
   const activeNodeKeys: string[] = [];
+  const pendingDecisions: PendingDecision[] = [];
   let finished = false;
   let rejected = false;
+
+  const result = (): AdvanceTokensResult => ({
+    tasksToCreate, ops: { consume, create }, finished, rejected, activeNodeKeys, pendingDecisions,
+  });
 
   let tempSeq = 0;
   const nextTempId = () => `t${tempSeq++}`;
@@ -163,27 +191,31 @@ export function advanceTokens(input: AdvanceTokensInput): AdvanceTokensResult {
   // 起点：根据 trigger 计算初始 arrivals
   if (trigger.type === 'seed') {
     const startNode = flowData.nodes.find((n) => n.data.type === 'start');
-    if (!startNode) return { tasksToCreate, ops: { consume, create }, finished, rejected, activeNodeKeys };
+    if (!startNode) return result();
     for (const { target } of outEdges.get(startNode.id) ?? []) {
       queue.push({ nodeId: target, branchPath: [], parentTokenId: null });
     }
   } else if (trigger.type === 'advance') {
     consume.push(trigger.tokenId);
     const fromNode = nodeByKey.get(trigger.nodeKey);
-    if (!fromNode) return { tasksToCreate, ops: { consume, create }, finished, rejected, activeNodeKeys };
+    if (!fromNode) return result();
     for (const { target } of outEdges.get(fromNode.id) ?? []) {
       queue.push({ nodeId: target, branchPath: trigger.branchPath, parentTokenId: trigger.tokenId });
     }
   } else if (trigger.type === 'continue') {
     const fromNode = nodeByKey.get(trigger.nodeKey);
-    if (!fromNode) return { tasksToCreate, ops: { consume, create }, finished, rejected, activeNodeKeys };
+    if (!fromNode) return result();
     for (const { target } of outEdges.get(fromNode.id) ?? []) {
       queue.push({ nodeId: target, branchPath: trigger.branchPath, parentTokenId: trigger.parentTokenId ?? null });
     }
+  } else if (trigger.type === 'resumeDecision') {
+    const node = nodeByKey.get(trigger.nodeKey);
+    if (!node) return result();
+    queue.push({ nodeId: node.id, branchPath: trigger.branchPath, parentTokenId: trigger.parentTokenId ?? null, resolved: true });
   } else {
     // enter：处理目标节点本身
     const node = nodeByKey.get(trigger.nodeKey);
-    if (!node) return { tasksToCreate, ops: { consume, create }, finished, rejected, activeNodeKeys };
+    if (!node) return result();
     queue.push({ nodeId: node.id, branchPath: trigger.branchPath ?? [], parentTokenId: trigger.parentTokenId ?? null });
   }
 
@@ -228,6 +260,15 @@ export function advanceTokens(input: AdvanceTokensInput): AdvanceTokensResult {
     if (outs.length === 0) continue;
 
     if (type === 'exclusiveGateway' || type === 'routeGateway') {
+      if (type === 'routeGateway' && node.data.decisionRuleKey && !arrival.resolved) {
+        pendingDecisions.push({
+          decisionId: decisionIdFor(input.instanceId, node.data.key, arrival.branchPath, arrival.parentTokenId),
+          nodeKey: node.data.key,
+          branchPath: arrival.branchPath,
+          parentTokenId: arrival.parentTokenId,
+        });
+        continue;
+      }
       let chosen: string | null = null;
       let fallback: string | null = null;
       for (const { target, edge } of outs) {
@@ -373,7 +414,7 @@ export function advanceTokens(input: AdvanceTokensInput): AdvanceTokensResult {
     }
   }
 
-  return { tasksToCreate, ops: { consume, create }, finished, rejected, activeNodeKeys };
+  return result();
 }
 
 function makeTaskAction(node: FlowNode, assigneeId: number | null, autoStatus?: 'approved' | 'rejected'): TaskAction {

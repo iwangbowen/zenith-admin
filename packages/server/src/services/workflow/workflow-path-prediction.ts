@@ -3,7 +3,40 @@ import type { WorkflowFlowData, WorkflowNodeConfig, WorkflowPredictedPathNode } 
 type PredictionResolvers = {
   resolve: (config: WorkflowNodeConfig) => Promise<number[]>;
   names: (ids: Iterable<number>) => Promise<Map<number, string>>;
+  initiatorId: number;
 };
+
+/** 预览侧复用与实跑一致的同发起人策略；去重需要真实历史，预览只做同人跳过。 */
+export async function applyPreviewAssigneePolicy(
+  config: WorkflowNodeConfig,
+  ids: number[],
+  initiatorId: number,
+  resolve: (config: WorkflowNodeConfig) => Promise<number[]>,
+): Promise<{ ids: number[]; policySkipped: boolean; reason: string | null }> {
+  const strategy = config.sameInitiatorStrategy ?? 'autoSkip';
+  if (!ids.includes(initiatorId) || strategy === 'selfApprove') {
+    return { ids, policySkipped: false, reason: null };
+  }
+  const remaining = ids.filter((id) => id !== initiatorId);
+  if (strategy === 'autoSkip') {
+    return {
+      ids: remaining,
+      policySkipped: remaining.length === 0,
+      reason: remaining.length === 0 ? '审批人与发起人为同一人，将按规则自动跳过' : null,
+    };
+  }
+  const replacement = await resolve({
+    ...config,
+    assigneeType: strategy === 'toDirectManager' ? 'manager' : 'department',
+    managerLevel: 1,
+  });
+  const merged = [...new Set([...remaining, ...replacement.filter((id) => id !== initiatorId)])];
+  return {
+    ids: merged,
+    policySkipped: false,
+    reason: merged.length === 0 ? '审批人与发起人为同一人，且未找到可替换的上级/负责人' : null,
+  };
+}
 
 /** Resolve only safe read operations. Future decisions, selections and random draws remain explicitly unknown. */
 export async function enrichPredictedApprovers(path: WorkflowPredictedPathNode[], flow: WorkflowFlowData, resolvers: PredictionResolvers): Promise<WorkflowPredictedPathNode[]> {
@@ -21,8 +54,10 @@ export async function enrichPredictedApprovers(path: WorkflowPredictedPathNode[]
     else if (config.assigneeType === 'decision') result.approverReason = '审批人矩阵在节点到达时求值';
     else {
       const ids = await resolvers.resolve(config);
-      idsByKey.set(entry.key, ids);
-      result.approverReason = ids.length ? (['user', 'initiator', 'initiatorSelect', 'initiatorSelectScope'].includes(config.assigneeType ?? '') ? '按当前流程配置确定' : '按当前组织关系预测，节点到达时确认') : '尚未解析到审批人，节点到达时按配置处理';
+      const policy = await applyPreviewAssigneePolicy(config, ids, resolvers.initiatorId, resolvers.resolve);
+      idsByKey.set(entry.key, policy.ids);
+      result.policySkipped = policy.policySkipped;
+      result.approverReason = policy.reason ?? (policy.ids.length ? (['user', 'initiator', 'initiatorSelect', 'initiatorSelectScope'].includes(config.assigneeType ?? '') ? '按当前流程配置确定' : '按当前组织关系预测，节点到达时确认') : '尚未解析到审批人，节点到达时按配置处理');
     }
     return result;
   }));

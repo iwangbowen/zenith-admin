@@ -387,7 +387,7 @@ export default function NodeConfigDrawer({
                   emptyStrategy={(props.emptyStrategy as EmptyAssigneeStrategy) ?? 'autoApprove'}
                   emptyAssignToIds={props.emptyAssignToIds as number[] | undefined}
                   sameInitiatorStrategy={(props.sameInitiatorStrategy as SameInitiatorStrategy) ?? 'autoSkip'}
-                  deduplicateStrategy={(props.deduplicateStrategy as DeduplicateStrategy) ?? 'autoSkip'}
+                  deduplicateStrategy={(props.deduplicateStrategy as DeduplicateStrategy) ?? 'inherit'}
                   returnMode={(props.returnMode as 'reexecute' | 'backToOrigin') ?? 'reexecute'}
                   catchAction={props.catchAction as 'toAdmin' | 'notify' | 'terminate' | undefined}
                   catchNotifyUserIds={props.catchNotifyUserIds as number[] | undefined}
@@ -1043,15 +1043,11 @@ function getDefaultProps(type: FlowNodeType): Record<string, unknown> {
     case 'approver':
       return {
         approvalType: 'manual',
-        excludeFromStats: false,
         assigneeType: 'user',
         assigneeIds: [],
         assigneeNames: [],
         approveMethod: 'or',
         rejectStrategy: 'terminate',
-        emptyStrategy: 'autoApprove',
-        sameInitiatorStrategy: 'autoSkip',
-        deduplicateStrategy: 'autoSkip',
         operations: DEFAULT_APPROVER_OPERATIONS,
         fieldPermissions: {},
       };

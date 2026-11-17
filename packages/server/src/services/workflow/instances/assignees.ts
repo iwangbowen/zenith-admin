@@ -34,7 +34,11 @@ async function resolveSameInitiatorReplacement(
 /** 审批人经运行时策略过滤后为空时的原因（用于自动通过任务的可解释性留痕） */
 export type AssigneeEmptiedReason = 'sameInitiator' | 'dedup' | null;
 
+export type AssigneeRuntimeOutcome = 'assigned' | 'policySkipped' | 'unresolved';
+
 export interface AssigneeRuntimeResult {
+  /** assigned=有可派人员；policySkipped=按规则主动跳过；unresolved=解析/替换后确实无人 */
+  outcome: AssigneeRuntimeOutcome;
   ids: number[];
   /** ids 为空时的过滤原因：同发起人跳过 / 审批人去重；解析本身为空时为 null */
   emptiedBy: AssigneeEmptiedReason;
@@ -57,16 +61,24 @@ export async function applyAssigneeRuntimeStrategies(
   // 需要自审的流程在节点上显式配置 selfApprove
   const sameInitiatorStrategy = isHandler ? 'selfApprove' : (task.nodeConfig.sameInitiatorStrategy ?? 'autoSkip');
   let emptiedBy: AssigneeEmptiedReason = null;
+  let outcome: AssigneeRuntimeOutcome = ids.length === 0 ? 'unresolved' : 'assigned';
   const excluded: AssigneeRuntimeResult['excluded'] = [];
 
   if (ids.includes(ctx.initiatorId) && sameInitiatorStrategy !== 'selfApprove') {
     ids = ids.filter((id) => id !== ctx.initiatorId);
     excluded.push({ userId: ctx.initiatorId, reason: 'sameInitiator' });
-    if (ids.length === 0) emptiedBy = 'sameInitiator';
+    if (ids.length === 0) {
+      emptiedBy = 'sameInitiator';
+      // 显式自动跳过才是 policySkipped；转主管/负责人后仍无人属于 unresolved，必须走空人兜底
+      outcome = sameInitiatorStrategy === 'autoSkip' ? 'policySkipped' : 'unresolved';
+    }
     if (sameInitiatorStrategy === 'toDirectManager' || sameInitiatorStrategy === 'toDeptHead') {
       const replacements = await resolveSameInitiatorReplacement(task, ctx);
       ids = [...new Set([...ids, ...replacements.filter((id) => id !== ctx.initiatorId)])];
-      if (ids.length > 0) emptiedBy = null;
+      if (ids.length > 0) {
+        emptiedBy = null;
+        outcome = 'assigned';
+      }
     }
   }
 
@@ -79,10 +91,13 @@ export async function applyAssigneeRuntimeStrategies(
       if (dedupUsers.has(id)) excluded.push({ userId: id, reason: 'dedup' });
     }
     ids = ids.filter((id) => !dedupUsers.has(id));
-    if (ids.length === 0) emptiedBy = 'dedup';
+    if (ids.length === 0) {
+      emptiedBy = 'dedup';
+      outcome = 'policySkipped';
+    }
   }
 
-  return { ids, emptiedBy, excluded };
+  return { outcome, ids, emptiedBy, excluded };
 }
 
 /**

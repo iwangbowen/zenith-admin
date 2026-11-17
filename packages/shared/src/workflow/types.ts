@@ -167,7 +167,7 @@ export type WorkflowEmptyAssigneeStrategy = 'autoApprove' | 'assignToAdmin' | 'r
 
 export type WorkflowSameInitiatorStrategy = 'selfApprove' | 'autoSkip' | 'toDirectManager' | 'toDeptHead';
 
-export type WorkflowDeduplicateStrategy = 'autoSkip' | 'repeatApprove';
+export type WorkflowDeduplicateStrategy = 'inherit' | 'autoSkip' | 'repeatApprove';
 
 /** 流程级「自动去重」模式：同一审批人在流程中重复出现时的处理方式 */
 export type WorkflowApproverDedupMode =

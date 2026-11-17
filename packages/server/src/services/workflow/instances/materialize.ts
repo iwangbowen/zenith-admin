@@ -1,8 +1,8 @@
 // ─── 任务行物化与令牌推进（拆分自 workflow-instances.service.ts）───
 import { eq, and, inArray } from 'drizzle-orm';
-import { workflowInstances, workflowTasks, workflowTokens } from '../../../db/schema';
+import { workflowDecisionExecutions, workflowInstances, workflowTasks, workflowTokens } from '../../../db/schema';
 import { resolveRuntimeApproveMethod, type TaskAction } from '../../../lib/workflow-engine';
-import { advanceTokens, type AdvanceTrigger, type BranchPath } from '../../../lib/workflow-token-engine';
+import { advanceTokens, type AdvanceTrigger, type BranchPath, type PendingDecision } from '../../../lib/workflow-token-engine';
 import type { WorkflowResolvedApproveMethod, WorkflowFlowData, WorkflowStarterContext } from '@zenith/shared/workflow';
 import { isGatedTrigger } from '@zenith/shared/workflow';
 import { HTTPException } from 'hono/http-exception';
@@ -259,13 +259,18 @@ async function expandTasksToRows(
     });
 
     const userIds = await applyAssigneeRuntimeStrategies(t, resolvedUserIds, ctx);
-    if (userIds.ids.length === 0) {
-      // 审批人为空的可解释性留痕：同人跳过 / 去重跳过 / 解析为空，写入自动任务 comment
-      const emptyReason = userIds.emptiedBy === 'sameInitiator'
+    if (userIds.outcome === 'policySkipped') {
+      const reason = userIds.emptiedBy === 'sameInitiator'
         ? '审批人与发起人为同一人，已按规则自动跳过'
-        : userIds.emptiedBy === 'dedup'
-          ? '审批人与前序节点重复，已按去重规则自动跳过'
-          : '审批人解析为空';
+        : '审批人与前序节点重复，已按去重规则自动跳过';
+      pushAutoRow(t, 'approved', reason);
+      continue;
+    }
+    if (userIds.ids.length === 0) {
+      // 解析/替换后确实无人：进入节点异常、异常边或空审批人策略
+      const emptyReason = userIds.emptiedBy === 'sameInitiator'
+        ? '审批人与发起人为同一人，且未找到可替换的上级/负责人'
+        : '审批人解析为空';
       // T3-2 节点级异常处理：审批人解析为空时，优先按本节点 catchAction 兜底
       const nodeCatch = t.nodeConfig.catchAction;
       if (nodeCatch) {
@@ -430,6 +435,64 @@ export async function killInstanceTokens(exec: DbExecutor, instanceId: number): 
     .where(and(eq(workflowTokens.instanceId, instanceId), eq(workflowTokens.status, 'active')));
 }
 
+/**
+ * 到达决策网关后同步求值并持久化。
+ * - 先按 decisionId 查重，保证崩溃重试不重复调用规则；
+ * - 输出并入 formData 后再 resume，出边条件只读已提交上下文。
+ */
+async function resolvePendingDecisions(
+  exec: DbExecutor,
+  ctx: { instanceId: number; flowData: WorkflowFlowData; formData: Record<string, unknown>; starter?: WorkflowStarterContext; tenantId?: number | null },
+  pending: PendingDecision[],
+): Promise<AdvanceTrigger[]> {
+  if (pending.length === 0) return [];
+  const triggers: AdvanceTrigger[] = [];
+  for (const item of pending) {
+    const [existing] = await exec.select({ outputs: workflowDecisionExecutions.outputs })
+      .from(workflowDecisionExecutions)
+      .where(eq(workflowDecisionExecutions.decisionId, item.decisionId))
+      .limit(1);
+    let outputs: Record<string, unknown>;
+    if (existing) {
+      outputs = (existing.outputs ?? {}) as Record<string, unknown>;
+    } else {
+      const node = ctx.flowData.nodes.find((n) => n.data.key === item.nodeKey);
+      if (!node?.data.decisionRuleKey) continue;
+      const decision = await decide(
+        { kind: node.data.decisionRefKind ?? 'table', key: node.data.decisionRuleKey },
+        { form: ctx.formData, starter: ctx.starter },
+        { caller: 'workflow.gateway', bizRef: `workflow:${ctx.instanceId}#${item.nodeKey}` },
+      );
+      outputs = decision.outputs;
+      await exec.insert(workflowDecisionExecutions).values({
+        instanceId: ctx.instanceId,
+        decisionId: item.decisionId,
+        nodeKey: item.nodeKey,
+        branchPath: item.branchPath,
+        parentTokenId: item.parentTokenId,
+        refKind: decision.ref.kind,
+        ruleKey: decision.ref.key,
+        ruleVersion: decision.ref.version,
+        matched: decision.matched,
+        reason: decision.reason ?? null,
+        usedFallback: decision.usedFallback ?? null,
+        inputs: { form: ctx.formData, starter: ctx.starter },
+        outputs,
+        tenantId: ctx.tenantId ?? null,
+      });
+    }
+    Object.assign(ctx.formData, outputs);
+    triggers.push({
+      type: 'resumeDecision', decisionId: item.decisionId, nodeKey: item.nodeKey,
+      branchPath: item.branchPath, parentTokenId: item.parentTokenId,
+    });
+  }
+  if (triggers.length > 0) {
+    await exec.update(workflowInstances).set({ formData: ctx.formData }).where(eq(workflowInstances.id, ctx.instanceId));
+  }
+  return triggers;
+}
+
 /** 推进的触发方式（service 语义层，内部翻译为引擎触发并管理 token 落库） */
 export type MaterializeTrigger =
   /** 实例发起 / 重新发起：从 start 播种 */
@@ -453,18 +516,6 @@ export async function advanceAndMaterialize(
   let finished = false;
   let rejected = false;
   let currentNodeKeys: string[] = [];
-
-  // 决策资产→网关注入：routeGateway 配 decisionRuleKey 时按 decisionRefKind（缺省决策表）求值，
-  // 输出并入 formData 供出边条件选支
-  const decisionNodes = (ctx.flowData.nodes ?? []).filter((n) => n.data.type === 'routeGateway' && n.data.decisionRuleKey);
-  for (const n of decisionNodes) {
-    const decision = await decide(
-      { kind: n.data.decisionRefKind ?? 'table', key: n.data.decisionRuleKey! },
-      { form: ctx.formData, starter: ctx.starter },
-      { caller: 'workflow.gateway', bizRef: `workflow:${ctx.instanceId}#${n.data.key}` },
-    );
-    Object.assign(ctx.formData, decision.outputs);
-  }
 
   // 解析初始引擎触发（并按需先行消费 token）
   const engineTriggers: AdvanceTrigger[] = [];
@@ -499,6 +550,7 @@ export async function advanceAndMaterialize(
       starter: ctx.starter,
       liveTokens,
       trigger: et,
+      instanceId: ctx.instanceId,
       completedNodeKeys,
     });
 
@@ -540,6 +592,10 @@ export async function advanceAndMaterialize(
         if (slotId != null) await exec.update(workflowApprovalSlots).set({ currentTaskId: task.id }).where(eq(workflowApprovalSlots.id, slotId));
         createdTasks.push(task); await armTaskAsyncJobs(task, { id: ctx.instanceId, flowData: ctx.flowData, formData: ctx.formData, tenantId: ctx.tenantId ?? null }, exec);
       }
+    }
+    if (!res.rejected && res.pendingDecisions.length > 0) {
+      const resumeTriggers = await resolvePendingDecisions(exec, ctx, res.pendingDecisions);
+      engineTriggers.push(...resumeTriggers);
     }
     const autoRejected = !!expanded.autoRejectedNodeKey;
 

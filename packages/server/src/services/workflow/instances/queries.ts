@@ -603,6 +603,7 @@ async function loadInstanceDetail(id: number, business?: { bizType: string; bizI
         predictedPath = await enrichPredictedApprovers(path, snapshot.flowData, {
           resolve: config => resolveAssigneeIds(config, { initiatorId: row.initiatorId, instanceId: id, formData, deptTree }),
           names: resolveUserNames,
+          initiatorId: row.initiatorId,
         });
       } catch { predictedPath = null; /* Read-only prediction cannot block detail retrieval. */ }
     }

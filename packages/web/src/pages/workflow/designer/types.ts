@@ -136,7 +136,8 @@ export type SameInitiatorStrategy =
 
 /** 审批人去重策略（多节点中同一审批人） */
 export type DeduplicateStrategy =
-  | 'autoSkip'          // 自动跳过（默认，后续节点自动同意）
+  | 'inherit'          // 跟随流程级 approverDedupMode
+  | 'autoSkip'          // 显式自动跳过（后续节点自动同意）
   | 'repeatApprove';    // 仍需审批
 
 /** 审批人节点 Props */

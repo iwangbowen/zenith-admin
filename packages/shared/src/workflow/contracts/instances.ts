@@ -163,6 +163,7 @@ export const workflowPredictedPathNodeSchema = z.object({
   reason: z.string().optional(),
   estimatedApprovers: z.array(z.object({ id: z.number().int(), name: z.string() })).optional(),
   approverReason: z.string().nullable().optional(),
+  policySkipped: z.boolean().optional().meta({ description: '按同发起人 / 去重策略将自动跳过' }),
 }).meta({ id: 'WorkflowPredictedPathNode' });
 
 export type WorkflowPredictedPathNode = z.infer<typeof workflowPredictedPathNodeSchema>;

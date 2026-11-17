@@ -100,7 +100,7 @@ export default function ApproverAdvancedSections({
   emptyStrategy,
   emptyAssignToIds,
   sameInitiatorStrategy = 'autoSkip',
-  deduplicateStrategy = 'autoSkip',
+  deduplicateStrategy = 'inherit',
   returnMode = 'reexecute',
   catchAction,
   catchNotifyUserIds,
@@ -420,7 +420,7 @@ export default function ApproverAdvancedSections({
       </Collapse.Panel>
 
       {/* ─── 审批人去重 ───────────────────────────────────────── */}
-      <Collapse.Panel itemKey="dedup" header={<PanelHeader title="审批人去重" summary={dedupSummary} modified={deduplicateStrategy !== 'autoSkip'} />}>
+      <Collapse.Panel itemKey="dedup" header={<PanelHeader title="审批人去重" summary={dedupSummary} modified={deduplicateStrategy !== 'inherit'} />}>
       <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 8 }}>
         当同一审批人出现在多个审批节点时的处理方式
       </Typography.Text>

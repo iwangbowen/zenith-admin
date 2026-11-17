@@ -295,6 +295,7 @@ export const SAME_INITIATOR_OPTIONS: Array<{ value: SameInitiatorStrategy; label
 // ─── 审批人去重策略 ──────────────────────────────────────────
 
 export const DEDUPLICATE_OPTIONS: Array<{ value: DeduplicateStrategy; label: string }> = [
+  { value: 'inherit',       label: '跟随流程设置' },
   { value: 'autoSkip',       label: '自动跳过（后续节点自动同意）' },
   { value: 'repeatApprove',  label: '仍需审批' },
 ];

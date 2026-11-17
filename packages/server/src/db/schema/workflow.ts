@@ -591,6 +591,30 @@ export const workflowNodeActivations = pgTable('workflow_node_activations', {
   ...auditColumns(), ...timestampColumns(),
 }, (t) => [index('workflow_node_activations_instance_node_idx').on(t.instanceId, t.nodeKey), check('workflow_node_activations_base_votes_check', sql`${t.baseRequired} >= 0 and ${t.baseRequired} <= ${t.baseTotal}`)]);
 
+/** 路由网关决策执行快照：到达网关时同步写入，作为实例分支与审计的唯一来源。 */
+export const workflowDecisionExecutions = pgTable('workflow_decision_executions', {
+  id: idColumn(),
+  instanceId: integer().notNull().references(() => workflowInstances.id, { onDelete: 'cascade' }),
+  /** 由 instanceId + nodeKey + branchPath + parentTokenId 派生的幂等键 */
+  decisionId: varchar({ length: 64 }).notNull().unique('workflow_decision_executions_decision_id_unique'),
+  nodeKey: varchar({ length: 64 }).notNull(),
+  branchPath: jsonb().$type<unknown[]>().notNull().default(sql`'[]'::jsonb`),
+  parentTokenId: integer(),
+  refKind: varchar({ length: 16 }).notNull(),
+  ruleKey: varchar({ length: 64 }).notNull(),
+  ruleVersion: integer(),
+  matched: boolean().notNull().default(false),
+  reason: varchar({ length: 64 }),
+  usedFallback: boolean(),
+  inputs: jsonb().notNull().default(sql`'{}'::jsonb`),
+  outputs: jsonb().notNull().default(sql`'{}'::jsonb`),
+  tenantId: tenantIdColumn(),
+  ...auditColumns(), ...timestampColumns(),
+}, (t) => [index('workflow_decision_executions_instance_node_idx').on(t.instanceId, t.nodeKey)]);
+
+export type WorkflowDecisionExecutionRow = typeof workflowDecisionExecutions.$inferSelect;
+export type NewWorkflowDecisionExecution = typeof workflowDecisionExecutions.$inferInsert;
+
 /** 一份正式意见的稳定席位。建议委派和回执属于同一席位。 */
 export const workflowApprovalSlots = pgTable('workflow_approval_slots', {
   id: idColumn(),

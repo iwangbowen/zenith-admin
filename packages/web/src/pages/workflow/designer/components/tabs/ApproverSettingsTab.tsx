@@ -181,7 +181,7 @@ export default function ApproverSettingsTab({
   emptyStrategy = 'autoApprove',
   emptyAssignToIds,
   sameInitiatorStrategy = 'autoSkip',
-  deduplicateStrategy = 'autoSkip',
+  deduplicateStrategy = 'inherit',
   returnMode = 'reexecute',
   catchAction,
   catchNotifyUserIds,

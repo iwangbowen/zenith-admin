@@ -271,6 +271,57 @@ describe('advanceTokens - exclusive gateway', () => {
   });
 });
 
+function makeRouteFlow(): WorkflowFlowData {
+  return {
+    nodes: [
+      { id: 'n1', position: { x: 0, y: 0 }, data: { key: 'start', type: 'start', label: '发起' } },
+      { id: 'n2', position: { x: 1, y: 0 }, data: { key: 'route1', type: 'routeGateway', label: '规则分流', decisionRuleKey: 'route-table' } },
+      { id: 'n3', position: { x: 2, y: 0 }, data: { key: 'a-high', type: 'approve', label: '高风险', assigneeId: 20 } },
+      { id: 'n4', position: { x: 2, y: 1 }, data: { key: 'a-normal', type: 'approve', label: '普通', assigneeId: 10 } },
+      { id: 'n5', position: { x: 3, y: 0 }, data: { key: 'end', type: 'end', label: '结束' } },
+    ],
+    edges: [
+      { id: 'e1', source: 'n1', target: 'n2' },
+      { id: 'e2', source: 'n2', target: 'n3', condition: { field: 'routeResult', operator: 'eq', value: 'high' } },
+      { id: 'e3', source: 'n2', target: 'n4' },
+      { id: 'e4', source: 'n3', target: 'n5' },
+      { id: 'e5', source: 'n4', target: 'n5' },
+    ],
+  };
+}
+
+describe('advanceTokens - decision gateway', () => {
+  it('parks at a decision gateway until the caller resolves and resumes it', () => {
+    const first = advanceTokens({
+      flowData: makeRouteFlow(), formData: { routeResult: 'normal' }, liveTokens: [],
+      trigger: { type: 'seed' }, instanceId: 121,
+    });
+    expect(first.pendingDecisions).toHaveLength(1);
+    expect(first.pendingDecisions[0].nodeKey).toBe('route1');
+    expect(first.tasksToCreate).toHaveLength(0);
+
+    const resumed = advanceTokens({
+      flowData: makeRouteFlow(), formData: { routeResult: 'high' }, liveTokens: [],
+      trigger: {
+        type: 'resumeDecision', decisionId: first.pendingDecisions[0].decisionId,
+        nodeKey: 'route1', branchPath: first.pendingDecisions[0].branchPath,
+        parentTokenId: first.pendingDecisions[0].parentTokenId,
+      },
+      instanceId: 121,
+    });
+    expect(resumed.pendingDecisions).toHaveLength(0);
+    expect(resumed.activeNodeKeys).toEqual(['a-high']);
+  });
+
+  it('derives a stable decision id for retries on the same instance and route', () => {
+    const run = () => advanceTokens({
+      flowData: makeRouteFlow(), formData: {}, liveTokens: [],
+      trigger: { type: 'seed' }, instanceId: 7,
+    });
+    expect(run().pendingDecisions[0].decisionId).toBe(run().pendingDecisions[0].decisionId);
+  });
+});
+
 describe('advanceTokens - parallel fork/join', () => {
   it('forks into two frontier tokens with branch frames', () => {
     const { res, live } = seed(makeParallelFlow());

@@ -20,7 +20,7 @@ export function sanitizeFormByStartPerms(flowData: WorkflowFlowData, formData: R
 
 export function hasExecutableEntry(flowData: WorkflowFlowData, formData: Record<string, unknown>, starter?: WorkflowStarterContext): boolean {
   const preview = advanceTokens({ flowData, formData, starter, liveTokens: [], trigger: { type: 'seed' } });
-  return preview.tasksToCreate.length > 0 || preview.finished || preview.rejected;
+  return preview.tasksToCreate.length > 0 || preview.finished || preview.rejected || preview.pendingDecisions.length > 0;
 }
 
 export type SelectedApproverMap = Record<string, number[]>;

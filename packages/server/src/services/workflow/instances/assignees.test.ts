@@ -38,7 +38,7 @@ describe('applyAssigneeRuntimeStrategies · 审批人去重轮次范围', () => 
     const { executor, captured } = captureExecutor([{ nodeKey: 'approve_manager', assigneeId: 23, nodeType: 'approve' }]);
     const result = await run(executor, 'approve');
 
-    expect(result).toEqual({ ids: [], emptiedBy: 'dedup', excluded: [{ userId: 23, reason: 'dedup' }] });
+    expect(result).toEqual({ outcome: 'policySkipped', ids: [], emptiedBy: 'dedup', excluded: [{ userId: 23, reason: 'dedup' }] });
     expect(captured).toHaveLength(1);
     const { sql, params } = dialect.sqlToQuery(captured[0]);
     // 轮次起点子查询：最近一次「退回发起人」时间；无退回历史时回落到 -infinity（保留既有全实例去重语义）
@@ -54,12 +54,58 @@ describe('applyAssigneeRuntimeStrategies · 审批人去重轮次范围', () => 
 
   it('重提后新一轮无人审批过：原审批人不被跨轮剔除', async () => {
     const { executor } = captureExecutor([]);
-    expect(await run(executor, 'approve')).toEqual({ ids: [23], emptiedBy: null, excluded: [] });
+    expect(await run(executor, 'approve')).toEqual({ outcome: 'assigned', ids: [23], emptiedBy: null, excluded: [] });
   });
 
   it('handler 节点不参与去重，且不产生去重查询', async () => {
     const { executor, captured } = captureExecutor([]);
-    expect(await run(executor, 'handler')).toEqual({ ids: [23], emptiedBy: null, excluded: [] });
+    expect(await run(executor, 'handler')).toEqual({ outcome: 'assigned', ids: [23], emptiedBy: null, excluded: [] });
+    expect(captured).toHaveLength(0);
+  });
+});
+
+describe('applyAssigneeRuntimeStrategies → 同发起人策略', () => {
+  const runSame = (executor: DbExecutor, strategy: 'autoSkip' | 'toDirectManager' | 'selfApprove') => {
+    const base = task('approve');
+    return applyAssigneeRuntimeStrategies(
+      { ...base, nodeConfig: { ...base.nodeConfig, sameInitiatorStrategy: strategy } },
+      [23],
+      { instanceId: 319, initiatorId: 23, executor, settings: { approverDedupMode: 'none' } } as never,
+    );
+  };
+
+  it('autoSkip 是主动跳过，不进入空人兜底', async () => {
+    const { executor } = captureExecutor([]);
+    expect(await runSame(executor, 'autoSkip')).toEqual({
+      outcome: 'policySkipped', ids: [], emptiedBy: 'sameInitiator', excluded: [{ userId: 23, reason: 'sameInitiator' }],
+    });
+  });
+
+  it('转主管后仍无人属于 unresolved，必须走空人兜底', async () => {
+    const { executor } = captureExecutor([]);
+    expect(await runSame(executor, 'toDirectManager')).toEqual({
+      outcome: 'unresolved', ids: [], emptiedBy: 'sameInitiator', excluded: [{ userId: 23, reason: 'sameInitiator' }],
+    });
+  });
+
+  it('selfApprove 保留发起人', async () => {
+    const { executor } = captureExecutor([]);
+    expect(await runSame(executor, 'selfApprove')).toEqual({
+      outcome: 'assigned', ids: [23], emptiedBy: null, excluded: [],
+    });
+  });
+});
+
+describe('applyAssigneeRuntimeStrategies → deduplicateStrategy=inherit', () => {
+  it('跟随流程级 none，不触发去重查询', async () => {
+    const { executor, captured } = captureExecutor([{ nodeKey: 'approve_manager', assigneeId: 23, nodeType: 'approve' }]);
+    const base = task('approve');
+    const result = await applyAssigneeRuntimeStrategies(
+      { ...base, nodeConfig: { ...base.nodeConfig, deduplicateStrategy: 'inherit' } },
+      [23],
+      { instanceId: 319, initiatorId: 22, executor, settings: { approverDedupMode: 'none' } } as never,
+    );
+    expect(result).toEqual({ outcome: 'assigned', ids: [23], emptiedBy: null, excluded: [] });
     expect(captured).toHaveLength(0);
   });
 });
