@@ -1,7 +1,7 @@
 /**
  * 基础信息面板 — 步骤 ① 基础信息
  */
-import { Form, Select, Space, Tag } from '@douyinfe/semi-ui';
+import { Form, Select, Space } from '@douyinfe/semi-ui';
 import type { WorkflowDefinition } from '@zenith/shared/workflow';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
 import { departmentsToTreeData } from '@/hooks/queries/departments';
@@ -108,7 +108,6 @@ export default function BasicInfoPanel({
                 <Space spacing={6}>
                   {c.color ? <span style={{ width: 8, height: 8, borderRadius: '50%', background: c.color, display: 'inline-block' }} /> : null}
                   {c.name}
-                  {c.code ? <Tag size="small" color="white" style={{ marginLeft: 4 }}>{c.code}</Tag> : null}
                 </Space>
               ),
             }))}
