@@ -1524,6 +1524,7 @@ exports[`路由表快照 > 完整路由表保持不变 1`] = `
   "GET /api/workflows/schedules",
   "GET /api/workflows/schedules/:id/runs",
   "GET /api/workflows/schedules/:id/runs/:jobId",
+  "GET /api/workflows/selectable-departments",
   "GET /api/workflows/selectable-users",
   "GET /api/workflows/sign-groups/mine",
   "GET /api/workflows/simulation-cases",
