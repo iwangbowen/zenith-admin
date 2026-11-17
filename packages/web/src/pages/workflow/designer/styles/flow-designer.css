@@ -1362,14 +1362,14 @@ body[theme-mode='dark'] .fd-simulation-graph__canvas {
   display: none;
 }
 
-/* 每条分支列 */
+/* 每条分支列：嵌套网关按内容撑开父列，避免覆盖相邻分支。 */
 .fd-branch-col {
   display: flex;
   flex-direction: column;
   align-items: center;
   position: relative;
-  flex: 0 0 236px;
-  width: 236px;
+  flex: 0 0 auto;
+  width: max-content;
   min-width: 236px;
   padding: 0 8px;
 }
