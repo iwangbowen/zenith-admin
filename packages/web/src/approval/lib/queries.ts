@@ -3,7 +3,7 @@
  *
  * 与后台共用同一套工作流契约；所有调用经 `approvalRequest` 实例发出（独立会话 / 刷新 / 登录跳转语义）。
  */
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { BodyOf } from '@zenith/shared/core';
 import { workflowDefinitionContract, workflowDelegationContract, workflowInstanceContract, workflowQuickPhraseContract, workflowTaskContract, type WorkflowDelegation, type WorkflowInstanceListItem, type WorkflowHandledInstanceItem } from '@zenith/shared/workflow';
 import { authContract } from '@zenith/shared/identity';
@@ -40,28 +40,38 @@ export const approvalKeys = {
 };
 
 /** 累积加载：固定 page=1、递增 pageSize（移动端"加载更多"语义，缓存 key 稳定） */
-function fetchApprovalList(tab: ApprovalTab, size: number, keyword: string): Promise<{ list: ApprovalListItem[]; total: number }> {
-  const query = { page: 1, pageSize: size, ...(keyword ? { keyword } : {}) };
+export type ApprovalListFilters = { definitionId?: number | null; priority?: 'low' | 'normal' | 'high' | 'urgent' | null; overdue?: boolean; status?: 'draft' | 'returned' | 'running' | 'approved' | 'rejected' | 'withdrawn' };
+function fetchApprovalList(tab: ApprovalTab, page: number, keyword: string, filters: ApprovalListFilters): Promise<{ list: ApprovalListItem[]; total: number }> {
+  const query = { page, pageSize: 20, ...(keyword ? { keyword } : {}), definitionId: filters.definitionId ?? undefined, priority: filters.priority ?? undefined };
   switch (tab) {
     case 'pending':
-      return api(workflowInstanceContract.pendingMine, { query }, client);
+      return api(workflowInstanceContract.pendingMine, { query: { ...query, overdue: filters.overdue || undefined } }, client);
     case 'handled':
       return api(workflowInstanceContract.handledMine, { query }, client);
     case 'cc':
       return api(workflowInstanceContract.ccMine, { query }, client);
     case 'mine':
-      return api(workflowInstanceContract.list, { query }, client);
+      return filters.status === 'draft' ? api(workflowInstanceContract.ownDrafts, { query }, client) : api(workflowInstanceContract.list, { query: { ...query, status: filters.status } }, client);
   }
 }
 
-export function useApprovalList(tab: ApprovalTab, size: number, keyword = '', enabled = true) {
-  return useQuery({
-    queryKey: approvalKeys.list(tab, size, keyword),
-    queryFn: () => fetchApprovalList(tab, size, keyword),
+export function useApprovalList(tab: ApprovalTab, _size: number, keyword = '', enabled = true, filters: ApprovalListFilters = {}) {
+  const result = useInfiniteQuery({
+    queryKey: [...approvalKeys.lists, tab, keyword, filters],
+    initialPageParam: 1,
+    queryFn: ({ pageParam }) => fetchApprovalList(tab, pageParam, keyword, filters),
+    getNextPageParam: (last, pages) => pages.reduce((n, p) => n + p.list.length, 0) < last.total ? pages.length + 1 : undefined,
     enabled,
     placeholderData: keepPreviousData,
     refetchInterval: tab === 'pending' ? 30_000 : false,
   });
+  const rows = result.data?.pages.flatMap(p => p.list) ?? [];
+  const list = [...new Map(rows.map(i => [i.pendingTaskId ?? i.handledTask?.id ?? i.ccTaskId ?? i.id, i])).values()];
+  return { ...result, data: result.data ? { list, total: result.data.pages[0]?.total ?? 0 } : undefined };
+}
+
+export function useApprovalDefinitionOptions(pending: boolean) {
+  return useQuery({ queryKey: ['approval', 'filter-definitions', pending], queryFn: () => pending ? api(workflowInstanceContract.pendingDefinitionOptions, client) : api(workflowDefinitionContract.published, client) });
 }
 
 /** 待办总数 + 抄送未读数（Tab 角标），30s 轮询 */

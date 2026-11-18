@@ -1,7 +1,7 @@
 import { signatureSnapshotSchema } from '../../core/signatures';
 import { workflowSignaturePolicySchema } from '../validation';
 import * as z from 'zod';
-import { auditFieldsSchema, entityStatusSchema, idParam, idQuery, keywordQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { auditFieldsSchema, entityStatusSchema, idParam, idQuery, keywordQuery, paginated, paginationQuery, queryEnum, queryBool } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { WORKFLOW_INSTANCE_PRIORITIES, WORKFLOW_INSTANCE_PRIORITY_OPTIONS, WORKFLOW_INSTANCE_STATUSES, WORKFLOW_INSTANCE_STATUS_OPTIONS, WORKFLOW_SLA_LEVELS, WORKFLOW_TASK_CONSULT_STATUSES, WORKFLOW_TASK_STATUSES, WORKFLOW_INSTANCE_STATUS_FILTERS, WORKFLOW_INSTANCE_PRINT_SOURCES, WORKFLOW_TASK_DECISION_ACTIONS, WORKFLOW_PATH_STATUSES } from '../constants';
 import {
@@ -522,11 +522,15 @@ export const workflowMyInstanceListQuery = paginationQuery.extend({
 });
 
 export const workflowPendingMineQuery = paginationQuery.extend({
+  priority: queryEnum(WORKFLOW_INSTANCE_PRIORITIES),
+  overdue: queryBool(),
   keyword: keywordQuery('申请标题 / 业务编号 / 流程名称'),
   definitionId: idQuery(),
 });
 
 export const workflowKeywordPageQuery = paginationQuery.extend({
+  definitionId: idQuery(),
+  priority: queryEnum(WORKFLOW_INSTANCE_PRIORITIES),
   keyword: keywordQuery('申请标题 / 业务编号 / 流程名称'),
 });
 

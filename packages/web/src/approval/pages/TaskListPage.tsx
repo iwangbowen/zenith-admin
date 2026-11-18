@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Banner, Button, Checkbox, Modal, Select, SideSheet, Spin, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
 import { Bell, Check, CheckCheck, CircleCheckBig, ClipboardCheck, FilePlus2, ListChecks, LogOut, Plus, Send, UserRoundCog, type LucideIcon } from 'lucide-react';
 import { type SignatureInput } from '@zenith/shared/core';
@@ -19,7 +19,7 @@ import WorkflowSLATag from '@/components/workflow/WorkflowSLATag';
 import WorkflowPriorityTag from '@/components/workflow/WorkflowPriorityTag';
 import WorkflowHandledTaskTag from '@/components/workflow/WorkflowHandledTaskTag';
 import {
-  useApprovalCounts, useApprovalDelegations, useApprovalList, useApprovalMe, useApprovalNotificationUnreadCount, useApprovalNotifications, useApprovalUsers, useBatchApprove, useCreateApprovalDelegation, useDeleteApprovalDelegation, useMarkApprovalNotificationRead, useMarkCcRead, useTaskAction,
+  useApprovalCounts, useApprovalDefinitionOptions, useApprovalDelegations, useApprovalList, useApprovalMe, useApprovalNotificationUnreadCount, useApprovalNotifications, useApprovalUsers, useBatchApprove, useCreateApprovalDelegation, useDeleteApprovalDelegation, useMarkApprovalNotificationRead, useMarkCcRead, useTaskAction,
   type ApprovalListItem, type ApprovalTab,
 } from '../lib/queries';
 import { useInfiniteSentinel, usePullRefresh } from '../lib/usePullRefresh';
@@ -40,6 +40,7 @@ type ApprovalFilters = {
   priority: WorkflowInstancePriority | null;
   overdue: boolean;
 };
+type ApplicationStatus = 'draft' | 'returned' | 'running' | 'approved' | 'rejected' | 'withdrawn';
 
 const EMPTY_FILTERS: ApprovalFilters = { definitionId: null, priority: null, overdue: false };
 
@@ -168,18 +169,18 @@ export default function TaskListPage() {
 
 function TaskListContent() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const me = useApprovalMe();
   const can = (permission: string) => !!me.data?.permissions?.some(p => p === '*' || p === permission);
   const canHandle = can('workflow:task:handle');
   const canList = can('workflow:instance:list');
   const canCreate = can('workflow:instance:create');
   useEffect(() => { if (!canHandle && !canList && canCreate) navigate('/launch', { replace: true }); }, [canHandle, canList, canCreate, navigate]);
-  const [tab, setTab] = useState<ApprovalTab>(() => canHandle ? 'pending' : 'mine');
+  const [tab, setTab] = useState<ApprovalTab>(() => { const value = searchParams.get('tab'); return value && ['pending', 'handled', 'mine', 'cc'].includes(value) ? value as ApprovalTab : canHandle ? 'pending' : 'mine'; });
   const [size, setSize] = useState(10);
   const [keywordDraft, setKeywordDraft] = useState('');
   const [keyword, setKeyword] = useState('');
   const tabAllowed = tab === 'pending' || tab === 'handled' ? canHandle : canList;
-  const listQuery = useApprovalList(tab, size, keyword, tabAllowed);
   const countsQuery = useApprovalCounts();
   const markCcRead = useMarkCcRead();
   const quickAction = useTaskAction();
@@ -195,6 +196,9 @@ function TaskListContent() {
   const [batchResult, setBatchResult] = useState<{ result: WorkflowBatchActionResponse; titles: Record<number, string>; instances: Record<number, number> } | null>(null);
   const [ccReadingAll, setCcReadingAll] = useState(false);
   const [filters, setFilters] = useState<ApprovalFilters>(EMPTY_FILTERS);
+  const [instanceStatus, setInstanceStatus] = useState<ApplicationStatus | undefined>(() => (searchParams.get('status') || undefined) as ApplicationStatus | undefined);
+  const listQuery = useApprovalList(tab, size, keyword, tabAllowed || (tab === 'mine' && instanceStatus === 'draft' && canCreate), { ...filters, status: instanceStatus });
+  const definitionsQuery = useApprovalDefinitionOptions(canHandle);
   const [filtersVisible, setFiltersVisible] = useState(false);
   const [notificationsVisible, setNotificationsVisible] = useState(false);
   const [delegationsVisible, setDelegationsVisible] = useState(false);
@@ -222,29 +226,25 @@ function TaskListContent() {
   const data = listQuery.data;
   const list = useMemo(() => data?.list ?? [], [data?.list]);
   const total = data?.total ?? 0;
-  const filteredList = useMemo(() => list.filter((item) => {
-    if (filters.definitionId != null && item.definitionId !== filters.definitionId) return false;
-    if (filters.priority != null && item.priority !== filters.priority) return false;
-    if (filters.overdue && !(item.slaOverdueSec != null && item.slaOverdueSec > 0)) return false;
-    return true;
-  }), [filters, list]);
+  const filteredList = list;
   const filtersActive = filters.definitionId != null || filters.priority != null || filters.overdue;
-  const displayTotal = filtersActive ? filteredList.length : total;
-  const hasMore = list.length < total;
+  const displayTotal = total;
+  const hasMore = listQuery.hasNextPage;
   const definitionOptions = useMemo(
-    () => [...new Map(list.filter((item) => item.definitionId != null).map((item) => [item.definitionId, item.definitionName ?? `流程 #${item.definitionId}`])).entries()]
-      .map(([value, label]) => ({ value, label })),
-    [list],
+    () => (definitionsQuery.data ?? []).map(d => ({ value: d.id, label: d.name })),
+    [definitionsQuery.data],
   );
 
   const refetch = useCallback(async () => {
     await Promise.all([listQuery.refetch(), countsQuery.refetch()]);
   }, [listQuery, countsQuery]);
   const { scrollRef, pull, refreshing } = usePullRefresh(refetch);
-  const sentinelRef = useInfiniteSentinel(hasMore, listQuery.isFetching, () => setSize((s) => s + 10));
+  const sentinelRef = useInfiniteSentinel(hasMore, listQuery.isFetching, () => { void listQuery.fetchNextPage(); });
 
   const switchTab = (k: ApprovalTab) => {
     setTab(k);
+    setInstanceStatus(undefined);
+    setSearchParams({ tab: k }, { replace: true });
     setSize(10);
     setKeywordDraft('');
     setKeyword('');
@@ -357,9 +357,10 @@ function TaskListContent() {
     const unread = filteredList.filter((i) => i.ccTaskId != null && !i.ccReadAt);
     if (unread.length === 0) return;
     setCcReadingAll(true);
-    await Promise.allSettled(unread.map((i) => markCcRead.mutateAsync(i.ccTaskId as number)));
+    const results = await Promise.allSettled(unread.map((i) => markCcRead.mutateAsync(i.ccTaskId as number)));
     setCcReadingAll(false);
-    Toast.success('已全部标记为已读');
+    const failed = results.filter(r => r.status === 'rejected').length;
+    if (failed) Toast.warning(`已处理 ${results.length - failed} 条，${failed} 条失败，请重试`); else Toast.success('当前已加载的抄送已标记已读');
   };
 
   const openNotification = async (item: InAppMessage) => {
@@ -421,7 +422,7 @@ function TaskListContent() {
         <button type="button" className="ap-workbench__item" onClick={() => switchTab('pending')}>
           <span>待办</span><strong>{countsQuery.data?.pending ?? '—'}</strong>
         </button>
-        <button type="button" className="ap-workbench__item" onClick={() => switchTab('mine')}>
+        <button type="button" className="ap-workbench__item" onClick={() => { switchTab('mine'); setInstanceStatus('draft'); setSearchParams({ tab: 'mine', status: 'draft' }, { replace: true }); }}>
           <span>草稿</span><strong>{countsQuery.data?.drafts ?? '—'}</strong>
         </button>
         <button type="button" className="ap-workbench__item" onClick={() => switchTab('cc')}>
@@ -429,6 +430,7 @@ function TaskListContent() {
         </button>
       </div>
       <div className="ap-search">
+        {tab === 'mine' && <Select value={instanceStatus} placeholder="全部状态" showClear style={{ minWidth: 90 }} optionList={[{ value: 'draft', label: '草稿' }, { value: 'returned', label: '已退回' }, { value: 'running', label: '审批中' }, { value: 'approved', label: '已通过' }, { value: 'rejected', label: '已拒绝' }, { value: 'withdrawn', label: '已撤回' }]} onChange={v => { setInstanceStatus(v as typeof instanceStatus); setSearchParams({ tab, ...(v ? { status: String(v) } : {}) }, { replace: true }); }} />}
         <KeywordInput
           placeholder="搜索标题 / 流程名称"
           width="100%"

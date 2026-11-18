@@ -4,7 +4,7 @@ import { workflowInstanceContract, workflowTaskContract, WORKFLOW_INSTANCE_STATU
 import type { QueryOutputOf } from '@zenith/shared/core';
 // ─── 实例/待办/已办/抄送列表查询与详情（拆分自 workflow-instances.service.ts）───
 import { formatDateTime, formatNullableDateTime } from '../../../lib/datetime';
-import { count, countDistinct, eq, and, asc, desc, min, or, inArray, lte, sql, type SQL } from 'drizzle-orm';
+import { count, eq, and, asc, desc, min, or, inArray, lte, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { keywordCondition, withPagination, dateRangeConditions, buildWhere } from '../../../lib/where-helpers';
 import { db } from '../../../db';
@@ -184,11 +184,13 @@ export async function listPendingDefinitionOptions() {
 
 export async function listPendingMine(query: QueryOutputOf<typeof workflowInstanceContract.pendingMine>) {
   const user = currentUser();
-  const { page, pageSize, keyword, definitionId } = query;
+  const { page, pageSize, keyword, definitionId, priority, overdue } = query;
   const where = buildWhere(
     pendingMineWhere(user),
     keyword ? titleOrDefinitionNameLike(keyword) : undefined,
     definitionId !== undefined ? eq(workflowInstances.definitionId, definitionId) : undefined,
+    priority ? eq(workflowInstances.priority, priority) : undefined,
+    overdue ? sql`EXISTS (SELECT 1 FROM jsonb_array_elements(${workflowInstances.definitionSnapshot}->'flowData'->'nodes') n WHERE n->'data'->>'key' = ${workflowTasks.nodeKey} AND n->'data'->'timeout'->>'enabled' = 'true' AND (COALESCE(${workflowTasks.activatedAt}, ${workflowTasks.createdAt}) + make_interval(secs => ((n->'data'->'timeout'->>'duration')::numeric * CASE n->'data'->'timeout'->>'unit' WHEN 'minutes' THEN 60 WHEN 'days' THEN 86400 ELSE 3600 END)::double precision)) < now())` : undefined,
   );
   const [[{ total }], rows] = await Promise.all([
     db
@@ -202,7 +204,7 @@ export async function listPendingMine(query: QueryOutputOf<typeof workflowInstan
     withPagination(
       selectTaskJoinedInstanceRows()
         .where(where)
-        .orderBy(priorityRankOrder, desc(workflowTasks.createdAt))
+        .orderBy(priorityRankOrder, desc(workflowTasks.createdAt), desc(workflowTasks.id))
         .$dynamic(),
       page, pageSize,
     ),
@@ -238,6 +240,8 @@ export async function listMyCc(query: QueryOutputOf<typeof workflowInstanceContr
     eq(workflowTasks.nodeType, 'ccNode'),
     tenantCondition(workflowInstances, user),
     keyword ? titleOrDefinitionNameLike(keyword) : undefined,
+    query.definitionId !== undefined ? eq(workflowInstances.definitionId, query.definitionId) : undefined,
+    query.priority ? eq(workflowInstances.priority, query.priority) : undefined,
   );
   const { total, rows } = await queryTaskJoinedInstancePage({ where, orderBy: desc(workflowTasks.id), page, pageSize });
   const activeNodeKeys = await loadActiveNodeKeysByInstance(rows.map((row) => row.inst.id));
@@ -278,7 +282,7 @@ export async function countMyCcUnread(): Promise<number> {
 export async function countPendingMine(): Promise<number> {
   const user = currentUser();
   const [{ total }] = await db
-    .select({ total: countDistinct(workflowInstances.id) })
+    .select({ total: count() })
     .from(workflowTasks)
     .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
     .where(pendingMineWhere(user));
@@ -383,6 +387,8 @@ export async function listMyHandled(query: QueryOutputOf<typeof workflowInstance
     inArray(workflowTasks.status, ['approved', 'rejected']),
     tenantCondition(workflowInstances, user),
     keyword ? titleOrDefinitionNameLike(keyword) : undefined,
+    query.definitionId !== undefined ? eq(workflowInstances.definitionId, query.definitionId) : undefined,
+    query.priority ? eq(workflowInstances.priority, query.priority) : undefined,
   );
   const { total, rows } = await queryTaskJoinedInstancePage({ where, orderBy: desc(workflowTasks.actionAt), page, pageSize });
   const activeNodeKeys = await loadActiveNodeKeysByInstance(rows.map((row) => row.inst.id));
