@@ -1,4 +1,5 @@
 import type { WorkflowHealthIssue, WorkflowHealthSummary } from './contracts/health';
+import { WORKFLOW_HEALTH_ISSUE_TYPES } from './constants';
 import type { WorkflowEngineDefinitionSnapshot, WorkflowEngineIntrospection, WorkflowEngineOutboxEvent, WorkflowEngineQueueSnapshot, WorkflowEngineRuntimeIssue, WorkflowEngineRuntimeTask, WorkflowEngineTriggerExecution } from './contracts/engine';
 import type { WorkflowEngineComponentStatus, WorkflowEngineQueueKey } from './types';
 
@@ -25,7 +26,7 @@ export function summarizeWorkflowHealth(
     checkedAt: meta.checkedAt,
     thresholdMinutes: meta.thresholdMinutes,
     ruleVersion: 'workflow-health-v2', scope: 'business',
-    coverage: { instances: new Set(sorted.map(i => i.instanceId)).size, tasks: 0, rules: 13, complete: true },
+    coverage: { instances: new Set(sorted.map(i => i.instanceId)).size, tasks: 0, rules: WORKFLOW_HEALTH_ISSUE_TYPES.length, complete: true },
     total: sorted.length, page: 1, pageSize: sorted.length || 20, truncated: false,
     affectedInstances: new Set(sorted.map(i => i.instanceId).filter(id => id != null)).size,
     stats: {

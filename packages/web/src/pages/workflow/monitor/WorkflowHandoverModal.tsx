@@ -4,7 +4,7 @@
  * 选择交接人后自动预览影响范围（待办/审批代理/写死审批人的定义清单），
  * 选择接手人执行批量移交；逐条改派互不阻断，结束后展示成功/失败明细。
  */
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Banner, Checkbox, Form, Select, Table, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { WorkflowHandoverPreview, WorkflowHandoverResult } from '@zenith/shared/workflow';
@@ -21,7 +21,8 @@ export default function WorkflowHandoverModal({ visible, onClose }: Readonly<Pro
   // useEditModal 例外：工作流运行时表单（离职交接：预览待办 + 批量转移），非实体新增 / 编辑
   const previewSequence = useRef(0);
   const formApi = useRef<FormApi | null>(null);
-  const { userOptions } = useUserOptions({ immediate: true });
+  const { userOptions, ensureLoaded } = useUserOptions();
+  useEffect(() => { if (visible) void ensureLoaded(); }, [visible, ensureLoaded]);
   const previewMutation = useWorkflowHandoverPreview();
   const handoverMutation = useWorkflowHandover();
   const [fromUserId, setFromUserId] = useState<number | null>(null);

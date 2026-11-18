@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import { db, closeDb } from '../../../db';
-import { users, workflowDefinitions, workflowInstances, workflowNodeActivations, workflowTokens, workflowTasks, workflowCompensations, workflowCompensationLogs } from '../../../db/schema';
+import { users, workflowDefinitions, workflowInstances, workflowNodeActivations, workflowTokens, workflowTasks, workflowCompensations, workflowCompensationLogs, workflowJobs } from '../../../db/schema';
 import { runWithCurrentUser } from '../../../lib/context';
 import { handleNodeExecutionError, resumeInstanceForCompensation } from './failure-policy';
 import { rejectTaskCore } from './task-actions';
@@ -10,6 +10,8 @@ import { getWorkflowAnalytics, listOverdueTasks } from '../workflow-analytics.se
 import { suspendInstance, resumeInstance } from './admin-ops';
 import { armTaskAsyncJobs } from './async-jobs';
 import { getWorkflowHealthSummary } from '../workflow-health.service';
+import { batchRetryWorkflowJobs, confirmWorkflowExternalResult, previewReplayJobs, retryWorkflowJob } from '../workflow-jobs.service';
+import { runJob } from '../../../lib/workflow-jobs/engine';
 import type { WorkflowDefinitionSnapshot, WorkflowFlowData } from '@zenith/shared/workflow';
 
 const url = process.env.WORKFLOW_TEST_DATABASE_URL;
@@ -114,5 +116,20 @@ integration('workflow recovery on real PostgreSQL constraints', () => {
     expect(result.issues).toHaveLength(20);
     expect(result.coverage.tasks).toBe(302);
     expect(result.truncated).toBe(true);
+  }));
+
+  it('blocks unknown effects on every retry path and reconciles verified success without external I/O', async () => asAdmin(async () => {
+    const f = await fixture('trigger');
+    const [job] = await db.insert(workflowJobs).values({ instanceId: f.instance.id, jobType: 'webhook_delivery', status: 'dead', effectStatus: 'sent_unknown', payload: { url: 'https://must-not-be-requested.invalid/' }, operationKey: 'stable-qa-operation' }).returning();
+    await expect(retryWorkflowJob(job.id)).rejects.toMatchObject({ status: 409 });
+    await expect(batchRetryWorkflowJobs([job.id])).rejects.toMatchObject({ status: 409 });
+    expect((await previewReplayJobs({ instanceId: f.instance.id })).matched).toBe(0);
+    await confirmWorkflowExternalResult(job.id, { generation: 0, outcome: 'success', evidence: '外部回执 QA-RECEIPT-001 确认已成功' });
+    await expect(confirmWorkflowExternalResult(job.id, { generation: 0, outcome: 'success', evidence: '重复回执 QA-RECEIPT-001' })).rejects.toMatchObject({ status: 409 });
+    await runJob(job.id);
+    const [done] = await db.select().from(workflowJobs).where(eq(workflowJobs.id, job.id));
+    expect(done.status).toBe('succeeded');
+    expect(done.operationKey).toBe('stable-qa-operation');
+    expect(done.result).toMatchObject({ reconciled: true });
   }));
 });

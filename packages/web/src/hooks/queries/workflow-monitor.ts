@@ -40,7 +40,7 @@ export interface WorkflowEngineDiagnosticsParams {
   historyHours: number;
 }
 
-/** 超时预警固定取前 50 条（预警列表不分页） */
+/** 超时预警每页50条，由服务端返回完整总量 */
 const OVERDUE_PAGE_SIZE = 50;
 
 export const workflowMonitorKeys = {
@@ -173,8 +173,7 @@ export function useWorkflowCompensationDetail(id: number | undefined, enabled = 
 /** Current state and platform history have independent loading/error boundaries. */
 export function useWorkflowEngineDiagnostics(params: WorkflowEngineDiagnosticsParams, refetchInterval: number | false) {
   const { hasPermission } = usePermission();
-  const platform = hasPermission("workflow:engine:platform");
-  const history = useApiQuery(workflowEngineContract.healthHistory, { query: { hours: params.historyHours } }, { enabled: platform, refetchInterval });
+  const platformPermission = hasPermission('workflow:engine:platform');
   const current = useQuery({
     queryKey: workflowMonitorKeys.engineDiagnostics(params),
     queryFn: async () => {
@@ -184,6 +183,8 @@ export function useWorkflowEngineDiagnostics(params: WorkflowEngineDiagnosticsPa
     refetchInterval,
     refetchIntervalInBackground: false,
   });
+  const platform = platformPermission && current.data?.introspection.scope === 'platform';
+  const history = useApiQuery(workflowEngineContract.healthHistory, { query: { hours: params.historyHours } }, { enabled: platform, refetchInterval });
   // eslint-disable-next-line @tanstack/query/no-rest-destructuring -- Preserve the public query result while exposing independently fetched history.
   return { ...current, data: current.data ? { ...current.data, history: history.data ?? null, historyError: history.error } : undefined, refetch: async () => { const result = await current.refetch(); if (platform) await history.refetch(); return result; } };
 }

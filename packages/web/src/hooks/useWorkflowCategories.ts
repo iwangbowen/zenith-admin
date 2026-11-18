@@ -10,8 +10,8 @@ export const workflowCategoryKeys = resource.keys;
 export const useSaveWorkflowCategory = resource.useSave;
 export const useDeleteWorkflowCategories = resource.useDelete;
 
-export function useWorkflowCategories() {
-  const categoriesQuery = resource.useLookup();
+export function useWorkflowCategories(enabled = true) {
+  const categoriesQuery = resource.useLookup(enabled);
   const { data, isFetching, refetch: refetchCategories } = categoriesQuery;
 
   const refetch = useCallback(async () => {

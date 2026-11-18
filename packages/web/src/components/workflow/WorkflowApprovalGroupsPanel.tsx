@@ -132,8 +132,8 @@ export function WorkflowApprovalGroupsPanel({ activations, tasks = [], consults 
             <Space wrap>
               <Typography.Text strong>{activation.nodeName}</Typography.Text>
               <Tag>{activation.approveMethod ? WORKFLOW_APPROVE_METHOD_LABELS[activation.approveMethod] : '自动处理'}</Tag>
-              <Typography.Text>基础意见 {activation.baseApproved}/{activation.baseTotal}，需 {activation.baseRequired} 票</Typography.Text>
-              {activation.baseSatisfied && <Tag color="green">基础条件已满足</Tag>}
+              {activation.kind === 'approval' && activation.baseTotal > 0 ? <Typography.Text>基础意见 {activation.baseApproved}/{activation.baseTotal}，需 {activation.baseRequired} 票</Typography.Text> : <Typography.Text type="tertiary">{activation.kind === 'repair' ? '故障修复进入' : activation.kind === 'cc' ? '抄送记录' : '系统执行，不适用人工计票'}</Typography.Text>}
+              {activation.kind === 'approval' && activation.baseTotal > 0 && activation.baseSatisfied && <Tag color="green">基础条件已满足</Tag>}
             </Space>
             <ActivationBaseSlots slots={activation.slots} slotTime={slotTime} />
             {activation.approveMethod === null && (

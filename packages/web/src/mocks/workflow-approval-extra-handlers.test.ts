@@ -60,7 +60,7 @@ describe('Demo extra workflow routes preserve formal approval barriers', () => {
   });
   it('forced jump cancels the old mandatory group and creates a distinct approval round', async () => {
     const previous = base.activationId;
-    expect((await call(workflowInstanceOpsContract.jump, { id: base.instanceId }, { targetNodeKey: 'review', comment: '管理员回归测试' })).status).toBe(200);
+    expect((await call(workflowInstanceOpsContract.jump, { id: base.instanceId }, { targetNodeKey: 'review', comment: '管理员回归测试', previewToken: 'demo-intervention-preview' })).status).toBe(200);
     expect(extra.status).toBe('skipped');
     const activations = getMockApprovalActivations(base.instanceId);
     expect(activations.find(row => row.id === previous)?.status).toBe('cancelled');

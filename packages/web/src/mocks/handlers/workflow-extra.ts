@@ -930,13 +930,13 @@ export const workflowExtraHandlers = [
     row.resolvedAt = mockDateTime();
     return ok(row, '已处理');
   }),
-  mock(workflowInstanceOpsContract.addCompensationNote, ({ params, body, ok }) => {
+  mock(workflowInstanceOpsContract.addCompensationNote, ({ params, body, request, ok }) => {
     mockCompensationLogs.push({
       id: nextCompensationLogId++,
       compensationId: params.id,
       action: body.attachments?.length ? 'attachment' : 'note',
       note: body.note ?? null,
-      attachments: body.attachments?.map((a, i) => ({ ...a, id: i + 1, name: '附件', size: 0, mimeType: null, url: '' })) ?? null,
+      attachments: bindMockWorkflowAttachments(request, resolveCompensation(params.id).instanceId, { compensationId: params.id }, body.attachments),
       operatorId: 1,
       operatorName: '管理员',
       createdAt: mockDateTime(),

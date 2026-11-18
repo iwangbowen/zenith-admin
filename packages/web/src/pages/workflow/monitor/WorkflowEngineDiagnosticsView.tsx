@@ -22,6 +22,7 @@ import {
 import { DataBar } from '@/components/data-viz/DataBar';
 import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { formatDurationMs } from '@/utils/format';
+import { usePermission } from '@/hooks/usePermission';
 
 type TagColor = 'amber' | 'blue' | 'cyan' | 'green' | 'grey' | 'indigo' | 'light-blue' | 'light-green' | 'lime' | 'orange' | 'pink' | 'purple' | 'red' | 'teal' | 'violet' | 'yellow' | 'white';
 
@@ -500,6 +501,9 @@ function FreshnessLabel({ generatedAt, lastUpdated }: Readonly<{ generatedAt: st
 
 export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostics }: Props) {
   const palette = useChartPalette();
+  const { hasPermission } = usePermission();
+  const canOperateEngine = hasPermission('workflow:engine:operate');
+  const canRecoverInstances = hasPermission('workflow:instance:intervene');
   const [thresholdMinutes, setThresholdMinutes] = useState(30);
   const [autoRefresh, setAutoRefresh] = useState(0);
   const [historyHours, setHistoryHours] = useState(24);
@@ -570,8 +574,8 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
     Toast.success('诊断快照已导出');
   }, [data, history]);
 
-  const criticalCount = useMemo(() => data?.issues.filter((item) => item.severity === 'critical').length ?? 0, [data]);
-  const warningCount = useMemo(() => data?.issues.filter((item) => item.severity === 'warning').length ?? 0, [data]);
+  const criticalCount = useMemo(() => data?.completeness.criticalTotal ?? 0, [data]);
+  const warningCount = useMemo(() => data?.completeness.warningTotal ?? 0, [data]);
 
   const nodeTypeRows = useMemo(() => (
     Object.entries(data?.definitions.nodeTypeCounts ?? {}).map(([type, count]) => ({
@@ -819,9 +823,10 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
     : (t.events.last24h.failed > 0 || t.triggers.last24h.retrying > 0)
       ? palette.warning
       : undefined;
-  const backlog = data.queues.reduce((sum, q) => sum + q.ready + q.running + q.delayed + q.failed, 0);
-  const oldestBacklog = data.queues.reduce<number | null>((acc, q) => (q.oldestAgeMinutes != null ? Math.max(acc ?? 0, q.oldestAgeMinutes) : acc), null);
-  const worstQueueRank = data.queues.reduce((acc, q) => Math.max(acc, STATUS_RANK[q.status]), 0);
+  const executionQueues = data.queues.filter(q => q.key !== 'humanTasks' && q.key !== 'timeouts');
+  const backlog = executionQueues.reduce((sum, q) => sum + q.ready + q.running, 0);
+  const oldestBacklog = executionQueues.reduce<number | null>((acc, q) => (q.ready + q.running > 0 && q.oldestAgeMinutes != null ? Math.max(acc ?? 0, q.oldestAgeMinutes) : acc), null);
+  const worstQueueRank = executionQueues.reduce((acc, q) => Math.max(acc, STATUS_RANK[q.status]), 0);
   const saturationAccent = backlog >= data.thresholds.backlogCritical || worstQueueRank >= 2
     ? palette.danger
     : backlog >= data.thresholds.backlogWarn || worstQueueRank >= 1
@@ -842,11 +847,11 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
           }}
         >
           {data.healthy ? <CheckCircle2 size={16} color="var(--semi-color-success)" /> : <AlertTriangle size={16} color="var(--semi-color-danger)" />}
-          <Typography.Text strong>{data.healthy ? '引擎状态正常' : '引擎存在严重事项'}</Typography.Text>
+          <Typography.Text strong>{data.healthy ? '引擎状态正常' : criticalCount > 0 ? '引擎存在严重事项' : '引擎存在待关注事项'}</Typography.Text>
           <FreshnessLabel generatedAt={data.generatedAt} lastUpdated={lastUpdated} />
         </div>
         <Space wrap align="center">
-          <Dropdown
+          {canOperateEngine && <Dropdown
             trigger="click"
             position="bottomRight"
             visible={actionMenuVisible}
@@ -862,8 +867,8 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
             )}
           >
             <Button icon={<Wrench size={14} />} loading={actionLoading != null}>运维动作</Button>
-          </Dropdown>
-          <Button icon={<LifeBuoy size={14} />} onClick={() => setBatchRecoveryVisible(true)}>批量恢复</Button>
+          </Dropdown>}
+          {canRecoverInstances && <Button icon={<LifeBuoy size={14} />} onClick={() => setBatchRecoveryVisible(true)}>批量恢复</Button>}
           <Button icon={<Download size={14} />} onClick={exportReport}>导出</Button>
           <Select value={autoRefresh} optionList={AUTO_REFRESH_OPTIONS} style={{ width: 116 }} onChange={(v) => setAutoRefresh(Number(v))} />
           <Select value={thresholdMinutes} optionList={THRESHOLD_OPTIONS} style={{ width: 116 }} onChange={(value) => setThresholdMinutes(Number(value))} />

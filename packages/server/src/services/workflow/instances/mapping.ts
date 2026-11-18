@@ -77,6 +77,7 @@ export function mapInstance(
     categoryId: extras.categoryId ?? null,
     categoryName: extras.categoryName ?? null,
     title: row.title,
+    submittedAt: formatNullableDateTime(row.submittedAt), completedAt: formatNullableDateTime(row.completedAt), outcomeReason: row.outcomeReason, cycle: row.cycle,
     serialNo: row.serialNo ?? null,
     priority: (row.priority ?? 'normal') as import('@zenith/shared').WorkflowInstancePriority,
     allowWithdraw: snapshotSettings?.allowWithdraw !== false,

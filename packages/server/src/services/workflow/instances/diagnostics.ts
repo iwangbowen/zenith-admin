@@ -5,7 +5,7 @@ import { WORKFLOW_JOB_TYPE_LABELS as JOB_TYPE_LABELS } from '@zenith/shared/work
 import { formatDateTime, formatNullableDateTime } from '../../../lib/datetime';
 import { eq, and, desc, inArray } from 'drizzle-orm';
 import { db } from '../../../db';
-import { workflowJobs, workflowJobExecutions, workflowInstances, workflowTasks, workflowTokens } from '../../../db/schema';
+import { workflowJobs, workflowJobExecutions, workflowInstances, workflowTasks, workflowTokens, eventOutbox, eventConsumerDeliveries } from '../../../db/schema';
 import type { WorkflowDefinitionSnapshot, WorkflowInstance, WorkflowRuntimeDiagnostics, WorkflowRuntimeIssue, WorkflowRuntimeOutboxEvent, WorkflowTriggerExecution, WorkflowInstanceTrace, WorkflowEngineExplanation, WorkflowEngineExplanationBlocker, WorkflowEngineTraceEntry, WorkflowJobType, WorkflowExecutionToken, WorkflowExecutionTokenView } from '@zenith/shared/workflow';
 import { mapInstance, mapTask } from './mapping';
 import { mapTriggerExecution } from '../workflow-trigger-executions.service';
@@ -16,19 +16,14 @@ async function instanceDiagnosticWhere(id: number) {
   return and(eq(workflowInstances.id, id), await workflowMonitorScope());
 }
 
-function mapRuntimeOutboxEvent(row: typeof workflowJobs.$inferSelect): WorkflowRuntimeOutboxEvent {
-  const event = (row.payload as { event?: { eventId?: string; type?: string } } | null)?.event;
+function mapRuntimeOutboxEvent(row: { event: typeof eventOutbox.$inferSelect; delivery: typeof eventConsumerDeliveries.$inferSelect }): WorkflowRuntimeOutboxEvent {
+  const { event, delivery } = row;
   return {
-    id: row.id,
-    eventId: event?.eventId ?? row.idempotencyKey ?? String(row.id),
-    eventType: event?.type ?? 'domain_event',
-    taskId: row.taskId ?? null,
-    status: row.status,
-    attempts: row.attempts,
-    errorMessage: row.lastError ?? null,
-    nextRetryAt: row.status === 'pending' ? formatNullableDateTime(row.runAt) : null,
-    processedAt: row.status === 'succeeded' ? formatNullableDateTime(row.updatedAt) : null,
-    createdAt: formatDateTime(row.createdAt),
+    id: delivery.id, eventId: event.eventId, eventType: event.eventType + ' / ' + delivery.consumerKey,
+    taskId: (event.payload.task as { id?: number } | undefined)?.id ?? null,
+    status: delivery.status === 'dead' ? 'failed' : delivery.status === 'running' ? 'processing' : delivery.status,
+    attempts: delivery.attempts, errorMessage: delivery.lastError, nextRetryAt: ['pending', 'retrying'].includes(delivery.status) ? formatDateTime(delivery.runAt) : null,
+    processedAt: formatNullableDateTime(delivery.finishedAt), createdAt: formatDateTime(event.occurredAt),
   };
 }
 
@@ -258,7 +253,7 @@ export async function getInstanceRuntimeDiagnostics(id: number): Promise<Workflo
       .where(and(eq(workflowJobs.instanceId, id), eq(workflowJobExecutions.jobType, 'trigger_dispatch')))
       .orderBy(desc(workflowJobExecutions.id))
       .limit(50),
-    Promise.resolve([] as typeof workflowJobs.$inferSelect[]),
+    db.select({ event: eventOutbox, delivery: eventConsumerDeliveries }).from(eventConsumerDeliveries).innerJoin(eventOutbox, eq(eventOutbox.id, eventConsumerDeliveries.eventId)).where(eq(eventOutbox.orderingKey, 'workflow:' + id)).orderBy(desc(eventConsumerDeliveries.id)),
     db.select().from(workflowJobs).where(eq(workflowJobs.instanceId, id)).limit(200),
     db.select().from(workflowTokens).where(eq(workflowTokens.instanceId, id)).orderBy(workflowTokens.id),
   ]);
@@ -321,7 +316,7 @@ function buildEngineExplanation(
 ): WorkflowEngineExplanation {
   const now = Date.now();
   const activeTasks = tasks.filter((t) => t.status === 'pending' || t.status === 'waiting');
-  const failedJobs = jobs.filter((j) => j.status === 'failed' || j.status === 'dead');
+  const failedJobs = jobs.filter(j => inst.status === 'running' && (j.status === 'failed' || j.status === 'dead'));
   const pendingJobs = jobs.filter((j) => j.status === 'pending' || j.status === 'running');
   const blockers: WorkflowEngineExplanationBlocker[] = [];
 

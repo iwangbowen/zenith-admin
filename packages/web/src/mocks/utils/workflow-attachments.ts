@@ -42,12 +42,12 @@ export function getMockWorkflowAttachment(request: Request, id: number) {
 }
 
 export function bindMockWorkflowAttachments(request: Request, instanceId: number,
-  source: { taskId: number } | { commentId: number } | { path: string; fieldKeys: string[] }, input: unknown): WorkflowAttachment[] {
+  source: { taskId: number } | { commentId: number } | { compensationId: number } | { path: string; fieldKeys: string[] }, input: unknown): WorkflowAttachment[] {
   const parsed = workflowTaskAttachmentsSchema.safeParse(input ?? []);
   if (!parsed.success) throw new MockHttpError(badRequest('附件无效，请重新上传', { status: 400 }));
   const user = currentMockSession(request)?.user;
   if (!user && parsed.data.length) throw denied();
-  const sourceKey = 'taskId' in source ? `task:${source.taskId}` : 'commentId' in source ? `comment:${source.commentId}` : `form:${source.path}`;
+  const sourceKey = 'taskId' in source ? `task:${source.taskId}` : 'commentId' in source ? `comment:${source.commentId}` : 'compensationId' in source ? `compensation:${source.compensationId}` : `form:${source.path}`;
   return [...new Set(parsed.data.map((row) => row.fileId))].map((fileId) => {
     const existing = mockWorkflowAttachmentLinks.find((link) => link.instanceId === instanceId && link.sourceKey === sourceKey && link.fileId === fileId);
     if (existing && canReadMockWorkflowAttachment(request, existing)) return existing;

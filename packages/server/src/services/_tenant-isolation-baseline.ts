@@ -160,7 +160,7 @@ export const tenantIsolationBaseline: readonly TenantIsolationBaselineEntry[] = 
   { file: 'services/workflow/instances/shared.ts', fn: 'lockInstanceExpecting', table: 'workflowInstances', reason: '后台作业 / 系统或公开上下文，无请求租户；id 来自内部记录' },
   { file: 'services/workflow/instances/subprocess.ts', fn: 'loadPublishedSubProcessDef', table: 'workflowDefinitions', reason: '后台作业 / 系统或公开上下文，无请求租户；id 来自内部记录' },
   { file: 'services/workflow/instances/task-actions.ts', fn: 'findUserDisplayName', table: 'users', reason: '后台作业 / 系统或公开上下文，无请求租户；id 来自内部记录' },
-  { file: 'services/workflow/instances/task-actions.ts', fn: 'settleInstanceInTx', table: 'workflowInstances', reason: '后台作业 / 系统或公开上下文，无请求租户；id 来自内部记录' },
+  { file: 'services/workflow/instances/settlement.ts', fn: 'settleInstanceInTx', table: 'workflowInstances', reason: '后台作业 / 系统或公开上下文，无请求租户；id 来自内部记录' },
   { file: 'services/workflow/instances/task-routing.ts', fn: 'systemTransferTaskToManagerInTransaction', table: 'users', reason: '组织架构查找（成员 / 部门）：待复核是否应限当前租户' },
   { file: 'services/workflow/workflow-assignee-resolver.service.ts', fn: 'fetchDeptLeader', table: 'departments', reason: '后台作业 / 系统或公开上下文，无请求租户；id 来自内部记录' },
   { file: 'services/workflow/workflow-assignee-resolver.service.ts', fn: 'fetchDeptParent', table: 'departments', reason: '后台作业 / 系统或公开上下文，无请求租户；id 来自内部记录' },
@@ -172,7 +172,6 @@ export const tenantIsolationBaseline: readonly TenantIsolationBaselineEntry[] = 
   { file: 'services/workflow/workflow-definitions.service.ts', fn: 'restoreVersion', table: 'workflowDefinitionVersions', reason: '待复核：按请求 id 访问未叠加租户条件' },
   { file: 'services/workflow/workflow-forms.service.ts', fn: 'resolveFormSnapshot', table: 'workflowForms', reason: '待复核：按请求 id 访问未叠加租户条件' },
   { file: 'services/workflow/workflow-jobs.service.ts', fn: 'getWorkflowJobDetail', table: 'workflowJobs', reason: '后台作业 / 系统或公开上下文，无请求租户；id 来自内部记录' },
-  { file: 'services/workflow/workflow-migrations.service.ts', fn: 'loadForMigration', table: 'workflowInstances', reason: '后台作业 / 系统或公开上下文，无请求租户；id 来自内部记录' },
   { file: 'services/workflow/workflow-print-config.ts', fn: 'loadDefinitionPrintConfig', table: 'workflowDefinitions', reason: '后台作业 / 系统或公开上下文，无请求租户；id 来自内部记录' },
   { file: 'services/workflow/workflow-print.service.ts', fn: 'loadUserDepartmentName', table: 'users', reason: '后台作业 / 系统或公开上下文，无请求租户；id 来自内部记录' },
 ];

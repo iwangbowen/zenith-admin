@@ -52,7 +52,7 @@ export default function WorkflowHealthPage() {
     },
   });
 
-  const canUrge = hasPermission('workflow:instance:monitor');
+  const canUrge = hasPermission('workflow:instance:create');
 
   const columns: ColumnProps<WorkflowHealthIssue>[] = [
     {
@@ -101,7 +101,7 @@ export default function WorkflowHealthPage() {
     dateTimeColumn('创建时间', 'createdAt'),
     createOperationColumn<WorkflowHealthIssue>({
       width: 180,
-      desktopInlineKeys: ['urge', 'instance'],
+      desktopInlineKeys: ['evidence', 'instance'],
       actions: (row) => [
         { key: 'evidence', label: '问题详情', onClick: () => setSelectedIssue(row) },
         {

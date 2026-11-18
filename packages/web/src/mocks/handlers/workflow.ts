@@ -859,7 +859,7 @@ function buildMockWorkflowEngineIntrospection(thresholdMinutes: number): Workflo
 
   return {
     scope: 'platform', ruleVersion: 'workflow-health-v2',
-    completeness: { issuesTotal: issues.length, issuesReturned: issues.length, tasksTotal: runtimeTasks.length, tasksReturned: runtimeTasks.length, truncated: false },
+    completeness: { issuesTotal: issues.length, criticalTotal: issues.filter(i => i.severity === 'critical').length, warningTotal: issues.filter(i => i.severity === 'warning').length, issuesReturned: issues.length, tasksTotal: runtimeTasks.length, tasksReturned: runtimeTasks.length, truncated: false },
     healthy: issues.length === 0,
     generatedAt: mockDateTime(),
     thresholdMinutes,

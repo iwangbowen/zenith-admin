@@ -809,7 +809,7 @@ export async function getWorkflowEngineIntrospection(
 
   return {
     scope: platform ? 'platform' : 'business', ruleVersion: 'workflow-health-v2',
-    completeness: { issuesTotal: issues.length, issuesReturned: Math.min(issues.length, 100), tasksTotal: runtimeTasks.length, tasksReturned: Math.min(runtimeTasks.length, 300), truncated: issues.length > 100 || runtimeTasks.length > 300 },
+    completeness: { issuesTotal: issues.length, criticalTotal: issues.filter(i => i.severity === 'critical').length, warningTotal: issues.filter(i => i.severity === 'warning').length, issuesReturned: Math.min(issues.length, 100), tasksTotal: runtimeTasks.length, tasksReturned: Math.min(runtimeTasks.length, 300), truncated: issues.length > 100 || runtimeTasks.length > 300 },
     healthy: issues.length === 0 && healthScore >= thresholds.healthWarn,
     generatedAt: formatDateTime(now),
     thresholdMinutes: threshold,

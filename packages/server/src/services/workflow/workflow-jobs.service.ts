@@ -1,3 +1,5 @@
+import { tenantCondition } from '../../lib/tenant';
+import { currentUser } from '../../lib/context';
 import { workflowJobScope } from './workflow-access';
 import { HTTPException } from 'hono/http-exception';
 import { assertWorkflowPreview, issueWorkflowPreview } from './operation-preview';
@@ -5,7 +7,7 @@ import { workflowEngineContract, type WorkflowJobRuntimeStatus } from '@zenith/s
 import type { QueryOutputOf } from '@zenith/shared/core';
 import type { JobStuckItem } from '@zenith/shared/platform';
 import { percentOf } from '@zenith/shared/core';
-import { WORKFLOW_JOB_TYPES, summarizeWorkflowJobChain } from '@zenith/shared/workflow';
+import { WORKFLOW_JOB_TYPES, summarizeWorkflowJobChain, workflowJobCapabilities } from '@zenith/shared/workflow';
 import { and, asc, avg, count, desc, eq, gte, inArray, isNotNull, isNull, lt, lte, max, min, or, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import { workflowJobs, workflowJobExecutions, workflowInstances, workflowDefinitions, systemSchedulerNodes } from '../../db/schema';
@@ -102,7 +104,7 @@ function mapJob(row: WorkflowJobRow, extra?: { instanceTitle?: string | null; de
     executionDeadline: formatNullableDateTime(row.executionDeadline),
     effectStatus: row.effectStatus,
     effectEvidence: row.effectEvidence ?? null,
-    capabilities: { retry: ['failed', 'dead', 'canceled'].includes(row.status) && row.effectStatus !== 'sent_unknown', cancel: ['pending', 'running', 'paused', 'failed', 'dead'].includes(row.status) && row.effectStatus !== 'sent_unknown', confirmResult: row.effectStatus === 'sent_unknown', reason: row.effectStatus === 'sent_unknown' ? '请先核对并确认外部结果' : null },
+    capabilities: workflowJobCapabilities(row),
     lastError: row.lastError ?? null,
     result: (row.result ?? null) as Record<string, unknown> | null,
     tenantId: row.tenantId ?? null,
@@ -204,7 +206,8 @@ export async function retryWorkflowJob(id: number, payload?: Record<string, unkn
 }
 
 export async function skipWorkflowJob(id: number) {
-  await getWorkflowJobDetail(id);
+  const detail = await getWorkflowJobDetail(id);
+  if (!detail.capabilities.cancel) throw new HTTPException(409, { message: '当前作业不可取消，请先核对外部结果' });
   const row = await skipJob(id);
   return mapJob(requireRow(row, '仅待处理 / 运行中 / 已暂停 / 失败 / 死信的作业可跳过', 400));
 }
@@ -214,7 +217,7 @@ export async function confirmWorkflowExternalResult(id: number, input: { generat
   if (!['trigger_dispatch', 'external_dispatch', 'webhook_delivery', 'node_listener_delivery'].includes(detail.jobType)) throw new HTTPException(409, { message: '此类作业需在所属业务中核对，不能通用确认' });
   const [row] = await db.update(workflowJobs).set({ effectStatus: input.outcome === 'success' ? 'confirmed_success' : 'confirmed_failure', effectEvidence: input.evidence,
     ...(input.outcome === 'success' ? { status: 'pending' as const, generation: input.generation + 1, attempts: 0, runAt: new Date() } : {}) })
-    .where(and(eq(workflowJobs.id, id), eq(workflowJobs.generation, input.generation), eq(workflowJobs.effectStatus, 'sent_unknown'), inArray(workflowJobs.status, ['dead', 'failed']))).returning();
+    .where(and(tenantCondition(workflowJobs, currentUser()), await workflowJobScope(), eq(workflowJobs.id, id), eq(workflowJobs.generation, input.generation), eq(workflowJobs.effectStatus, 'sent_unknown'), inArray(workflowJobs.status, ['dead', 'failed']))).returning();
   if (!row) throw new HTTPException(409, { message: '执行轮次或外部效果状态已变化，请刷新' });
   return mapJob(row);
 }
@@ -252,7 +255,8 @@ export function staggeredRunAt(index: number, ratePerSecond: number, fromMs: num
  * 让 pg-boss pickup 与下游连接器/DB 压力平摊到时间窗内，而非全部立即入队。
  */
 async function throttledRetry(ids: number[], ratePerSecond: number): Promise<number> {
-  await Promise.all(ids.map((id) => getWorkflowJobDetail(id)));
+  const details = await Promise.all(ids.map((id) => getWorkflowJobDetail(id)));
+  if (details.some(detail => detail.effectStatus === 'sent_unknown')) throw new HTTPException(409, { message: '选中作业包含外部结果未知项，请先核对' });
   const from = Date.now();
   let success = 0;
   for (let i = 0; i < ids.length; i += 1) {
@@ -271,7 +275,8 @@ export async function batchRetryWorkflowJobs(ids: number[], opts?: WorkflowJobBa
 
 /** 批量跳过：逐个调用 skipJob，不满足条件（非 pending/failed/dead）计入 skipped。 */
 export async function batchSkipWorkflowJobs(ids: number[]): Promise<WorkflowJobBatchResult> {
-  await Promise.all(ids.map((id) => getWorkflowJobDetail(id)));
+  const details = await Promise.all(ids.map((id) => getWorkflowJobDetail(id)));
+  if (details.some(detail => detail.effectStatus === 'sent_unknown')) throw new HTTPException(409, { message: '选中作业包含外部结果未知项，请先核对' });
   let success = 0;
   for (const id of ids) {
     const row = await skipJob(id);
@@ -373,12 +378,10 @@ export async function replayDeadJobs(
   const limit = clampLimit(opts?.limit);
   const { ratePerSecond: _rate, limit: _limit, previewToken, reason, ...filter } = opts ?? {};
   if (!reason?.trim()) throw new HTTPException(400, { message: '请填写重放原因' });
-  assertWorkflowPreview(previewToken, 'replay', filter, await replayObjects(filter));
-  const where = await replayJobsWhere(opts ?? {});
-  const [matched, rows] = await Promise.all([
-    db.$count(workflowJobs, where),
-    db.select({ id: workflowJobs.id }).from(workflowJobs).where(where).orderBy(asc(workflowJobs.id)).limit(limit),
-  ]);
+  const objects = await replayObjects(filter);
+  assertWorkflowPreview(previewToken, 'replay', filter, objects);
+  const matched = objects.length;
+  const rows = objects.slice(0, limit);
   const success = await throttledRetry(rows.map((r) => r.id), rate);
   return { total: rows.length, success, skipped: rows.length - success, matched, ratePerSecond: rate, limit };
 }

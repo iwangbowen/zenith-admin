@@ -12,6 +12,7 @@ import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { eventConsumerDeliveries, eventOutbox, workflowEngineHealthSnapshots } from '../../db/schema';
 import { formatDateTime } from '../../lib/datetime';
+import { localTrunc } from '../../lib/datetime-sql';
 import logger from '../../lib/logger';
 import type { WorkflowEngineActionFilter, WorkflowEngineActionKey, WorkflowEngineActionPreview, WorkflowEngineActionResult, WorkflowEngineComponentStatus, WorkflowEngineHealthHistory, WorkflowEngineHealthPoint, WorkflowJobType } from '@zenith/shared/workflow';
 import { wakeEventConsumers } from '../../lib/domain-events';
@@ -37,8 +38,8 @@ export async function captureWorkflowEngineHealthSnapshot(): Promise<{ healthSco
   const backlog = backlogOf(snapshot.queues.filter(q => q.key !== 'humanTasks' && q.key !== 'timeouts'));
   const errorRate = t.events.last24h.total > 0 ? t.events.last24h.failed / t.events.last24h.total : 0;
   const severity = severityFromHealth(t.healthScore, thresholds);
-  const criticalCount = snapshot.issues.filter((i) => i.severity === 'critical').length;
-  const warningCount = snapshot.issues.filter((i) => i.severity === 'warning').length;
+  const criticalCount = snapshot.completeness.criticalTotal;
+  const warningCount = snapshot.completeness.warningTotal;
 
   await db.insert(workflowEngineHealthSnapshots).values({
     healthScore: t.healthScore,
@@ -106,10 +107,10 @@ export async function getWorkflowEngineHealthHistory(hours = 24): Promise<Workfl
   const safeHours = Math.max(1, Math.min(hours, 24 * 30));
   const since = new Date(Date.now() - safeHours * 60 * 60_000);
   const [rows, thresholds] = await Promise.all([
-    db.selectDistinctOn([sql`date_trunc('hour', ${workflowEngineHealthSnapshots.createdAt})`])
+    db.selectDistinctOn([localTrunc('hour', workflowEngineHealthSnapshots.createdAt)])
       .from(workflowEngineHealthSnapshots)
       .where(gte(workflowEngineHealthSnapshots.createdAt, since))
-      .orderBy(sql`date_trunc('hour', ${workflowEngineHealthSnapshots.createdAt})`, desc(workflowEngineHealthSnapshots.createdAt)),
+      .orderBy(localTrunc('hour', workflowEngineHealthSnapshots.createdAt), desc(workflowEngineHealthSnapshots.createdAt)),
     getWorkflowEngineThresholds(),
   ]);
   const points: WorkflowEngineHealthPoint[] = rows.map((row) => ({

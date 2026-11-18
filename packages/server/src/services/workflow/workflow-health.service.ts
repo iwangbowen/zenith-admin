@@ -2,6 +2,7 @@ import { workflowMonitorScope } from './workflow-access';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { workflowHealthContract, workflowHealthQuery } from '@zenith/shared/workflow';
+import { WORKFLOW_HEALTH_ISSUE_TYPES } from '@zenith/shared/workflow';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { summarizeWorkflowHealth, type WorkflowHealthIssue, type WorkflowHealthSummary } from '@zenith/shared/workflow';
 import { db } from '../../db';
@@ -175,7 +176,7 @@ export async function getWorkflowHealthSummary(thresholdMinutes = 30, options: {
       const children = subChildren.filter((child) => child.parentTaskId === task.id);
       const outstanding = jobsByTask.get(task.id)?.filter((job) => ['subprocess_spawn', 'subprocess_join'].includes(job.jobType)
         && ['pending', 'running', 'failed', 'dead'].includes(job.status)) ?? [];
-      if (children.some((child) => ['running', 'draft', 'suspended', 'returned'].includes(child.status)) && !outstanding.length) continue;
+      if (children.some((child) => ['running', 'draft', 'suspended', 'returned'].includes(child.status)) && !outstanding.some(job => ['failed', 'dead'].includes(job.status))) continue;
       issues.push(taskIssue({
         type: 'subprocess_waiting',
         severity: 'warning',
@@ -280,9 +281,10 @@ export async function getWorkflowHealthSummary(thresholdMinutes = 30, options: {
   for (const { ticket, title } of repairs) issues.push({ id: `repair:${ticket.id}`, type: 'repair_pending', severity: 'critical', title: '节点故障等待修复', description: ticket.errorMessage ?? '自动执行失败，修复工单待处理', instanceId: ticket.instanceId, instanceTitle: title, taskId: ticket.repairTaskId, activationId: ticket.repairActivationId, nodeKey: ticket.failedNodeKey ?? ticket.nodeKey, nodeName: ticket.nodeName, ageMinutes: ageMinutes(ticket.createdAt, now), createdAt: formatDateTime(ticket.createdAt), evidence: { compensationId: ticket.id, actionStatus: ticket.compensationActionStatus } });
   const unknownJobs = await db.select({ job: workflowJobs, title: workflowInstances.title }).from(workflowJobs).innerJoin(workflowInstances, eq(workflowJobs.instanceId, workflowInstances.id)).where(buildWhere(contextWhere, eq(workflowJobs.effectStatus, 'sent_unknown')));
   for (const { job, title } of unknownJobs) issues.push({ id: `external-result:${job.id}:${job.generation}`, type: 'external_result_unknown', severity: 'critical', title: '外部操作结果待确认', description: job.lastError ?? '先核对外部执行结果，禁止普通重放', instanceId: job.instanceId, instanceTitle: title, taskId: job.taskId, nodeKey: job.nodeKey, jobId: job.id, ageMinutes: ageMinutes(job.createdAt, now), createdAt: formatDateTime(job.createdAt), evidence: { generation: job.generation, effectStatus: job.effectStatus } });
-  const enriched = issues.map(issue => ({ ...issue, fingerprint: issue.id, ruleVersion: 'workflow-health-v2' }));
+  const unknownTaskIds = new Set(unknownJobs.map(row => row.job.taskId));
+  const enriched = issues.filter(issue => issue.type === 'external_result_unknown' || !issue.taskId || !unknownTaskIds.has(issue.taskId)).map(issue => ({ ...issue, fingerprint: issue.id, ruleVersion: 'workflow-health-v2' }));
   const filtered = enriched.filter(issue => (!query.type || issue.type === query.type) && (!query.severity || issue.severity === query.severity));
   const result = summarizeWorkflowHealth(filtered, { thresholdMinutes, checkedAt: formatDateTime(now) });
   const { page, pageSize } = query;
-  return { ...result, scope: options.systemWide ? 'platform' : 'business', coverage: { instances: runningRows.length, tasks: taskRows.length, rules: 13, complete: true }, total: result.issues.length, page, pageSize, truncated: !options.allIssues && result.issues.length > pageSize, issues: options.allIssues ? result.issues : result.issues.slice((page - 1) * pageSize, page * pageSize) };
+  return { ...result, scope: options.systemWide ? 'platform' : 'business', coverage: { instances: runningRows.length, tasks: taskRows.length, rules: WORKFLOW_HEALTH_ISSUE_TYPES.length, complete: true }, total: result.issues.length, page, pageSize, truncated: !options.allIssues && result.issues.length > pageSize, issues: options.allIssues ? result.issues : result.issues.slice((page - 1) * pageSize, page * pageSize) };
 }

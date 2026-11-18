@@ -202,7 +202,8 @@ export function buildFocusDiagnosis(diagnostics: WorkflowRuntimeDiagnostics, dia
 
   const criticalIssues = diagnostics.issues.filter((issue) => issue.severity === 'critical');
   const warningIssues = diagnostics.issues.filter((issue) => issue.severity === 'warning');
-  const failedTriggers = diagnostics.triggerExecutions.filter((item) => item.status === 'failed');
+  const activeTaskIds = new Set(activeTasks.map(task => task.id));
+  const failedTriggers = diagnostics.triggerExecutions.filter((item) => item.status === 'failed' && item.taskId != null && activeTaskIds.has(item.taskId));
   const retryingTriggers = diagnostics.triggerExecutions.filter((item) => item.status === 'retrying' || item.status === 'running');
   const failedOutbox = diagnostics.outboxEvents.filter((item) => item.status.toLowerCase() === 'failed');
   const pendingOutbox = diagnostics.outboxEvents.filter((item) => ['pending', 'retrying'].includes(item.status.toLowerCase()));

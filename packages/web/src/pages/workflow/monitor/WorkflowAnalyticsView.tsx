@@ -165,7 +165,7 @@ export default function WorkflowAnalyticsView({ definitions }: Readonly<{ defini
       {/* KPI */}
       <StatGrid minItemWidth={150}>
         <Kpi label="流程实例总数" value={data.total} />
-        <Kpi label="平均审批耗时" value={fmtDuration(data.avgDurationSec)} />
+        <Kpi label="提交至完成平均耗时" value={fmtDuration(data.avgDurationSec)} />
         <Kpi label="当前待办总数" value={data.pendingTaskCount} />
         <Kpi label="已超时待办" value={data.overdueTaskCount} danger={data.overdueTaskCount > 0} />
         <Kpi label="24h内即将超时" value={data.dueSoonTaskCount} warn={data.dueSoonTaskCount > 0} />

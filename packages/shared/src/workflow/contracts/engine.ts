@@ -515,7 +515,7 @@ export type WorkflowEngineTelemetry = z.infer<typeof workflowEngineTelemetrySche
 export const workflowEngineIntrospectionSchema = z.object({
   scope: z.enum(['business', 'platform']),
   ruleVersion: z.string(),
-  completeness: z.object({ issuesTotal: z.int(), issuesReturned: z.int(), tasksTotal: z.int(), tasksReturned: z.int(), truncated: z.boolean() }),
+  completeness: z.object({ issuesTotal: z.int(), criticalTotal: z.int(), warningTotal: z.int(), issuesReturned: z.int(), tasksTotal: z.int(), tasksReturned: z.int(), truncated: z.boolean() }),
   healthy: z.boolean(),
   generatedAt: z.string(),
   thresholdMinutes: z.int(),

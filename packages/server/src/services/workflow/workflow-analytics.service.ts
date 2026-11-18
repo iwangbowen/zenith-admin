@@ -161,10 +161,9 @@ export async function getWorkflowAnalytics(query: QueryOutputOf<typeof workflowI
     const round = (v: number | null | undefined) => (v == null ? null : Math.round(Number(v)));
 
     // 驳回率 / 超时率
-    const approvedCount = statusCounts.find((s) => s.status === 'approved')?.count ?? 0;
-    const [decisions] = await tx.select({ rejected: sql<number>`count(*) filter(where ${workflowInstances.outcomeReason}='business_rejected')::int` }).from(workflowInstances).where(instWhere);
+    const [decisions] = await tx.select({ approved: sql<number>`count(*) filter(where ${workflowInstances.outcomeReason}='business_approved')::int`, rejected: sql<number>`count(*) filter(where ${workflowInstances.outcomeReason}='business_rejected')::int` }).from(workflowInstances).where(instWhere);
     const rejectedCount = Number(decisions?.rejected ?? 0);
-    const decidedCount = approvedCount + rejectedCount;
+    const decidedCount = Number(decisions?.approved ?? 0) + rejectedCount;
     const rejectionRate = decidedCount > 0 ? rejectedCount / decidedCount : null;
     const pendingTaskCount = pendingRow[0]?.count ?? 0;
     const overdueTaskCount = overdueRow[0]?.count ?? 0;

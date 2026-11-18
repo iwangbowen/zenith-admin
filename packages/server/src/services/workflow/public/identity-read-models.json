@@ -28,14 +28,6 @@
       ]
     }
   },
-  "services/workflow/instances/diagnostics.ts": {
-    "purpose": "Read-only workflow lists and diagnostics join actor labels.",
-    "tables": {
-      "users": [
-        "departmentId"
-      ]
-    }
-  },
   "services/workflow/instances/lifecycle.ts": {
     "purpose": "Workflow commands verify actor existence and resolve routing or display labels; identity writes are forbidden.",
     "tables": {
@@ -245,6 +237,15 @@
         "nickname",
         "status",
         "username"
+      ]
+    }
+  },
+  "services/workflow/workflow-access.ts": {
+    "purpose": "Enforce monitoring scope with the authorized initiator department or owner predicate.",
+    "tables": {
+      "users": [
+        "departmentId",
+        "id"
       ]
     }
   }

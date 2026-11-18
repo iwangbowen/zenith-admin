@@ -100,8 +100,9 @@ export default function WorkflowMonitorPage() {
   const listQuery = useWorkflowMonitorList({ page, pageSize, ...filterQuery });
   const data = listQuery.data ?? null;
 
-  const { categories } = useWorkflowCategories();
   const { hasPermission } = usePermission();
+  const canReadDefinitions = hasPermission('workflow:definition:list');
+  const { categories } = useWorkflowCategories(canReadDefinitions);
   // 勾选用于批量导出审批单 PDF；翻页 / 重新检索后仅保留仍在当前页的选中项
   const { selectedRowKeys, rowSelection } = useRowSelection();
   const selectedPrintableIds = selectedRowKeys.filter((id) => (data?.list ?? []).some((item) => item.id === id));
@@ -125,9 +126,9 @@ export default function WorkflowMonitorPage() {
   const [diagnosticsTab, setDiagnosticsTab] = useState('nodes');
   const [defSnapshotVisible, setDefSnapshotVisible] = useState(false);
 
-  // 流程定义（用于数据分析筛选 + 强制跳转节点选择）
-  const definitionsQuery = useWorkflowMonitorDefinitionOptions();
-  const definitions = definitionsQuery.data ?? [];
+  // 流程定义（用于数据分析筛选 + 强制跳转节点选择）；监控只读角色可能没有定义读取权限，避免无效 403
+  const definitionsQuery = useWorkflowMonitorDefinitionOptions(canReadDefinitions);
+  const definitions = canReadDefinitions ? definitionsQuery.data ?? [] : [];
   // 管理员：强制跳转
   const [jumpRecord, setJumpRecord] = useState<WorkflowInstanceListItem | null>(null);
   const [jumpPreviewToken, setJumpPreviewToken] = useState<string>();
@@ -338,10 +339,6 @@ export default function WorkflowMonitorPage() {
       taskStatusColumn<WorkflowTask>('审批状态', 110),
       taskCommentColumn<WorkflowTask>(),
       taskStayDurationColumn<WorkflowTask>(),
-      { title: '外部分派', dataIndex: 'externalDispatchStatus', width: 120, render: (v: string | null) => v ?? EMPTY_PLACEHOLDER },
-      { title: '触发器状态', dataIndex: 'triggerDispatchStatus', width: 130, render: (v: string | null) => v ?? EMPTY_PLACEHOLDER },
-      { title: '尝试', dataIndex: 'triggerAttempt', width: 70, render: (v: number | undefined) => v ?? EMPTY_PLACEHOLDER },
-      { title: '错误', dataIndex: 'triggerLastError', minWidth: 220, ellipsis: { showTitle: true }, render: (v: string | null) => v ?? EMPTY_PLACEHOLDER },
     ];
     const triggerColumns: ColumnProps<WorkflowTriggerExecution>[] = [
       { title: 'ID', dataIndex: 'id', width: 70 },
@@ -401,7 +398,7 @@ export default function WorkflowMonitorPage() {
             onClick: () => { Modal.confirm({ title: '跳过该卡死 Token 并推进流程？', onOk: () => runTokenOp(r.id, 'skip') }); },
           },
           {
-            key: 'replay', label: '重放', danger: true, hidden: !hasPermission('workflow:instance:intervene'),
+            key: 'replay', label: '重放', danger: true, hidden: !hasPermission('workflow:instance:intervene') || diagnostics.instance.status !== 'running',
             onClick: () => { confirmDanger({ title: '从该 Token 节点重放？', content: '将清场全部活动 Token 并在该节点重建路径', onOk: () => runTokenOp(r.id, 'replay') }); },
           },
         ],
@@ -718,7 +715,7 @@ export default function WorkflowMonitorPage() {
         </div>
       ),
     },
-    dateTimeColumn('提交时间', 'createdAt'),
+    dateTimeColumn('提交时间', 'submittedAt'),
     dateTimeColumn('最后更新', 'updatedAt'),
     {
       title: '耗时',
@@ -728,8 +725,9 @@ export default function WorkflowMonitorPage() {
       render: (_: unknown, record: WorkflowInstanceListItem) => {
         // 草稿尚未提交，从创建时间累计耗时没有意义
         if (record.status === 'draft') return <span style={{ color: 'var(--semi-color-text-2)' }}>—</span>;
-        const end = RUNNING_STATUSES.has(record.status) ? dayjs().format('YYYY-MM-DD HH:mm:ss') : record.updatedAt;
-        return <span style={{ color: 'var(--semi-color-text-1)', whiteSpace: 'nowrap' }}>{formatSecondsBetween(record.createdAt, end)}</span>;
+        if (!record.submittedAt) return EMPTY_PLACEHOLDER;
+        const end = RUNNING_STATUSES.has(record.status) ? dayjs().format('YYYY-MM-DD HH:mm:ss') : record.completedAt;
+        return <span style={{ color: 'var(--semi-color-text-1)', whiteSpace: 'nowrap' }}>{end ? formatSecondsBetween(record.submittedAt, end) : EMPTY_PLACEHOLDER}</span>;
       },
     },
     workflowInstanceStatusColumn<WorkflowInstanceListItem>(),
@@ -792,6 +790,7 @@ export default function WorkflowMonitorPage() {
       <Typography.Text type="tertiary">统计范围：当前筛选（状态除外）</Typography.Text>
       <StatGrid minItemWidth={120} style={{ marginBottom: 16 }}>
         <StatCard title="全部" value={statValue(stats.total)} accent="var(--semi-color-text-0)" onClick={() => handleStatCardClick(undefined)} active={!draftParams.status} />
+        <StatCard title="草稿" value={statValue(stats.draft ?? 0)} onClick={() => handleStatCardClick('draft')} active={draftParams.status === 'draft'} />
         <StatCard title="审批中" value={statValue(stats.running)} accent="var(--semi-color-primary)" onClick={() => handleStatCardClick('running')} active={draftParams.status === 'running'} />
         <StatCard title="已挂起" value={statValue(stats.suspended ?? 0)} accent="var(--semi-color-warning)" onClick={() => handleStatCardClick('suspended')} active={draftParams.status === 'suspended'} />
         <StatCard title="已退回" value={statValue(stats.returned ?? 0)} accent="var(--semi-color-warning)" onClick={() => handleStatCardClick('returned')} active={draftParams.status === 'returned'} />
@@ -814,19 +813,19 @@ export default function WorkflowMonitorPage() {
         keyword={<KeywordInput placeholder="搜索申请标题 / 流程名称" {...bindKeyword('keyword')} width={240} />}
         filters={(
           <>
-            <FilterSelect
+            {canReadDefinitions && <FilterSelect
               placeholder="全部所有分类"
               items={categories.map((c: WorkflowCategory) => ({ label: c.name, value: c.id }))}
               {...bind('categoryId')}
               width={140}
-            />
-            <FilterSelect
+            />}
+            {canReadDefinitions && <FilterSelect
               placeholder="全部所有流程"
               items={definitions.map((d) => ({ label: d.name, value: d.id }))}
               {...bind('definitionId')}
               width={160}
               filter
-            />
+            />}
             <Input
               placeholder="申请人"
               showClear
@@ -921,7 +920,7 @@ export default function WorkflowMonitorPage() {
         width={980}
         bodyStyle={{ padding: 16 }}
       >
-        {diagnosticsLoading ? (
+        {diagnosticsQuery.isError ? <div role="alert">诊断读取失败。<Button onClick={() => void diagnosticsQuery.refetch()}>重试</Button></div> : diagnosticsLoading ? (
           <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
         ) : renderDiagnostics()}
       </SideSheet>

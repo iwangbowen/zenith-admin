@@ -108,6 +108,9 @@ export async function resolveCompensation(id: number, action: 'resolve' | 'termi
   const row = await findCompensationOr404(id);
   if (row.status !== 'pending') throw new HTTPException(400, { message: '工单已处理' });
   return workflowTransaction(async (tx) => {
+    await tx.select({ id: workflowInstances.id }).from(workflowInstances).where(eq(workflowInstances.id, row.instanceId)).for('update');
+    const [current] = await tx.select().from(workflowCompensations).where(eq(workflowCompensations.id, id)).for('update').limit(1);
+    if (current?.status !== 'pending') throw new HTTPException(409, { message: '工单已由其他操作处理，请刷新' });
     if (action === 'terminate') {
       await settleInstanceInTx(tx, row.instanceId, { outcome: 'rejected', actorId: currentUser().userId, comment: resolution ?? '运维终止', outcomeReason: 'operations_terminated' });
     }

@@ -136,7 +136,7 @@ export default function WorkflowTasksMonitorView({ onOpenInstance }: Props) {
         {
           key: 'urge',
           label: '催办',
-          hidden: record.status !== 'pending' || !hasPermission('workflow:instance:monitor'),
+          hidden: record.status !== 'pending' || !hasPermission('workflow:instance:create'),
           onClick: () => {
             Modal.confirm({
               title: '确定催办该任务？',

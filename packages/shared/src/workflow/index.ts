@@ -14,6 +14,7 @@ export * from './form-runtime';
 export * from './form-fields';
 export * from './formula';
 export * from './health';
+export * from './job-capabilities';
 export * from './helpers';
 export * from './print';
 export * from './permissions';

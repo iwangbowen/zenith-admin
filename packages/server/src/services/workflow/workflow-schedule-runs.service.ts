@@ -1,5 +1,5 @@
 import { desc, eq, sql } from 'drizzle-orm';
-import { workflowScheduleContract, workflowScheduleRunSchema, type WorkflowScheduleRun, type WorkflowScheduleLaunchPayload } from '@zenith/shared/workflow';
+import { workflowJobCapabilities, workflowScheduleContract, workflowScheduleRunSchema, type WorkflowScheduleRun, type WorkflowScheduleLaunchPayload } from '@zenith/shared/workflow';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { db } from '../../db';
 import { workflowJobs, workflowInstances, type WorkflowJobRow } from '../../db/schema';
@@ -24,6 +24,7 @@ function occurrenceWhere(scheduleId: number, jobId?: number) {
 function mapRun(row: WorkflowJobRow, definitionName: string | null, instanceTitle: string | null): WorkflowScheduleRun {
   const payload = row.payload as WorkflowScheduleLaunchPayload;
   return pickEntity(workflowScheduleRunSchema, row, {
+    capabilities: workflowJobCapabilities(row),
     payload: row.payload as Record<string, unknown>, result: row.result as Record<string, unknown> | null,
     instanceTitle, definitionName, scheduleId: payload.scheduleId,
     scheduledAt: formatDateTime(new Date(payload.scheduledAt)), trigger: payload.trigger,
