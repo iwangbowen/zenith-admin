@@ -1,4 +1,5 @@
 import { workflowTriggerExecutionContract } from '@zenith/shared/workflow';
+import { workflowJobScope } from './workflow-access';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { desc, eq, sql, type SQL } from 'drizzle-orm';
 import { workflowJobExecutions, workflowJobs, workflowTasks, workflowInstances } from '../../db/schema';
@@ -92,10 +93,11 @@ function triggerExecutionsQuery() {
 }
 
 /** 触发器执行记录的范围条件：trigger_dispatch 类型 + 当前用户租户范围 */
-function triggerExecutionConditions(...extra: (SQL | undefined)[]): SQL | undefined {
+async function triggerExecutionConditions(...extra: (SQL | undefined)[]): Promise<SQL | undefined> {
   return buildWhere(
     eq(workflowJobExecutions.jobType, 'trigger_dispatch'),
     tenantCondition(workflowJobExecutions, currentUser()),
+    await workflowJobScope(),
     ...extra,
   );
 }
@@ -103,7 +105,7 @@ function triggerExecutionConditions(...extra: (SQL | undefined)[]): SQL | undefi
 export async function listTriggerExecutions(params: QueryOutputOf<typeof workflowTriggerExecutionContract.list>) {
   const page = params.page && params.page > 0 ? params.page : 1;
   const pageSize = params.pageSize && params.pageSize > 0 ? params.pageSize : 20;
-  const where = triggerExecutionConditions(
+  const where = await triggerExecutionConditions(
     params.instanceId ? eq(workflowJobs.instanceId, params.instanceId) : undefined,
     params.nodeKey ? eq(workflowJobs.nodeKey, params.nodeKey) : undefined,
     params.status ? sql`${triggerExecutionStatusSql} = ${params.status}` : undefined,
@@ -122,7 +124,7 @@ export async function listTriggerExecutions(params: QueryOutputOf<typeof workflo
 
 export async function getTriggerExecution(id: number) {
   const [row] = await triggerExecutionsQuery()
-    .where(triggerExecutionConditions(eq(workflowJobExecutions.id, id)))
+    .where(await triggerExecutionConditions(eq(workflowJobExecutions.id, id)))
     .limit(1);
   return mapTriggerExecution(requireRow(row, '触发器执行记录不存在'));
 }

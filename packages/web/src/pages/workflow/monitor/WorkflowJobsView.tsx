@@ -922,6 +922,7 @@ function RuntimeStatusBar({ onDeadClick }: Readonly<{ onDeadClick?: () => void }
 }
 
 export default function WorkflowJobsView({ initialStatus }: Readonly<{ initialStatus?: WorkflowJobStatus }> = {}) {
+  const { hasPermission } = usePermission();
   const [activeType, setActiveType] = useState<WorkflowJobType>(JOB_TYPES[0]);
   const [clustersSignal, setClustersSignal] = useState(0);
   const summaryQuery = useWorkflowJobSummary();
@@ -933,7 +934,7 @@ export default function WorkflowJobsView({ initialStatus }: Readonly<{ initialSt
 
   return (
     <>
-      <RuntimeStatusBar onDeadClick={() => setClustersSignal((s) => s + 1)} />
+      {hasPermission('workflow:engine:platform') && <RuntimeStatusBar onDeadClick={() => setClustersSignal((s) => s + 1)} />}
       <Tabs
         type="card"
         collapsible="auto"

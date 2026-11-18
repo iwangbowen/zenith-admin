@@ -1,3 +1,4 @@
+import { canMonitorWorkflowInstance } from '../workflow-access';
 import { loadApprovalActivations } from './approval-state';
 import { sanitizeDetailFormDataForViewer } from '../workflow-form-access';
 import { workflowInstanceContract, workflowTaskContract, WORKFLOW_INSTANCE_STATUSES, workflowTaskActivationKey, workflowTaskActivationRounds, type WorkflowWorkbenchSummary, type WorkflowHandledInstanceItem } from '@zenith/shared/workflow';
@@ -537,10 +538,10 @@ async function loadInstanceDetail(id: number, business?: { bizType: string; bizI
   const createdGroupNodes = await db.select({ nodeKey: workflowNodeActivations.nodeKey }).from(workflowSignGroups)
     .innerJoin(workflowNodeActivations, eq(workflowSignGroups.activationId, workflowNodeActivations.id))
     .where(and(eq(workflowNodeActivations.instanceId, row.id), eq(workflowSignGroups.createdBy, user.userId)));
-  // 流程监控管理员（workflow:instance:monitor）可查看租户可见范围内的任意实例详情，
+  // 流程监控详情同时应用租户与发起人数据范围；参与者访问保持独立，
   // 与「全局流程实例列表」权限口径一致（列表能看到却打不开详情属契约断裂）
-  const isMonitor = isSuperAdmin(user)
-    || (await getUserPermissions(user.userId)).includes('workflow:instance:monitor');
+  const isMonitor = (isSuperAdmin(user) || (await getUserPermissions(user.userId)).includes('workflow:instance:monitor'))
+    && await canMonitorWorkflowInstance(id);
   let allowed = !!business || isInitiator || isAssignee || isMonitor || createdGroupNodes.length > 0;
   if (!allowed && row.parentInstanceId) {
     // 子流程实例：若用户是任一祖先实例的发起人，允许查看（支持嵌套子流程）

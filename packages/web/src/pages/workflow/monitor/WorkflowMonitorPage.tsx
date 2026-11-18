@@ -430,7 +430,7 @@ export default function WorkflowMonitorPage() {
   const allUsersQuery = useAllUsers({ enabled: !!reassignRecord });
   const userOptions = (allUsersQuery.data ?? []).map((u) => ({ label: u.nickname ?? u.username, value: u.id }));
 
-  const canAdmin = hasPermission('workflow:instance:cancel');
+  const canAdmin = hasPermission('workflow:instance:intervene');
 
   const handleStatCardClick = (st: string | undefined) => {
     const next = draftParams.status === st ? undefined : st;
@@ -669,11 +669,11 @@ export default function WorkflowMonitorPage() {
         width: 150,
         actions: (r) => [
           {
-            key: 'skip', label: '跳过', hidden: r.status !== 'active',
+            key: 'skip', label: '跳过', hidden: r.status !== 'active' || !hasPermission('workflow:instance:intervene'),
             onClick: () => { Modal.confirm({ title: '跳过该卡死 Token 并推进流程？', onOk: () => runTokenOp(r.id, 'skip') }); },
           },
           {
-            key: 'replay', label: '重放', danger: true,
+            key: 'replay', label: '重放', danger: true, hidden: !hasPermission('workflow:instance:intervene'),
             onClick: () => { confirmDanger({ title: '从该 Token 节点重放？', content: '将清场全部活动 Token 并在该节点重建路径', onOk: () => runTokenOp(r.id, 'replay') }); },
           },
         ],

@@ -1,3 +1,4 @@
+import { requireMonitorWorkflowInstance } from '../workflow-access';
 import { createStandaloneActivation } from './approval-state';
 import { workflowTransaction } from '../../../lib/workflow-jobs/lease';
 import { enqueueSubprocessJoin } from './async-jobs';
@@ -281,6 +282,7 @@ export async function resumeInstanceForCompensation(id: number): Promise<{ resum
   const [ticket] = await db.select().from(workflowCompensations)
     .where(buildWhere(eq(workflowCompensations.id, id), tenantCondition(workflowCompensations, currentUser()))).limit(1);
   requireRow(ticket, '补偿工单不存在');
+  await requireMonitorWorkflowInstance(ticket.instanceId);
   if (ticket.status !== 'pending') throw new HTTPException(400, { message: '工单已处理' });
   const failedNodeKey = ticket.failedNodeKey ?? ticket.nodeKey;
   const cu = currentUser();

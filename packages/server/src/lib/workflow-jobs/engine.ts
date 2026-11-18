@@ -1,3 +1,4 @@
+import { HTTPException } from 'hono/http-exception';
 import { randomUUID } from 'node:crypto';
 import { hostname } from 'node:os';
 import { and, asc, eq, gt, inArray, isNull, lte, ne, notInArray, or, sql, type SQL } from 'drizzle-orm';
@@ -156,11 +157,13 @@ export async function resumeInstanceJobs(tx: DbExecutor, instanceId: number, job
 
 export async function retryJob(id: number, opts?: { payload?: Record<string, unknown>; runAt?: Date }, executor: DbExecutor = db): Promise<WorkflowJobRow | null> {
   return withAsyncSpan('zenith.workflow.job.retry', async () => {
+    const [candidate] = await executor.select().from(workflowJobs).where(eq(workflowJobs.id, id)).limit(1);
+    if (candidate?.lastError?.startsWith('外部操作结果待确认：')) throw new HTTPException(409, { message: '外部操作结果待确认，禁止普通重试；请先核对外部结果' });
     const [row] = await executor.update(workflowJobs).set({
       status: 'pending', generation: sql`${workflowJobs.generation} + 1`, attempts: 0,
       lastError: null, result: null, pausedRemainingMs: null, ...clearedLease, runAt: opts?.runAt ?? new Date(),
       ...(opts?.payload ? { payload: opts.payload, operationKey: randomUUID() } : {}),
-    }).where(and(eq(workflowJobs.id, id), inArray(workflowJobs.status, ['failed', 'dead', 'canceled']))).returning();
+    }).where(and(eq(workflowJobs.id, id), inArray(workflowJobs.status, ['failed', 'dead', 'canceled']), sql`coalesce(${workflowJobs.lastError}, '') not like '外部操作结果待确认：%'`)).returning();
     if (row) {
       if (executor === db) scheduleJobPickup(row.id, row.runAt);
       else rememberWorkflowJobPickup(executor, row.id, row.runAt);
@@ -323,11 +326,11 @@ export async function runJob(jobId: number): Promise<void> {
   if (claimed) await executeClaimedJob(claimed);
 }
 
-export interface DrainableFilter { jobTypes?: WorkflowJobType[]; instanceId?: number; olderThanMinutes?: number }
+export interface DrainableFilter { jobTypes?: WorkflowJobType[]; instanceId?: number; olderThanMinutes?: number; scope?: SQL }
 export interface DrainWorkflowJobsOptions extends DrainableFilter { batch?: number; limit?: number }
 
 function extraConditions(filter: DrainableFilter): SQL[] {
-  const conds: SQL[] = [];
+  const conds: SQL[] = filter.scope ? [filter.scope] : [];
   if (filter.jobTypes?.length) conds.push(inArray(workflowJobs.jobType, filter.jobTypes));
   if (filter.instanceId != null) conds.push(eq(workflowJobs.instanceId, filter.instanceId));
   if (filter.olderThanMinutes != null && filter.olderThanMinutes > 0) {

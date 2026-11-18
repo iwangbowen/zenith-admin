@@ -1,3 +1,5 @@
+import { isPlatformAdmin } from '../../lib/tenant';
+import { workflowMonitorScope } from './workflow-access';
 import { and, asc, desc, eq, gte, inArray, isNotNull, lt, notInArray, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { CronExpressionParser } from 'cron-parser';
@@ -5,7 +7,7 @@ import type { WorkflowEngineApdex, WorkflowEngineComponent, WorkflowEngineCompon
 import { buildWorkflowEngineIssues as buildIssues, buildWorkflowEngineQueueSnapshot as queueSnapshot, worstWorkflowEngineStatus as worstStatus } from '@zenith/shared/workflow';
 import { db } from '../../db';
 import { eventConsumerDeliveries, eventOutbox, workflowDefinitions, workflowInstances, workflowJobExecutions, workflowJobs, workflowTasks, workflowTokens, users } from '../../db/schema';
-import { currentUser } from '../../lib/context';
+import { currentUser, hasPermission } from '../../lib/context';
 import { getDataScopeCondition } from '../../lib/data-scope';
 import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
 import { getSchedulerIntrospection } from '../../lib/pg-boss-scheduler';
@@ -361,6 +363,7 @@ export async function getWorkflowEngineIntrospection(
   // systemWide：定时采集等无请求上下文场景，平台级统计，跳过租户/数据权限过滤。
   const systemWide = options.systemWide === true;
   const user = systemWide ? null : currentUser();
+  const platform = systemWide || !!(user && isPlatformAdmin(user) && user.viewingTenantId == null && await hasPermission('workflow:engine:platform'));
   const assigneeUsers = alias(users, 'workflow_engine_task_assignee');
   const externalJob = alias(workflowJobs, 'workflow_engine_external_job');
   const triggerJob = alias(workflowJobs, 'workflow_engine_trigger_job');
@@ -393,7 +396,9 @@ export async function getWorkflowEngineIntrospection(
   const trDuration = sql`${workflowJobExecutions.durationMs}`;
   const terminalStatuses = ['approved', 'rejected', 'withdrawn', 'cancelled'] as const;
   const canceledStatuses = ['withdrawn', 'cancelled'] as const;
-  const outboxScopeWhere = buildWhere(outboxTenant, eq(eventOutbox.domain, 'workflow'));
+  const outboxScopeWhere = buildWhere(outboxTenant, eq(eventOutbox.domain, 'workflow'), user
+    ? sql`exists (${db.select({ id: workflowInstances.id }).from(workflowInstances).where(buildWhere(await workflowMonitorScope(), sql`${eventOutbox.orderingKey} = 'workflow:' || ${workflowInstances.id}::text`))})`
+    : undefined);
   const triggerScopeWhere = buildWhere(eq(workflowJobExecutions.jobType, 'trigger_dispatch'), instTenant, taskScope);
 
   const [definitions, runningInstanceRows, activeInstanceRows, runtimeTaskRows, triggerRows, outboxRows, eventStatsRows, triggerStatsRows, instanceStatsRows, eventSeriesRows, instanceSeriesRows] = await Promise.all([
@@ -696,10 +701,10 @@ export async function getWorkflowEngineIntrospection(
     outboxEvents,
     eventBusListeners: eventBus.totalListenerCount,
     schedulerInitialized: scheduler.initialized,
-  });
+  }).filter((issue) => platform || (issue.component !== 'scheduler' && issue.component !== 'eventBus'));
 
   const componentStatusByIssue = (key: ComponentKey): WorkflowEngineComponentStatus => worstStatus(issues.filter((issue) => issue.component === key).map((issue) => issue.severity === 'info' ? 'healthy' : issue.severity));
-  if (jobRuntime.backlog > 0 && (jobRuntime.activeWorkers === 0 || (jobRuntime.oldestDueSeconds ?? 0) >= 30)) {
+  if (platform && jobRuntime.backlog > 0 && (jobRuntime.activeWorkers === 0 || (jobRuntime.oldestDueSeconds ?? 0) >= 30)) {
     issues.unshift({
       id: 'scheduler:workflow-ledger-backlog', component: 'scheduler', refType: 'scheduler',
       severity: jobRuntime.activeWorkers === 0 || (jobRuntime.oldestDueSeconds ?? 0) >= 120 ? 'critical' : 'warning',
@@ -808,7 +813,7 @@ export async function getWorkflowEngineIntrospection(
       completedPrev24h: instanceStats.completedPrev24h,
       series24h: instanceSeries,
     },
-    recurringJobs: scheduler.systemRecurringJobs.map((job) => ({
+    recurringJobs: (platform ? scheduler.systemRecurringJobs : []).map((job) => ({
       name: job.name,
       cronExpression: job.cronExpression,
       registeredAt: job.registeredAt,
@@ -829,11 +834,11 @@ export async function getWorkflowEngineIntrospection(
       errorRateCritical: thresholds.errorRateCritical,
     },
     telemetry,
-    components,
+    components: components.filter((item) => platform || (item.key !== 'scheduler' && item.key !== 'eventBus')),
     queues,
     definitions: definitionsSnapshot,
-    eventBus,
-    scheduler,
+    eventBus: !platform ? { totalListenerCount: 0, listeners: [] } : eventBus,
+    scheduler: !platform ? { ...scheduler, initialized: false, runningJobCount: 0, node: { id: '', hostname: '', pid: 0, roles: [] }, registeredHandlers: [], warnings: [], systemRecurringJobs: [], systemQueueWorkers: [], wip: [] } : scheduler,
     runtime: {
       runningInstances: runningInstanceRows.length,
       activeTokens: activeTokenCount,

@@ -1,3 +1,4 @@
+import { requirePlatformWorkflowAccess } from '../../services/workflow/workflow-access';
 import { OpenAPIHono } from '@hono/zod-openapi';
 import { workflowEngineContract } from '@zenith/shared/workflow';
 import { defineContractRoute } from '../../lib/contract-route';
@@ -101,7 +102,7 @@ const jobFailureClustersRoute = defineContractRoute(workflowEngineContract.failu
 });
 
 const jobRuntimeStatusRoute = defineContractRoute(workflowEngineContract.jobRuntimeStatus, {
-  handler: async (c) => c.json(okBody(await getWorkflowJobRuntimeStatus()), 200),
+  handler: async (c) => { await requirePlatformWorkflowAccess(); return c.json(okBody(await getWorkflowJobRuntimeStatus()), 200); },
 });
 
 // 静态段路由（/jobs/summary、/jobs/failure-clusters、/jobs/runtime-status 等）必须先于

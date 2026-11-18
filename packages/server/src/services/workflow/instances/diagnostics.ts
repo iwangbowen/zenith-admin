@@ -1,29 +1,18 @@
+import { workflowMonitorScope } from '../workflow-access';
 import { WORKFLOW_JOB_TYPE_LABELS as JOB_TYPE_LABELS } from '@zenith/shared/workflow';
 // ─── 运行时诊断、执行轨迹与引擎解释（拆分自 workflow-instances.service.ts）───
 import { formatDateTime, formatNullableDateTime } from '../../../lib/datetime';
 import { eq, and, desc, inArray } from 'drizzle-orm';
 import { db } from '../../../db';
-import { workflowJobs, workflowJobExecutions, workflowInstances, workflowTasks, workflowTokens, users } from '../../../db/schema';
-import { tenantCondition } from '../../../lib/tenant';
-import { getDataScopeCondition } from '../../../lib/data-scope';
+import { workflowJobs, workflowJobExecutions, workflowInstances, workflowTasks, workflowTokens } from '../../../db/schema';
 import type { WorkflowDefinitionSnapshot, WorkflowInstance, WorkflowRuntimeDiagnostics, WorkflowRuntimeIssue, WorkflowRuntimeOutboxEvent, WorkflowTriggerExecution, WorkflowInstanceTrace, WorkflowEngineExplanation, WorkflowEngineExplanationBlocker, WorkflowEngineTraceEntry, WorkflowJobType, WorkflowExecutionToken, WorkflowExecutionTokenView } from '@zenith/shared/workflow';
-import { currentUser } from '../../../lib/context';
 import { mapInstance, mapTask } from './mapping';
 import { mapTriggerExecution } from '../workflow-trigger-executions.service';
 import { requireRow } from '../../../lib/db-assert';
 import { jobExecutionsWithJob } from '../workflow-job-execution-helpers';
 
 async function instanceDiagnosticWhere(id: number) {
-  const user = currentUser();
-  return and(
-    eq(workflowInstances.id, id),
-    tenantCondition(workflowInstances, user),
-    await getDataScopeCondition({
-      currentUserId: user.userId,
-      deptColumn: users.departmentId,
-      ownerColumn: workflowInstances.initiatorId,
-    }),
-  );
+  return and(eq(workflowInstances.id, id), await workflowMonitorScope());
 }
 
 function mapRuntimeOutboxEvent(row: typeof workflowJobs.$inferSelect): WorkflowRuntimeOutboxEvent {

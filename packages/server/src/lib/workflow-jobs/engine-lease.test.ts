@@ -235,8 +235,9 @@ describe('workflow execution leases', () => {
     await runJob(1);
     expect(model.state.jobs[0].status).toBe('dead'); expect(model.state.jobs[0].lastError).toContain('外部操作结果待确认');
     expect(model.state.executions[0].requestMethod).toBe('POST'); expect(model.send).not.toHaveBeenCalled();
-    const oldKey = model.state.jobs[0].operationKey; await retryJob(1);
-    expect(model.state.jobs[0]).toMatchObject({ generation: 1, operationKey: oldKey });
+    const oldKey = model.state.jobs[0].operationKey;
+    await expect(retryJob(1)).rejects.toMatchObject({ status: 409 });
+    expect(model.state.jobs[0]).toMatchObject({ generation: 0, status: 'dead', operationKey: oldKey });
   });
   it('can retry a definitive client rejection while keeping the stable operation key', async () => {
     seed(); model.handler.mockImplementation(async () => {

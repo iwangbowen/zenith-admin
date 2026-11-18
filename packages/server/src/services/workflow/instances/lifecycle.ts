@@ -1,3 +1,4 @@
+import { requireMonitorWorkflowInstance } from '../workflow-access';
 import { bindWorkflowFormAttachments, releaseWorkflowAttachments } from '../workflow-attachments.service';
 import { lockUnchangedWorkflowDraft } from './signature-concurrency';
 import { clearWorkflowFormSignatures, resolveWorkflowFormSignatures } from './signatures';
@@ -348,7 +349,7 @@ export async function cancelWorkflowInstanceInTransaction(tx: DbTransaction, id:
 
 export async function cancelInstance(id: number) {
   const user = currentUser();
-  const instance = await requireVisibleInstance(id);
+  const instance = await requireMonitorWorkflowInstance(id);
   const updated = await workflowTransaction(async tx => {
     const result = await cancelWorkflowInstanceInTransaction(tx, id, instance.tenantId, { userId: user.userId, name: user.username }, '[管理员取消] 流程已取消，本待办作废');
     if (!result) throw new HTTPException(400, { message: '只能取消进行中或已挂起的流程' });
@@ -359,7 +360,7 @@ export async function cancelInstance(id: number) {
 
 export async function deleteInstance(id: number) {
   const user = currentUser();
-  const inst = await requireVisibleInstance(id);
+  const inst = await requireMonitorWorkflowInstance(id);
   await getWorkflowBusinessAdapter(inst.bizType)?.assertDeletable?.(inst);
   if (inst.status === 'running') {
     throw new HTTPException(400, { message: '请先取消进行中的流程再删除' });

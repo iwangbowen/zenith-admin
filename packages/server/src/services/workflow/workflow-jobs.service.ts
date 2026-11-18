@@ -1,3 +1,4 @@
+import { workflowJobScope } from './workflow-access';
 import { workflowEngineContract, type WorkflowJobRuntimeStatus } from '@zenith/shared/workflow';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import type { JobStuckItem } from '@zenith/shared/platform';
@@ -128,6 +129,7 @@ function mapExecution(row: WorkflowJobExecutionRow) {
 export async function listWorkflowJobs(query: QueryOutputOf<typeof workflowEngineContract.jobs>) {
   const { page, pageSize } = query;
   const where = buildWhere(
+    await workflowJobScope(),
     query.jobType ? eq(workflowJobs.jobType, query.jobType) : undefined,
     query.status ? eq(workflowJobs.status, query.status) : undefined,
     query.instanceId != null ? eq(workflowJobs.instanceId, query.instanceId) : undefined,
@@ -153,7 +155,7 @@ export async function getWorkflowJobDetail(id: number) {
     .from(workflowJobs)
     .leftJoin(workflowInstances, eq(workflowJobs.instanceId, workflowInstances.id))
     .leftJoin(workflowDefinitions, eq(workflowInstances.definitionId, workflowDefinitions.id))
-    .where(eq(workflowJobs.id, id))
+    .where(buildWhere(eq(workflowJobs.id, id), await workflowJobScope()))
     .limit(1);
   requireRow(row, '作业不存在');
   const execs = await db.select().from(workflowJobExecutions)
@@ -171,7 +173,7 @@ export async function getWorkflowJobChain(correlationId: string) {
     .from(workflowJobs)
     .leftJoin(workflowInstances, eq(workflowJobs.instanceId, workflowInstances.id))
     .leftJoin(workflowDefinitions, eq(workflowInstances.definitionId, workflowDefinitions.id))
-    .where(eq(workflowJobs.correlationId, correlationId))
+    .where(buildWhere(eq(workflowJobs.correlationId, correlationId), await workflowJobScope()))
     .orderBy(asc(workflowJobs.createdAt), asc(workflowJobs.id));
   const jobIds = rows.map((r) => r.job.id);
   const execs = jobIds.length > 0
@@ -191,11 +193,13 @@ export async function getWorkflowJobChain(correlationId: string) {
 }
 
 export async function retryWorkflowJob(id: number, payload?: Record<string, unknown>) {
+  await getWorkflowJobDetail(id);
   const row = await retryJob(id, payload ? { payload } : undefined);
   return mapJob(requireRow(row, '仅失败 / 死信 / 已取消的作业可重试', 400));
 }
 
 export async function skipWorkflowJob(id: number) {
+  await getWorkflowJobDetail(id);
   const row = await skipJob(id);
   return mapJob(requireRow(row, '仅待处理 / 运行中 / 已暂停 / 失败 / 死信的作业可跳过', 400));
 }
@@ -233,6 +237,7 @@ export function staggeredRunAt(index: number, ratePerSecond: number, fromMs: num
  * 让 pg-boss pickup 与下游连接器/DB 压力平摊到时间窗内，而非全部立即入队。
  */
 async function throttledRetry(ids: number[], ratePerSecond: number): Promise<number> {
+  await Promise.all(ids.map((id) => getWorkflowJobDetail(id)));
   const from = Date.now();
   let success = 0;
   for (let i = 0; i < ids.length; i += 1) {
@@ -251,6 +256,7 @@ export async function batchRetryWorkflowJobs(ids: number[], opts?: WorkflowJobBa
 
 /** 批量跳过：逐个调用 skipJob，不满足条件（非 pending/failed/dead）计入 skipped。 */
 export async function batchSkipWorkflowJobs(ids: number[]): Promise<WorkflowJobBatchResult> {
+  await Promise.all(ids.map((id) => getWorkflowJobDetail(id)));
   let success = 0;
   for (const id of ids) {
     const row = await skipJob(id);
@@ -276,6 +282,7 @@ export async function getWorkflowJobsSummary(): Promise<WorkflowJobSummaryItem[]
   const rows = await db
     .select({ jobType: workflowJobs.jobType, status: workflowJobs.status, c: count() })
     .from(workflowJobs)
+    .where(await workflowJobScope())
     .groupBy(workflowJobs.jobType, workflowJobs.status);
 
   const map = new Map<WorkflowJobRow['jobType'], WorkflowJobSummaryItem>();
@@ -306,9 +313,11 @@ export interface WorkflowJobReplayFilter {
 }
 
 /** 死信重放的圈定条件（预览与执行共用同一口径） */
-function replayJobsWhere(filter: WorkflowJobReplayFilter) {
+async function replayJobsWhere(filter: WorkflowJobReplayFilter) {
   return buildWhere(
+    await workflowJobScope(),
     eq(workflowJobs.status, filter.status ?? 'dead'),
+    sql`coalesce(${workflowJobs.lastError}, '') not like '外部操作结果待确认：%'`,
     filter.jobType ? eq(workflowJobs.jobType, filter.jobType) : undefined,
     filter.instanceId != null ? eq(workflowJobs.instanceId, filter.instanceId) : undefined,
     filter.correlationId ? eq(workflowJobs.correlationId, filter.correlationId) : undefined,
@@ -321,7 +330,7 @@ function replayJobsWhere(filter: WorkflowJobReplayFilter) {
 
 /** 条件重放预览：仅统计匹配的死信/失败作业数量，不执行，供前端展示"将重放约 N 条"。 */
 export async function previewReplayJobs(filter: WorkflowJobReplayFilter): Promise<{ matched: number }> {
-  const matched = await db.$count(workflowJobs, replayJobsWhere(filter));
+  const matched = await db.$count(workflowJobs, await replayJobsWhere(filter));
   return { matched };
 }
 
@@ -343,7 +352,7 @@ export async function replayDeadJobs(
 ): Promise<WorkflowJobReplayResult> {
   const rate = clampRate(opts?.ratePerSecond);
   const limit = clampLimit(opts?.limit);
-  const where = replayJobsWhere(opts ?? {});
+  const where = await replayJobsWhere(opts ?? {});
   const [matched, rows] = await Promise.all([
     db.$count(workflowJobs, where),
     db.select({ id: workflowJobs.id }).from(workflowJobs).where(where).orderBy(asc(workflowJobs.id)).limit(limit),
@@ -521,7 +530,7 @@ export async function getJobFailureClusters(dimension: JobClusterDimension = 're
     .from(workflowJobs)
     .leftJoin(workflowInstances, eq(workflowJobs.instanceId, workflowInstances.id))
     .leftJoin(workflowDefinitions, eq(workflowInstances.definitionId, workflowDefinitions.id))
-    .where(inArray(workflowJobs.status, ['dead', 'failed']))
+    .where(buildWhere(inArray(workflowJobs.status, ['dead', 'failed']), await workflowJobScope()))
     .orderBy(desc(workflowJobs.updatedAt))
     .limit(2000);
 

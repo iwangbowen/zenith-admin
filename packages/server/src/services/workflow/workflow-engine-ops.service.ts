@@ -1,3 +1,4 @@
+import { requirePlatformWorkflowAccess, workflowJobScope } from './workflow-access';
 /**
  * 工作流引擎运维：健康快照采集（platform-wide）+ 历史趋势 + 告警指标源 + 运维恢复动作。
  * - 采集由 pg-boss 定时任务调用，写入 workflow_engine_health_snapshots，供趋势图与告警评估器消费。
@@ -99,6 +100,7 @@ export async function countTerminalInstanceTokens(retentionDays: number): Promis
 
 /** 读取近 N 小时健康趋势点（时间升序）。 */
 export async function getWorkflowEngineHealthHistory(hours = 24): Promise<WorkflowEngineHealthHistory> {
+  await requirePlatformWorkflowAccess();
   const safeHours = Math.max(1, Math.min(hours, 24 * 30));
   const since = new Date(Date.now() - safeHours * 60 * 60_000);
   const [rows, thresholds] = await Promise.all([
@@ -237,6 +239,7 @@ export async function previewWorkflowEngineAction(
     instanceId: filter?.instanceId,
     olderThanMinutes: filter?.olderThanMinutes,
     sampleLimit: 10,
+    scope: await workflowJobScope(),
   });
   return {
     action,
@@ -271,6 +274,7 @@ export async function runWorkflowEngineAction(
       instanceId: filter?.instanceId,
       olderThanMinutes: filter?.olderThanMinutes,
       limit: clampActionLimit(filter?.limit),
+      scope: await workflowJobScope(),
     });
     const detail = { recovered: r.recovered, requeued: r.requeued, dead: r.dead };
     return { action, ok: true, message: `${meta.label}已提交补投 ${r.requeued} 项，回收 ${r.recovered} 项，重试耗尽 ${r.dead} 项`, detail };

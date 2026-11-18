@@ -1,3 +1,4 @@
+import { usePermission } from '@/hooks/usePermission';
 // eslint-disable-next-line no-restricted-imports -- H5 保留：手写 useQuery / useMutation 的理由见本文件对应 hook 的注释；queryKey 仍由 contractKey 生成
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type { InputOf, QueryOf } from '@zenith/shared/core';
@@ -170,12 +171,14 @@ export function useWorkflowCompensationDetail(id: number | undefined, enabled = 
 
 /** H5：queryFn 组合两次请求（引擎内省 + 健康趋势）并附带取数时间戳 */
 export function useWorkflowEngineDiagnostics(params: WorkflowEngineDiagnosticsParams, refetchInterval: number | false) {
+  const { hasPermission } = usePermission();
+  const platform = hasPermission("workflow:engine:platform");
   return useQuery({
     queryKey: workflowMonitorKeys.engineDiagnostics(params),
     queryFn: async () => {
       const [introspection, history] = await Promise.all([
         api(workflowEngineContract.introspection, { query: { thresholdMinutes: params.thresholdMinutes } }),
-        api(workflowEngineContract.healthHistory, { query: { hours: params.historyHours } }),
+        platform ? api(workflowEngineContract.healthHistory, { query: { hours: params.historyHours } }) : Promise.resolve(null),
       ]);
       return { introspection, history, fetchedAt: Date.now() };
     },

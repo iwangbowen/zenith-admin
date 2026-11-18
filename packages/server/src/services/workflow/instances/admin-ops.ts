@@ -1,3 +1,4 @@
+import { requireMonitorWorkflowInstance, workflowMonitorScope } from '../workflow-access';
 import { workflowNodeActivations, workflowApprovalSlots } from '../../../db/schema';
 import { loadApprovalActivation } from './approval-state';
 // ─── 管理员强制操作与令牌运维恢复（拆分自 workflow-instances.service.ts）───
@@ -29,7 +30,7 @@ import { buildWhere } from '../../../lib/where-helpers';
 /** 强制跳转：终止当前活动任务，直接推进到指定审批/办理节点 */
 export async function jumpInstance(id: number, targetNodeKey: string, comment?: string) {
   const user = currentUser();
-  const inst = await requireVisibleInstance(id);
+  const inst = await requireMonitorWorkflowInstance(id);
   if (inst.status !== 'running') throw new HTTPException(400, { message: '仅审批中的流程可强制跳转' });
   const snapshot = inst.definitionSnapshot;
   const flowData = snapshot?.flowData;
@@ -73,7 +74,7 @@ export async function jumpInstance(id: number, targetNodeKey: string, comment?: 
 /** 挂起实例：冻结待办操作与自动推进作业，用于争议冻结/外部故障排查（仅 running 可挂起） */
 export async function suspendInstance(id: number, reason: string) {
   const user = currentUser();
-  const inst = await requireVisibleInstance(id);
+  const inst = await requireMonitorWorkflowInstance(id);
   if (inst.status !== 'running') throw new HTTPException(400, { message: '仅审批中的流程可挂起' });
 
   const instance = await db.transaction(async (tx) => {
@@ -92,7 +93,7 @@ export async function suspendInstance(id: number, reason: string) {
 /** 恢复挂起实例：自动推进作业按挂起前剩余时长重排后继续流转 */
 export async function resumeInstance(id: number) {
   const user = currentUser();
-  const inst = await requireVisibleInstance(id);
+  const inst = await requireMonitorWorkflowInstance(id);
   if (inst.status !== 'suspended') throw new HTTPException(400, { message: '仅已挂起的流程可恢复' });
 
   const { instance, restoredJobs } = await db.transaction(async (tx) => {
@@ -120,7 +121,7 @@ export async function reassignTask(taskId: number, targetUserId: number, comment
     throw new HTTPException(400, { message: '仅未处理的任务可改派' });
   }
   await requireTenantUser(targetUserId, '目标处理人不存在');
-  const inst = await requireVisibleInstance(task.instanceId, '任务不存在或无权操作');
+  const inst = await requireMonitorWorkflowInstance(task.instanceId);
   // 目标人已在本节点同轮持有活动任务时给出友好 409（否则撞 wf_tasks_active_uniq 唯一索引）；
   // 离职交接逐条改派复用本函数，冲突任务会按「单条失败不阻断」记入结果
   await assertAssigneesNotActiveOnNode(db, {
@@ -180,7 +181,7 @@ async function loadTokenForOps(tokenId: number) {
   const user = currentUser();
   const [tok] = await db.select().from(workflowTokens).where(eq(workflowTokens.id, tokenId)).limit(1);
   requireRow(tok, '执行 Token 不存在');
-  const inst = await requireVisibleInstance(tok.instanceId, '实例不存在或无权操作');
+  const inst = await requireMonitorWorkflowInstance(tok.instanceId);
   return { user, tok, inst };
 }
 
@@ -195,6 +196,7 @@ export async function skipStuckToken(tokenId: number, reason?: string) {
   const flowData = inst.definitionSnapshot?.flowData;
   if (!flowData) throw new HTTPException(500, { message: '流程快照数据异常' });
   const nodeCfg = flowData.nodes.find((n) => n.data.key === tok.nodeKey)?.data;
+  if (nodeCfg?.type === 'approve' || nodeCfg?.type === 'handler') throw new HTTPException(409, { message: '正常人工审批不能通过恢复跳过，请使用带预检的强制干预' });
   const nodeName = nodeCfg?.label ?? tok.nodeKey;
   const note = `[运营·跳过卡死 Token #${tokenId}]${reason ? ' ' + reason : ''}`;
 
@@ -245,7 +247,6 @@ const BATCH_RECOVERY_CAP = 200;
  * 用于某节点配置错误 / 外部派发失败导致多实例集体卡死时的批量外科恢复（按候选逐个隔离，单个失败不影响其它）。
  */
 export async function batchSkipStuckTokens(input: { definitionId: number; nodeKey: string; olderThanMinutes?: number; reason?: string }): Promise<WorkflowRecoveryBatchResult> {
-  const user = currentUser();
   const rows = await db.select({ tokenId: workflowTokens.id })
     .from(workflowTokens)
     .innerJoin(workflowInstances, eq(workflowTokens.instanceId, workflowInstances.id))
@@ -254,7 +255,7 @@ export async function batchSkipStuckTokens(input: { definitionId: number; nodeKe
       eq(workflowTokens.nodeKey, input.nodeKey),
       eq(workflowInstances.status, 'running'),
       eq(workflowInstances.definitionId, input.definitionId),
-      tenantCondition(workflowInstances, user),
+      await workflowMonitorScope(),
       input.olderThanMinutes && input.olderThanMinutes > 0
         ? lte(workflowTokens.createdAt, new Date(Date.now() - input.olderThanMinutes * 60_000))
         : undefined,
@@ -278,12 +279,13 @@ export async function batchSkipStuckTokens(input: { definitionId: number; nodeKe
 // ─── 离职交接：把某人名下未处理审批事务批量移交接手人 ─────────────────────────────
 
 /** 交接范围：某人名下、所属实例仍在运行 / 挂起中的未处理待办（需 join workflowInstances） */
-function handoverTaskScopeWhere(fromUserId: number, user: ReturnType<typeof currentUser>) {
+async function handoverTaskScopeWhere(fromUserId: number, user: ReturnType<typeof currentUser>) {
   return buildWhere(
     eq(workflowTasks.assigneeId, fromUserId),
     inArray(workflowTasks.status, ['pending', 'waiting']),
     inArray(workflowInstances.status, ['running', 'suspended']),
     tenantCondition(workflowInstances, user),
+    await workflowMonitorScope(),
   );
 }
 
@@ -295,7 +297,7 @@ export async function previewHandover(fromUserId: number): Promise<WorkflowHando
   const tasks = await db.select({ id: workflowTasks.id, status: workflowTasks.status })
     .from(workflowTasks)
     .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
-    .where(handoverTaskScopeWhere(fromUserId, user));
+    .where(await handoverTaskScopeWhere(fromUserId, user));
 
   const delegations = await db.select({ id: workflowDelegations.id }).from(workflowDelegations)
     .where(and(eq(workflowDelegations.principalId, fromUserId), eq(workflowDelegations.enabled, true)));
@@ -338,7 +340,7 @@ export async function handoverTasks(input: { fromUserId: number; toUserId: numbe
   const tasks = await db.select({ id: workflowTasks.id, nodeName: workflowTasks.nodeName, title: workflowInstances.title })
     .from(workflowTasks)
     .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
-    .where(handoverTaskScopeWhere(fromUserId, user))
+    .where(await handoverTaskScopeWhere(fromUserId, user))
     .orderBy(asc(workflowTasks.id));
 
   const note = `[离职交接]${comment ? ' ' + comment : ''}`;

@@ -1,3 +1,4 @@
+import { workflowMonitorScope } from './workflow-access';
 import { and, desc, eq, inArray, lte } from 'drizzle-orm';
 import { buildWhere } from '../../lib/where-helpers';
 import { summarizeWorkflowHealth, type WorkflowHealthIssue, type WorkflowHealthSummary } from '@zenith/shared/workflow';
@@ -47,11 +48,13 @@ export async function getWorkflowHealthSummary(thresholdMinutes = 30): Promise<W
   const now = new Date();
   const cutoff = new Date(now.getTime() - Math.max(1, thresholdMinutes) * 60_000);
   const user = currentUser();
+  const scope = await workflowMonitorScope();
   const taskWhere = buildWhere(
     eq(workflowInstances.status, 'running' as const),
     lte(workflowTasks.createdAt, cutoff),
     inArray(workflowTasks.status, ['pending', 'waiting']),
     tenantCondition(workflowInstances, user),
+    scope,
   );
 
   const taskRows = await db.select({
@@ -235,6 +238,7 @@ export async function getWorkflowHealthSummary(thresholdMinutes = 30): Promise<W
       eq(workflowInstances.status, 'running' as const),
       lte(workflowInstances.updatedAt, cutoff),
       tenantCondition(workflowInstances, user),
+    scope,
     ))
     .orderBy(desc(workflowInstances.id))
     .limit(200);

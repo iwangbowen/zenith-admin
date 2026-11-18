@@ -31,6 +31,8 @@ export const WORKFLOW_PERMISSIONS = definePermissions({
   'workflow:instance:monitor': { label: '查询', menu: 'WorkflowMonitor', id: 4111, sort: 0 },
   'workflow:instance:cancel': { label: '取消流程', menu: 'WorkflowMonitor', id: 4112, sort: 1, ...WORKFLOW_ADMIN },
   'workflow:instance:delete': { label: '删除流程', menu: 'WorkflowMonitor', id: 4113, sort: 2, ...WORKFLOW_ADMIN },
+  'workflow:instance:intervene': { label: '强制干预', menu: 'WorkflowMonitor', id: 4117, sort: 6, ...WORKFLOW_CONTROL },
+  'workflow:engine:platform': { label: '平台流程观测', menu: 'WorkflowMonitor', id: 4118, sort: 7, ...WORKFLOW_CONTROL },
   'workflow:engine:operate': { label: '引擎运维', menu: 'WorkflowMonitor', id: 4114, sort: 3, ...WORKFLOW_CONTROL },
   'workflow:task:handover': { label: '离职交接', menu: 'WorkflowMonitor', id: 4115, sort: 4, ...WORKFLOW_ADMIN },
   'workflow:health:view': { label: '查询', menu: 'WorkflowHealth' },

@@ -613,7 +613,7 @@ export const workflowJobFailureClusterQuery = z.object({
 
 export const workflowEngineContract = defineContract('/api/workflows/engine', {
   introspection: op.get('/introspection', { access: { permission: 'workflow:instance:monitor' }, query: workflowEngineThresholdQuery, response: workflowEngineIntrospectionSchema, summary: '流程引擎内部状态内省' }),
-  healthHistory: op.get('/health-history', { access: { permission: 'workflow:instance:monitor' }, query: workflowEngineHealthHistoryQuery, response: workflowEngineHealthHistorySchema, summary: '流程引擎健康趋势历史' }),
+  healthHistory: op.get('/health-history', { access: { permission: 'workflow:engine:platform', platformOnly: true }, query: workflowEngineHealthHistoryQuery, response: workflowEngineHealthHistorySchema, summary: '流程引擎健康趋势历史' }),
   runAction: op.post('/actions/{action}', { access: { permission: 'workflow:engine:operate' }, audit: '执行引擎运维恢复动作', params: workflowEngineActionParam, body: workflowEngineActionFilterSchema, response: workflowEngineActionResultSchema, summary: '提交流程引擎恢复补投（支持按实例 / 入库时长 / 上限筛选）' }),
   previewAction: op.post('/actions/{action}/preview', { access: { permission: 'workflow:instance:monitor' }, params: workflowEngineActionParam, body: workflowEngineActionFilterSchema, response: workflowEngineActionPreviewSchema, summary: '运维恢复动作预览（按筛选统计将处理的作业 + 样本，不执行）' }),
   jobs: op.get('/jobs', { access: { permission: 'workflow:instance:monitor' }, query: workflowJobListQuery, response: paginated(workflowJobSchema), summary: '工作流作业账本列表' }),
@@ -625,7 +625,7 @@ export const workflowEngineContract = defineContract('/api/workflows/engine', {
   replayDeadJobs: op.post('/jobs/replay-dead', { access: { permission: 'workflow:engine:operate' }, audit: '重放死信作业', body: workflowJobReplaySchema, response: workflowJobReplayResultSchema, summary: '死信中心：按条件 + 限流重放死信作业' }),
   replayPreview: op.post('/jobs/replay-preview', { access: { permission: 'workflow:instance:monitor' }, body: workflowJobReplayFilterSchema, response: workflowJobReplayPreviewSchema, summary: '死信中心：条件重放预览（仅统计匹配数）' }),
   failureClusters: op.get('/jobs/failure-clusters', { access: { permission: 'workflow:instance:monitor' }, query: workflowJobFailureClusterQuery, response: z.array(workflowJobFailureClusterSchema), summary: '失败原因多维聚类' }),
-  jobRuntimeStatus: op.get('/jobs/runtime-status', { access: { permission: 'workflow:instance:monitor' }, response: workflowJobRuntimeStatusSchema, summary: '作业平台运行状态（worker 心跳 + 派生指标）' }),
+  jobRuntimeStatus: op.get('/jobs/runtime-status', { access: { permission: 'workflow:engine:platform', platformOnly: true }, response: workflowJobRuntimeStatusSchema, summary: '作业平台运行状态（worker 心跳 + 派生指标）' }),
   jobDetail: op.get('/jobs/{id}', { access: { permission: 'workflow:instance:monitor' }, params: idParam, response: workflowJobDetailSchema, summary: '工作流作业详情（含执行记录）' }),
   retryJob: op.post('/jobs/{id}/retry', { access: { permission: 'workflow:engine:operate' }, audit: '重试工作流作业', params: idParam, body: workflowJobRetrySchema, response: workflowJobSchema, summary: '重试 / 改参重放作业' }),
   skipJob: op.post('/jobs/{id}/skip', { access: { permission: 'workflow:engine:operate' }, audit: '跳过工作流作业', params: idParam, response: workflowJobSchema, summary: '跳过 / 取消作业' }),

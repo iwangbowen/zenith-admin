@@ -1,3 +1,4 @@
+vi.mock('./workflow-access', () => ({ workflowJobScope: vi.fn(async () => undefined), requirePlatformWorkflowAccess: vi.fn(async () => undefined) }));
 import { beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 import {
   workflowEngineContract,
@@ -98,7 +99,7 @@ describe('workflow recovery response', () => {
 
     const result = await runWorkflowEngineAction('recover-webhooks', { instanceId: 2, limit: 3 });
 
-    expect(drain).toHaveBeenCalledWith({ jobTypes: ['webhook_delivery'], instanceId: 2, olderThanMinutes: undefined, limit: 3 });
+    expect(drain).toHaveBeenCalledWith({ jobTypes: ['webhook_delivery'], instanceId: 2, olderThanMinutes: undefined, limit: 3, scope: undefined });
     expect(result).toMatchObject({ ok: true, detail: { recovered: 2, requeued: 1, dead: 1 } });
     expect(result.message).toContain('已提交补投');
     expect(result.detail).not.toHaveProperty('processed');

@@ -1,7 +1,8 @@
+import { workflowMonitorScope } from './workflow-access';
 import { workflowInstanceOpsContract } from '@zenith/shared/workflow';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { workflowTransaction } from '../../lib/workflow-jobs/lease';
-import { and, eq, asc, desc } from 'drizzle-orm';
+import { and, eq, asc, desc, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { WorkflowCompensationActionStatus, WorkflowCompensationAction } from '@zenith/shared/workflow';
 import { db } from '../../db';
@@ -84,6 +85,7 @@ export async function listCompensations(q: QueryOutputOf<typeof workflowInstance
   const { page, pageSize } = q;
   const where = buildWhere(
     tenantCondition(workflowCompensations, currentUser()),
+    inArray(workflowCompensations.instanceId, db.select({ id: workflowInstances.id }).from(workflowInstances).where(await workflowMonitorScope())),
     q.status ? eq(workflowCompensations.status, q.status) : undefined,
     q.instanceId ? eq(workflowCompensations.instanceId, q.instanceId) : undefined,
   );
@@ -132,7 +134,7 @@ const mapLog = (r: { id: number; compensationId: number; action: string; note: s
 async function findCompensationOr404(id: number): Promise<Row> {
   return requireFirstRow(
     db.select().from(workflowCompensations)
-      .where(buildWhere(eq(workflowCompensations.id, id), tenantCondition(workflowCompensations, currentUser()))).limit(1),
+      .where(buildWhere(eq(workflowCompensations.id, id), tenantCondition(workflowCompensations, currentUser()), inArray(workflowCompensations.instanceId, db.select({ id: workflowInstances.id }).from(workflowInstances).where(await workflowMonitorScope())))).limit(1),
     '补偿工单不存在',
   );
 }
