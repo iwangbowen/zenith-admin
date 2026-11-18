@@ -17,7 +17,7 @@ const listRoute = defineContractRoute(inAppMessageContract.list, {
 });
 
 const unreadCountRoute = defineContractRoute(inAppMessageContract.unreadCount, {
-  handler: async (c) => c.json(okBody(await unreadCount()), 200),
+  handler: async (c) => c.json(okBody(await unreadCount(c.req.valid('query'))), 200),
 });
 
 const detailRoute = defineContractRoute(inAppMessageContract.detail, {
@@ -37,8 +37,8 @@ const markReadRoute = defineContractRoute(inAppMessageContract.markRead, {
 
 const markAllReadRoute = defineContractRoute(inAppMessageContract.markAllRead, {
   handler: async (c) => {
-    await markAllAsRead();
-    return c.json(okBody(null, '已全部标记'), 200);
+    const result = await markAllAsRead(c.req.valid('json'));
+    return c.json(okBody(result, '已全部标记'), 200);
   },
 });
 

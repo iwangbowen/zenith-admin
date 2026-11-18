@@ -25,7 +25,7 @@ export const inAppMessageKeys = {
   /** 顶栏铃铛里的我的站内信（固定首页 10 条） */
   mine: contractKey(inAppMessageContract.list, { query: MINE_QUERY }),
   /** 顶栏铃铛未读数 */
-  myUnreadCount: contractKey(inAppMessageContract.unreadCount),
+  myUnreadCount: contractKey(inAppMessageContract.unreadCount, { query: {} }),
   /** 发送站内信弹窗的启用模板下拉源（归 in-app-templates 契约所有，随其列表前缀一起失效） */
   enabledTemplates: contractKey(inAppTemplateContract.list, { query: ENABLED_TEMPLATES_QUERY }),
 };
@@ -39,7 +39,7 @@ export function useMyInAppMessages() {
 }
 
 export function useMyInAppMessageUnreadCount() {
-  return useApiQuery(inAppMessageContract.unreadCount, {
+  return useApiQuery(inAppMessageContract.unreadCount, { query: {} }, {
     requestOptions: silent,
     select: (data) => data?.count ?? 0,
   });

@@ -7,7 +7,7 @@ import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClie
 import type { BodyOf, OutputOf } from '@zenith/shared/core';
 import { workflowDefinitionContract, workflowDelegationContract, workflowInstanceContract, workflowQuickPhraseContract, workflowTaskContract, type WorkflowDelegation, type WorkflowInstanceListItem, type WorkflowHandledInstanceItem } from '@zenith/shared/workflow';
 import { authContract } from '@zenith/shared/identity';
-import { inAppMessageContract, type InAppMessage } from '@zenith/shared/messaging';
+import { inAppMessageContract } from '@zenith/shared/messaging';
 import { api, contractKey, urlOf } from '@/lib/contract-query';
 import { runWorkflowBatchApprove, runWorkflowTaskAction, type WorkflowTaskActionVariables } from '@/hooks/queries/workflow-tasks';
 import { approvalRequest } from './approval-request';
@@ -34,8 +34,8 @@ export const approvalKeys = {
   nextApprovers: (taskId: number | null, search?: { nodeKey: string; keyword: string }) =>
     ['approval', 'next-approvers', taskId, search ?? null] as const,
   users: ['approval', 'users'] as const,
-  notifications: contractKey(inAppMessageContract.list),
-  notificationUnread: contractKey(inAppMessageContract.unreadCount),
+  notifications: contractKey(inAppMessageContract.list, { query: { eventGroup: 'workflow' } }),
+  notificationUnread: contractKey(inAppMessageContract.unreadCount, { query: { eventGroup: 'workflow' } }),
   delegations: contractKey(workflowDelegationContract.list),
 };
 
@@ -88,21 +88,39 @@ export function useApprovalCounts() {
 }
 
 export function useApprovalNotifications(enabled: boolean) {
-  return useQuery<{ list: InAppMessage[]; total: number }>({
+  const result = useInfiniteQuery({
     queryKey: approvalKeys.notifications,
-    queryFn: () => api(inAppMessageContract.list, { query: { page: 1, pageSize: 20 } }, silentClient),
+    initialPageParam: 1,
+    queryFn: ({ pageParam }) => api(inAppMessageContract.list, { query: { page: pageParam, pageSize: 20, eventGroup: 'workflow' } }, silentClient),
+    getNextPageParam: (last, pages) => pages.reduce((count, page) => count + page.list.length, 0) < last.total ? pages.length + 1 : undefined,
     enabled,
     staleTime: 15_000,
     refetchInterval: enabled ? 30_000 : false,
   });
+  return {
+    list: [...new Map((result.data?.pages.flatMap(page => page.list) ?? []).map(item => [item.id, item])).values()],
+    total: result.data?.pages[0]?.total ?? 0, isFetching: result.isFetching, isFetchingNextPage: result.isFetchingNextPage,
+    isError: result.isError, error: result.error, hasNextPage: result.hasNextPage, fetchNextPage: result.fetchNextPage, refetch: result.refetch,
+  };
 }
 
 export function useApprovalNotificationUnreadCount() {
   return useQuery({
     queryKey: approvalKeys.notificationUnread,
-    queryFn: () => api(inAppMessageContract.unreadCount, silentClient),
+    queryFn: () => api(inAppMessageContract.unreadCount, { query: { eventGroup: 'workflow' } }, silentClient),
     refetchInterval: 30_000,
     retry: false,
+  });
+}
+
+export function useMarkAllApprovalNotificationsRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api(inAppMessageContract.markAllRead, { body: { eventGroup: 'workflow' } }, silentClient),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: approvalKeys.notifications });
+      void qc.invalidateQueries({ queryKey: approvalKeys.notificationUnread });
+    },
   });
 }
 

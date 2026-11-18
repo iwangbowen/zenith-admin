@@ -297,6 +297,8 @@ export const inAppMessages = pgTable('in_app_messages', {
   isRead: boolean().notNull().default(false),
   readAt: timestamptz(),
   source: sendSourceEnum().default('system').notNull(),
+  /** 通知目录事件键；人工消息为空，业务归属从事件目录统一派生。 */
+  eventKey: varchar({ length: 100 }),
   senderId: integer().references(() => users.id, { onDelete: 'set null' }),
   /** 深链地址（站内路由，如 /workflow/pending?instanceId=1，点击消息跳转） */
   link: varchar({ length: 512 }),
@@ -311,6 +313,7 @@ export const inAppMessages = pgTable('in_app_messages', {
   // 铃铛未读数 count(user_id = ? AND is_read = false) 是每条推送 / 每次登录都会命中的查询：
   // 局部索引只含未读行，从扫描该用户 365 天全部收件记录降为 O(未读数)
   index('in_app_messages_user_unread_idx').on(t.userId).where(sql`${t.isRead} = false`),
+  index('in_app_messages_inbox_event_idx').on(t.userId, t.tenantId, t.eventKey, t.id),
 ]);
 
 export type InAppMessageRow = typeof inAppMessages.$inferSelect;

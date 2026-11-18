@@ -2,6 +2,7 @@ import type { ChatMessage, ChatPresence, ChatReactionGroup, ChatVoteData } from 
 import type { RtcIceCandidateInit, RtcInvitePayload, RtcPeerInfo } from '../chat/types';
 import type { SessionClientKind, SessionRevokeReason } from '../identity/constants';
 import type { Announcement, ChannelMessage, InAppMessage } from '../messaging/contracts';
+import type { NotificationEventGroup } from '../messaging/constants';
 import type { MpMessageDirection, MpMessageType } from '../mp/constants';
 import type { MpKfSession } from '../mp/contracts';
 import type { DeployHostStatus, DeployRunStatus } from '../ops/constants';
@@ -56,7 +57,7 @@ export type WsMessage =
   | { type: 'announcement:read-all'; payload: Record<string, never> }
   | { type: 'in-app-message:new'; payload: InAppMessage }
   | { type: 'in-app-message:read'; payload: { id: number } }
-  | { type: 'in-app-message:read-all'; payload: Record<string, never> }
+  | { type: 'in-app-message:read-all'; payload: { eventGroup?: NotificationEventGroup } }
   | { type: 'in-app-message:deleted'; payload: { id: number } }
   | { type: 'session:force-logout'; payload: SessionForceLogoutPayload }
   | { type: 'deploy:run-updated'; payload: DeployRunUpdatedPayload }

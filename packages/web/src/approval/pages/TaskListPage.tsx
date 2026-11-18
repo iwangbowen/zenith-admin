@@ -22,6 +22,7 @@ import WorkflowHandledTaskTag from '@/components/workflow/WorkflowHandledTaskTag
 import {
   useApprovalCounts, useApprovalDefinitionOptions, useApprovalDelegations, useApprovalList, useApprovalMe, useApprovalNotificationUnreadCount, useApprovalNotifications, useApprovalUsers, useBatchApprove, useCreateApprovalDelegation, useDeleteApprovalDelegation, useMarkApprovalNotificationRead, useMarkCcRead, useTaskAction,
   type ApprovalListItem, type ApprovalTab,
+  useMarkAllApprovalNotificationsRead,
 } from '../lib/queries';
 import { useInfiniteSentinel, usePullRefresh } from '../lib/usePullRefresh';
 import { INSTANCE_STATUS_MAP as STATUS_MAP } from '@/components/workflow/workflow-runtime';
@@ -210,6 +211,7 @@ function TaskListContent() {
   const notificationsQuery = useApprovalNotifications(notificationsVisible);
   const notificationUnreadQuery = useApprovalNotificationUnreadCount();
   const markNotificationRead = useMarkApprovalNotificationRead();
+  const markAllNotificationsRead = useMarkAllApprovalNotificationsRead();
   const delegationsQuery = useApprovalDelegations(delegationsVisible);
   const delegationUsersQuery = useApprovalUsers(delegationsVisible);
   const createDelegation = useCreateApprovalDelegation();
@@ -424,7 +426,7 @@ function TaskListContent() {
           className="ap-header__notification"
           icon={<Bell size={17} />}
           onClick={() => setNotificationsVisible(true)}
-          aria-label={`通知${(notificationUnreadQuery.data?.count ?? 0) > 0 ? `，${notificationUnreadQuery.data?.count} 条未读` : ''}`}
+          aria-label={`审批通知${(notificationUnreadQuery.data?.count ?? 0) > 0 ? `，${notificationUnreadQuery.data?.count} 条未读` : ''}`}
         >
           {(notificationUnreadQuery.data?.count ?? 0) > 0 && (
             <span className="ap-header__notification-badge" aria-hidden="true">
@@ -604,17 +606,19 @@ function TaskListContent() {
       <SideSheet
         placement="bottom"
         height="75%"
-        title={`通知${(notificationUnreadQuery.data?.count ?? 0) > 0 ? ` · ${notificationUnreadQuery.data?.count} 条未读` : ''}`}
+        title={`审批通知${(notificationUnreadQuery.data?.count ?? 0) > 0 ? ` · ${notificationUnreadQuery.data?.count} 条未读` : ''}`}
         visible={notificationsVisible}
         onCancel={() => setNotificationsVisible(false)}
         className="ap-sheet"
       >
         <div className="ap-sheet__body ap-notifications">
+          <div className="ap-notifications__toolbar"><Typography.Text size="small" type="tertiary">仅显示审批相关通知</Typography.Text><Button size="small" theme="borderless" disabled={!notificationUnreadQuery.data?.count} loading={markAllNotificationsRead.isPending} onClick={() => { void markAllNotificationsRead.mutateAsync().then(result => { setUnreadRetry([]); Toast.success(`已将 ${result.count} 条审批通知标记已读`); }).catch(() => Toast.warning('标记失败，请重试')); }}>全部已读</Button></div>
           {notificationsQuery.isFetching && <Spin size="small" />}
-          {!notificationsQuery.isFetching && (notificationsQuery.data?.list ?? []).length === 0 && (
-            <div className="ap-empty">暂无通知</div>
+          {notificationsQuery.isError && <Banner type="warning" closeIcon={null} description={<>{notificationsQuery.error?.message || '审批通知加载失败'}<Button onClick={() => { void notificationsQuery.refetch(); }}>重试</Button></>} />}
+          {!notificationsQuery.isFetching && !notificationsQuery.isError && notificationsQuery.list.length === 0 && (
+            <div className="ap-empty">暂无审批通知</div>
           )}
-          {(notificationsQuery.data?.list ?? []).map((item) => (
+          {notificationsQuery.list.map((item) => (
             <button
               key={item.id}
               type="button"
@@ -624,12 +628,14 @@ function TaskListContent() {
               <span className="ap-notification__title-row">
                 {!item.isRead && <span className="ap-dot" aria-label="未读" />}
                 <span className="ap-notification__title">{item.title}</span>
-                {mobileApprovalLink(item.link) && <Tag size="small" color="blue">前往处理</Tag>}
+                {mobileApprovalLink(item.link) && <Tag size="small" color="blue">查看审批</Tag>}
               </span>
               <span className="ap-notification__content">{item.content}</span>
               <span className="ap-notification__meta">{item.senderName ?? '系统'} · {formatDateTime(item.createdAt)}</span>
             </button>
           ))}
+          {notificationsQuery.hasNextPage && <Button block loading={notificationsQuery.isFetchingNextPage} onClick={() => { void notificationsQuery.fetchNextPage(); }}>加载更多审批通知</Button>}
+          {notificationsQuery.list.length > 0 && <Typography.Text size="small" type="tertiary">已加载 {notificationsQuery.list.length} / {notificationsQuery.total} 条审批通知</Typography.Text>}
         </div>
       </SideSheet>
       <SideSheet

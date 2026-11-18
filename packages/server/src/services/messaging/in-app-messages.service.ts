@@ -13,7 +13,9 @@ import { renderTemplate } from '../../lib/sms-sender';
 import { scheduleSendPerUser, scheduleSendToUsers } from '../../lib/ws-manager';
 import { ensureInAppTemplateExists } from './in-app-templates.service';
 import type { SendInAppInput, InAppMessageType, inAppMessageContract } from '@zenith/shared/messaging';
+import { notificationEventKeysInGroup } from '@zenith/shared/messaging';
 import type { QueryOutputOf } from '@zenith/shared/core';
+import type * as z from 'zod';
 
 type InAppMessageListQuery = QueryOutputOf<typeof inAppMessageContract.list>;
 type InAppMessageAdminListQuery = QueryOutputOf<typeof inAppMessageContract.adminList>;
@@ -26,6 +28,7 @@ function buildInboxFilterWhere(q: InAppMessageListFilter) {
     keywordCondition(q.keyword, [inAppMessages.title], 'ilike'),
     q.type ? eq(inAppMessages.type, q.type) : undefined,
     typeof q.isRead === 'boolean' ? eq(inAppMessages.isRead, q.isRead) : undefined,
+    q.eventGroup ? inArray(inAppMessages.eventKey, notificationEventKeysInGroup(q.eventGroup)) : undefined,
   );
 }
 
@@ -62,6 +65,7 @@ function mapInAppMessageRow(r: JoinedMessageRow, username: string | null = null)
     userId: r.msg.userId,
     username,
     source: r.msg.source,
+    eventKey: r.msg.eventKey,
     title: r.msg.title,
     content: r.msg.content,
     type: r.msg.type,
@@ -208,14 +212,9 @@ export async function adminMarkAllAsRead() {
   return { count: result.length };
 }
 
-export async function unreadCount(userId?: number) {
+export async function unreadCount(query: QueryOutputOf<typeof inAppMessageContract.unreadCount> = {}) {
   const me = currentUser();
-  const targetId = userId ?? me.userId;
-  const where = buildWhere(and(
-    eq(inAppMessages.userId, targetId),
-    eq(inAppMessages.isRead, false),
-    tenantScope(inAppMessages),
-  ));
+  const where = buildInboxWhere({ ...query, isRead: false }, me.userId);
   const total = await db.$count(inAppMessages, where);
   return { count: total };
 }
@@ -225,11 +224,11 @@ export async function markAsRead(id: number) {
   return markMessageRead(await ensureInAppMessageExists(id, me.userId));
 }
 
-export async function markAllAsRead() {
+export async function markAllAsRead(input: z.output<typeof inAppMessageContract.markAllRead.body> = {}) {
   const me = currentUser();
-  const result = await markUnreadMessagesRead(eq(inAppMessages.userId, me.userId));
+  const result = await markUnreadMessagesRead(buildInboxWhere(input, me.userId));
   if (result.length > 0) {
-    scheduleSendToUsers([{ userId: me.userId }], { type: 'in-app-message:read-all', payload: {} });
+    scheduleSendToUsers([{ userId: me.userId }], { type: 'in-app-message:read-all', payload: input });
   }
   return { count: result.length };
 }
@@ -332,6 +331,7 @@ export async function sendInApp(input: SendInAppInput) {
         isRead: false,
         readAt: null,
         source: 'manual',
+        eventKey: null,
         senderId: me.userId,
         senderName: null,
         link: null,

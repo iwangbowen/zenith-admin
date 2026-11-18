@@ -935,6 +935,11 @@ export function getNotificationEvent(key: NotificationEventKey): NotificationEve
   return NOTIFICATION_EVENTS[key];
 }
 
+/** 收件箱业务范围复用目录分组，不按消息标题、来源或链接猜测归属。 */
+export function notificationEventKeysInGroup(group: NotificationEventGroup): NotificationEventKey[] {
+  return NOTIFICATION_EVENT_KEYS.filter(key => NOTIFICATION_EVENTS[key].group === group);
+}
+
 export function isNotificationEventKey(key: string): key is NotificationEventKey {
   return Object.hasOwn(NOTIFICATION_EVENTS, key);
 }

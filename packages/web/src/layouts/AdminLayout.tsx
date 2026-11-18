@@ -370,7 +370,7 @@ export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLa
 
   // 铃铛「全部已读」：与收件箱页共用同一契约操作与失效（列表 / 详情 / 未读数）
   const markAllInboxRead = useMarkAllInboxMessagesRead();
-  const markAllAsRead = useCallback(() => { markAllInboxRead.mutate({}); }, [markAllInboxRead]);
+  const markAllAsRead = useCallback(() => { markAllInboxRead.mutate({ body: {} }); }, [markAllInboxRead]);
 
   const { currentSectionKeys, displayBreadcrumbs } = useBreadcrumbData(menuTree, location.pathname, preferences.breadcrumbShowHome);
   const { openKeys, setOpenKeys } = useSidebarOpenKeys(currentSectionKeys, preferences.sidebarAccordion);

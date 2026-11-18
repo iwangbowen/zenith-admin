@@ -32,7 +32,7 @@ registerMockWatchObserver((event) => {
     const label = ENTITY_TIMELINE_EVENT_LABELS[event.eventType as keyof typeof ENTITY_TIMELINE_EVENT_LABELS];
     mockInAppMessages.unshift({ id: getNextInAppMessageId(), templateId: null, templateName: null, userId: session.user.id,
       username: session.user.username, title: `${anchor.title} · ${label}`, content: `你关注的对象发生了业务变化：${label}。`,
-      type: 'info', source: 'system', isRead: false, readAt: null, senderId: null, senderName: null, link, createdAt: mockDateTime() });
+      type: 'info', source: 'system', eventKey: 'platform.entity.changed', isRead: false, readAt: null, senderId: null, senderName: null, link, createdAt: mockDateTime() });
     recordMockNotification('platform.entity.changed', [ref, source.data], session.user.id);
   }
 });

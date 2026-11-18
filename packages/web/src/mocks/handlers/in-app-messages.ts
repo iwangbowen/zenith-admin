@@ -1,4 +1,4 @@
-import { inAppMessageContract } from '@zenith/shared/messaging';
+import { inAppMessageContract, notificationEventKeysInGroup, type NotificationEventGroup } from '@zenith/shared/messaging';
 import type { InAppMessage } from '@zenith/shared/messaging';
 import { mock } from '@/mocks/utils/contract';
 import { mockInAppMessages, getNextInAppMessageId } from '@/mocks/data/in-app-messages';
@@ -8,10 +8,13 @@ import { mockDateTime } from '@/mocks/utils/date';
 import { includesKeyword } from '@/mocks/utils/filter';
 import { removeByIds, requireItem } from '@/mocks/utils/crud';
 import { mockResource } from '@/mocks/utils/resource';
+import { currentMockSession } from '@/mocks/utils/auth';
 
 /** 按关键词 / 类型 / 已读状态过滤（我的收件箱与管理员视角共用） */
-function filterMessages(list: InAppMessage[], query: { keyword?: string; type?: InAppMessage['type']; isRead?: boolean }) {
+function filterMessages(list: InAppMessage[], query: { keyword?: string; type?: InAppMessage['type']; isRead?: boolean; eventGroup?: NotificationEventGroup }) {
+  const keys = query.eventGroup ? new Set<string>(notificationEventKeysInGroup(query.eventGroup)) : null;
   return list.filter((m) => {
+    if (keys && (!m.eventKey || !keys.has(m.eventKey))) return false;
     if (query.keyword && !includesKeyword(query.keyword, m.title, m.content)) return false;
     if (query.type && m.type !== query.type) return false;
     if (query.isRead !== undefined && m.isRead !== query.isRead) return false;
@@ -55,9 +58,9 @@ export const inAppMessagesHandlers = [
     return ok(null, '删除成功');
   }),
 
-  mock(inAppMessageContract.list, ({ query, ok, paginate }) => ok(paginate(filterMessages(mockInAppMessages, query)))),
+  mock(inAppMessageContract.list, ({ request, query, ok, paginate }) => ok(paginate(filterMessages(mockInAppMessages.filter(message => message.userId === currentMockSession(request)?.user.id), query)))),
 
-  mock(inAppMessageContract.unreadCount, ({ ok }) => ok({ count: mockInAppMessages.filter((m) => !m.isRead).length })),
+  mock(inAppMessageContract.unreadCount, ({ request, query, ok }) => ok({ count: filterMessages(mockInAppMessages.filter(message => message.userId === currentMockSession(request)?.user.id), { ...query, isRead: false }).length })),
   ...mockResource(inAppMessageContract, {
     store: mockInAppMessages,
     notFound: '站内信不存在',
@@ -71,10 +74,10 @@ export const inAppMessagesHandlers = [
     return ok(null, '已标记已读');
   }),
 
-  mock(inAppMessageContract.markAllRead, ({ ok }) => {
+  mock(inAppMessageContract.markAllRead, ({ request, body, ok }) => {
     const now = mockDateTime();
-    const count = mockInAppMessages.filter((m) => markRead(m, now)).length;
-    return ok(null, `已标记 ${count} 条为已读`);
+    const count = filterMessages(mockInAppMessages.filter(message => message.userId === currentMockSession(request)?.user.id), body).filter(message => markRead(message, now)).length;
+    return ok({ count }, `已标记 ${count} 条为已读`);
   }),
 
   mock(inAppMessageContract.markReadBatch, ({ body, ok }) => {
@@ -102,6 +105,7 @@ export const inAppMessagesHandlers = [
         isRead: false,
         readAt: null,
         source: 'manual',
+        eventKey: null,
         senderId: 1,
         senderName: '管理员',
         link: null,

@@ -107,8 +107,14 @@ export function useLayoutWs({
       setInAppMessages(updateMessageReadIfUnread(msg.payload.id));
       setUnreadCount((c) => Math.max(0, c - 1));
     } else if (msg.type === 'in-app-message:read-all') {
-      setInAppMessages(markAllMessagesRead);
-      setUnreadCount(0);
+      if (msg.payload.eventGroup) {
+        // 移动审批只读清流程消息；全站剩余未读必须回源，不能清零。
+        fetchInAppMessages();
+        refreshInboxLists();
+      } else {
+        setInAppMessages(markAllMessagesRead);
+        setUnreadCount(0);
+      }
     } else if (msg.type === 'in-app-message:deleted') {
       setInAppMessages((prev) => {
         const target = prev.find((m) => m.id === msg.payload.id);

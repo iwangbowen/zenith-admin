@@ -85,7 +85,7 @@ export default function InboxPage() {
   };
 
   const handleMarkAllRead = async () => {
-    await markAllReadMutation.mutateAsync({});
+    await markAllReadMutation.mutateAsync({ body: {} });
     Toast.success('已全部标记为已读');
     setPage(1);
   };
