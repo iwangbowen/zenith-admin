@@ -35,7 +35,7 @@ import {
   fetchApprovalPrintPdf,
   fetchNextPendingTask, approvalKeys,
   useAddApprovalComment, useApprovalDetail, useApprovalMe, useApprovalQuickPhrases, useApprovalUsers,
-  useDeleteApprovalInstance, useResubmitApprovalInstance, useSelectableNextApprovers, useTaskAction, useUrgeInstance, useWithdrawInstance,
+  useApprovalCollaboration, useDeleteApprovalInstance, useResubmitApprovalInstance, useSelectableNextApprovers, useTaskAction, useUrgeInstance, useWithdrawInstance,
   type ApprovalTaskActionVariables,
 } from '../lib/queries';
 import { INSTANCE_STATUS_MAP as STATUS_MAP } from '@/components/workflow/workflow-runtime';
@@ -110,6 +110,15 @@ function TaskDetailContent() {
   const resubmitMutation = useResubmitApprovalInstance();
   const urgeMutation = useUrgeInstance();
   const commentMutation = useAddApprovalComment();
+  const collaboration = useApprovalCollaboration();
+  const [collaborationAction, setCollaborationAction] = useState<'consult' | 'forward' | null>(null);
+  const [collaborationUsers, setCollaborationUsers] = useState<number[]>([]);
+  const [collaborationNote, setCollaborationNote] = useState('');
+  const [replyDrafts, setReplyDrafts] = useState<Record<number, string>>({});
+  const [actionAttachments, setActionAttachments] = useState<AttachmentItem[]>([]);
+  const [signPosition, setSignPosition] = useState<'before' | 'after' | 'parallel'>('after');
+  const [signMode, setSignMode] = useState<'and' | 'or'>('and');
+  const [returnTargets, setReturnTargets] = useState<string[]>([]);
   const detail = detailQuery.data ?? null;
   const me = meQuery.data ?? null;
   const myPendingTasks = (detail?.tasks ?? []).filter(t => t.status === 'pending' && t.assigneeId === me?.id && detail?.status === 'running');
@@ -183,7 +192,7 @@ function TaskDetailContent() {
   const searchedCandidates = (nodeKey: string) => (nextSearch?.nodeKey === nodeKey
     ? nextSearchQuery.data?.find((g) => g.nodeKey === nodeKey)?.selectableApprovers ?? []
     : null);
-  const usersQuery = useApprovalUsers(action === 'transfer' || action === 'delegate' || action === 'addSign' || currentTask?.delegatedFromId != null);
+  const usersQuery = useApprovalUsers(action === 'transfer' || action === 'delegate' || action === 'addSign' || collaborationAction != null || currentTask?.delegatedFromId != null);
   const transferCandidates = useMemo(
     () => (usersQuery.data ?? [])
       .filter((u) => u.id !== me?.id)
@@ -227,9 +236,20 @@ function TaskDetailContent() {
   const opinionRequired = nodeCfg?.operations?.includes('opinionRequired') ?? false;
   const currentSlot = detail?.approvalActivations?.flatMap(a => a.slots).find(s => s.id === currentTask?.slotId);
   const canAddSign = !!currentTask && isWorkflowBaseApprovalTask(currentTask, currentSlot, currentTask.id);
+  const returnOptions = useMemo(() => {
+    const nodes = flowData?.nodes ?? [];
+    const current = nodes.find(n => n.data.key === currentTask?.nodeKey);
+    const ancestors = new Set<string>();
+    const visit = (id: string) => { for (const edge of flowData?.edges ?? []) if (edge.target === id && !edge.isException && !ancestors.has(edge.source)) { ancestors.add(edge.source); visit(edge.source); } };
+    if (current) visit(current.id);
+    const approved = new Set((detail?.tasks ?? []).filter(t => t.status === 'approved').map(t => t.nodeKey));
+    return [{ value: WORKFLOW_RETURN_TO_INITIATOR_KEY, label: '发起人（修改后重新提交）' }, ...nodes.filter(n => ancestors.has(n.id) && approved.has(n.data.key) && ['approve', 'handler'].includes(n.data.type)).map(n => ({ value: n.data.key, label: n.data.label }))];
+  }, [flowData, currentTask, detail]);
+  const actionConfig = action === 'approve' ? btnApprove : action === 'reject' ? btnReject : action === 'transfer' ? btnTransfer : action === 'delegate' ? btnDelegate : action === 'addSign' ? btnAddSign : btnReturn;
 
   const status = detail ? STATUS_MAP[detail.status] : null;
   const comments = detail?.comments ?? [];
+  const recallableTask = [...(detail?.tasks ?? [])].reverse().find(t => t.assigneeId === me?.id && ['approved', 'rejected'].includes(t.status));
   const mentionOptions = useMemo(() => {
     if (!detail) return [] as Array<{ value: number; label: string }>;
     const users = new Map<number, string>();
@@ -251,10 +271,8 @@ function TaskDetailContent() {
   };
 
   const openAction = (kind: Exclude<ActionKind, null>) => {
-    if (kind === 'approve' && btnApprove.uploadMode === 'required') {
-      Toast.info('该节点要求上传附件，请到桌面端处理');
-      return;
-    }
+    setActionAttachments([]); setSignPosition('after'); setSignMode('and');
+    setReturnTargets([btnReturn.jumpToNodeKey ?? WORKFLOW_RETURN_TO_INITIATOR_KEY]);
     setSignature(null);
     setHighlightNextMissing(false);
     setAction(kind);
@@ -263,6 +281,7 @@ function TaskDetailContent() {
   const submitAction = async () => {
     if (taskId == null || !action || actionMutation.isPending) return;
     try {
+      if (actionConfig.uploadMode === 'required' && actionAttachments.length === 0) { Toast.warning('请上传本次操作附件'); return; }
       const values = (await actionFormApi.current?.validate() ?? {}) as { comment?: string };
       if (action === 'approve' && needSignature && !signature) {
         Toast.error('请确认本次使用的签名');
@@ -320,21 +339,22 @@ function TaskDetailContent() {
         vars = {
           taskId,
           action: 'add-sign',
-          body: { targetUserIds: addSignTargets, position: 'parallel', signMode: 'and', comment: values.comment },
+          body: { targetUserIds: addSignTargets, position: signPosition, signMode, comment: values.comment },
         };
       } else {
         vars = {
           taskId,
           action: 'return',
-          body: { targetNodeKeys: [WORKFLOW_RETURN_TO_INITIATOR_KEY], comment: values.comment ?? '' },
+          body: { targetNodeKeys: returnTargets, comment: values.comment ?? '' },
         };
       }
+      vars.body = { ...vars.body, attachments: actionAttachments.map(item => ({ fileId: item.fileId })) };
       await actionMutation.mutateAsync(vars);
       businessActionFormApi.current?.onActionSuccess?.();
       setAction(null);
       if (action === 'addSign') { Toast.success('加签已创建，请继续完成本人的审批意见'); return; }
       // 连续审批（对标钉钉）：处理完自动进入下一条待办，清零后回列表
-      const doneLabel = action === 'approve' ? '已同意'
+      const doneLabel = action === 'approve' ? (currentTask?.taskKind === 'suggestion' ? '已提交同意建议，等待原审批人确认' : '已同意')
         : action === 'reject' ? '已驳回'
           : action === 'transfer' ? '已转办'
             : action === 'delegate' ? '已委派'
@@ -503,6 +523,7 @@ function TaskDetailContent() {
       )}
     >
       <div className={`ap-body${hasFooter ? ' ap-body--with-footer' : ''}`}>
+        <div className="ap-section">{me?.permissions?.some(p => p === '*' || p === 'workflow:instance:list') && <Button onClick={() => { setCollaborationAction('forward'); setCollaborationUsers([]); }}>抄送他人</Button>}{actionable && <Button onClick={() => { setCollaborationAction('consult'); setCollaborationUsers([]); }}>邀请协办</Button>}{recallableTask && detail.status === 'running' && <Popconfirm title="撤回我的处理？后续已处理时将无法撤回。" onConfirm={() => void collaboration.mutateAsync({ action: 'recall', taskId: recallableTask.id })}><Button>撤回我的处理</Button></Popconfirm>}</div>
         {requestedTaskId == null && myPendingTasks.length > 1 && <div className="ap-section"><Typography.Text>请选择本次处理的任务</Typography.Text>{myPendingTasks.map(t => <Button key={t.id} block onClick={() => navigate(`/detail/${instanceId}/${t.id}`, { replace: true })}>{t.nodeName}{t.signPosition ? ' · 加签意见' : ''}</Button>)}</div>}
         {requestedTaskId != null && !actionable && <Banner type="info" closeIcon={null} description="此任务已处理或不再由你处理。可返回待办列表查看当前任务。" />}
         {detail.status === 'suspended' && (
@@ -563,6 +584,8 @@ function TaskDetailContent() {
             finishedAt={detail.updatedAt}
             currentUserId={me?.id ?? null}
           />
+          {(detail.approvalActivations ?? []).map(activation => <div key={activation.id} className="ap-section"><Typography.Text strong>{activation.nodeName}：基础意见 {activation.baseApproved}/{activation.baseTotal}，需 {activation.baseRequired} 票</Typography.Text>{activation.signGroups.map(group => <div key={group.id}><Tag>{group.position === 'before' ? '前加签' : group.position === 'after' ? '后加签' : '并加签'} · {group.signMode === 'and' ? '会签' : '或签'} · {group.status}</Tag>{group.slots.map(slot => <div key={slot.id}>{slot.assigneeName} · {slot.status}{group.canReduce && slot.status === 'pending' && <Popconfirm title="移除此未办加签席位？" onConfirm={() => void collaboration.mutateAsync({ action: 'reduce', groupId: group.id, slotIds: [slot.id] })}><Button size="small" type="danger">减签</Button></Popconfirm>}</div>)}</div>)}</div>)}
+          {(detail.consults ?? []).filter(c => c.consulteeId === me?.id && c.status === 'pending').map(c => <div key={c.id} className="ap-section"><Typography.Text>协办：{c.question}</Typography.Text><TextArea value={replyDrafts[c.id] ?? ''} onChange={v => setReplyDrafts(p => ({ ...p, [c.id]: v }))} placeholder="填写协办意见" /><Button disabled={!replyDrafts[c.id]?.trim()} onClick={() => void collaboration.mutateAsync({ action: 'reply', id: c.id, opinion: replyDrafts[c.id] })}>提交协办意见</Button></div>)}
         </div>
 
         {/* 沟通评论 */}
@@ -729,6 +752,9 @@ function TaskDetailContent() {
         className="ap-sheet"
       >
         <div className="ap-sheet__body">
+          {action === 'return' && <Select style={{ width: '100%' }} optionList={returnOptions} value={returnTargets[0]} onChange={value => setReturnTargets([String(value)])} placeholder="退回到节点" />}
+          {action === 'addSign' && <><Select style={{ width: '100%', marginBottom: 10 }} value={signPosition} optionList={[{ value: 'before', label: '前加签：先收集补充意见，再由我确认' }, { value: 'after', label: '后加签：我同意后再收集意见' }, { value: 'parallel', label: '并加签：与我同时处理' }]} onChange={v => setSignPosition(v as typeof signPosition)} /><Select style={{ width: '100%' }} value={signMode} optionList={[{ value: 'and', label: '本次加签组全部同意' }, { value: 'or', label: '本次加签组任一同意' }]} onChange={v => setSignMode(v as typeof signMode)} /></>}
+          {actionConfig.uploadMode && actionConfig.uploadMode !== 'hidden' && <FileAttachment key={`${taskId}-${action}`} mode="edit" uploadPath={urlOf(workflowAttachmentContract.upload)} uploadData={{ instanceId }} previewPresentation="fullscreen" capture="environment" value={actionAttachments} onChange={setActionAttachments} title={actionConfig.uploadMode === 'required' ? '操作附件（必填）' : '操作附件'} limit={20} />}
           {action === 'approve' && businessForm?.actionComponent && detail ? <BusinessFormHost
             key={'business-action-' + taskId} requestClient={approvalRequest} customForm={businessForm} mode="action"
             definitionId={detail.definitionId} instanceId={detail.id} value={detail.formData ?? {}} bizType={detail.bizType} bizId={detail.bizId}
@@ -827,6 +853,7 @@ function TaskDetailContent() {
           </div>
         </div>
       </SideSheet>
+      <SideSheet placement="bottom" height="auto" className="ap-sheet" title={collaborationAction === 'consult' ? '邀请协办' : '抄送他人'} visible={collaborationAction != null} onCancel={() => setCollaborationAction(null)}><ApproverPickerField title="选择人员" candidates={transferCandidates} value={collaborationUsers} onChange={setCollaborationUsers} /><TextArea value={collaborationNote} onChange={setCollaborationNote} placeholder="说明" /><Button block theme="solid" disabled={!collaborationUsers.length} loading={collaboration.isPending} onClick={() => { if (!collaborationAction) return; void collaboration.mutateAsync(collaborationAction === 'consult' ? { action: 'consult', taskId: taskId!, userIds: collaborationUsers, question: collaborationNote } : { action: 'forward', instanceId, userIds: collaborationUsers, note: collaborationNote }).then(() => { setCollaborationAction(null); Toast.success('已发送'); }); }}>确认发送</Button></SideSheet>
     </PageShell>
   );
 }

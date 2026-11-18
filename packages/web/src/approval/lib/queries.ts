@@ -145,6 +145,22 @@ export function useTaskAction() {
   });
 }
 
+export function useApprovalCollaboration() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (command: { action: 'reduce'; groupId: number; slotIds: number[] } | { action: 'consult'; taskId: number; userIds: number[]; question: string } | { action: 'reply'; id: number; opinion: string } | { action: 'recall'; taskId: number } | { action: 'forward'; instanceId: number; userIds: number[]; note: string }) => {
+      switch (command.action) {
+        case 'reduce': return api(workflowTaskContract.reduceSign, { params: { groupId: command.groupId }, body: { targetSlotIds: command.slotIds } }, client);
+        case 'consult': return api(workflowTaskContract.consult, { params: { taskId: command.taskId }, body: { consulteeIds: command.userIds, question: command.question } }, client);
+        case 'reply': return api(workflowTaskContract.replyConsult, { params: { id: command.id }, body: { opinion: command.opinion } }, client);
+        case 'recall': return api(workflowTaskContract.recall, { params: { taskId: command.taskId }, body: {} }, client);
+        case 'forward': return api(workflowInstanceContract.forward, { params: { id: command.instanceId }, body: { userIds: command.userIds, note: command.note } }, client);
+      }
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: approvalKeys.all }),
+  });
+}
+
 /** 批量同意沿用审批端客户端，逐任务结果由服务端返回；共享确认意图的幂等处理。 */
 export function useBatchApprove() {
   const qc = useQueryClient();
