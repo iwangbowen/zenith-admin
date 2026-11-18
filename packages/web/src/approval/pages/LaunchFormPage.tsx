@@ -19,6 +19,7 @@ import {
 } from '@/components/workflow/WorkflowApprovalChainPanel';
 import { UserAvatar } from '@/components/UserAvatar';
 import { useEventCallback } from '@/hooks/useEventCallback';
+import { confirmDangerAsync } from '@/utils/confirm';
 import { WORKFLOW_PRIORITY_OPTIONS } from '@/components/workflow/WorkflowPriorityTag';
 import ApproverPickerField from '../components/ApproverPicker';
 import { canLaunchOnMobile } from '../lib/launch';
@@ -36,11 +37,12 @@ const CHAIN_ICON: Record<string, LucideIcon> = {
 
 /** 发起页审批链路（预测态）：竖向紧凑时间线，自选节点内联选人 */
 function ChainSection({
-  nodes, isLoading, isError, onRetry, selected, onSelect, highlightMissing,
+  nodes, isLoading, isError, error, onRetry, selected, onSelect, highlightMissing,
 }: Readonly<{
   nodes: WorkflowApproverPreviewNode[];
   isLoading: boolean;
   isError: boolean;
+  error?: Error | null;
   onRetry: () => void;
   selected: SelectedInitiatorApprovers;
   onSelect: (nodeKey: string, ids: number[]) => void;
@@ -52,7 +54,7 @@ function ChainSection({
   if (isError) {
     return (
       <div style={{ textAlign: 'center', padding: '12px 0' }}>
-        <Typography.Text type="tertiary" style={{ display: 'block', marginBottom: 8 }}>审批链路预测失败</Typography.Text>
+        <Typography.Text type="warning" style={{ display: 'block', marginBottom: 8 }}>{error?.message || '暂时无法获取审批路径，请重试；若持续失败，请联系管理员检查组织关系与审批人配置。'}</Typography.Text>
         <Button size="small" onClick={onRetry}>重试</Button>
       </div>
     );
@@ -195,11 +197,12 @@ function LaunchFormContent() {
   const [versionAccepted, setVersionAccepted] = useState(false);
   const [recoveryValues, setRecoveryValues] = useState<Record<string, unknown> | undefined>();
   const [recoveryLoaded, setRecoveryLoaded] = useState(false);
+  const [pendingRecovery, setPendingRecovery] = useState<ReturnType<typeof readApprovalRecovery>>(null);
   useEffect(() => {
     if (!def || isEditingDraft || recoveryLoaded) return;
     const recovery = readApprovalRecovery(def.id);
-    if (recovery && window.confirm('发现未提交的本地恢复稿，是否恢复？')) { setRecoveryValues(recovery.formData); setTitle(recovery.title); }
-    setRecoveryLoaded(true);
+    if (recovery) setPendingRecovery(recovery);
+    else setRecoveryLoaded(true);
   }, [def, isEditingDraft, recoveryLoaded]);
 
   useEffect(() => {
@@ -213,13 +216,13 @@ function LaunchFormContent() {
   }, []);
 
   useEffect(() => {
-    if (!draftQuery.data || revision.current !== undefined) return;
+    if (!draftQuery.data || editorQuery.isFetching || revision.current !== undefined) return;
     setTitle(draftQuery.data.title);
     setPriority(draftQuery.data.priority ?? 'normal');
     revision.current = draftQuery.data.draftRevision;
     setCcUserIds(draftQuery.data.draftIntent?.ccUserIds ?? []);
     setSelectedApprovers(draftQuery.data.draftIntent?.selectedInitiatorApprovers ?? {});
-  }, [draftQuery.data]);
+  }, [draftQuery.data, editorQuery.isFetching]);
 
   const launchFields = useMemo(() => {
     if (!def) return [];
@@ -231,9 +234,9 @@ function LaunchFormContent() {
 
   const scheduleDraftAutosave = useDebouncedCallback(() => {
     if (manualSubmission.current) return;
-    dirty.current = true;
+    if (!dirty.current) return;
     if (!isEditingDraft && def) saveApprovalRecovery(def.id, def.formFields ?? [], formApi.current?.getValues() ?? {}, title ?? defaultTitle);
-    if (!isEditingDraft || draftInstanceId == null || !draftQuery.data || !online
+    if (!isEditingDraft || draftInstanceId == null || !draftQuery.data || revision.current === undefined || !online
       || launchMutation.isPending || draftMutation.isPending || submitDraftMutation.isPending) return;
     if (editorQuery.data?.versionChanged && !versionAccepted) return;
     if (saving.current) return;
@@ -296,6 +299,7 @@ function LaunchFormContent() {
   );
 
   const handleSelect = (nodeKey: string, ids: number[]) => {
+    dirty.current = true;
     setSelectedApprovers((prev) => ({ ...prev, [nodeKey]: ids }));
     if (ids.length > 0) setHighlightMissing(false);
     scheduleDraftAutosave();
@@ -329,7 +333,7 @@ function LaunchFormContent() {
           await submitDraftMutation.mutateAsync({ id: draftInstanceId, selectedInitiatorApprovers: selected, expectedRevision: saved.draftRevision, expectedDefinitionVersion: def.version, expectedFormRevision: editorQuery.data?.formRevision });
         }
         Toast.success(asDraft ? '草稿已保存' : '提交成功');
-        navigate(`/detail/${draftInstanceId}`, { replace: true });
+        if (!asDraft) navigate(`/detail/${draftInstanceId}`, { replace: true });
         return;
       }
       const mutation = asDraft ? draftMutation : launchMutation;
@@ -351,10 +355,10 @@ function LaunchFormContent() {
   };
 
   const renderBody = () => {
-    if (defsQuery.isLoading || (isEditingDraft && draftQuery.isLoading)) return <Skeleton placeholder={<Skeleton.Paragraph rows={5} />} loading active />;
+    if (defsQuery.isLoading || (isEditingDraft && (draftQuery.isLoading || (editorQuery.isFetching && revision.current === undefined)))) return <Skeleton placeholder={<Skeleton.Paragraph rows={5} />} loading active />;
     if (isEditingDraft && !draftQuery.data) return <Empty description="草稿不存在或无权编辑" style={{ paddingTop: 60 }} />;
     if (!def) return <Empty description="流程不存在或未发布" style={{ paddingTop: 60 }} />;
-    if (!isEditingDraft && !recoveryLoaded) return <Spin />;
+    if (!isEditingDraft && !recoveryLoaded) return pendingRecovery ? <Banner type="info" closeIcon={null} description={<>发现未提交的本地恢复稿。<Button onClick={() => { setRecoveryValues(pendingRecovery.formData); setTitle(pendingRecovery.title); setPendingRecovery(null); setRecoveryLoaded(true); dirty.current = true; }}>恢复内容</Button><Button theme="borderless" onClick={() => { removeApprovalRecovery(def.id); setPendingRecovery(null); setRecoveryLoaded(true); }}>忽略恢复稿</Button></>} /> : <Spin />;
     if (!canLaunchOnMobile(def)) {
       return <Banner type="warning" closeIcon={null} description="该流程使用业务自定义表单，请到桌面端发起。" />;
     }
@@ -362,7 +366,7 @@ function LaunchFormContent() {
       <>
         {editorQuery.data?.versionChanged && !versionAccepted && <Banner type="warning" closeIcon={null} description={<>流程或表单已更新，请核对字段与审批链后确认。<Button onClick={() => { setVersionAccepted(true); setSelectedApprovers({}); }}>使用当前发布版本继续编辑</Button></>} />}
         <div className="ap-section-title">申请标题</div>
-        <Input value={title ?? draftQuery.data?.title ?? defaultTitle} onChange={(value) => { setTitle(value); scheduleDraftAutosave(); }} showClear placeholder="请输入申请标题" />
+        <Input value={title ?? draftQuery.data?.title ?? defaultTitle} onChange={(value) => { dirty.current = true; setTitle(value); scheduleDraftAutosave(); }} showClear placeholder="请输入申请标题" />
         <div className="ap-section-title">申请设置</div>
         <div className="ap-launch-settings">
           <div className="ap-launch-settings__field">
@@ -370,7 +374,7 @@ function LaunchFormContent() {
             <Select
               value={priority}
               optionList={WORKFLOW_PRIORITY_OPTIONS}
-              onChange={(value) => { setPriority(value as WorkflowInstancePriority); scheduleDraftAutosave(); }}
+              onChange={(value) => { dirty.current = true; setPriority(value as WorkflowInstancePriority); scheduleDraftAutosave(); }}
               style={{ width: '100%' }}
             />
           </div>
@@ -389,7 +393,7 @@ function LaunchFormContent() {
                 loading={usersQuery.isLoading}
                 optionList={(usersQuery.data ?? []).map((user) => ({ value: user.id, label: user.nickname || user.username }))}
                 placeholder="可选，提交后立即抄送"
-                onChange={(value) => { setCcUserIds((value as number[]) ?? []); scheduleDraftAutosave(); }}
+                onChange={(value) => { dirty.current = true; setCcUserIds((value as number[]) ?? []); scheduleDraftAutosave(); }}
                 style={{ width: '100%' }}
               />
             </div>
@@ -400,7 +404,7 @@ function LaunchFormContent() {
           ? <Typography.Text type="tertiary">该流程无需填写表单，直接提交即可</Typography.Text>
           : (
             <WorkflowFormRenderer
-              key={`launch-${def.id}`}
+              key={`launch-${def.id}-${draftInstanceId ?? 'new'}`}
               fields={launchFields}
               filePreviewPresentation="fullscreen"
               fileCapture="environment"
@@ -422,6 +426,7 @@ function LaunchFormContent() {
           nodes={chainNodes}
           isLoading={previewQuery.isLoading}
           isError={previewQuery.isError}
+          error={previewQuery.error}
           onRetry={() => void previewQuery.refetch()}
           selected={selectedApprovers}
           onSelect={handleSelect}
@@ -434,7 +439,7 @@ function LaunchFormContent() {
   return (
     <div className="ap-page">
       <div className="ap-header">
-        <Button theme="borderless" icon={<ChevronLeft size={18} />} onClick={() => { if (dirty.current && !window.confirm('尚有未保存内容，确定离开？')) return; navigate(-1); }} aria-label="返回" />
+        <Button theme="borderless" icon={<ChevronLeft size={18} />} onClick={() => { void (async () => { if ((dirty.current || saving.current) && !(await confirmDangerAsync({ title: '尚有未保存内容，确定离开？', content: '可先取消并保存，避免丢失最近修改。', okText: '离开', cancelText: '继续编辑' }))) return; navigate(-1); })(); }} aria-label="返回" />
         <span className="ap-header__title">{def?.name ?? '发起申请'}</span>
         {def && canSubmit ? (
           <MobileWorkflowGraph flowData={def.flowData} formFields={def.formFields ?? undefined} />

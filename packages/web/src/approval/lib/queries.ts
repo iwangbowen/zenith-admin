@@ -4,7 +4,7 @@
  * 与后台共用同一套工作流契约；所有调用经 `approvalRequest` 实例发出（独立会话 / 刷新 / 登录跳转语义）。
  */
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { BodyOf } from '@zenith/shared/core';
+import type { BodyOf, OutputOf } from '@zenith/shared/core';
 import { workflowDefinitionContract, workflowDelegationContract, workflowInstanceContract, workflowQuickPhraseContract, workflowTaskContract, type WorkflowDelegation, type WorkflowInstanceListItem, type WorkflowHandledInstanceItem } from '@zenith/shared/workflow';
 import { authContract } from '@zenith/shared/identity';
 import { inAppMessageContract, type InAppMessage } from '@zenith/shared/messaging';
@@ -126,7 +126,7 @@ export function useApprovalDetail(id: number | null) {
 }
 
 export function useApprovalDraftEditor(id: number | null) {
-  return useQuery({ queryKey: ['approval', 'draft-editor', id], queryFn: () => api(workflowInstanceContract.draftEditor, { params: { id: id as number } }, client), enabled: id != null, staleTime: Infinity, refetchOnWindowFocus: false, refetchOnReconnect: false });
+  return useQuery({ queryKey: ['approval', 'draft-editor', id], queryFn: () => api(workflowInstanceContract.draftEditor, { params: { id: id as number } }, client), enabled: id != null, gcTime: 0, staleTime: 0, refetchOnMount: 'always', refetchOnWindowFocus: false, refetchOnReconnect: false });
 }
 
 export function useResubmitApprovalInstance() {
@@ -256,7 +256,9 @@ export function useUpdateApprovalDraft() {
   return useMutation({
     mutationFn: ({ id, body }: { id: number; body: BodyOf<typeof workflowInstanceContract.updateDraft> }) =>
       api(workflowInstanceContract.updateDraft, { params: { id }, body }, client),
-    onSuccess: (_saved, vars) => {
+    onSuccess: (saved, vars) => {
+      // 编辑器包含版本信息，不整块失效重挂表单；同步已保存实例，避免再次编辑携带旧 revision。
+      qc.setQueryData(['approval', 'draft-editor', vars.id], (previous: OutputOf<typeof workflowInstanceContract.draftEditor> | undefined) => previous ? { ...previous, instance: saved } : previous);
       void qc.invalidateQueries({ queryKey: approvalKeys.lists });
       void qc.invalidateQueries({ queryKey: approvalKeys.counts });
       void qc.invalidateQueries({ queryKey: approvalKeys.detail(vars.id) });
@@ -269,7 +271,7 @@ export function useSubmitApprovalDraft() {
   return useMutation({
     mutationFn: ({ id, ...body }: { id: number } & BodyOf<typeof workflowInstanceContract.submitDraft>) =>
       api(workflowInstanceContract.submitDraft, { params: { id }, body }, client),
-    onSuccess: () => { void qc.invalidateQueries({ queryKey: approvalKeys.lists }); void qc.invalidateQueries({ queryKey: approvalKeys.counts }); },
+    onSuccess: (_saved, vars) => { void qc.invalidateQueries({ queryKey: approvalKeys.lists }); void qc.invalidateQueries({ queryKey: approvalKeys.counts }); void qc.invalidateQueries({ queryKey: approvalKeys.detail(vars.id) }); qc.removeQueries({ queryKey: ['approval', 'draft-editor', vars.id], exact: true }); },
   });
 }
 

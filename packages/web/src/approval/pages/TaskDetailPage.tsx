@@ -35,7 +35,7 @@ import {
   fetchApprovalPrintPdf,
   fetchNextPendingTask, approvalKeys,
   useAddApprovalComment, useApprovalDetail, useApprovalMe, useApprovalQuickPhrases, useApprovalUsers,
-  useApprovalCollaboration, useDeleteApprovalInstance, useResubmitApprovalInstance, useSelectableNextApprovers, useTaskAction, useUrgeInstance, useWithdrawInstance,
+  useApprovalCollaboration, useDeleteApprovalInstance, useResubmitApprovalInstance, useSubmitApprovalDraft, useSelectableNextApprovers, useTaskAction, useUrgeInstance, useWithdrawInstance,
   type ApprovalTaskActionVariables,
 } from '../lib/queries';
 import { INSTANCE_STATUS_MAP as STATUS_MAP } from '@/components/workflow/workflow-runtime';
@@ -108,6 +108,7 @@ function TaskDetailContent() {
   const withdrawMutation = useWithdrawInstance();
   const deleteMutation = useDeleteApprovalInstance();
   const resubmitMutation = useResubmitApprovalInstance();
+  const submitDraftMutation = useSubmitApprovalDraft();
   const urgeMutation = useUrgeInstance();
   const commentMutation = useAddApprovalComment();
   const collaboration = useApprovalCollaboration();
@@ -690,8 +691,11 @@ function TaskDetailContent() {
       {draftActionable && (
         <div className="ap-footer-bar">
           <Button theme="light" onClick={() => navigate(`/draft/${detail.id}`)}>
-            {detail.status === 'returned' ? '修改并重新提交' : '编辑'}
+            {detail.status === 'returned' ? '修改并重新提交' : '继续编辑'}
           </Button>
+          {detail.status === 'draft' && <Popconfirm title="提交这份申请？" content="将使用已保存的表单和审批人设置。若需调整，请先继续编辑。" onConfirm={async () => { try { await submitDraftMutation.mutateAsync({ id: detail.id, expectedRevision: detail.draftRevision, expectedDefinitionVersion: def?.version, expectedFormRevision: detail.draftFormRevision, selectedInitiatorApprovers: detail.draftIntent?.selectedInitiatorApprovers }); Toast.success('申请已提交'); } catch { /* 请求层提示；输入不完整时继续编辑 */ } }}>
+            <Button theme="solid" loading={submitDraftMutation.isPending}>提交申请</Button>
+          </Popconfirm>}
           {detail.status === 'draft' && <Popconfirm title="删除这份草稿？" content="删除后无法恢复。" onConfirm={() => void deleteDraft()}>
             <Button theme="solid" type="danger" loading={deleteMutation.isPending}>
               删除草稿
