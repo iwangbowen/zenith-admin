@@ -594,11 +594,18 @@ export const createWorkflowInstanceWithDraftSchema = createWorkflowInstanceSchem
 });
 
 export const submitWorkflowDraftSchema = z.object({
+  expectedRevision: z.int().min(0).optional(),
+  expectedDefinitionVersion: z.int().optional(),
+  expectedFormRevision: z.int().nullable().optional(),
   /** 草稿提交时补充发起人自选审批人 */
   selectedInitiatorApprovers: workflowSelectedApproversSchema.optional(),
 });
 
 export const updateWorkflowInstanceSchema = z.object({
+  expectedRevision: z.int().min(0).optional(),
+  expectedDefinitionVersion: z.int().optional(),
+  expectedFormRevision: z.int().nullable().optional(),
+  draftIntent: z.object({ ccUserIds: z.array(z.int().positive()).max(50).default([]), selectedInitiatorApprovers: workflowSelectedApproversSchema.optional() }).optional(),
   title: z.string().min(1, '申请标题不能为空').max(128).optional(),
   formData: z.record(z.string(), z.unknown()).nullable().optional(),
   priority: workflowPriorityEnum.optional(),

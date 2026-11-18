@@ -5,7 +5,7 @@ import { Banner, Button, Empty, Input, Select, Skeleton, Spin, Tag, Toast, Typog
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { ChevronLeft, Clock, GitBranch, Mail, Send, UserPlus, type LucideIcon } from 'lucide-react';
 import dayjs from 'dayjs';
-import type { WorkflowApproverPreviewNode, WorkflowDefinition, WorkflowInstancePriority } from '@zenith/shared/workflow';
+import type { WorkflowApproverPreviewNode, WorkflowInstancePriority } from '@zenith/shared/workflow';
 import { applyFieldPermissionsToFields, WORKFLOW_APPROVE_METHOD_LABELS as METHOD_LABEL } from '@zenith/shared/workflow';
 import WorkflowFormRenderer from '@/pages/workflow/designer/components/WorkflowFormRenderer';
 import { SignatureClientProvider } from '@/components/signature/SignatureClientContext';
@@ -17,13 +17,14 @@ import {
   type SelectedInitiatorApprovers,
 } from '@/components/workflow/WorkflowApprovalChainPanel';
 import { UserAvatar } from '@/components/UserAvatar';
+import { useEventCallback } from '@/hooks/useEventCallback';
 import { WORKFLOW_PRIORITY_OPTIONS } from '@/components/workflow/WorkflowPriorityTag';
 import ApproverPickerField from '../components/ApproverPicker';
 import { canLaunchOnMobile } from '../lib/launch';
 import MobileWorkflowGraph from '../components/MobileWorkflowGraph';
 import { recordRecentDefinition } from '../lib/recent';
 import {
-  useApprovalChainPreview, useApprovalDetail, useApprovalMe, useApprovalUsers, useLaunchInstance,
+  useApprovalChainPreview, useApprovalDraftEditor, useApprovalMe, useApprovalUsers, useLaunchInstance,
   usePublishedDefinitions, useSubmitApprovalDraft, useUpdateApprovalDraft,
 } from '../lib/queries';
 
@@ -55,7 +56,7 @@ function ChainSection({
     );
   }
   const startNode = nodes.find((n) => n.nodeType === 'start');
-  const flowNodes = nodes.filter((n) => n.nodeType !== 'start');
+  const flowNodes = nodes.filter((n) => n.nodeType !== 'start' && n.status !== 'excluded');
   if (flowNodes.length === 0) {
     return <Typography.Text type="tertiary" size="small">该流程无需审批，提交后自动通过</Typography.Text>;
   }
@@ -117,7 +118,7 @@ function ChainSection({
       name: n.branchLabel ? `${n.nodeName}（${n.branchLabel}）` : n.nodeName,
       icon: isSelect ? UserPlus : (CHAIN_ICON[n.nodeType] ?? Clock),
       warning: isSelect,
-      tag: n.approveMethod ? METHOD_LABEL[n.approveMethod] : undefined,
+      tag: n.automaticAction ? (n.automaticAction === 'approve' ? '自动通过' : '自动拒绝') : n.status === 'unknown' ? '待条件确认' : n.approveMethod ? METHOD_LABEL[n.approveMethod] : undefined,
       body,
     });
   }
@@ -154,7 +155,8 @@ function LaunchFormContent() {
   const { definitionId, instanceId: draftInstanceIdParam } = useParams<{ definitionId?: string; instanceId?: string }>();
   const draftInstanceId = draftInstanceIdParam ? Number(draftInstanceIdParam) : null;
   const defsQuery = usePublishedDefinitions();
-  const draftQuery = useApprovalDetail(Number.isFinite(draftInstanceId) ? draftInstanceId : null);
+  const editorQuery = useApprovalDraftEditor(Number.isFinite(draftInstanceId) ? draftInstanceId : null);
+  const draftQuery = { ...editorQuery, data: editorQuery.data?.instance };
   const meQuery = useApprovalMe();
   const launchMutation = useLaunchInstance();
   const draftMutation = useLaunchInstance();
@@ -166,10 +168,10 @@ function LaunchFormContent() {
   const isEditingDraft = draftInstanceId != null;
   const def = useMemo(
     () => {
-      if (draftQuery.data?.definitionSnapshot) return draftQuery.data.definitionSnapshot as unknown as WorkflowDefinition;
+      if (editorQuery.data) return editorQuery.data.definition;
       return (defsQuery.data ?? []).find((d) => d.id === Number(definitionId)) ?? null;
     },
-    [defsQuery.data, definitionId, draftQuery.data],
+    [defsQuery.data, definitionId, editorQuery.data],
   );
 
   const defaultTitle = useMemo(() => {
@@ -181,6 +183,10 @@ function LaunchFormContent() {
   const [ccUserIds, setCcUserIds] = useState<number[]>([]);
   const [online, setOnline] = useState(() => navigator.onLine);
   const [autosaveState, setAutosaveState] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle');
+  const revision = useRef<number | undefined>(undefined);
+  const dirty = useRef(false);
+  const saving = useRef<Promise<unknown> | null>(null);
+  const [versionAccepted, setVersionAccepted] = useState(false);
 
   useEffect(() => {
     const setOnlineState = () => setOnline(navigator.onLine);
@@ -193,9 +199,12 @@ function LaunchFormContent() {
   }, []);
 
   useEffect(() => {
-    if (!draftQuery.data) return;
+    if (!draftQuery.data || revision.current !== undefined) return;
     setTitle(draftQuery.data.title);
     setPriority(draftQuery.data.priority ?? 'normal');
+    revision.current = draftQuery.data.draftRevision;
+    setCcUserIds(draftQuery.data.draftIntent?.ccUserIds ?? []);
+    setSelectedApprovers(draftQuery.data.draftIntent?.selectedInitiatorApprovers ?? {});
   }, [draftQuery.data]);
 
   const launchFields = useMemo(() => {
@@ -207,14 +216,20 @@ function LaunchFormContent() {
   const canSubmit = def != null && canLaunchOnMobile(def);
 
   const scheduleDraftAutosave = useDebouncedCallback(() => {
+    dirty.current = true;
     if (!isEditingDraft || draftInstanceId == null || !draftQuery.data || !online
-      || launchMutation.isPending || draftMutation.isPending || submitDraftMutation.isPending || updateDraftMutation.isPending) return;
-    const formData = (formApi.current?.getValues() ?? {}) as Record<string, unknown>;
-    const effectiveTitle = (title ?? draftQuery.data.title ?? defaultTitle).trim() || defaultTitle;
+      || launchMutation.isPending || draftMutation.isPending || submitDraftMutation.isPending) return;
+    if (editorQuery.data?.versionChanged && !versionAccepted) return;
+    if (saving.current) return;
+    const save = async () => {
+    while (dirty.current) {
+    dirty.current = false;
     setAutosaveState('saving');
-    void updateDraftMutation.mutateAsync({ id: draftInstanceId, body: { title: effectiveTitle, formData, priority } })
-      .then(() => setAutosaveState('saved'))
-      .catch(() => setAutosaveState('failed'));
+    const saved = await persistDraft();
+    revision.current = saved.draftRevision;
+    setAutosaveState('saved');
+    } };
+    saving.current = save().catch(() => setAutosaveState('failed')).finally(() => { saving.current = null; });
   }, { wait: 1200 });
 
   // 审批链路预测：表单变更防抖 500ms 重新预测（条件分支可能随表单值变化）
@@ -243,6 +258,13 @@ function LaunchFormContent() {
 
   // 发起人自选审批人：nodeKey -> userIds
   const [selectedApprovers, setSelectedApprovers] = useState<SelectedInitiatorApprovers>({});
+  const persistDraft = useEventCallback(async () => updateDraftMutation.mutateAsync({ id: draftInstanceId!, body: { title: (title ?? draftQuery.data?.title ?? defaultTitle).trim() || defaultTitle, formData: formApi.current?.getValues() ?? {}, priority, expectedRevision: revision.current, expectedDefinitionVersion: def?.version, expectedFormRevision: editorQuery.data?.formRevision, draftIntent: { ccUserIds, selectedInitiatorApprovers: selectedApprovers } } }));
+  useEffect(() => { if (online && isEditingDraft && dirty.current) scheduleDraftAutosave(); }, [online, isEditingDraft, scheduleDraftAutosave]);
+  useEffect(() => {
+    const protect = (event: BeforeUnloadEvent) => { if (dirty.current || saving.current || (!isEditingDraft && formApi.current?.getValues() && Object.keys(formApi.current.getValues()).length)) { event.preventDefault(); event.returnValue = ''; } };
+    window.addEventListener('beforeunload', protect);
+    return () => window.removeEventListener('beforeunload', protect);
+  }, [isEditingDraft]);
   const [highlightMissing, setHighlightMissing] = useState(false);
   const selectNodes = useMemo<InitiatorApproverSelectNode[]>(
     () => chainNodes
@@ -259,11 +281,14 @@ function LaunchFormContent() {
   const handleSelect = (nodeKey: string, ids: number[]) => {
     setSelectedApprovers((prev) => ({ ...prev, [nodeKey]: ids }));
     if (ids.length > 0) setHighlightMissing(false);
+    scheduleDraftAutosave();
   };
 
   const submit = async (asDraft = false) => {
-    if (!def || launchMutation.isPending || draftMutation.isPending || updateDraftMutation.isPending || submitDraftMutation.isPending) return;
+    if (!def || launchMutation.isPending || draftMutation.isPending || submitDraftMutation.isPending) return;
     try {
+      if (editorQuery.data?.versionChanged && !versionAccepted) { Toast.warning('请先确认流程或表单版本变化'); return; }
+      await saving.current;
       const formData = (asDraft
         ? formApi.current?.getValues() ?? {}
         : await formApi.current?.validate() ?? {}) as Record<string, unknown>;
@@ -276,19 +301,19 @@ function LaunchFormContent() {
       const effectiveTitle = (title ?? draftQuery.data?.title ?? defaultTitle).trim() || defaultTitle;
       const selected = compactSelectedInitiatorApprovers(selectedApprovers, selectNodes);
       if (isEditingDraft && draftInstanceId != null) {
-        await updateDraftMutation.mutateAsync({
+        const saved = await updateDraftMutation.mutateAsync({
           id: draftInstanceId,
-          body: { title: effectiveTitle, formData, priority },
+          body: { title: effectiveTitle, formData, priority, expectedRevision: revision.current, expectedDefinitionVersion: def.version, expectedFormRevision: editorQuery.data?.formRevision, draftIntent: { ccUserIds, selectedInitiatorApprovers: selected } },
         });
         if (!asDraft) {
-          await submitDraftMutation.mutateAsync({ id: draftInstanceId, selectedInitiatorApprovers: selected });
+          await submitDraftMutation.mutateAsync({ id: draftInstanceId, selectedInitiatorApprovers: selected, expectedRevision: saved.draftRevision, expectedDefinitionVersion: def.version, expectedFormRevision: editorQuery.data?.formRevision });
         }
         Toast.success(asDraft ? '草稿已保存' : '提交成功');
-        navigate(asDraft ? `/detail/${draftInstanceId}` : '/', { replace: true });
+        navigate(`/detail/${draftInstanceId}`, { replace: true });
         return;
       }
       const mutation = asDraft ? draftMutation : launchMutation;
-      await mutation.mutateAsync({
+      const created = await mutation.mutateAsync({
         definitionId: def.id,
         title: effectiveTitle,
         formData,
@@ -299,7 +324,7 @@ function LaunchFormContent() {
       });
       recordRecentDefinition(def.id);
       Toast.success(asDraft ? '草稿已保存' : '提交成功');
-      navigate('/', { replace: true });
+      navigate(asDraft ? `/draft/${created.id}` : `/detail/${created.id}`, { replace: true });
     } catch { /* 校验或请求失败（request 层已 Toast） */ }
   };
 
@@ -312,6 +337,7 @@ function LaunchFormContent() {
     }
     return (
       <>
+        {editorQuery.data?.versionChanged && !versionAccepted && <Banner type="warning" closeIcon={null} description={<>流程或表单已更新，请核对字段与审批链后确认。<Button onClick={() => { setVersionAccepted(true); setSelectedApprovers({}); }}>使用当前发布版本继续编辑</Button></>} />}
         <div className="ap-section-title">申请标题</div>
         <Input value={title ?? draftQuery.data?.title ?? defaultTitle} onChange={(value) => { setTitle(value); scheduleDraftAutosave(); }} showClear placeholder="请输入申请标题" />
         <div className="ap-section-title">申请设置</div>
@@ -325,7 +351,7 @@ function LaunchFormContent() {
               style={{ width: '100%' }}
             />
           </div>
-          {!isEditingDraft && (
+          {(
             <div className="ap-launch-settings__field">
               <Typography.Text type="tertiary" size="small">抄送人</Typography.Text>
               <Select
@@ -338,7 +364,7 @@ function LaunchFormContent() {
                 loading={usersQuery.isLoading}
                 optionList={(usersQuery.data ?? []).map((user) => ({ value: user.id, label: user.nickname || user.username }))}
                 placeholder="可选，提交后立即抄送"
-                onChange={(value) => setCcUserIds((value as number[]) ?? [])}
+                onChange={(value) => { setCcUserIds((value as number[]) ?? []); scheduleDraftAutosave(); }}
                 style={{ width: '100%' }}
               />
             </div>

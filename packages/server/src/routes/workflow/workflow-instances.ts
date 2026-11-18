@@ -10,7 +10,7 @@ import {
 } from './instances/queries';
 import {
   createInstanceRoute, withdrawRoute, cancelInstanceRoute, deleteInstanceRoute,
-  updateDraftRoute, submitDraftRoute, resubmitRoute,
+  updateDraftRoute, submitDraftRoute, resubmitRoute, ownDraftsRoute, draftEditorRoute, deleteOwnDraftRoute,
 } from './instances/lifecycle';
 import { approveRoute, selectableNextApproversRoute, rejectRoute } from './instances/task-actions';
 import { transferRoute, delegateRoute, addSignRoute, reduceSignRoute, returnRoute } from './instances/task-routing';
@@ -35,6 +35,7 @@ import {
 } from './instances/compensation';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
+router.openapiRoutes([ownDraftsRoute, draftEditorRoute, deleteOwnDraftRoute] as const);
 router.openapiRoutes([mySignGroupsRoute] as const);
 
 router.openapiRoutes([listRoute, pendingMineRoute, pendingMineCountRoute, pendingDefinitionOptionsRoute, allRoute, ccMineRoute, handledMineRoute, ccUnreadCountRoute, workbenchSummaryRoute, relationOptionsRoute, analyticsRoute, overdueRoute, tasksMonitorRoute, selectableUsersRoute, selectableDepartmentsRoute, myConsultsRoute, batchWithdrawRoute, batchUrgeRoute, ccReadRoute, diagnosticsRoute, traceRoute, tokensRoute, diagnosticBundleRoute, detailRoute, printRoute, printVerifyRoute, listCommentsRoute, addCommentRoute, createInstanceRoute, updateDraftRoute, submitDraftRoute, resubmitRoute] as const);

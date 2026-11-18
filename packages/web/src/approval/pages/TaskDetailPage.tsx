@@ -35,7 +35,7 @@ import {
   fetchApprovalPrintPdf,
   fetchNextPendingTask, approvalKeys,
   useAddApprovalComment, useApprovalDetail, useApprovalMe, useApprovalQuickPhrases, useApprovalUsers,
-  useDeleteApprovalInstance, useSelectableNextApprovers, useTaskAction, useUrgeInstance, useWithdrawInstance,
+  useDeleteApprovalInstance, useResubmitApprovalInstance, useSelectableNextApprovers, useTaskAction, useUrgeInstance, useWithdrawInstance,
   type ApprovalTaskActionVariables,
 } from '../lib/queries';
 import { INSTANCE_STATUS_MAP as STATUS_MAP } from '@/components/workflow/workflow-runtime';
@@ -107,6 +107,7 @@ function TaskDetailContent() {
   const actionMutation = useTaskAction();
   const withdrawMutation = useWithdrawInstance();
   const deleteMutation = useDeleteApprovalInstance();
+  const resubmitMutation = useResubmitApprovalInstance();
   const urgeMutation = useUrgeInstance();
   const commentMutation = useAddApprovalComment();
   const detail = detailQuery.data ?? null;
@@ -337,8 +338,7 @@ function TaskDetailContent() {
         : action === 'reject' ? '已驳回'
           : action === 'transfer' ? '已转办'
             : action === 'delegate' ? '已委派'
-              : action === 'addSign' ? '已加签'
-                : '已退回';
+            : '已退回';
       try {
         const { next, remaining } = await fetchNextPendingTask(taskId, instanceId);
         if (next) {
@@ -473,8 +473,9 @@ function TaskDetailContent() {
     );
   }
 
-  const draftActionable = detail.status === 'draft' && isInitiator;
-  const hasFooter = actionable || initiatorActionable || draftActionable;
+  const draftActionable = (detail.status === 'draft' || detail.status === 'returned') && isInitiator;
+  const cloneActionable = isInitiator && detail.allowResubmit && ['rejected', 'withdrawn'].includes(detail.status) && !detail.bizId;
+  const hasFooter = actionable || initiatorActionable || draftActionable || cloneActionable;
   const sheetTitle = action === 'approve' ? approveLabel
     : action === 'reject' ? (btnReject.displayName ?? '拒绝')
       : action === 'transfer' ? (btnTransfer.displayName ?? '转办')
@@ -658,15 +659,16 @@ function TaskDetailContent() {
       {draftActionable && (
         <div className="ap-footer-bar">
           <Button theme="light" onClick={() => navigate(`/draft/${detail.id}`)}>
-            编辑
+            {detail.status === 'returned' ? '修改并重新提交' : '编辑'}
           </Button>
-          <Popconfirm title="删除这份草稿？" content="删除后无法恢复。" onConfirm={() => void deleteDraft()}>
+          {detail.status === 'draft' && <Popconfirm title="删除这份草稿？" content="删除后无法恢复。" onConfirm={() => void deleteDraft()}>
             <Button theme="solid" type="danger" loading={deleteMutation.isPending}>
               删除草稿
             </Button>
-          </Popconfirm>
+          </Popconfirm>}
         </div>
       )}
+      {cloneActionable && <div className="ap-footer-bar"><Button block theme="solid" loading={resubmitMutation.isPending} onClick={() => { void resubmitMutation.mutateAsync(detail.id).then(d => navigate(`/draft/${d.id}`)); }}>重新申请</Button></div>}
 
       {/* 底部操作条：审批人 */}
       {actionable && (

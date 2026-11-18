@@ -10,7 +10,9 @@ import { releaseManagedFiles } from '../../files/file-gc.service';
 import { currentWorkflowJobContext, workflowTransaction } from '../../../lib/workflow-jobs/lease';
 import { readWorkflowJobStepResult, runWorkflowJobStep } from '../../../lib/workflow-jobs/steps';
 import { enqueueSubprocessJoin } from './async-jobs';
-import { workflowInstances, workflowTasks, workflowDefinitions, workflowJobs, users } from '../../../db/schema';
+import { workflowInstances, workflowTasks, workflowDefinitions, workflowForms, workflowJobs, users } from '../../../db/schema';
+import type { BodyOf, QueryOutputOf } from '@zenith/shared/core';
+import { workflowInstanceContract } from '@zenith/shared/workflow';
 import { tenantCondition, getCreateTenantId, exactTenantCondition } from '../../../lib/tenant';
 import { buildWhere } from '../../../lib/where-helpers';
 import { validateFlowData } from '../../../lib/workflow-engine';
@@ -114,6 +116,7 @@ export async function createInstance(data: { definitionId: number; title: string
 
   // 草稿：仅保存表单，不进入流转、不生成业务编号、不触发事件
   if (data.asDraft) {
+    const [draftForm] = def.formId ? await db.select({ revision: workflowForms.revision }).from(workflowForms).where(eq(workflowForms.id, def.formId)).limit(1) : [];
     const draft = await db.transaction(async (tx) => {
       await requirePinnedWorkflowNumbering(tx, { id: def.id, tenantId: getCreateTenantId(user), flowData: baseFlowData });
       const [created] = await tx.insert(workflowInstances).values({
@@ -122,6 +125,8 @@ export async function createInstance(data: { definitionId: number; title: string
         title: data.title,
         formData,
         formSnapshot,
+        draftIntent: { ccUserIds: data.ccUserIds ?? [], selectedInitiatorApprovers: data.selectedInitiatorApprovers },
+        draftFormRevision: draftForm?.revision ?? null,
         status: 'draft',
         priority: data.priority ?? 'normal',
         currentNodeKey: null,
@@ -376,10 +381,50 @@ async function loadOwnDraft(id: number) {
   return inst;
 }
 
-export async function updateInstanceDraft(id: number, input: { title?: string; formData?: Record<string, unknown> | null; priority?: import('@zenith/shared').WorkflowInstancePriority }) {
+export async function getDraftEditor(id: number) {
+  const inst = await loadOwnDraft(id);
+  if (inst.status !== 'draft' && inst.status !== 'returned') throw new HTTPException(409, { message: '申请已提交，不能继续编辑' });
+  const [def] = await db.select().from(workflowDefinitions).where(buildWhere(eq(workflowDefinitions.id, inst.definitionId), tenantCondition(workflowDefinitions, currentUser()), eq(workflowDefinitions.status, 'published'))).limit(1);
+  requireRow(def, '流程已停用，暂时不能提交', 409);
+  const snapshot = await resolveFormSnapshot(def.formId);
+  const [form] = def.formId ? await db.select({ revision: workflowForms.revision }).from(workflowForms).where(eq(workflowForms.id, def.formId)).limit(1) : [];
+  const definition = { ...toDefinitionSnapshot(def), formFields: snapshot?.fields ?? [], formSettings: snapshot?.settings ?? null };
+  return { instance: mapInstance(inst), definition, formRevision: form?.revision ?? null, versionChanged: inst.definitionSnapshot.version !== def.version || inst.draftFormRevision !== (form?.revision ?? null) };
+}
+
+export async function listOwnDrafts(query: QueryOutputOf<typeof workflowInstanceContract.ownDrafts>) {
+  const user = currentUser();
+  const where = buildWhere(eq(workflowInstances.initiatorId, user.userId), tenantCondition(workflowInstances, user), eq(workflowInstances.status, 'draft'));
+  const [rows, total] = await Promise.all([db.select().from(workflowInstances).where(where).orderBy(desc(workflowInstances.id)).limit(query.pageSize).offset((query.page - 1) * query.pageSize), db.$count(workflowInstances, where)]);
+  return { list: rows.map(row => mapInstance(row)), total, page: query.page, pageSize: query.pageSize };
+}
+
+export async function deleteOwnDraft(id: number) {
+  const inst = await loadOwnDraft(id);
+  if (inst.status !== 'draft') throw new HTTPException(409, { message: '只能删除尚未提交的本人草稿' });
+  await getWorkflowBusinessAdapter(inst.bizType)?.assertDeletable?.(inst);
+  await db.transaction(async tx => {
+    await lockUnchangedWorkflowDraft(tx, inst);
+    await releaseWorkflowAttachments(tx, inst);
+    await tx.delete(workflowInstances).where(buildWhere(eq(workflowInstances.id, id), tenantCondition(workflowInstances, currentUser()), eq(workflowInstances.status, 'draft')));
+  });
+}
+
+export async function updateInstanceDraft(id: number, input: BodyOf<typeof workflowInstanceContract.updateDraft>) {
   const inst = await loadOwnDraft(id);
   if (inst.status !== 'draft' && inst.status !== 'returned') throw new HTTPException(400, { message: '仅草稿或已退回的申请可编辑' });
+  if (input.expectedRevision !== undefined && input.expectedRevision !== inst.draftRevision) throw new HTTPException(409, { message: '草稿已在其它窗口更新，请刷新后合并' });
+  const editor = await getDraftEditor(id);
+  if (input.expectedDefinitionVersion !== undefined && input.expectedDefinitionVersion !== editor.definition.version) throw new HTTPException(409, { message: '流程定义已更新，请重新确认' });
+  if (input.expectedFormRevision !== undefined && input.expectedFormRevision !== editor.formRevision) throw new HTTPException(409, { message: '表单已更新，请重新确认' });
   const patch: Partial<typeof workflowInstances.$inferInsert> = {};
+  patch.draftRevision = inst.draftRevision + 1;
+  if (input.draftIntent !== undefined) patch.draftIntent = { ccUserIds: input.draftIntent.ccUserIds ?? [], selectedInitiatorApprovers: input.draftIntent.selectedInitiatorApprovers };
+  if (input.expectedDefinitionVersion !== undefined) {
+    patch.definitionSnapshot = editor.definition;
+    patch.formSnapshot = { formType: editor.definition.formType, formId: editor.definition.formId, fields: editor.definition.formFields ?? [], settings: editor.definition.formSettings };
+    patch.draftFormRevision = editor.formRevision;
+  }
   if (input.title !== undefined) patch.title = input.title;
   if (input.formData !== undefined) {
     const values = { ...(input.formData ?? {}) };
@@ -403,15 +448,19 @@ export async function updateInstanceDraft(id: number, input: { title?: string; f
   return mapInstance(row);
 }
 
-export async function submitDraftInstance(id: number, input: { selectedInitiatorApprovers?: SelectedApproverMap } = {}) {
+export async function submitDraftInstance(id: number, input: BodyOf<typeof workflowInstanceContract.submitDraft> = {}) {
   const user = currentUser();
   const inst = await loadOwnDraft(id);
+  if (input.expectedRevision !== undefined && input.expectedRevision !== inst.draftRevision) throw new HTTPException(409, { message: '草稿已更新，请重新确认提交' });
   // returned（退回发起人）与 draft 共用提交链路：修改后重新从头走流程，保留同一实例与审计历史
   const isResubmitAfterReturn = inst.status === 'returned';
   if (inst.status !== 'draft' && !isResubmitAfterReturn) throw new HTTPException(400, { message: '仅草稿或已退回的申请可提交' });
   const [def] = await db.select().from(workflowDefinitions)
     .where(and(eq(workflowDefinitions.id, inst.definitionId), eq(workflowDefinitions.status, 'published'))).limit(1);
   requireRow(def, '流程定义不存在或已停用，无法提交', 400);
+  if (input.expectedDefinitionVersion !== undefined && input.expectedDefinitionVersion !== def.version) throw new HTTPException(409, { message: '流程版本已变化，请重新确认' });
+  const [currentForm] = def.formId ? await db.select({ revision: workflowForms.revision }).from(workflowForms).where(eq(workflowForms.id, def.formId)).limit(1) : [];
+  if (input.expectedFormRevision !== undefined && input.expectedFormRevision !== (currentForm?.revision ?? null)) throw new HTTPException(409, { message: '表单版本已变化，请重新确认' });
   let baseFlowData = def.flowData as WorkflowFlowData;
   if (!baseFlowData?.nodes?.length) throw new HTTPException(400, { message: '流程定义无效' });
   const validation = validateFlowData(baseFlowData);
@@ -431,7 +480,7 @@ export async function submitDraftInstance(id: number, input: { selectedInitiator
   formData = normalizeInstanceFormData(formSnapshot, formData);
   const starter = await buildStarterContext(user.userId);
   const flowData = await applyInitiatorSelectedApprovers(
-    baseFlowData, input.selectedInitiatorApprovers, { formData, formFields: formSnapshot?.fields, starter },
+    baseFlowData, input.selectedInitiatorApprovers ?? inst.draftIntent?.selectedInitiatorApprovers, { formData, formFields: formSnapshot?.fields, starter },
   );
   // A returned instance retains the rule version and mapping used for its original number.
   const originalNumbering = inst.definitionSnapshot?.flowData?.settings?.numbering;
@@ -443,6 +492,12 @@ export async function submitDraftInstance(id: number, input: { selectedInitiator
   assertRequiredFormFields(formSnapshot, formData, flowData);
   const instance = await workflowTransaction(async (tx) => {
     await lockUnchangedWorkflowDraft(tx, inst);
+    const [lockedDefinition] = await tx.select().from(workflowDefinitions).where(eq(workflowDefinitions.id, def.id)).for('share').limit(1);
+    if (lockedDefinition?.version !== def.version || lockedDefinition.status !== 'published') throw new HTTPException(409, { message: '流程版本已变化，请重新确认' });
+    if (def.formId) {
+      const [lockedForm] = await tx.select({ revision: workflowForms.revision }).from(workflowForms).where(eq(workflowForms.id, def.formId)).for('share').limit(1);
+      if (lockedForm?.revision !== currentForm?.revision) throw new HTTPException(409, { message: '表单已变化，请重新确认' });
+    }
     formData = await bindWorkflowFormAttachments(tx, inst, formSnapshot, formData, user.userId);
     // returned 重提保留首次提交生成的业务编号，避免同一申请出现两个流水号
     const serialNo = inst.serialNo ?? await allocateWorkflowInstanceNumber(tx, { instanceId: inst.id, definitionId: def.id, tenantId: inst.tenantId, initiatorId: inst.initiatorId, flowData, formData, formSnapshot });
@@ -452,6 +507,7 @@ export async function submitDraftInstance(id: number, input: { selectedInitiator
       formData,
       serialNo,
       status: 'running',
+      draftRevision: inst.draftRevision + 1,
       currentNodeKey: null,
     }).where(eq(workflowInstances.id, id));
     const businessRef = await businessAdapter?.attachInTransaction?.(tx, { ...inst, formData });
@@ -464,6 +520,12 @@ export async function submitDraftInstance(id: number, input: { selectedInitiator
         .where(and(eq(workflowTasks.instanceId, id), inArray(workflowTasks.status, ['pending', 'waiting'])));
       await killInstanceTokens(tx, id);
       await cancelJobs({ instanceId: id, jobTypes: WORKFLOW_ADVANCING_JOB_TYPES }, tx);
+    }
+    const draftCc = uniquePositiveInts(inst.draftIntent?.ccUserIds);
+    for (const uid of draftCc) {
+      const [valid] = await tx.select({ id: users.id }).from(users).where(buildWhere(eq(users.id, uid), tenantCondition(users, user), eq(users.status, 'enabled'))).limit(1);
+      if (!valid) throw new HTTPException(400, { message: '抄送人已停用或不属于当前租户' });
+      await tx.insert(workflowTasks).values({ instanceId: id, nodeKey: '__initiator_cc__', nodeName: '发起抄送', nodeType: 'ccNode', taskKind: 'cc', assigneeId: uid, status: 'skipped', activationId: null, comment: '发起人指定抄送' });
     }
     const materialized = await advanceAndMaterialize({ kind: 'seed' }, {
       instanceId: id,

@@ -6,6 +6,11 @@ import { idempotencyGuard } from '../../../middleware/idempotency';
 import { defineContractRoute } from '../../../lib/contract-route';
 import { okBody } from '../../../lib/openapi-schemas';
 import { createInstance, withdrawInstance, cancelInstance, deleteInstance, getInstanceForAdminAudit, getWorkflowInstanceBeforeAudit, updateInstanceDraft, submitDraftInstance, resubmitInstance } from '../../../services/workflow/workflow-instances.service';
+import { getDraftEditor, listOwnDrafts, deleteOwnDraft } from '../../../services/workflow/workflow-instances.service';
+
+export const ownDraftsRoute = defineContractRoute(workflowInstanceContract.ownDrafts, { handler: async c => c.json(okBody(await listOwnDrafts(c.req.valid('query'))), 200) });
+export const draftEditorRoute = defineContractRoute(workflowInstanceContract.draftEditor, { handler: async c => c.json(okBody(await getDraftEditor(c.req.valid('param').id)), 200) });
+export const deleteOwnDraftRoute = defineContractRoute(workflowInstanceContract.removeDraft, { handler: async c => { await deleteOwnDraft(c.req.valid('param').id); return c.json(okBody(null, '草稿已删除'), 200); } });
 
 export const createInstanceRoute = defineContractRoute(workflowInstanceContract.create, {
   middleware: [idempotencyGuard({ ttlSeconds: 10 })],

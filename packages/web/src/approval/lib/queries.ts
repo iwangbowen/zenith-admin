@@ -115,6 +115,15 @@ export function useApprovalDetail(id: number | null) {
   });
 }
 
+export function useApprovalDraftEditor(id: number | null) {
+  return useQuery({ queryKey: ['approval', 'draft-editor', id], queryFn: () => api(workflowInstanceContract.draftEditor, { params: { id: id as number } }, client), enabled: id != null });
+}
+
+export function useResubmitApprovalInstance() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (id: number) => api(workflowInstanceContract.resubmit, { params: { id } }, client), onSuccess: () => qc.invalidateQueries({ queryKey: approvalKeys.all }) });
+}
+
 export function useApprovalMe() {
   return useQuery({
     queryKey: approvalKeys.me,
@@ -231,8 +240,8 @@ export function useUpdateApprovalDraft() {
 export function useSubmitApprovalDraft() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, selectedInitiatorApprovers }: { id: number; selectedInitiatorApprovers?: BodyOf<typeof workflowInstanceContract.submitDraft>['selectedInitiatorApprovers'] }) =>
-      api(workflowInstanceContract.submitDraft, { params: { id }, body: { selectedInitiatorApprovers } }, client),
+    mutationFn: ({ id, ...body }: { id: number } & BodyOf<typeof workflowInstanceContract.submitDraft>) =>
+      api(workflowInstanceContract.submitDraft, { params: { id }, body }, client),
     onSuccess: () => qc.invalidateQueries({ queryKey: approvalKeys.all }),
   });
 }
@@ -240,7 +249,7 @@ export function useSubmitApprovalDraft() {
 export function useDeleteApprovalInstance() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: number) => api(workflowInstanceContract.remove, { params: { id } }, client),
+    mutationFn: (id: number) => api(workflowInstanceContract.removeDraft, { params: { id } }, client),
     onSuccess: (_removed, _id) => {
       // 详情页仍挂载时不能移除 active query：TanStack Query 会让观察者
       // 重新创建该查询并回源，删除成功后随即得到「流程实例不存在」的 404。

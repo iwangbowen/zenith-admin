@@ -243,6 +243,9 @@ export const workflowInstanceSchema = z.object({
   allowResubmit: z.boolean().optional().meta({ description: '是否允许驳回后重新提交' }),
   allowComment: z.boolean().optional().meta({ description: '是否允许流程中评论' }),
   formData: z.record(z.string(), z.unknown()).nullable(),
+  draftRevision: z.int().optional(),
+  draftFormRevision: z.int().nullable().optional(),
+  draftIntent: z.object({ ccUserIds: z.array(z.int()), selectedInitiatorApprovers: z.record(z.string(), z.array(z.int())).optional() }).nullable().optional(),
   formSnapshot: workflowInstanceFormSnapshotSchema.nullable().optional().meta({ description: '发起时的表单结构快照' }),
   definitionSnapshot: workflowDefinitionSnapshotSchema.nullable().optional().meta({ description: '发起时的流程定义快照（详情场景返回）' }),
   status: z.enum(WORKFLOW_INSTANCE_STATUSES),
@@ -577,6 +580,9 @@ export const workflowPrintVerifyParam = z.object({
  * 与 workflowTaskContract、workflowInstanceOpsContract 共用工作流资源根，操作名全局唯一。
  */
 export const workflowInstanceContract = defineContract('/api/workflows', {
+  ownDrafts: op.get('/instances/drafts/mine', { access: { permission: 'workflow:instance:create' }, query: paginationQuery, response: paginated(workflowInstanceSchema), summary: '本人草稿列表' }),
+  draftEditor: op.get('/instances/{id}/draft-editor', { access: { permission: 'workflow:instance:create' }, params: idParam, response: z.object({ instance: workflowInstanceSchema, definition: workflowDefinitionSnapshotSchema, formRevision: z.int().nullable(), versionChanged: z.boolean() }), summary: '本人草稿或退回申请的当前编辑上下文' }),
+  removeDraft: op.delete('/instances/{id}/draft', { access: { permission: 'workflow:instance:create' }, params: idParam, audit: '删除本人草稿', summary: '删除本人未提交草稿' }),
   selectableUsers: op.get('/selectable-users', { access: { permission: ['workflow:instance:create', 'workflow:task:handle', 'workflow:instance:list'] }, response: z.array(workflowSelectableUserSchema), summary: '工作流协作选人清单' }),
   selectableDepartments: op.get('/selectable-departments', { access: { permission: ['workflow:instance:create', 'workflow:task:handle', 'workflow:instance:list'] }, response: z.array(workflowSelectableDepartmentSchema), summary: '工作流协作选部门清单' }),
   list: op.get('/instances', { access: { permission: 'workflow:instance:list' }, query: workflowMyInstanceListQuery, response: paginated(workflowInstanceSchema), summary: '我的申请列表' }),

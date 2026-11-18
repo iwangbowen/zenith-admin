@@ -406,6 +406,9 @@ export const workflowInstances = pgTable('workflow_instances', {
   /** 业务编号/流水号（按流程定义的编号规则在发起时生成，如 BX-20260620-0001） */
   serialNo: varchar({ length: 128 }),
   formData: jsonb(),
+  draftRevision: integer().notNull().default(0),
+  draftFormRevision: integer(),
+  draftIntent: jsonb().$type<{ ccUserIds: number[]; selectedInitiatorApprovers?: Record<string, number[]> }>(),
   status: workflowInstanceStatusEnum().default('draft').notNull(),
   /** 加急/优先级：low/normal/high/urgent（发起人设置，审批列表据此置顶） */
   priority: varchar({ length: 16 }).notNull().default('normal'),

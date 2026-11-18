@@ -54,6 +54,9 @@ export {
 } from './instances/audit';
 export {
   createInstance,
+  getDraftEditor,
+  listOwnDrafts,
+  deleteOwnDraft,
   withdrawInstance,
   cancelInstance,
   deleteInstance,

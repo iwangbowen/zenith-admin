@@ -4,13 +4,14 @@ import { HTTPException } from 'hono/http-exception';
 import { workflowInstances } from '../../../db/schema';
 import type { DbExecutor } from '../../../db/types';
 
-type DraftVersion = Pick<typeof workflowInstances.$inferSelect, 'id' | 'status' | 'formData' | 'formSnapshot' | 'definitionSnapshot'>;
+type DraftVersion = Pick<typeof workflowInstances.$inferSelect, 'id' | 'status' | 'formData' | 'formSnapshot' | 'definitionSnapshot'> & { draftRevision?: number };
 
 /** 签名解析后再锁住原草稿，防并发保存覆盖签名或重复提交物化任务。 */
 export async function lockUnchangedWorkflowDraft(tx: DbExecutor, expected: DraftVersion): Promise<void> {
-  const [current] = await tx.select({ status: workflowInstances.status, formData: workflowInstances.formData, formSnapshot: workflowInstances.formSnapshot, definitionSnapshot: workflowInstances.definitionSnapshot })
+  const [current] = await tx.select({ draftRevision: workflowInstances.draftRevision, status: workflowInstances.status, formData: workflowInstances.formData, formSnapshot: workflowInstances.formSnapshot, definitionSnapshot: workflowInstances.definitionSnapshot })
     .from(workflowInstances).where(eq(workflowInstances.id, expected.id)).for('update').limit(1);
   if (!current || current.status !== expected.status || !['draft', 'returned'].includes(current.status)
+    || (expected.draftRevision !== undefined && current.draftRevision !== expected.draftRevision)
     || !isDeepStrictEqual(current.formData, expected.formData)
     || !isDeepStrictEqual(current.formSnapshot, expected.formSnapshot)
     || !isDeepStrictEqual(current.definitionSnapshot, expected.definitionSnapshot)) {
