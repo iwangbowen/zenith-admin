@@ -5,6 +5,7 @@ export interface WorkflowIdentityPort {
   resolveSignature(input: SignatureInput, policy: SignaturePolicy, actor?: { userId: number; tenantId: number | null }): Promise<SignatureSnapshot>;
   loadUserDisplays(ids: readonly number[], executor?: DbExecutor): Promise<Map<number, { name: string; avatar: string | null }>>;
   listSelectableUsers(): Promise<Array<{ id: number; username: string; nickname: string; avatar: string | null; departmentName: string | null }>>;
+  searchSelectableUsers(query: { keyword?: string; page: number; pageSize: number }): Promise<{ list: Array<{ id: number; username: string; nickname: string; avatar: string | null; departmentName: string | null }>; total: number; page: number; pageSize: number }>;
 }
 let identity: Readonly<WorkflowIdentityPort> | undefined;
 export function registerWorkflowIdentity(port: WorkflowIdentityPort): void {

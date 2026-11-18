@@ -17,6 +17,7 @@ import { textMatches } from '@/utils/pinyin';
 export interface ApproverCandidate {
   id: number;
   name: string;
+  departmentName?: string | null;
 }
 
 interface ApproverPickerFieldProps {
@@ -179,6 +180,7 @@ export default function ApproverPickerField({
                 >
                   <UserAvatar name={c.name} semiSize="extra-small" size={28} />
                   <span className="ap-picker__item-name">{c.name}</span>
+                  {c.departmentName && <Typography.Text type="tertiary" size="small">{c.departmentName}</Typography.Text>}
                   {checked && <Check size={18} className="ap-picker__item-check" />}
                 </div>
               );

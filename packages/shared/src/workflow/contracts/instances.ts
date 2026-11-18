@@ -584,6 +584,7 @@ export const workflowPrintVerifyParam = z.object({
  * 与 workflowTaskContract、workflowInstanceOpsContract 共用工作流资源根，操作名全局唯一。
  */
 export const workflowInstanceContract = defineContract('/api/workflows', {
+  searchUsers: op.get('/selectable-users/search', { access: { permission: ['workflow:instance:create', 'workflow:task:handle', 'workflow:instance:list'] }, query: paginationQuery.extend({ keyword: keywordQuery('姓名 / 用户名') }), response: paginated(workflowSelectableUserSchema), summary: '分页检索工作流协作人员' }),
   ownDrafts: op.get('/instances/drafts/mine', { access: { permission: 'workflow:instance:create' }, query: paginationQuery, response: paginated(workflowInstanceSchema), summary: '本人草稿列表' }),
   draftEditor: op.get('/instances/{id}/draft-editor', { access: { permission: 'workflow:instance:create' }, params: idParam, response: z.object({ instance: workflowInstanceSchema, definition: workflowDefinitionSnapshotSchema, formRevision: z.int().nullable(), versionChanged: z.boolean() }), summary: '本人草稿或退回申请的当前编辑上下文' }),
   removeDraft: op.delete('/instances/{id}/draft', { access: { permission: 'workflow:instance:create' }, params: idParam, audit: '删除本人草稿', summary: '删除本人未提交草稿' }),
@@ -604,7 +605,7 @@ export const workflowInstanceContract = defineContract('/api/workflows', {
   batchWithdraw: op.post('/instances/batch-withdraw', { access: { permission: 'workflow:instance:create' }, audit: { description: '批量撤回流程', module: '工作流管理' }, body: batchWithdrawWorkflowInstanceSchema, response: workflowInstanceBatchActionResponseSchema, summary: '批量撤回' }),
   batchUrge: op.post('/instances/batch-urge', { access: { permission: 'workflow:instance:list' }, audit: { description: '批量催办流程', module: '工作流管理' }, body: batchUrgeWorkflowInstanceSchema, response: workflowUrgeBatchResponseSchema, summary: '批量催办' }),
   ccRead: op.post('/instances/cc/{ccTaskId}/read', { access: { permission: 'workflow:instance:list' }, params: workflowCcTaskParam, summary: '标记抄送已读' }),
-  detail: op.get('/instances/{id}', { access: { permission: ['workflow:instance:list', 'workflow:task:handle', 'workflow:instance:monitor'] }, params: idParam, response: workflowInstanceSchema, summary: '实例详情' }),
+  detail: op.get('/instances/{id}', { access: { permission: ['workflow:instance:list', 'workflow:task:handle', 'workflow:instance:monitor', 'workflow:instance:create'] }, params: idParam, response: workflowInstanceSchema, summary: '实例详情' }),
   print: op.get('/instances/{id}/print', { access: { permission: ['workflow:instance:list', 'workflow:task:handle', 'workflow:instance:monitor', 'workflow:instance:print'] }, audit: { description: '打印审批单', module: '工作流', recordBody: false, recordResponseBody: false }, params: idParam, query: workflowInstancePrintQuery, kind: 'file', summary: '审批单 PDF（预览 / 打印 / 下载同一份文件；有归档件时默认返回归档件）' }),
   printVerify: op.get('/print-verify/{token}', { params: workflowPrintVerifyParam, kind: 'file', public: true, summary: '审批单验真页（公开 HTML，凭打印件二维码令牌）' }),
   comments: op.get('/instances/{id}/comments', { access: { permission: 'workflow:instance:list' }, params: idParam, response: z.array(workflowCommentSchema), summary: '流程评论列表' }),

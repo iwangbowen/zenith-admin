@@ -34,6 +34,7 @@ export function activateApprovalSession(token: AuthTokens): void {
 }
 
 export function clearApprovalSession(): void {
+  for (let i = localStorage.length - 1; i >= 0; i--) { const name = localStorage.key(i); if (name?.startsWith('approval-recovery:')) localStorage.removeItem(name); }
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(REFRESH_TOKEN_KEY);
   reset();

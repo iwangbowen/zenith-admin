@@ -8,6 +8,7 @@ import dayjs from 'dayjs';
 import type { WorkflowApproverPreviewNode, WorkflowInstancePriority } from '@zenith/shared/workflow';
 import { applyFieldPermissionsToFields, WORKFLOW_APPROVE_METHOD_LABELS as METHOD_LABEL } from '@zenith/shared/workflow';
 import WorkflowFormRenderer from '@/pages/workflow/designer/components/WorkflowFormRenderer';
+import BusinessFormHost, { type WorkflowBusinessFormApi } from '@/components/workflow/BusinessFormHost';
 import { SignatureClientProvider } from '@/components/signature/SignatureClientContext';
 import { approvalRequest } from '../lib/approval-request';
 import {
@@ -23,6 +24,7 @@ import ApproverPickerField from '../components/ApproverPicker';
 import { canLaunchOnMobile } from '../lib/launch';
 import MobileWorkflowGraph from '../components/MobileWorkflowGraph';
 import { recordRecentDefinition } from '../lib/recent';
+import { readApprovalRecovery, removeApprovalRecovery, saveApprovalRecovery } from '../lib/draft-recovery';
 import {
   useApprovalChainPreview, useApprovalDraftEditor, useApprovalMe, useApprovalUsers, useLaunchInstance,
   usePublishedDefinitions, useSubmitApprovalDraft, useUpdateApprovalDraft,
@@ -147,7 +149,8 @@ function ChainSection({
 }
 
 export default function LaunchFormPage() {
-  return <SignatureClientProvider client={approvalRequest}><LaunchFormContent /></SignatureClientProvider>;
+  const params = useParams();
+  return <SignatureClientProvider client={approvalRequest}><LaunchFormContent key={`${params.definitionId ?? 'draft'}-${params.instanceId ?? 'new'}`} /></SignatureClientProvider>;
 }
 
 function LaunchFormContent() {
@@ -162,8 +165,10 @@ function LaunchFormContent() {
   const draftMutation = useLaunchInstance();
   const updateDraftMutation = useUpdateApprovalDraft();
   const submitDraftMutation = useSubmitApprovalDraft();
-  const usersQuery = useApprovalUsers(true);
+  const [ccSearch, setCcSearch] = useState('');
+  const usersQuery = useApprovalUsers(true, ccSearch);
   const formApi = useRef<FormApi | null>(null);
+  const businessApi = useRef<WorkflowBusinessFormApi | null>(null);
 
   const isEditingDraft = draftInstanceId != null;
   const def = useMemo(
@@ -186,7 +191,16 @@ function LaunchFormContent() {
   const revision = useRef<number | undefined>(undefined);
   const dirty = useRef(false);
   const saving = useRef<Promise<unknown> | null>(null);
+  const manualSubmission = useRef(false);
   const [versionAccepted, setVersionAccepted] = useState(false);
+  const [recoveryValues, setRecoveryValues] = useState<Record<string, unknown> | undefined>();
+  const [recoveryLoaded, setRecoveryLoaded] = useState(false);
+  useEffect(() => {
+    if (!def || isEditingDraft || recoveryLoaded) return;
+    const recovery = readApprovalRecovery(def.id);
+    if (recovery && window.confirm('发现未提交的本地恢复稿，是否恢复？')) { setRecoveryValues(recovery.formData); setTitle(recovery.title); }
+    setRecoveryLoaded(true);
+  }, [def, isEditingDraft, recoveryLoaded]);
 
   useEffect(() => {
     const setOnlineState = () => setOnline(navigator.onLine);
@@ -216,20 +230,23 @@ function LaunchFormContent() {
   const canSubmit = def != null && canLaunchOnMobile(def);
 
   const scheduleDraftAutosave = useDebouncedCallback(() => {
+    if (manualSubmission.current) return;
     dirty.current = true;
+    if (!isEditingDraft && def) saveApprovalRecovery(def.id, def.formFields ?? [], formApi.current?.getValues() ?? {}, title ?? defaultTitle);
     if (!isEditingDraft || draftInstanceId == null || !draftQuery.data || !online
       || launchMutation.isPending || draftMutation.isPending || submitDraftMutation.isPending) return;
     if (editorQuery.data?.versionChanged && !versionAccepted) return;
     if (saving.current) return;
     const save = async () => {
-    while (dirty.current) {
-    dirty.current = false;
-    setAutosaveState('saving');
-    const saved = await persistDraft();
-    revision.current = saved.draftRevision;
-    setAutosaveState('saved');
-    } };
-    saving.current = save().catch(() => setAutosaveState('failed')).finally(() => { saving.current = null; });
+      while (dirty.current) {
+        dirty.current = false;
+        setAutosaveState('saving');
+        const saved = await persistDraft();
+        revision.current = saved.draftRevision;
+        setAutosaveState('saved');
+      }
+    };
+    saving.current = save().catch(() => { dirty.current = true; setAutosaveState('failed'); }).finally(() => { saving.current = null; });
   }, { wait: 1200 });
 
   // 审批链路预测：表单变更防抖 500ms 重新预测（条件分支可能随表单值变化）
@@ -239,7 +256,7 @@ function LaunchFormContent() {
   const previewQuery = useApprovalChainPreview(
     canSubmit ? def.id : null,
     chainReloadKey,
-    () => (formApi.current?.getValues() ?? {}) as Record<string, unknown>,
+    () => (businessApi.current?.getValues?.() ?? formApi.current?.getValues() ?? {}) as Record<string, unknown>,
   );
   const chainNodes = useMemo(() => previewQuery.data ?? [], [previewQuery.data]);
   const sameInitiatorAutoSkip = useMemo(() => {
@@ -258,7 +275,7 @@ function LaunchFormContent() {
 
   // 发起人自选审批人：nodeKey -> userIds
   const [selectedApprovers, setSelectedApprovers] = useState<SelectedInitiatorApprovers>({});
-  const persistDraft = useEventCallback(async () => updateDraftMutation.mutateAsync({ id: draftInstanceId!, body: { title: (title ?? draftQuery.data?.title ?? defaultTitle).trim() || defaultTitle, formData: formApi.current?.getValues() ?? {}, priority, expectedRevision: revision.current, expectedDefinitionVersion: def?.version, expectedFormRevision: editorQuery.data?.formRevision, draftIntent: { ccUserIds, selectedInitiatorApprovers: selectedApprovers } } }));
+  const persistDraft = useEventCallback(async () => updateDraftMutation.mutateAsync({ id: draftInstanceId!, body: { title: (title ?? draftQuery.data?.title ?? defaultTitle).trim() || defaultTitle, formData: businessApi.current?.getValues?.() ?? formApi.current?.getValues() ?? {}, priority, expectedRevision: revision.current, expectedDefinitionVersion: def?.version, expectedFormRevision: editorQuery.data?.formRevision, draftIntent: { ccUserIds, selectedInitiatorApprovers: selectedApprovers } } }));
   useEffect(() => { if (online && isEditingDraft && dirty.current) scheduleDraftAutosave(); }, [online, isEditingDraft, scheduleDraftAutosave]);
   useEffect(() => {
     const protect = (event: BeforeUnloadEvent) => { if (dirty.current || saving.current || (!isEditingDraft && formApi.current?.getValues() && Object.keys(formApi.current.getValues()).length)) { event.preventDefault(); event.returnValue = ''; } };
@@ -288,10 +305,12 @@ function LaunchFormContent() {
     if (!def || launchMutation.isPending || draftMutation.isPending || submitDraftMutation.isPending) return;
     try {
       if (editorQuery.data?.versionChanged && !versionAccepted) { Toast.warning('请先确认流程或表单版本变化'); return; }
+      manualSubmission.current = true;
       await saving.current;
+      dirty.current = false;
       const formData = (asDraft
-        ? formApi.current?.getValues() ?? {}
-        : await formApi.current?.validate() ?? {}) as Record<string, unknown>;
+        ? businessApi.current?.getValues?.() ?? formApi.current?.getValues() ?? {}
+        : businessApi.current ? await businessApi.current.validate() : await formApi.current?.validate() ?? {}) as Record<string, unknown>;
       const missing = asDraft ? null : firstMissingInitiatorApproverNode(selectedApprovers, selectNodes);
       if (missing) {
         setHighlightMissing(true);
@@ -305,6 +324,7 @@ function LaunchFormContent() {
           id: draftInstanceId,
           body: { title: effectiveTitle, formData, priority, expectedRevision: revision.current, expectedDefinitionVersion: def.version, expectedFormRevision: editorQuery.data?.formRevision, draftIntent: { ccUserIds, selectedInitiatorApprovers: selected } },
         });
+        revision.current = saved.draftRevision;
         if (!asDraft) {
           await submitDraftMutation.mutateAsync({ id: draftInstanceId, selectedInitiatorApprovers: selected, expectedRevision: saved.draftRevision, expectedDefinitionVersion: def.version, expectedFormRevision: editorQuery.data?.formRevision });
         }
@@ -323,15 +343,18 @@ function LaunchFormContent() {
         ...(asDraft ? { asDraft: true } : {}),
       });
       recordRecentDefinition(def.id);
+      removeApprovalRecovery(def.id);
+      dirty.current = false;
       Toast.success(asDraft ? '草稿已保存' : '提交成功');
       navigate(asDraft ? `/draft/${created.id}` : `/detail/${created.id}`, { replace: true });
-    } catch { /* 校验或请求失败（request 层已 Toast） */ }
+    } catch { dirty.current = true; /* 校验或请求失败（request 层已 Toast） */ } finally { manualSubmission.current = false; }
   };
 
   const renderBody = () => {
     if (defsQuery.isLoading || (isEditingDraft && draftQuery.isLoading)) return <Skeleton placeholder={<Skeleton.Paragraph rows={5} />} loading active />;
     if (isEditingDraft && !draftQuery.data) return <Empty description="草稿不存在或无权编辑" style={{ paddingTop: 60 }} />;
     if (!def) return <Empty description="流程不存在或未发布" style={{ paddingTop: 60 }} />;
+    if (!isEditingDraft && !recoveryLoaded) return <Spin />;
     if (!canLaunchOnMobile(def)) {
       return <Banner type="warning" closeIcon={null} description="该流程使用业务自定义表单，请到桌面端发起。" />;
     }
@@ -359,6 +382,8 @@ function LaunchFormContent() {
                 maxTagCount={2}
                 showRestTagsPopover
                 filter
+                remote
+                onSearch={setCcSearch}
                 showClear
                 value={ccUserIds}
                 loading={usersQuery.isLoading}
@@ -371,7 +396,7 @@ function LaunchFormContent() {
           )}
         </div>
         <div className="ap-section-title">表单信息</div>
-        {launchFields.length === 0
+        {def.formType === 'custom' ? <BusinessFormHost customForm={def.customForm} mode="create" container="tab" requestClient={approvalRequest} definitionId={def.id} value={draftQuery.data?.formData ?? {}} getFormApi={api => { businessApi.current = api; }} onValuesChange={() => { scheduleChainReload(); scheduleDraftAutosave(); }} /> : launchFields.length === 0
           ? <Typography.Text type="tertiary">该流程无需填写表单，直接提交即可</Typography.Text>
           : (
             <WorkflowFormRenderer
@@ -379,9 +404,9 @@ function LaunchFormContent() {
               fields={launchFields}
               filePreviewPresentation="fullscreen"
               fileCapture="environment"
-              initValues={(draftQuery.data?.formData ?? undefined) as Record<string, unknown> | undefined}
+              initValues={(draftQuery.data?.formData ?? recoveryValues) as Record<string, unknown> | undefined}
               getFormApi={(api) => { formApi.current = api; }}
-              onValueChange={() => { scheduleChainReload(); scheduleDraftAutosave(); }}
+              onValueChange={() => { dirty.current = true; scheduleChainReload(); scheduleDraftAutosave(); }}
             />
           )}
         <div className="ap-section-title">审批流程</div>
@@ -409,7 +434,7 @@ function LaunchFormContent() {
   return (
     <div className="ap-page">
       <div className="ap-header">
-        <Button theme="borderless" icon={<ChevronLeft size={18} />} onClick={() => navigate(-1)} aria-label="返回" />
+        <Button theme="borderless" icon={<ChevronLeft size={18} />} onClick={() => { if (dirty.current && !window.confirm('尚有未保存内容，确定离开？')) return; navigate(-1); }} aria-label="返回" />
         <span className="ap-header__title">{def?.name ?? '发起申请'}</span>
         {def && canSubmit ? (
           <MobileWorkflowGraph flowData={def.flowData} formFields={def.formFields ?? undefined} />

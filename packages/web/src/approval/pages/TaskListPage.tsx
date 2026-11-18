@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Banner, Button, Checkbox, Modal, Select, SideSheet, Spin, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
 import { Bell, Check, CheckCheck, CircleCheckBig, ClipboardCheck, FilePlus2, ListChecks, LogOut, Plus, Send, UserRoundCog, type LucideIcon } from 'lucide-react';
@@ -175,11 +175,10 @@ function TaskListContent() {
   const canHandle = can('workflow:task:handle');
   const canList = can('workflow:instance:list');
   const canCreate = can('workflow:instance:create');
-  useEffect(() => { if (!canHandle && !canList && canCreate) navigate('/launch', { replace: true }); }, [canHandle, canList, canCreate, navigate]);
   const [tab, setTab] = useState<ApprovalTab>(() => { const value = searchParams.get('tab'); return value && ['pending', 'handled', 'mine', 'cc'].includes(value) ? value as ApprovalTab : canHandle ? 'pending' : 'mine'; });
   const [size, setSize] = useState(10);
-  const [keywordDraft, setKeywordDraft] = useState('');
-  const [keyword, setKeyword] = useState('');
+  const [keywordDraft, setKeywordDraft] = useState(() => searchParams.get('keyword') ?? '');
+  const [keyword, setKeyword] = useState(() => searchParams.get('keyword') ?? '');
   const tabAllowed = tab === 'pending' || tab === 'handled' ? canHandle : canList;
   const countsQuery = useApprovalCounts();
   const markCcRead = useMarkCcRead();
@@ -195,10 +194,11 @@ function TaskListContent() {
   const [batchSignature, setBatchSignature] = useState<SignatureInput | null>(null);
   const [batchResult, setBatchResult] = useState<{ result: WorkflowBatchActionResponse; titles: Record<number, string>; instances: Record<number, number> } | null>(null);
   const [ccReadingAll, setCcReadingAll] = useState(false);
-  const [filters, setFilters] = useState<ApprovalFilters>(EMPTY_FILTERS);
+  const [filters, setFilters] = useState<ApprovalFilters>(() => ({ definitionId: Number(searchParams.get('definitionId')) || null, priority: searchParams.get('priority') as ApprovalFilters['priority'], overdue: searchParams.get('overdue') === 'true' }));
   const [instanceStatus, setInstanceStatus] = useState<ApplicationStatus | undefined>(() => (searchParams.get('status') || undefined) as ApplicationStatus | undefined);
+  useEffect(() => { if (!canHandle && !canList && canCreate && instanceStatus !== 'draft') navigate('/launch', { replace: true }); }, [canHandle, canList, canCreate, instanceStatus, navigate]);
   const listQuery = useApprovalList(tab, size, keyword, tabAllowed || (tab === 'mine' && instanceStatus === 'draft' && canCreate), { ...filters, status: instanceStatus });
-  const definitionsQuery = useApprovalDefinitionOptions(canHandle);
+  const definitionsQuery = useApprovalDefinitionOptions(canHandle, canCreate);
   const [filtersVisible, setFiltersVisible] = useState(false);
   const [notificationsVisible, setNotificationsVisible] = useState(false);
   const [delegationsVisible, setDelegationsVisible] = useState(false);
@@ -239,6 +239,28 @@ function TaskListContent() {
     await Promise.all([listQuery.refetch(), countsQuery.refetch()]);
   }, [listQuery, countsQuery]);
   const { scrollRef, pull, refreshing } = usePullRefresh(refetch);
+  const restoredScroll = useRef(false);
+  useEffect(() => {
+    restoredScroll.current = false;
+  }, [tab, keyword, instanceStatus, filters]);
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+    const storageKey = `approval-scroll:${me.data?.id}:${tab}:${keyword}:${instanceStatus ?? ''}:${JSON.stringify(filters)}`;
+    if (!restoredScroll.current && list.length) { element.scrollTop = Number(sessionStorage.getItem(storageKey)) || 0; restoredScroll.current = true; }
+    const save = () => sessionStorage.setItem(storageKey, String(element.scrollTop));
+    element.addEventListener('scroll', save, { passive: true });
+    return () => element.removeEventListener('scroll', save);
+  }, [scrollRef, me.data?.id, tab, keyword, instanceStatus, filters, list.length]);
+  useEffect(() => {
+    const params = new URLSearchParams({ tab });
+    if (keyword) params.set('keyword', keyword);
+    if (instanceStatus) params.set('status', instanceStatus);
+    if (filters.definitionId) params.set('definitionId', String(filters.definitionId));
+    if (filters.priority) params.set('priority', filters.priority);
+    if (filters.overdue) params.set('overdue', 'true');
+    setSearchParams(params, { replace: true });
+  }, [tab, keyword, instanceStatus, filters, setSearchParams]);
   const sentinelRef = useInfiniteSentinel(hasMore, listQuery.isFetching, () => { void listQuery.fetchNextPage(); });
 
   const switchTab = (k: ApprovalTab) => {

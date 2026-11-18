@@ -41,12 +41,12 @@ export function useGovernanceRequestWorkflow(id: number | null) {
   return useApiQuery(accessGovernanceContract.requestWorkflow, { params: { id: id ?? 0 } }, { enabled: id !== null });
 }
 
-export function useAccessWorkflowOptions(enabled = true) {
-  return useApiQuery(accessGovernanceContract.workflowOptions, undefined, { enabled, staleTime: 0, refetchOnMount: 'always' });
+export function useAccessWorkflowOptions(enabled = true, client?: ApiClient) {
+  return useApiQuery(accessGovernanceContract.workflowOptions, undefined, { enabled, staleTime: 0, refetchOnMount: 'always', requestOptions: { client } });
 }
 
-export function useAccessWorkflowPreview(body: BodyOf<typeof accessGovernanceContract.workflowPreview>, enabled: boolean) {
-  return useApiQuery(accessGovernanceContract.workflowPreview, { body }, { enabled, staleTime: 0 });
+export function useAccessWorkflowPreview(body: BodyOf<typeof accessGovernanceContract.workflowPreview>, enabled: boolean, client?: ApiClient) {
+  return useApiQuery(accessGovernanceContract.workflowPreview, { body }, { enabled, staleTime: 0, requestOptions: { client } });
 }
 
 export function useAccessRequestList(query: AccessRequestListQuery, enabled = true) {

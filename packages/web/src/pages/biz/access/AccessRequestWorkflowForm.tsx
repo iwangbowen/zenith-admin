@@ -75,7 +75,7 @@ function ReadonlyAccessRequest({ value }: Readonly<{ value: Record<string, unkno
 }
 
 export default function AccessRequestWorkflowForm({ mode, value, instanceId, bizId, requestClient, getFormApi, onValuesChange }: Readonly<WorkflowBusinessFormProps>) {
-  const optionsQuery = useAccessWorkflowOptions(mode === 'create');
+  const optionsQuery = useAccessWorkflowOptions(mode === 'create', requestClient);
   const formApi = useRef<FormApi | null>(null);
   const [defaults] = useState(() => initialValues(value));
   const [values, setValues] = useState(defaults);
@@ -96,7 +96,7 @@ export default function AccessRequestWorkflowForm({ mode, value, instanceId, biz
   const startTimestamp = values.startMode === 'scheduled' ? pickerTime(values.startsAt) : undefined;
   const previewInput = useMemo(() => ({ ...serialize(values, optionsQuery.data?.roles ?? []), reason: '' }), [values, optionsQuery.data]);
   const [debouncedPreviewInput] = useDebouncedValue(previewInput, { wait: 350 });
-  const previewQuery = useAccessWorkflowPreview(debouncedPreviewInput, mode === 'create' && optionsQuery.isSuccess);
+  const previewQuery = useAccessWorkflowPreview(debouncedPreviewInput, mode === 'create' && optionsQuery.isSuccess, requestClient);
   const previewPending = previewQuery.isFetching || stableStringify(previewInput) !== stableStringify(debouncedPreviewInput);
   const preview = previewPending ? undefined : previewQuery.data;
   const latestPreview = useRef({ preview, previewInput, roles, maxMinutes });

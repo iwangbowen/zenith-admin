@@ -362,6 +362,7 @@
   flex-shrink: 0;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 4px;
   padding: 8px 12px;
   background: var(--semi-color-bg-1);
@@ -549,12 +550,18 @@
 
 .ap-sheet__body {
   padding-bottom: calc(8px + env(safe-area-inset-bottom));
+  max-height: 76dvh;
+  overflow-y: auto;
 }
 
 .ap-sheet__actions {
   display: flex;
   gap: 10px;
   margin-top: 16px;
+  position: sticky;
+  bottom: 0;
+  padding: 8px 0;
+  background: var(--semi-color-bg-1);
 }
 
 .ap-notifications {

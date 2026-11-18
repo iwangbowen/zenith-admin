@@ -4,7 +4,8 @@ import type { DbExecutor } from '../../../db/types';
 import { users } from '../../../db/schema';
 import { currentUser } from '../../../lib/context';
 import { tenantCondition } from '../../../lib/tenant';
-import { buildWhere } from '../../../lib/where-helpers';
+import { buildWhere, keywordCondition } from '../../../lib/where-helpers';
+import { pageOffset } from '../../../lib/pagination';
 
 /** IDs must already belong to visible workflow records; batch projection exposes no management fields. */
 export async function loadUserDisplays(ids: readonly number[], executor: DbExecutor = db) {
@@ -22,4 +23,10 @@ export async function listSelectableUsers() {
     with: { department: { columns: { name: true } } },
     where: buildWhere(eq(users.status, 'enabled'), tenantCondition(users, currentUser())), orderBy: users.id });
   return rows.map(row => ({ id: row.id, username: row.username, nickname: row.nickname, avatar: row.avatar ?? null, departmentName: row.department?.name ?? null }));
+}
+
+export async function searchSelectableUsers(query: { keyword?: string; page: number; pageSize: number }) {
+  const where = buildWhere(eq(users.status, 'enabled'), tenantCondition(users, currentUser()), keywordCondition(query.keyword, [users.nickname, users.username], 'ilike'));
+  const [rows, total] = await Promise.all([db.query.users.findMany({ columns: { id: true, username: true, nickname: true, avatar: true }, with: { department: { columns: { name: true } } }, where, orderBy: users.id, limit: query.pageSize, offset: pageOffset(query.page, query.pageSize) }), db.$count(users, where)]);
+  return { list: rows.map(row => ({ id: row.id, username: row.username, nickname: row.nickname, avatar: row.avatar ?? null, departmentName: row.department?.name ?? null })), total, page: query.page, pageSize: query.pageSize };
 }

@@ -7,7 +7,7 @@ import {
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { BellRing, ChevronLeft, MoreHorizontal, Reply, RotateCcw, Send, Share2, X } from 'lucide-react';
 import type { WorkflowActionButtonConfig, WorkflowActionButtonKey, WorkflowFieldPermission, WorkflowTask } from '@zenith/shared/workflow';
-import { applyFieldPermissionsToFields, hasEditableFieldPermission, isWorkflowBaseApprovalTask, resolveWorkflowActionButton, WORKFLOW_RETURN_TO_INITIATOR_KEY, workflowAttachmentContract } from '@zenith/shared/workflow';
+import { applyFieldPermissionsToFields, hasEditableFieldPermission, isWorkflowBaseApprovalTask, resolveWorkflowActionButton, WORKFLOW_RETURN_TO_INITIATOR_KEY, workflowAttachmentContract, WORKFLOW_SIGN_GROUP_STATUS_LABELS, WORKFLOW_APPROVAL_SLOT_STATUS_LABELS } from '@zenith/shared/workflow';
 import { formatDateTime } from '@/utils/date';
 import { downloadBlob } from '@/utils/download';
 import { urlOf } from '@/lib/contract-query';
@@ -121,6 +121,7 @@ function TaskDetailContent() {
   const [returnTargets, setReturnTargets] = useState<string[]>([]);
   const detail = detailQuery.data ?? null;
   const me = meQuery.data ?? null;
+  const mayHandle = me?.permissions?.some(p => p === '*' || p === 'workflow:task:handle') ?? false;
   const myPendingTasks = (detail?.tasks ?? []).filter(t => t.status === 'pending' && t.assigneeId === me?.id && detail?.status === 'running');
   const taskId = requestedTaskId ?? (myPendingTasks.length === 1 ? myPendingTasks[0].id : null);
 
@@ -164,6 +165,10 @@ function TaskDetailContent() {
     setTransferTarget([]);
     setDelegateTarget([]);
     setAddSignTargets([]);
+    setActionAttachments([]);
+    setCollaborationAction(null);
+    setCollaborationUsers([]);
+    setReplyDrafts({});
   }, [instanceId, taskId]);
 
   const phrasesQuery = useApprovalQuickPhrases(action === 'approve' || action === 'reject');
@@ -178,7 +183,7 @@ function TaskDetailContent() {
     () => (taskId != null ? detail?.tasks?.find((t) => t.id === taskId) ?? null : null),
     [detail, taskId],
   );
-  const actionable = currentTask?.status === 'pending' && me != null && currentTask.assigneeId === me.id
+  const actionable = mayHandle && currentTask?.status === 'pending' && me != null && currentTask.assigneeId === me.id
     && detail?.status === 'running';
   const isInitiator = me != null && detail?.initiatorId === me.id;
   const initiatorActionable = !actionable && isInitiator && detail?.status === 'running';
@@ -192,11 +197,12 @@ function TaskDetailContent() {
   const searchedCandidates = (nodeKey: string) => (nextSearch?.nodeKey === nodeKey
     ? nextSearchQuery.data?.find((g) => g.nodeKey === nodeKey)?.selectableApprovers ?? []
     : null);
-  const usersQuery = useApprovalUsers(action === 'transfer' || action === 'delegate' || action === 'addSign' || collaborationAction != null || currentTask?.delegatedFromId != null);
+  const [userSearch, setUserSearch] = useState('');
+  const usersQuery = useApprovalUsers(action === 'transfer' || action === 'delegate' || action === 'addSign' || collaborationAction != null || currentTask?.delegatedFromId != null, userSearch);
   const transferCandidates = useMemo(
     () => (usersQuery.data ?? [])
       .filter((u) => u.id !== me?.id)
-      .map((u) => ({ id: u.id, name: u.nickname || u.username })),
+      .map((u) => ({ id: u.id, name: u.nickname || u.username, departmentName: u.departmentName })),
     [usersQuery.data, me],
   );
   const delegatedFromName = useMemo(() => {
@@ -232,7 +238,7 @@ function TaskDetailContent() {
   const btnReturn = resolveBtn(currentTask?.actionButtons ?? null, 'return');
   const signaturePolicy = currentTask?.signaturePolicy ?? 'none';
   const needSignature = signaturePolicy !== 'none';
-  const approveLabel = needSignature ? `签名并${btnApprove.displayName ?? '同意'}` : btnApprove.displayName ?? '同意';
+  const approveLabel = currentTask?.taskKind === 'suggestion' ? '提交同意建议' : needSignature ? `签名并${btnApprove.displayName ?? '同意'}` : btnApprove.displayName ?? '同意';
   const opinionRequired = nodeCfg?.operations?.includes('opinionRequired') ?? false;
   const currentSlot = detail?.approvalActivations?.flatMap(a => a.slots).find(s => s.id === currentTask?.slotId);
   const canAddSign = !!currentTask && isWorkflowBaseApprovalTask(currentTask, currentSlot, currentTask.id);
@@ -249,6 +255,7 @@ function TaskDetailContent() {
 
   const status = detail ? STATUS_MAP[detail.status] : null;
   const comments = detail?.comments ?? [];
+  const [continuous, setContinuous] = useState(() => sessionStorage.getItem('approval-continuous') !== 'off');
   const recallableTask = [...(detail?.tasks ?? [])].reverse().find(t => t.assigneeId === me?.id && ['approved', 'rejected'].includes(t.status));
   const mentionOptions = useMemo(() => {
     if (!detail) return [] as Array<{ value: number; label: string }>;
@@ -353,6 +360,7 @@ function TaskDetailContent() {
       businessActionFormApi.current?.onActionSuccess?.();
       setAction(null);
       if (action === 'addSign') { Toast.success('加签已创建，请继续完成本人的审批意见'); return; }
+      if (!continuous) { Toast.success('操作已完成'); navigate('/', { replace: true }); return; }
       // 连续审批（对标钉钉）：处理完自动进入下一条待办，清零后回列表
       const doneLabel = action === 'approve' ? (currentTask?.taskKind === 'suggestion' ? '已提交同意建议，等待原审批人确认' : '已同意')
         : action === 'reject' ? '已驳回'
@@ -523,7 +531,7 @@ function TaskDetailContent() {
       )}
     >
       <div className={`ap-body${hasFooter ? ' ap-body--with-footer' : ''}`}>
-        <div className="ap-section">{me?.permissions?.some(p => p === '*' || p === 'workflow:instance:list') && <Button onClick={() => { setCollaborationAction('forward'); setCollaborationUsers([]); }}>抄送他人</Button>}{actionable && <Button onClick={() => { setCollaborationAction('consult'); setCollaborationUsers([]); }}>邀请协办</Button>}{recallableTask && detail.status === 'running' && <Popconfirm title="撤回我的处理？后续已处理时将无法撤回。" onConfirm={() => void collaboration.mutateAsync({ action: 'recall', taskId: recallableTask.id })}><Button>撤回我的处理</Button></Popconfirm>}</div>
+        <div className="ap-section">{detail.status !== 'draft' && me?.permissions?.some(p => p === '*' || p === 'workflow:instance:list') && <Button onClick={() => { setCollaborationAction('forward'); setCollaborationUsers([]); }}>抄送他人</Button>}{actionable && <Button onClick={() => { setCollaborationAction('consult'); setCollaborationUsers([]); }}>邀请协办</Button>}{recallableTask && detail.status === 'running' && <Popconfirm title="撤回我的处理？后续已处理时将无法撤回。" onConfirm={() => void collaboration.mutateAsync({ action: 'recall', taskId: recallableTask.id })}><Button>撤回我的处理</Button></Popconfirm>}</div>
         {requestedTaskId == null && myPendingTasks.length > 1 && <div className="ap-section"><Typography.Text>请选择本次处理的任务</Typography.Text>{myPendingTasks.map(t => <Button key={t.id} block onClick={() => navigate(`/detail/${instanceId}/${t.id}`, { replace: true })}>{t.nodeName}{t.signPosition ? ' · 加签意见' : ''}</Button>)}</div>}
         {requestedTaskId != null && !actionable && <Banner type="info" closeIcon={null} description="此任务已处理或不再由你处理。可返回待办列表查看当前任务。" />}
         {detail.status === 'suspended' && (
@@ -584,7 +592,7 @@ function TaskDetailContent() {
             finishedAt={detail.updatedAt}
             currentUserId={me?.id ?? null}
           />
-          {(detail.approvalActivations ?? []).map(activation => <div key={activation.id} className="ap-section"><Typography.Text strong>{activation.nodeName}：基础意见 {activation.baseApproved}/{activation.baseTotal}，需 {activation.baseRequired} 票</Typography.Text>{activation.signGroups.map(group => <div key={group.id}><Tag>{group.position === 'before' ? '前加签' : group.position === 'after' ? '后加签' : '并加签'} · {group.signMode === 'and' ? '会签' : '或签'} · {group.status}</Tag>{group.slots.map(slot => <div key={slot.id}>{slot.assigneeName} · {slot.status}{group.canReduce && slot.status === 'pending' && <Popconfirm title="移除此未办加签席位？" onConfirm={() => void collaboration.mutateAsync({ action: 'reduce', groupId: group.id, slotIds: [slot.id] })}><Button size="small" type="danger">减签</Button></Popconfirm>}</div>)}</div>)}</div>)}
+          {(detail.approvalActivations ?? []).map(activation => <div key={activation.id} className="ap-section"><Typography.Text strong>{activation.nodeName}：基础意见 {activation.baseApproved}/{activation.baseTotal}，需 {activation.baseRequired} 票</Typography.Text>{activation.signGroups.map(group => <div key={group.id}><Tag>{group.position === 'before' ? '前加签' : group.position === 'after' ? '后加签' : '并加签'} · {group.signMode === 'and' ? '会签' : '或签'} · {WORKFLOW_SIGN_GROUP_STATUS_LABELS[group.status]}</Tag>{group.slots.map(slot => <div key={slot.id}>{slot.assigneeName} · {WORKFLOW_APPROVAL_SLOT_STATUS_LABELS[slot.status]}{group.canReduce && slot.status === 'pending' && <Popconfirm title="移除此未办加签席位？" onConfirm={() => void collaboration.mutateAsync({ action: 'reduce', groupId: group.id, slotIds: [slot.id] })}><Button size="small" type="danger">减签</Button></Popconfirm>}</div>)}</div>)}</div>)}
           {(detail.consults ?? []).filter(c => c.consulteeId === me?.id && c.status === 'pending').map(c => <div key={c.id} className="ap-section"><Typography.Text>协办：{c.question}</Typography.Text><TextArea value={replyDrafts[c.id] ?? ''} onChange={v => setReplyDrafts(p => ({ ...p, [c.id]: v }))} placeholder="填写协办意见" /><Button disabled={!replyDrafts[c.id]?.trim()} onClick={() => void collaboration.mutateAsync({ action: 'reply', id: c.id, opinion: replyDrafts[c.id] })}>提交协办意见</Button></div>)}
         </div>
 
@@ -696,6 +704,7 @@ function TaskDetailContent() {
       {/* 底部操作条：审批人 */}
       {actionable && (
         <div className="ap-footer-bar">
+          <Button theme="borderless" size="small" onClick={() => setContinuous(value => { sessionStorage.setItem('approval-continuous', value ? 'off' : 'on'); return !value; })}>{continuous ? '连续开' : '连续关'}</Button>
           {btnTransfer.enabled && (
             <Button theme="light" disabled={!online} onClick={() => openAction('transfer')}>{btnTransfer.displayName ?? '转办'}</Button>
           )}
@@ -745,7 +754,7 @@ function TaskDetailContent() {
       {/* 审批操作底部抽屉 */}
       <SideSheet
         placement="bottom"
-        height="auto"
+        height={needSignature || businessForm?.actionComponent || actionConfig.uploadMode !== 'hidden' ? '92dvh' : 'auto'}
         title={sheetTitle}
         visible={action != null}
         onCancel={() => setAction(null)}
@@ -768,6 +777,8 @@ function TaskDetailContent() {
               <ApproverPickerField
                 title={action === 'transfer' ? '转办给' : action === 'delegate' ? '委派给' : '加签人'}
                 candidates={transferCandidates}
+                truncated={usersQuery.truncated}
+                onSearch={setUserSearch}
                 value={action === 'transfer' ? transferTarget : action === 'delegate' ? delegateTarget : addSignTargets}
                 onChange={action === 'transfer' ? setTransferTarget : action === 'delegate' ? setDelegateTarget : setAddSignTargets}
                 multiple={action === 'addSign'}

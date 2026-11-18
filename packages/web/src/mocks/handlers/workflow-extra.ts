@@ -418,6 +418,22 @@ function configuredApproverPreview(definition: WorkflowDefinition, initiatorId: 
 }
 
 export const workflowExtraHandlers = [
+  mock(workflowInstanceContract.searchUsers, ({ query, ok, paginate }) => ok(paginate(mockUsers.filter(u => u.status === 'enabled' && (!query.keyword || `${u.nickname} ${u.username}`.includes(query.keyword))).map(u => ({ id: u.id, username: u.username, nickname: u.nickname, avatar: u.avatar ?? null, departmentName: null }))))),
+  mock(workflowInstanceContract.ownDrafts, ({ request, ok, paginate }) => ok(paginate(mockWorkflowInstances.filter(i => i.status === 'draft' && i.initiatorId === (currentMockSession(request)?.user.id ?? 1))))),
+  mock(workflowInstanceContract.draftEditor, ({ request, params, ok }) => {
+    const instance = requireItem(mockWorkflowInstances, params.id, '流程实例不存在');
+    if (instance.initiatorId !== (currentMockSession(request)?.user.id ?? 1)) return forbidden('只能操作本人草稿');
+    if (!['draft', 'returned'].includes(instance.status)) return badRequest('申请已提交');
+    const definition = requireItem(mockWorkflowDefinitions, instance.definitionId, '流程定义不存在');
+    const form = mockWorkflowForms.find(f => f.id === definition.formId);
+    return ok({ instance, definition: { ...definition, formFields: form?.schema?.fields ?? definition.formFields }, formRevision: form?.revision ?? null, versionChanged: instance.definitionSnapshot?.version !== definition.version });
+  }),
+  mock(workflowInstanceContract.removeDraft, ({ request, params, ok }) => {
+    const instance = requireItem(mockWorkflowInstances, params.id, '草稿不存在');
+    if (instance.initiatorId !== (currentMockSession(request)?.user.id ?? 1)) return forbidden('只能删除本人草稿');
+    if (instance.status !== 'draft') return badRequest('只能删除未提交草稿');
+    removeByIds(mockWorkflowInstances, [params.id]); return ok(null);
+  }),
   // ── 数据分析（必须在 /instances/:id 之前注册）──
   mock(workflowInstanceContract.analytics, ({ ok }) => ok(buildAnalytics())),
 
@@ -841,6 +857,10 @@ export const workflowExtraHandlers = [
   mock(workflowInstanceContract.updateDraft, async ({ params, body, ok, request }) => {
     const inst = requireItem(mockWorkflowInstances, params.id, '流程实例不存在');
     if (inst.status !== 'draft' && inst.status !== 'returned') return badRequest('仅草稿或已退回的申请可编辑');
+    if (inst.initiatorId !== (currentMockSession(request)?.user.id ?? 1)) return forbidden('只能编辑本人草稿');
+    if (body.expectedRevision !== undefined && body.expectedRevision !== (inst.draftRevision ?? 0)) return badRequest('草稿版本已变化');
+    inst.draftRevision = (inst.draftRevision ?? 0) + 1;
+    if (body.draftIntent) inst.draftIntent = { ...body.draftIntent, ccUserIds: body.draftIntent.ccUserIds ?? [] };
     const formData = body.formData === undefined ? undefined : await resolveMockWorkflowFormSignatures(request, inst.formSnapshot?.fields ?? [], body.formData ?? {}, inst.formData ?? {});
     if (body.title !== undefined) inst.title = body.title;
     if (formData !== undefined) inst.formData = await bindMockWorkflowFormAttachments(request, inst.id, inst.formSnapshot?.fields ?? [], stripWorkflowSerialNumberValues(inst.formSnapshot?.fields ?? [], formData));

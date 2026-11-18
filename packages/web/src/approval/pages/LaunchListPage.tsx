@@ -73,6 +73,7 @@ export default function LaunchListPage() {
       <div className="ap-header">
         <Button theme="borderless" icon={<ChevronLeft size={18} />} onClick={() => navigate(-1)} aria-label="返回" />
         <span className="ap-header__title">发起申请</span>
+        <Button theme="borderless" onClick={() => navigate('/?tab=mine&status=draft')}>草稿箱</Button>
       </div>
       <div className="ap-search">
         <KeywordInput placeholder="搜索流程名称" value={keyword} onChange={setKeyword} />

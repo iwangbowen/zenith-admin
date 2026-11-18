@@ -240,10 +240,12 @@ export class HttpClient {
   async fetchRaw(url: string, options: RequestInit & Pick<HttpRequestOptions, 'silent'> = {}): Promise<Response | null> {
     const scope = this.sessionScope?.();
     const { silent, ...fetchOptions } = options;
-    const doFetch = async () => { const response = await fetch(`${this.baseUrl}${url}`, {
-      ...fetchOptions,
-      headers: this.getHeaders(fetchOptions.body, fetchOptions.headers),
-    }); if (scope !== this.sessionScope?.()) throw new DOMException('Session changed', 'AbortError'); return response; };
+    const doFetch = async () => {
+      if (scope !== this.sessionScope?.()) throw new DOMException('Session changed', 'AbortError');
+      const response = await fetch(`${this.baseUrl}${url}`, { ...fetchOptions, headers: this.getHeaders(fetchOptions.body, fetchOptions.headers) });
+      if (scope !== this.sessionScope?.()) throw new DOMException('Session changed', 'AbortError');
+      return response;
+    };
 
     let res: Response;
     try {
@@ -282,10 +284,12 @@ export class HttpClient {
   async request<T>(url: string, options: RequestInit & HttpRequestOptions = {}): Promise<ApiResponseWithMeta<T>> {
     const scope = this.sessionScope?.();
     const { silent, skipAuth, ...fetchOptions } = options;
-    const doFetch = async () => { const response = await fetch(`${this.baseUrl}${url}`, {
-      ...fetchOptions,
-      headers: this.getHeaders(fetchOptions.body, fetchOptions.headers),
-    }); if (scope !== this.sessionScope?.()) throw new DOMException('Session changed', 'AbortError'); return response; };
+    const doFetch = async () => {
+      if (scope !== this.sessionScope?.()) throw new DOMException('Session changed', 'AbortError');
+      const response = await fetch(`${this.baseUrl}${url}`, { ...fetchOptions, headers: this.getHeaders(fetchOptions.body, fetchOptions.headers) });
+      if (scope !== this.sessionScope?.()) throw new DOMException('Session changed', 'AbortError');
+      return response;
+    };
 
     let res: Response;
     try {

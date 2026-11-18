@@ -593,6 +593,7 @@ async function loadInstanceDetail(id: number, business?: { bizType: string; bizI
   const sanitizedRow = isMonitor ? row : { ...row, formData: sanitizeDetailFormDataForViewer({ ...row,
     additionalViewerNodeKeys: createdGroupNodes.map((node) => node.nodeKey),
   }, user.userId) };
+  const draftIntent = row.initiatorId === user.userId ? row.draftIntent : null;
   // Tokens are the execution frontier; task rows may describe earlier rounds or non-blocking CC.
   let predictedPath: ReturnType<typeof predictRemainingPath> | null = null;
   if ((row.status === 'running' || row.status === 'suspended') && snapshot?.flowData) {
@@ -616,7 +617,7 @@ async function loadInstanceDetail(id: number, business?: { bizType: string; bizI
     }
   }
   return {
-    ...mapInstance(sanitizedRow, {
+    ...mapInstance({ ...sanitizedRow, draftIntent }, {
       definitionName: row.definition?.name ?? null,
       initiatorName: row.initiator?.nickname ?? null,
       initiatorAvatar: row.initiator?.avatar ?? null,

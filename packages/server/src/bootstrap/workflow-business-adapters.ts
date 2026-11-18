@@ -6,10 +6,10 @@ export const WORKFLOW_BUSINESS_ADAPTERS: readonly WorkflowBusinessAdapter[] = [a
 
 import { registerWorkflowBusinessAdapter, sealWorkflowBusinessAdapters } from '../lib/workflow-business';
 import { registerWorkflowIdentity } from '../lib/workflow-identity';
-import { loadUserDisplays, listSelectableUsers } from '../services/identity/public/directory';
+import { loadUserDisplays, listSelectableUsers, searchSelectableUsers } from '../services/identity/public/directory';
 import { resolveSignature } from '../services/identity/public/signatures';
 export function registerWorkflowIntegrations(): void {
   for (const adapter of WORKFLOW_BUSINESS_ADAPTERS) registerWorkflowBusinessAdapter(adapter);
   sealWorkflowBusinessAdapters();
-  registerWorkflowIdentity({ loadUserDisplays, listSelectableUsers, resolveSignature });
+  registerWorkflowIdentity({ loadUserDisplays, listSelectableUsers, searchSelectableUsers, resolveSignature });
 }

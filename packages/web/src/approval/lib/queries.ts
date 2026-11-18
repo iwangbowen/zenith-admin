@@ -39,7 +39,7 @@ export const approvalKeys = {
   delegations: contractKey(workflowDelegationContract.list),
 };
 
-/** 累积加载：固定 page=1、递增 pageSize（移动端"加载更多"语义，缓存 key 稳定） */
+/** Stable page-sized requests; all visible filters apply before pagination. */
 export type ApprovalListFilters = { definitionId?: number | null; priority?: 'low' | 'normal' | 'high' | 'urgent' | null; overdue?: boolean; status?: 'draft' | 'returned' | 'running' | 'approved' | 'rejected' | 'withdrawn' };
 function fetchApprovalList(tab: ApprovalTab, page: number, keyword: string, filters: ApprovalListFilters): Promise<{ list: ApprovalListItem[]; total: number }> {
   const query = { page, pageSize: 20, ...(keyword ? { keyword } : {}), definitionId: filters.definitionId ?? undefined, priority: filters.priority ?? undefined };
@@ -67,11 +67,11 @@ export function useApprovalList(tab: ApprovalTab, _size: number, keyword = '', e
   });
   const rows = result.data?.pages.flatMap(p => p.list) ?? [];
   const list = [...new Map(rows.map(i => [i.pendingTaskId ?? i.handledTask?.id ?? i.ccTaskId ?? i.id, i])).values()];
-  return { ...result, data: result.data ? { list, total: result.data.pages[0]?.total ?? 0 } : undefined };
+  return { data: result.data ? { list, total: result.data.pages[0]?.total ?? 0 } : undefined, error: result.error, isError: result.isError, isFetching: result.isFetching, isLoading: result.isLoading, refetch: result.refetch, hasNextPage: result.hasNextPage, fetchNextPage: result.fetchNextPage };
 }
 
-export function useApprovalDefinitionOptions(pending: boolean) {
-  return useQuery({ queryKey: ['approval', 'filter-definitions', pending], queryFn: () => pending ? api(workflowInstanceContract.pendingDefinitionOptions, client) : api(workflowDefinitionContract.published, client) });
+export function useApprovalDefinitionOptions(pending: boolean, canCreate = true) {
+  return useQuery({ queryKey: ['approval', 'filter-definitions', pending], queryFn: () => pending ? api(workflowInstanceContract.pendingDefinitionOptions, client) : api(workflowDefinitionContract.published, client), enabled: pending || canCreate });
 }
 
 /** 待办总数 + 抄送未读数（Tab 角标），30s 轮询 */
@@ -126,7 +126,7 @@ export function useApprovalDetail(id: number | null) {
 }
 
 export function useApprovalDraftEditor(id: number | null) {
-  return useQuery({ queryKey: ['approval', 'draft-editor', id], queryFn: () => api(workflowInstanceContract.draftEditor, { params: { id: id as number } }, client), enabled: id != null });
+  return useQuery({ queryKey: ['approval', 'draft-editor', id], queryFn: () => api(workflowInstanceContract.draftEditor, { params: { id: id as number } }, client), enabled: id != null, staleTime: Infinity, refetchOnWindowFocus: false, refetchOnReconnect: false });
 }
 
 export function useResubmitApprovalInstance() {
@@ -257,7 +257,8 @@ export function useUpdateApprovalDraft() {
     mutationFn: ({ id, body }: { id: number; body: BodyOf<typeof workflowInstanceContract.updateDraft> }) =>
       api(workflowInstanceContract.updateDraft, { params: { id }, body }, client),
     onSuccess: (_saved, vars) => {
-      void qc.invalidateQueries({ queryKey: approvalKeys.all });
+      void qc.invalidateQueries({ queryKey: approvalKeys.lists });
+      void qc.invalidateQueries({ queryKey: approvalKeys.counts });
       void qc.invalidateQueries({ queryKey: approvalKeys.detail(vars.id) });
     },
   });
@@ -268,7 +269,7 @@ export function useSubmitApprovalDraft() {
   return useMutation({
     mutationFn: ({ id, ...body }: { id: number } & BodyOf<typeof workflowInstanceContract.submitDraft>) =>
       api(workflowInstanceContract.submitDraft, { params: { id }, body }, client),
-    onSuccess: () => qc.invalidateQueries({ queryKey: approvalKeys.all }),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: approvalKeys.lists }); void qc.invalidateQueries({ queryKey: approvalKeys.counts }); },
   });
 }
 
@@ -323,14 +324,15 @@ export function useSelectableNextApprovers(taskId: number | null, enabled: boole
   });
 }
 
-/** 全量用户（转办候选），按需加载 */
-export function useApprovalUsers(enabled: boolean) {
-  return useQuery({
-    queryKey: approvalKeys.users,
-    queryFn: () => api(workflowInstanceContract.selectableUsers, silentClient),
+/** Bounded collaboration directory; picker searches on the server. */
+export function useApprovalUsers(enabled: boolean, keyword = '') {
+  const result = useQuery({
+    queryKey: [...approvalKeys.users, keyword],
+    queryFn: () => api(workflowInstanceContract.searchUsers, { query: { page: 1, pageSize: 50, keyword: keyword || undefined } }, silentClient),
     enabled,
     staleTime: 5 * 60_000,
   });
+  return { data: result.data?.list, isLoading: result.isLoading, truncated: (result.data?.total ?? 0) > (result.data?.list.length ?? 0) };
 }
 
 export function useApprovalDelegations(enabled: boolean) {
@@ -363,7 +365,7 @@ export async function fetchNextPendingTask(
   excludeTaskId: number,
   preferInstanceId?: number,
 ): Promise<{ next: { instanceId: number; taskId: number } | null; remaining: number }> {
-  const data = await api(workflowInstanceContract.pendingMine, { query: { page: 1, pageSize: 5 } }, silentClient);
+  const data = await api(workflowInstanceContract.pendingMine, { query: { page: 1, pageSize: 20 } }, silentClient);
   const item = data.list.find((i) => i.id === preferInstanceId && i.pendingTaskId !== excludeTaskId)
     ?? data.list.find((i) => i.pendingTaskId !== excludeTaskId && i.pendingTaskId != null);
   return {

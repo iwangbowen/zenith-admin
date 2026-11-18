@@ -389,7 +389,8 @@ export async function getDraftEditor(id: number) {
   const snapshot = await resolveFormSnapshot(def.formId);
   const [form] = def.formId ? await db.select({ revision: workflowForms.revision }).from(workflowForms).where(eq(workflowForms.id, def.formId)).limit(1) : [];
   const definition = { ...toDefinitionSnapshot(def), formFields: snapshot?.fields ?? [], formSettings: snapshot?.settings ?? null };
-  return { instance: mapInstance(inst), definition, formRevision: form?.revision ?? null, versionChanged: inst.definitionSnapshot.version !== def.version || inst.draftFormRevision !== (form?.revision ?? null) };
+  const instance = mapInstance(inst, { includeDefinitionSnapshot: true });
+  return { instance, definition, formRevision: form?.revision ?? null, versionChanged: inst.definitionSnapshot.version !== def.version || inst.draftFormRevision !== (form?.revision ?? null) };
 }
 
 export async function listOwnDrafts(query: QueryOutputOf<typeof workflowInstanceContract.ownDrafts>) {
@@ -428,7 +429,8 @@ export async function updateInstanceDraft(id: number, input: BodyOf<typeof workf
   if (input.title !== undefined) patch.title = input.title;
   if (input.formData !== undefined) {
     const values = { ...(input.formData ?? {}) };
-    const permissions = inst.definitionSnapshot?.flowData?.nodes.find((node) => node.data.type === 'start')?.data.fieldPermissions;
+    const editingSnapshot = patch.formSnapshot ?? inst.formSnapshot;
+    const permissions = (patch.definitionSnapshot ?? inst.definitionSnapshot)?.flowData?.nodes.find((node) => node.data.type === 'start')?.data.fieldPermissions;
     const previous = recordFormData(inst.formData);
     for (const [key, permission] of Object.entries(permissions ?? {})) {
       if (permission === 'hidden' || permission === 'read') {
@@ -436,12 +438,20 @@ export async function updateInstanceDraft(id: number, input: BodyOf<typeof workf
         else delete values[key];
       }
     }
-    patch.formData = await resolveWorkflowFormSignatures(inst.formSnapshot, normalizeInstanceFormData(inst.formSnapshot, values), previous);
+    patch.formData = await resolveWorkflowFormSignatures(editingSnapshot, normalizeInstanceFormData(editingSnapshot, values), previous);
   }
   if (input.priority !== undefined) patch.priority = input.priority;
   const row = await db.transaction(async (tx) => {
     await lockUnchangedWorkflowDraft(tx, inst);
-    if (patch.formData !== undefined) patch.formData = await bindWorkflowFormAttachments(tx, inst, inst.formSnapshot, patch.formData as Record<string, unknown>);
+    if (input.expectedDefinitionVersion !== undefined) {
+      const [latest] = await tx.select({ version: workflowDefinitions.version, status: workflowDefinitions.status }).from(workflowDefinitions).where(eq(workflowDefinitions.id, inst.definitionId)).for('share').limit(1);
+      if (latest?.version !== input.expectedDefinitionVersion || latest.status !== 'published') throw new HTTPException(409, { message: '流程版本已变化，请重新确认' });
+      if (editor.definition.formId) {
+        const [form] = await tx.select({ revision: workflowForms.revision }).from(workflowForms).where(eq(workflowForms.id, editor.definition.formId)).for('share').limit(1);
+        if (form?.revision !== editor.formRevision) throw new HTTPException(409, { message: '表单已变化，请重新确认' });
+      }
+    }
+    if (patch.formData !== undefined) patch.formData = await bindWorkflowFormAttachments(tx, inst, patch.formSnapshot ?? inst.formSnapshot, patch.formData as Record<string, unknown>);
     const [updated] = await tx.update(workflowInstances).set(patch).where(eq(workflowInstances.id, id)).returning();
     return requireRow(updated, '草稿状态已变化，请刷新后重试', 409);
   });
@@ -525,6 +535,8 @@ export async function submitDraftInstance(id: number, input: BodyOf<typeof workf
     for (const uid of draftCc) {
       const [valid] = await tx.select({ id: users.id }).from(users).where(buildWhere(eq(users.id, uid), tenantCondition(users, user), eq(users.status, 'enabled'))).limit(1);
       if (!valid) throw new HTTPException(400, { message: '抄送人已停用或不属于当前租户' });
+      const [existingCc] = await tx.select({ id: workflowTasks.id }).from(workflowTasks).where(buildWhere(eq(workflowTasks.instanceId, id), eq(workflowTasks.assigneeId, uid), eq(workflowTasks.nodeKey, '__initiator_cc__'))).limit(1);
+      if (existingCc) continue;
       await tx.insert(workflowTasks).values({ instanceId: id, nodeKey: '__initiator_cc__', nodeName: '发起抄送', nodeType: 'ccNode', taskKind: 'cc', assigneeId: uid, status: 'skipped', activationId: null, comment: '发起人指定抄送' });
     }
     const materialized = await advanceAndMaterialize({ kind: 'seed' }, {

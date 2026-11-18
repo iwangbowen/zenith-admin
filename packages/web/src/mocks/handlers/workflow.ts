@@ -50,6 +50,7 @@ import {
   buildWorkflowEngineIssues,
   buildWorkflowEngineQueueSnapshot,
   buildWorkflowSummaryItems,
+  workflowApprovalRequirements,
   collectReferencedFormFieldKeys,
   computeWorkflowDerivedValues,
   stripWorkflowSerialNumberValues,
@@ -1833,7 +1834,8 @@ export const workflowHandlers = [
       const node = flowForNext?.nodes.find((item) => item.data.key === task?.nodeKey)?.data;
       const requiresIndividual = !!inst.definitionSnapshot?.customForm?.actionComponent || signaturePolicy === 'handwritten' || node?.actionButtons?.approve?.uploadMode === 'required'
         || (!!task && !!flowForNext && findNextApproverSelectNodes(flowForNext, task.nodeKey).length > 0);
-      return [{ ...toInstanceListItem(inst), pendingTaskId: taskId, pendingSignaturePolicy: signaturePolicy, requiresIndividual, ...sla, summary }];
+      const requirements = workflowApprovalRequirements(node, requiresIndividual);
+      return [{ ...toInstanceListItem(inst), pendingTaskId: taskId, pendingTaskNodeKey: task?.nodeKey, pendingTaskNodeName: task?.nodeName, pendingTaskKind: task?.taskKind, canQuickApprove: requirements.canQuickApprove, canBatchApprove: requirements.canBatchApprove, pendingOpinionRequired: requirements.opinionRequired, pendingSignaturePolicy: signaturePolicy, requiresIndividual, ...sla, summary }];
     });
 
     if (keyword) list = filterByKeyword(list, keyword, [(i) => i.title, (i) => i.serialNo, (i) => i.definitionName]);
@@ -2267,6 +2269,9 @@ export const workflowHandlers = [
       formData,
       formSnapshot,
       status: isDraft ? 'draft' : 'running',
+      draftRevision: 0,
+      draftFormRevision: null,
+      draftIntent: isDraft ? { ccUserIds: body.ccUserIds ?? [], selectedInitiatorApprovers: body.selectedInitiatorApprovers } : null,
       currentNodeKey: null,
       initiatorId: initiator.id,
       initiatorName: initiator.nickname ?? initiator.username,

@@ -9,6 +9,9 @@ import { renderPrintVerifyPage } from './print-verify-page';
 import { getWorkflowAnalytics, listOverdueTasks } from '../../../services/workflow/workflow-analytics.service';
 import { listWorkflowSelectableDepartments, listWorkflowSelectableUsers } from '../../../services/workflow/workflow-selectable-users.service';
 import { listMyWorkflowSignGroups } from '../../../services/workflow/workflow-sign-groups.service';
+import { workflowIdentity } from '../../../lib/workflow-identity';
+
+export const searchSelectableUsersRoute = defineContractRoute(workflowInstanceContract.searchUsers, { handler: async c => c.json(okBody(await workflowIdentity().searchSelectableUsers(c.req.valid('query'))), 200) });
 
 export const mySignGroupsRoute = defineContractRoute(workflowTaskContract.mySignGroups, {
   handler: async (c) => c.json(okBody(await listMyWorkflowSignGroups(c.req.valid('query'))), 200),
