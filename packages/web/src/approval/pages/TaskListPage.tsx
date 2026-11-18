@@ -2,7 +2,11 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react
 import { useNavigate } from 'react-router-dom';
 import { Banner, Button, Checkbox, Modal, Select, SideSheet, Spin, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
 import { Bell, Check, CheckCheck, CircleCheckBig, ClipboardCheck, FilePlus2, ListChecks, LogOut, Plus, Send, UserRoundCog, type LucideIcon } from 'lucide-react';
-import { TOKEN_KEY, REFRESH_TOKEN_KEY, type SignatureInput } from '@zenith/shared/core';
+import { type SignatureInput } from '@zenith/shared/core';
+import { authContract } from '@zenith/shared/identity';
+import { api } from '@/lib/contract-query';
+import { clearApprovalSession } from '../lib/session';
+import { ApiError } from '@/lib/query';
 import type { WorkflowBatchActionResponse, WorkflowInstancePriority } from '@zenith/shared/workflow';
 import type { InAppMessage } from '@zenith/shared/messaging';
 import { SignatureClientProvider } from '@/components/signature/SignatureClientContext';
@@ -15,7 +19,7 @@ import WorkflowSLATag from '@/components/workflow/WorkflowSLATag';
 import WorkflowPriorityTag from '@/components/workflow/WorkflowPriorityTag';
 import WorkflowHandledTaskTag from '@/components/workflow/WorkflowHandledTaskTag';
 import {
-  useApprovalCounts, useApprovalDelegations, useApprovalList, useApprovalNotificationUnreadCount, useApprovalNotifications, useApprovalUsers, useBatchApprove, useCreateApprovalDelegation, useDeleteApprovalDelegation, useMarkApprovalNotificationRead, useMarkCcRead, useTaskAction,
+  useApprovalCounts, useApprovalDelegations, useApprovalList, useApprovalMe, useApprovalNotificationUnreadCount, useApprovalNotifications, useApprovalUsers, useBatchApprove, useCreateApprovalDelegation, useDeleteApprovalDelegation, useMarkApprovalNotificationRead, useMarkCcRead, useTaskAction,
   type ApprovalListItem, type ApprovalTab,
 } from '../lib/queries';
 import { useInfiniteSentinel, usePullRefresh } from '../lib/usePullRefresh';
@@ -163,11 +167,18 @@ export default function TaskListPage() {
 
 function TaskListContent() {
   const navigate = useNavigate();
-  const [tab, setTab] = useState<ApprovalTab>('pending');
+  const me = useApprovalMe();
+  const can = (permission: string) => !!me.data?.permissions?.some(p => p === '*' || p === permission);
+  const canHandle = can('workflow:task:handle');
+  const canList = can('workflow:instance:list');
+  const canCreate = can('workflow:instance:create');
+  useEffect(() => { if (!canHandle && !canList && canCreate) navigate('/launch', { replace: true }); }, [canHandle, canList, canCreate, navigate]);
+  const [tab, setTab] = useState<ApprovalTab>(() => canHandle ? 'pending' : 'mine');
   const [size, setSize] = useState(10);
   const [keywordDraft, setKeywordDraft] = useState('');
   const [keyword, setKeyword] = useState('');
-  const listQuery = useApprovalList(tab, size, keyword);
+  const tabAllowed = tab === 'pending' || tab === 'handled' ? canHandle : canList;
+  const listQuery = useApprovalList(tab, size, keyword, tabAllowed);
   const countsQuery = useApprovalCounts();
   const markCcRead = useMarkCcRead();
   const quickAction = useTaskAction();
@@ -242,11 +253,9 @@ function TaskListContent() {
     setCheckedIds(new Set());
   };
 
-  const logout = () => {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(REFRESH_TOKEN_KEY);
-    Toast.info('已退出移动审批');
-    navigate('/login', { replace: true });
+  const logout = async () => {
+    try { await api(authContract.logout, { client: approvalRequest, silent: true, skipAuth: true }); }
+    finally { clearApprovalSession(); navigate('/login', { replace: true }); }
   };
 
   const openItem = (item: ApprovalListItem) => {
@@ -300,8 +309,8 @@ function TaskListContent() {
   };
 
   const tabCounts: Partial<Record<ApprovalTab, number | undefined>> = {
-    pending: countsQuery.data?.pending,
-    cc: countsQuery.data?.ccUnread,
+    pending: countsQuery.data?.pending ?? undefined,
+    cc: countsQuery.data?.ccUnread ?? undefined,
   };
 
   // 批量审批：可勾选集合 / 全选 / 提交 / 退出
@@ -353,7 +362,13 @@ function TaskListContent() {
   };
 
   const openNotification = async (item: InAppMessage) => {
-    if (!item.isRead) await markNotificationRead.mutateAsync(item.id);
+    if (!item.isRead) {
+      try { await markNotificationRead.mutateAsync(item.id); }
+      catch (error) {
+        if (error instanceof ApiError && error.code === 401) return;
+        Toast.warning('未能标记消息已读，可稍后重试');
+      }
+    }
     setNotificationsVisible(false);
     const target = mobileApprovalLink(item.link);
     if (target) {
@@ -398,7 +413,7 @@ function TaskListContent() {
           onClick={() => setDelegationsVisible(true)}
           aria-label="审批代理"
         />
-        <Button theme="borderless" icon={<LogOut size={16} />} onClick={logout} aria-label="退出" />
+        <Button theme="borderless" icon={<LogOut size={16} />} onClick={() => void logout()} aria-label="退出" />
       </div>
       {!online && <Banner className="ap-offline-banner" type="warning" closeIcon={null} description="当前处于离线状态，网络恢复后可重试未完成操作。" />}
       <div className="ap-workbench" aria-label="审批工作台概览">
@@ -439,7 +454,7 @@ function TaskListContent() {
         )}
         {listQuery.isError ? (
           <div className="ap-error" role="alert">
-            <Typography.Text type="danger">审批列表加载失败，请检查网络后重试。</Typography.Text>
+            <Typography.Text type="danger">{listQuery.error instanceof ApiError ? listQuery.error.message : '审批列表加载失败，请重试。'}</Typography.Text>
             <Button size="small" onClick={() => void refetch()}>重试</Button>
           </div>
         ) : filteredList.map((item) => (
@@ -454,7 +469,8 @@ function TaskListContent() {
             checked={item.pendingTaskId != null && checkedIds.has(item.pendingTaskId)}
           />
         ))}
-        {!listQuery.isError && !listQuery.isFetching && filteredList.length === 0 && (
+        {!tabAllowed && <div className="ap-empty">当前账号没有此列表权限{canCreate ? <Button onClick={() => navigate('/launch')}>发起申请</Button> : null}</div>}
+        {tabAllowed && !listQuery.isError && !listQuery.isFetching && filteredList.length === 0 && (
           <div className="ap-empty">{keyword || filtersActive ? '没有匹配的结果' : EMPTY_TEXT[tab]}</div>
         )}
         {hasMore && (
@@ -497,6 +513,7 @@ function TaskListContent() {
                 type="button"
                 role="tab"
                 aria-selected={active}
+                disabled={(key === 'pending' || key === 'handled') ? !canHandle : !canList}
                 className={`ap-tabbar__item${active ? ' ap-tabbar__item--active' : ''}`}
                 onClick={() => switchTab(key)}
               >
@@ -515,6 +532,7 @@ function TaskListContent() {
                 className="ap-tabbar__item ap-tabbar__item--launch"
                 onClick={() => navigate('/launch')}
                 aria-label="发起申请"
+                disabled={!canCreate}
               >
                 <span className="ap-tabbar__launch"><Plus size={24} strokeWidth={2.4} /></span>
                 <span className="ap-tabbar__label">发起</span>

@@ -2,13 +2,14 @@ import { TOKEN_KEY, REFRESH_TOKEN_KEY } from '@zenith/shared/core';
 import { authContract } from '@zenith/shared/identity';
 import { config } from '@/config';
 import { HttpClient, type HttpRequestOptions } from '@/utils/http-client';
+import { approvalSessionScope, clearApprovalSession } from './session';
 
 /**
  * 移动审批轻页专用 HTTP 客户端（与后台 admin request 隔离，但共享同一套管理员 token）。
  * - 携带 admin token（TOKEN_KEY，同域 localStorage：admin 已登录则免登）
  * - 401 自动走 `authContract.refresh` 刷新，失败跳轻页登录页
  * - HashRouter 入口：登录页为 /approval.html#/login
- * - 退出时仅清除 accessToken，保留 refreshToken 供 admin 端继续使用
+ * - 与后台共用身份，退出时同时清除凭证及审批入口缓存
  *
  * 通用逻辑见 @/utils/http-client.ts。
  */
@@ -28,12 +29,14 @@ class ApprovalRequest extends HttpClient {
 }
 
 export const approvalRequest = new ApprovalRequest({
+  sessionScope: approvalSessionScope,
+  onUnauthorized: () => { clearApprovalSession(); },
   baseUrl: config.apiBaseUrl,
   handleMaintenance: true,
   tokenKey: TOKEN_KEY,
   refreshTokenKey: REFRESH_TOKEN_KEY,
   refreshPath: authContract.refresh.fullPath,
   loginUrl: approvalLoginUrl,
-  logoutClearKeys: [TOKEN_KEY],
+  logoutClearKeys: [TOKEN_KEY, REFRESH_TOKEN_KEY],
   clientKind: 'mobile',
 });

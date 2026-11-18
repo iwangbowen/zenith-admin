@@ -70,6 +70,8 @@ export interface HttpRequestOptions {
 type RefreshOutcome = 'refreshed' | 'invalid' | 'transient';
 
 export interface HttpClientConfig {
+  /** Entry-owned identity generation; protects late responses and credential refreshes after account changes. */
+  sessionScope?: () => string;
   baseUrl: string;
   /** localStorage 中 accessToken 的 key */
   tokenKey: string;
@@ -99,6 +101,7 @@ export interface HttpClientConfig {
  * 各端通过 HttpClientConfig 参数化 token key、刷新接口与登录页地址。
  */
 export class HttpClient {
+  private readonly sessionScope?: () => string;
   protected readonly baseUrl: string;
   private readonly tokenKey: string;
   private readonly refreshTokenKey: string;
@@ -112,6 +115,7 @@ export class HttpClient {
   private refreshing: Promise<RefreshOutcome> | null = null;
 
   constructor(config: HttpClientConfig) {
+    this.sessionScope = config.sessionScope;
     this.baseUrl = config.baseUrl;
     this.tokenKey = config.tokenKey;
     this.refreshTokenKey = config.refreshTokenKey;
@@ -164,6 +168,7 @@ export class HttpClient {
     if (this.refreshing) return this.refreshing;
 
     this.refreshing = (async (): Promise<RefreshOutcome> => {
+      const scope = this.sessionScope?.();
       const refreshToken = localStorage.getItem(this.refreshTokenKey);
       if (!refreshToken) return 'invalid';
 
@@ -174,6 +179,7 @@ export class HttpClient {
           headers: { 'Content-Type': 'application/json', ...(client ? { [SESSION_CLIENT_HEADER]: client } : {}) },
           body: JSON.stringify({ refreshToken }),
         });
+        if (scope !== this.sessionScope?.() || refreshToken !== localStorage.getItem(this.refreshTokenKey)) throw new DOMException('Session changed', 'AbortError');
         // 仅 401/403 表示 refresh token 确认失效；429 限流、5xx 等瞬时故障不得清凭证登出
         if (res.status === 401 || res.status === 403) {
           this.lastInvalidation = await this.readInvalidation(res);
@@ -181,6 +187,7 @@ export class HttpClient {
         }
         if (!res.ok) return 'transient';
         const data = await res.json();
+        if (scope !== this.sessionScope?.() || refreshToken !== localStorage.getItem(this.refreshTokenKey)) throw new DOMException('Session changed', 'AbortError');
         if (data.code === 0 && data.data?.accessToken) {
           localStorage.setItem(this.tokenKey, data.data.accessToken);
           // 服务端续签同时轮换 refresh token（旧的立即失效），必须以新值覆盖本地保存
@@ -190,7 +197,8 @@ export class HttpClient {
           return 'refreshed';
         }
         return data.code === 401 || data.code === 403 ? 'invalid' : 'transient';
-      } catch {
+      } catch (error) {
+        if (error != null && typeof error === 'object' && 'name' in error && error.name === 'AbortError') throw error;
         return 'transient';
       } finally {
         this.refreshing = null;
@@ -230,11 +238,12 @@ export class HttpClient {
    * 非 401 的失败状态码原样返回，由调用方按业务处理；网络错误与认证失效已处理完毕（含提示与跳转）时返回 null。
    */
   async fetchRaw(url: string, options: RequestInit & Pick<HttpRequestOptions, 'silent'> = {}): Promise<Response | null> {
+    const scope = this.sessionScope?.();
     const { silent, ...fetchOptions } = options;
-    const doFetch = () => fetch(`${this.baseUrl}${url}`, {
+    const doFetch = async () => { const response = await fetch(`${this.baseUrl}${url}`, {
       ...fetchOptions,
       headers: this.getHeaders(fetchOptions.body, fetchOptions.headers),
-    });
+    }); if (scope !== this.sessionScope?.()) throw new DOMException('Session changed', 'AbortError'); return response; };
 
     let res: Response;
     try {
@@ -271,16 +280,18 @@ export class HttpClient {
     return res;
   }
   async request<T>(url: string, options: RequestInit & HttpRequestOptions = {}): Promise<ApiResponseWithMeta<T>> {
+    const scope = this.sessionScope?.();
     const { silent, skipAuth, ...fetchOptions } = options;
-    const doFetch = () => fetch(`${this.baseUrl}${url}`, {
+    const doFetch = async () => { const response = await fetch(`${this.baseUrl}${url}`, {
       ...fetchOptions,
       headers: this.getHeaders(fetchOptions.body, fetchOptions.headers),
-    });
+    }); if (scope !== this.sessionScope?.()) throw new DOMException('Session changed', 'AbortError'); return response; };
 
     let res: Response;
     try {
       res = await doFetch();
-    } catch {
+    } catch (error) {
+      if (error != null && typeof error === 'object' && 'name' in error && error.name === 'AbortError') throw error;
       return this.fail<T>(silent, '网络请求失败，请检查网络连接');
     }
 
@@ -301,7 +312,8 @@ export class HttpClient {
         // Retry original request with new token
         try {
           res = await doFetch();
-        } catch {
+        } catch (error) {
+          if (error != null && typeof error === 'object' && 'name' in error && error.name === 'AbortError') throw error;
           return this.fail<T>(silent, '网络请求失败，请检查网络连接');
         }
         if (res.status === 401) {
@@ -347,12 +359,14 @@ export class HttpClient {
 
     try {
       const data: ApiResponse<T> = await res.json();
+      if (scope !== this.sessionScope?.()) throw new DOMException('Session changed', 'AbortError');
       if (data.code !== 0 && !silent) {
         // 附上响应头里的业务关联 ID：用户报障时可直接复制给管理员按链路排查
         showRequestErrorToast(data.message || '操作失败', res.headers.get('X-Request-Id'));
       }
       return data;
-    } catch {
+    } catch (error) {
+      if (error != null && typeof error === 'object' && 'name' in error && error.name === 'AbortError') throw error;
       return this.fail<T>(silent, '响应解析失败');
     }
   }

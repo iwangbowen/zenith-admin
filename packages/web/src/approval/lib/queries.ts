@@ -54,10 +54,11 @@ function fetchApprovalList(tab: ApprovalTab, size: number, keyword: string): Pro
   }
 }
 
-export function useApprovalList(tab: ApprovalTab, size: number, keyword = '') {
+export function useApprovalList(tab: ApprovalTab, size: number, keyword = '', enabled = true) {
   return useQuery({
     queryKey: approvalKeys.list(tab, size, keyword),
     queryFn: () => fetchApprovalList(tab, size, keyword),
+    enabled,
     placeholderData: keepPreviousData,
     refetchInterval: tab === 'pending' ? 30_000 : false,
   });
@@ -68,12 +69,8 @@ export function useApprovalCounts() {
   return useQuery({
     queryKey: approvalKeys.counts,
     queryFn: async () => {
-      const [pending, ccUnread, drafts] = await Promise.all([
-        api(workflowInstanceContract.pendingMineCount, silentClient),
-        api(workflowInstanceContract.ccUnreadCount, silentClient),
-        api(workflowInstanceContract.list, { query: { page: 1, pageSize: 1, status: 'draft' } }, silentClient),
-      ]);
-      return { pending: pending.count, ccUnread: ccUnread.count, drafts: drafts.total };
+      const summary = await api(workflowInstanceContract.workbenchSummary, silentClient);
+      return { ...summary, drafts: summary.myDrafts };
     },
     refetchInterval: 30_000,
     retry: false,

@@ -4,6 +4,18 @@ import { HttpClient, takeAuthInvalidatedReason } from './http-client';
 vi.mock('./request-toast', () => ({ showRequestErrorToast: vi.fn(), showRequestWarningToast: vi.fn() }));
 
 const fetchMock = vi.fn<typeof fetch>();
+
+describe('HttpClient session generations', () => {
+  it('rejects a late response after changing identity', async () => {
+    let scope = 'A';
+    let resolve!: (response: Response) => void;
+    fetchMock.mockImplementationOnce(() => new Promise<Response>(r => { resolve = r; }));
+    const client = new HttpClient({ baseUrl: '', tokenKey: 'access-token', refreshTokenKey: 'refresh-token', refreshPath: '/refresh', loginUrl: () => '/login', sessionScope: () => scope });
+    const request = client.get('/private');
+    scope = 'B'; resolve(Response.json({ code: 0, data: { owner: 'A' } }));
+    await expect(request).rejects.toMatchObject({ name: 'AbortError' });
+  });
+});
 const headerForms = [
   { name: 'object', create: (values: Record<string, string>): HeadersInit => ({ ...values }) },
   { name: 'Headers', create: (values: Record<string, string>): HeadersInit => new Headers(values) },

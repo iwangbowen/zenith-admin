@@ -1,11 +1,13 @@
 import { MaintenanceBoundary } from '@/components/MaintenanceBoundary';
-import { lazy, Suspense } from 'react';
-import { HashRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom';
+import { lazy, Suspense, useSyncExternalStore } from 'react';
+import { HashRouter, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Spin } from '@douyinfe/semi-ui';
 import { TOKEN_KEY } from '@zenith/shared/core';
 import { approvalQueryClient } from './lib/query-client';
 import { ApprovalPreferencesBoundary } from './components/ApprovalPreferencesBoundary';
+import { approvalSessionScope, subscribeApprovalSession } from './lib/session';
+const ApprovalSessionBoundary = lazy(() => import('./components/ApprovalSessionBoundary'));
 
 // 页面级懒加载：入口只带路由壳，TaskDetail/LaunchForm 携带的全能表单渲染器
 // （富文本、附件、地区选择等重依赖）不再进入首屏预载
@@ -23,9 +25,11 @@ const routeFallback = (
 
 /** 路由守卫：无 token 时跳登录（token 失效由请求层 401→refresh→登录页兜底） */
 function RequireAuth() {
+  const scope = useSyncExternalStore(subscribeApprovalSession, approvalSessionScope);
+  const location = useLocation();
   const token = localStorage.getItem(TOKEN_KEY);
-  if (!token) return <Navigate to="/login" replace />;
-  return <ApprovalPreferencesBoundary><Outlet /></ApprovalPreferencesBoundary>;
+  if (!token) return <Navigate to="/login" state={{ returnTo: location.pathname + location.search }} replace />;
+  return <ApprovalSessionBoundary key={scope}><ApprovalPreferencesBoundary><Outlet /></ApprovalPreferencesBoundary></ApprovalSessionBoundary>;
 }
 
 export default function ApprovalApp() {
