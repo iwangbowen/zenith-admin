@@ -262,6 +262,7 @@ export function useUpdateApprovalDraft() {
       void qc.invalidateQueries({ queryKey: approvalKeys.lists });
       void qc.invalidateQueries({ queryKey: approvalKeys.counts });
       void qc.invalidateQueries({ queryKey: approvalKeys.detail(vars.id) });
+      void qc.invalidateQueries({ queryKey: ['approval', 'statistics'] });
     },
   });
 }
@@ -271,7 +272,7 @@ export function useSubmitApprovalDraft() {
   return useMutation({
     mutationFn: ({ id, ...body }: { id: number } & BodyOf<typeof workflowInstanceContract.submitDraft>) =>
       api(workflowInstanceContract.submitDraft, { params: { id }, body }, client),
-    onSuccess: (_saved, vars) => { void qc.invalidateQueries({ queryKey: approvalKeys.lists }); void qc.invalidateQueries({ queryKey: approvalKeys.counts }); void qc.invalidateQueries({ queryKey: approvalKeys.detail(vars.id) }); qc.removeQueries({ queryKey: ['approval', 'draft-editor', vars.id], exact: true }); },
+    onSuccess: (_saved, vars) => { void qc.invalidateQueries({ queryKey: approvalKeys.lists }); void qc.invalidateQueries({ queryKey: approvalKeys.counts }); void qc.invalidateQueries({ queryKey: approvalKeys.detail(vars.id) }); void qc.invalidateQueries({ queryKey: ['approval', 'statistics'] }); qc.removeQueries({ queryKey: ['approval', 'draft-editor', vars.id], exact: true }); },
   });
 }
 
@@ -285,6 +286,7 @@ export function useDeleteApprovalInstance() {
       // 删除页在 mutation 完成后负责先离开详情，再移除缓存。
       void qc.invalidateQueries({ queryKey: approvalKeys.lists });
       void qc.invalidateQueries({ queryKey: approvalKeys.counts });
+      void qc.invalidateQueries({ queryKey: ['approval', 'statistics'] });
     },
   });
 }

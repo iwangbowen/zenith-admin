@@ -20,6 +20,7 @@ describe('approval identity isolation', () => {
   });
   it('only restores approval routes', () => {
     expect(approvalReturnTo('/detail/3/5')).toBe('/detail/3/5');
+    expect(approvalReturnTo('/statistics')).toBe('/statistics');
     for (const path of ['//evil.test', 'https://evil.test', '/login', '/detail/../login']) expect(approvalReturnTo(path)).toBe('/');
   });
 });

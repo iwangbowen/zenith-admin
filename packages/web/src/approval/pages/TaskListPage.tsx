@@ -1,11 +1,12 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Banner, Button, Checkbox, Modal, Select, SideSheet, Spin, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
-import { Bell, Check, CheckCheck, CircleCheckBig, ClipboardCheck, FilePlus2, ListChecks, LogOut, Plus, Send, UserRoundCog, type LucideIcon } from 'lucide-react';
+import { BarChart2, Bell, Check, CheckCheck, CircleCheckBig, ClipboardCheck, FilePlus2, ListChecks, LogOut, Plus, Send, UserRoundCog, type LucideIcon } from 'lucide-react';
 import { type SignatureInput } from '@zenith/shared/core';
 import { authContract } from '@zenith/shared/identity';
 import { api } from '@/lib/contract-query';
 import { clearApprovalSession } from '../lib/session';
+import { canViewApprovalStatistics } from '../lib/statistics';
 import { ApiError } from '@/lib/query';
 import type { WorkflowBatchActionResponse, WorkflowInstancePriority } from '@zenith/shared/workflow';
 import type { InAppMessage } from '@zenith/shared/messaging';
@@ -417,6 +418,7 @@ function TaskListContent() {
     <div className="ap-page">
       <div className="ap-header">
         <span className="ap-header__title">移动审批</span>
+        {canViewApprovalStatistics(me.data?.permissions) && <Button theme="borderless" icon={<BarChart2 size={17} />} onClick={() => navigate('/statistics')} aria-label="审批统计" />}
         <Button
           theme="borderless"
           className="ap-header__notification"

@@ -56,5 +56,6 @@ export function subscribeApprovalSession(listener: () => void) {
 
 /** Only in-app hash routes may be restored after authentication. */
 export function approvalReturnTo(value: unknown): string {
+  if (value === '/statistics') return value;
   return typeof value === 'string' && /^\/(?:$|(?:detail|draft|launch)(?:\/[1-9]\d*){0,2}(?:\?.*)?$)/.test(value) ? value : '/';
 }

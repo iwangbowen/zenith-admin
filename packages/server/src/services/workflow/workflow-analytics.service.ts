@@ -1,9 +1,10 @@
 import { workflowInstanceContract } from '@zenith/shared/workflow';
 import type { QueryOutputOf } from '@zenith/shared/core';
-import { asc, eq, gte, desc, inArray, sql } from 'drizzle-orm';
-import { db } from '../../db';
+import { asc, eq, gte, desc, exists, inArray, sql } from 'drizzle-orm';
+import { db, readSnapshot } from '../../db';
 import { workflowInstances, workflowTasks, workflowDefinitions, workflowCategories, workflowJobs, users, workflowNodeActivations } from '../../db/schema';
 import { currentUser } from '../../lib/context';
+import { getDataScopeCondition } from '../../lib/data-scope';
 import { tenantCondition } from '../../lib/tenant';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { buildDateAxis, formatDateTime, formatTimestamps, startOfRecentDays } from '../../lib/datetime';
@@ -14,210 +15,216 @@ import { localDate } from "../../lib/datetime-sql";
 
 const FINISHED: WorkflowInstanceStatus[] = ['approved', 'rejected', 'withdrawn', 'cancelled'];
 
-export async function getWorkflowAnalytics(query: { definitionId?: number } = {}): Promise<WorkflowAnalytics> {
+export async function getWorkflowAnalytics(query: QueryOutputOf<typeof workflowInstanceContract.analytics> = {}): Promise<WorkflowAnalytics> {
   const user = currentUser();
-  const instTenant = tenantCondition(workflowInstances, user);
-  const instDefinition = query.definitionId ? eq(workflowInstances.definitionId, query.definitionId) : undefined;
-  // 实例级筛选（监控可按流程定义过滤）；各统计项在 instConds 之上叠加自身条件
-  const instWhere = buildWhere(instTenant, instDefinition);
+  const scope = await getDataScopeCondition({ currentUserId: user.userId, deptColumn: users.departmentId, ownerColumn: workflowInstances.initiatorId });
+  return readSnapshot(async tx => {
+    const instScope = scope ? exists(tx.select({ id: users.id }).from(users).where(buildWhere(eq(users.id, workflowInstances.initiatorId), scope))) : undefined;
+    const instTenant = buildWhere(tenantCondition(workflowInstances, user), instScope);
+    const instDefinition = query.definitionId ? eq(workflowInstances.definitionId, query.definitionId) : undefined;
+    // 实例级筛选（监控可按流程定义过滤）；各统计项在 instConds 之上叠加自身条件
+    const instWhere = buildWhere(instTenant, instDefinition);
 
-  const since14 = startOfRecentDays(14);
-  const since7 = new Date(Date.now() - 7 * 24 * 60 * 60_000);
+    const since14 = startOfRecentDays(14);
+    const since7 = new Date(Date.now() - 7 * 24 * 60 * 60_000);
 
-  const durationExpr = sql<number | null>`avg(extract(epoch from (${workflowInstances.updatedAt} - ${workflowInstances.createdAt})))`;
+    const durationExpr = sql<number | null>`avg(extract(epoch from (${workflowInstances.updatedAt} - ${workflowInstances.createdAt})))`;
 
-  const [
-    statusRows,
-    avgRow,
-    pendingRow,
-    recentRow,
-    definitionRows,
-    nodeRows,
-    approverRows,
-    createdTrend,
-    completedTrend,
-    overdueRow,
-    dueSoonRow,
-    jobRows,
-    webhookRows,
-    subRows,
-  ] = await Promise.all([
-    // 1. 各状态计数
-    db.select({ status: workflowInstances.status, count: sql<number>`count(*)::int` })
-      .from(workflowInstances).where(instWhere).groupBy(workflowInstances.status),
-    // 2. 已完结实例平均耗时
-    db.select({ avg: durationExpr })
-      .from(workflowInstances)
-      .where(buildWhere(instTenant, instDefinition, inArray(workflowInstances.status, FINISHED))),
-    // 3. 当前挂起任务总数
-    db.select({ count: sql<number>`count(*)::int` })
-      .from(workflowTasks)
-      .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
-      .where(buildWhere(instTenant, instDefinition, eq(workflowTasks.status, 'pending'))),
-    // 4. 近 7 天发起数
-    db.select({ count: sql<number>`count(*)::int` })
-      .from(workflowInstances)
-      .where(buildWhere(instTenant, instDefinition, gte(workflowInstances.createdAt, since7))),
-    // 5. 各流程定义统计
-    db.select({
-      definitionId: workflowInstances.definitionId,
-      definitionName: workflowDefinitions.name,
-      total: sql<number>`count(*)::int`,
-      running: sql<number>`count(*) filter (where ${workflowInstances.status}::text = 'running')::int`,
-      approved: sql<number>`count(*) filter (where ${workflowInstances.status}::text = 'approved')::int`,
-      rejected: sql<number>`count(*) filter (where ${workflowInstances.status}::text = 'rejected')::int`,
-      avgDurationSec: sql<number | null>`avg(extract(epoch from (${workflowInstances.updatedAt} - ${workflowInstances.createdAt}))) filter (where ${workflowInstances.status}::text in ('approved','rejected','withdrawn','cancelled'))`,
-    })
-      .from(workflowInstances)
-      .innerJoin(workflowDefinitions, eq(workflowInstances.definitionId, workflowDefinitions.id))
-      .where(instWhere)
-      .groupBy(workflowInstances.definitionId, workflowDefinitions.name)
-      .orderBy(desc(sql`count(*)`))
-      .limit(12),
-    // 6. 节点瓶颈：人工节点的平均处理时长 / 挂起数
-    db.select({
-      definitionId: workflowInstances.definitionId,
-      definitionName: workflowDefinitions.name,
-      nodeKey: workflowTasks.nodeKey,
-      nodeName: workflowTasks.nodeName,
-      avgHandleSec: sql<number | null>`avg(extract(epoch from (${workflowTasks.actionAt} - coalesce(${workflowTasks.activatedAt}, ${workflowTasks.createdAt})))) filter (where ${workflowTasks.actionAt} is not null)`,
-      pendingCount: sql<number>`count(*) filter (where ${workflowTasks.status}::text = 'pending')::int`,
-      doneCount: sql<number>`count(*) filter (where ${workflowTasks.status}::text in ('approved','rejected'))::int`,
-    })
-      .from(workflowTasks)
-      .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
-      .innerJoin(workflowDefinitions, eq(workflowInstances.definitionId, workflowDefinitions.id))
-      .innerJoin(workflowNodeActivations, eq(workflowTasks.activationId, workflowNodeActivations.id))
-      .where(buildWhere(instTenant, instDefinition, inArray(workflowTasks.nodeType, ['approve', 'handler']), eq(workflowNodeActivations.includeInEfficiencyStats, true)))
-      .groupBy(workflowInstances.definitionId, workflowDefinitions.name, workflowTasks.nodeKey, workflowTasks.nodeName)
-      .orderBy(desc(sql`count(*) filter (where ${workflowTasks.status}::text = 'pending')`), desc(sql`avg(extract(epoch from (${workflowTasks.actionAt} - coalesce(${workflowTasks.activatedAt}, ${workflowTasks.createdAt}))))`))
-      .limit(10),
-    // 7. 审批人工作量（待办 + 已处理）
-    db.select({
-      userId: workflowTasks.assigneeId,
-      userName: sql<string>`coalesce(${users.nickname}, ${users.username})`,
-      pendingCount: sql<number>`count(*) filter (where ${workflowTasks.status}::text = 'pending')::int`,
-      handledCount: sql<number>`count(*) filter (where ${workflowTasks.status}::text in ('approved','rejected'))::int`,
-      oldestPendingSec: sql<number | null>`extract(epoch from (now() - min(${workflowTasks.createdAt}) filter (where ${workflowTasks.status}::text = 'pending')))`,
-    })
-      .from(workflowTasks)
-      .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
-      .innerJoin(users, eq(workflowTasks.assigneeId, users.id))
-      .where(buildWhere(instTenant, instDefinition, inArray(workflowTasks.status, ['pending', 'approved', 'rejected'])))
-      .groupBy(workflowTasks.assigneeId, users.nickname, users.username)
-      .orderBy(desc(sql`count(*) filter (where ${workflowTasks.status}::text = 'pending')`), desc(sql`count(*)`))
-      .limit(10),
-    // 8a. 近 14 天发起趋势
-    db.select({ d: localDate(workflowInstances.createdAt), c: sql<number>`count(*)::int` })
-      .from(workflowInstances)
-      .where(buildWhere(instTenant, instDefinition, gte(workflowInstances.createdAt, since14)))
-      .groupBy(localDate(workflowInstances.createdAt)),
-    // 8b. 近 14 天完结趋势
-    db.select({ d: localDate(workflowInstances.updatedAt), c: sql<number>`count(*)::int` })
-      .from(workflowInstances)
-      .where(buildWhere(instTenant, instDefinition, inArray(workflowInstances.status, FINISHED), gte(workflowInstances.updatedAt, since14)))
-      .groupBy(localDate(workflowInstances.updatedAt)),
-    // 9. 已超时挂起任务数：仍 pending 且其 task_timeout 作业已到期未执行
-    db.select({ count: sql<number>`count(*)::int` })
-      .from(workflowTasks)
-      .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
-      .innerJoin(workflowJobs, eq(workflowJobs.taskId, workflowTasks.id))
-      .where(buildWhere(instTenant, instDefinition, eq(workflowTasks.status, 'pending'), eq(workflowJobs.jobType, 'task_timeout'), eq(workflowJobs.status, 'pending'), sql`${workflowJobs.runAt} <= now()`)),
-    // 10. 24h 内即将超时的挂起任务数
-    db.select({ count: sql<number>`count(*)::int` })
-      .from(workflowTasks)
-      .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
-      .innerJoin(workflowJobs, eq(workflowJobs.taskId, workflowTasks.id))
-      .where(buildWhere(instTenant, instDefinition, eq(workflowTasks.status, 'pending'), eq(workflowJobs.jobType, 'task_timeout'), eq(workflowJobs.status, 'pending'), sql`${workflowJobs.runAt} > now() and ${workflowJobs.runAt} < now() + interval '24 hours'`)),
-    // 11. 作业健康（按状态计数）
-    db.select({ status: workflowJobs.status, count: sql<number>`count(*)::int` }).from(workflowJobs).groupBy(workflowJobs.status),
-    // 12. Webhook 投递（按状态计数）
-    db.select({ status: workflowJobs.status, count: sql<number>`count(*)::int` }).from(workflowJobs).where(eq(workflowJobs.jobType, 'webhook_delivery')).groupBy(workflowJobs.status),
-    // 13. 子流程实例（按状态计数）
-    db.select({ status: workflowInstances.status, count: sql<number>`count(*)::int` }).from(workflowInstances).where(sql`${workflowInstances.parentInstanceId} is not null`).groupBy(workflowInstances.status),
-  ]);
-  const sumc = (rows: Array<{ status: string; count: number }>, ...st: string[]) => rows.filter((r) => st.includes(r.status)).reduce((s, r) => s + r.count, 0);
-  const jobsTotal = jobRows.reduce((sum, row) => sum + row.count, 0);
-  const jobsFailed = sumc(jobRows, 'failed'), jobsDead = sumc(jobRows, 'dead');
-  const whTotal = sumc(webhookRows, 'succeeded', 'failed', 'dead'), whOk = sumc(webhookRows, 'succeeded');
-  const subTotal = subRows.reduce((s, r) => s + r.count, 0), subRej = sumc(subRows, 'rejected');
-  const automation = {
-    jobsTotal, jobsFailed, jobsDead, jobFailRate: jobsTotal > 0 ? (jobsFailed + jobsDead) / jobsTotal : null,
-    webhookTotal: whTotal, webhookSuccessRate: whTotal > 0 ? whOk / whTotal : null,
-    subprocessTotal: subTotal, subprocessFailRate: subTotal > 0 ? subRej / subTotal : null,
-  };
+    const [
+      statusRows,
+      avgRow,
+      pendingRow,
+      recentRow,
+      definitionRows,
+      nodeRows,
+      approverRows,
+      createdTrend,
+      completedTrend,
+      overdueRow,
+      dueSoonRow,
+      jobRows,
+      webhookRows,
+      subRows,
+    ] = [
+      // 1. 各状态计数
+      await tx.select({ status: workflowInstances.status, count: sql<number>`count(*)::int` })
+        .from(workflowInstances).where(instWhere).groupBy(workflowInstances.status),
+      // 2. 已完结实例平均耗时
+      await tx.select({ avg: durationExpr })
+        .from(workflowInstances)
+        .where(buildWhere(instTenant, instDefinition, inArray(workflowInstances.status, FINISHED))),
+      // 3. 当前挂起任务总数
+      await tx.select({ count: sql<number>`count(*)::int` })
+        .from(workflowTasks)
+        .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
+        .where(buildWhere(instTenant, instDefinition, eq(workflowTasks.status, 'pending'))),
+      // 4. 近 7 天发起数
+      await tx.select({ count: sql<number>`count(*)::int` })
+        .from(workflowInstances)
+        .where(buildWhere(instTenant, instDefinition, gte(workflowInstances.createdAt, since7))),
+      // 5. 各流程定义统计
+      await tx.select({
+        definitionId: workflowInstances.definitionId,
+        definitionName: workflowDefinitions.name,
+        total: sql<number>`count(*)::int`,
+        running: sql<number>`count(*) filter (where ${workflowInstances.status}::text = 'running')::int`,
+        approved: sql<number>`count(*) filter (where ${workflowInstances.status}::text = 'approved')::int`,
+        rejected: sql<number>`count(*) filter (where ${workflowInstances.status}::text = 'rejected')::int`,
+        avgDurationSec: sql<number | null>`avg(extract(epoch from (${workflowInstances.updatedAt} - ${workflowInstances.createdAt}))) filter (where ${workflowInstances.status}::text in ('approved','rejected','withdrawn','cancelled'))`,
+      })
+        .from(workflowInstances)
+        .innerJoin(workflowDefinitions, eq(workflowInstances.definitionId, workflowDefinitions.id))
+        .where(instWhere)
+        .groupBy(workflowInstances.definitionId, workflowDefinitions.name)
+        .orderBy(desc(sql`count(*)`))
+        .limit(12),
+      // 6. 节点瓶颈：人工节点的平均处理时长 / 挂起数
+      await tx.select({
+        definitionId: workflowInstances.definitionId,
+        definitionName: workflowDefinitions.name,
+        nodeKey: workflowTasks.nodeKey,
+        nodeName: workflowTasks.nodeName,
+        avgHandleSec: sql<number | null>`avg(extract(epoch from (${workflowTasks.actionAt} - coalesce(${workflowTasks.activatedAt}, ${workflowTasks.createdAt})))) filter (where ${workflowTasks.actionAt} is not null)`,
+        pendingCount: sql<number>`count(*) filter (where ${workflowTasks.status}::text = 'pending')::int`,
+        doneCount: sql<number>`count(*) filter (where ${workflowTasks.status}::text in ('approved','rejected'))::int`,
+      })
+        .from(workflowTasks)
+        .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
+        .innerJoin(workflowDefinitions, eq(workflowInstances.definitionId, workflowDefinitions.id))
+        .innerJoin(workflowNodeActivations, eq(workflowTasks.activationId, workflowNodeActivations.id))
+        .where(buildWhere(instTenant, instDefinition, inArray(workflowTasks.nodeType, ['approve', 'handler']), eq(workflowNodeActivations.includeInEfficiencyStats, true)))
+        .groupBy(workflowInstances.definitionId, workflowDefinitions.name, workflowTasks.nodeKey, workflowTasks.nodeName)
+        .orderBy(desc(sql`count(*) filter (where ${workflowTasks.status}::text = 'pending')`), desc(sql`avg(extract(epoch from (${workflowTasks.actionAt} - coalesce(${workflowTasks.activatedAt}, ${workflowTasks.createdAt}))))`))
+        .limit(10),
+      // 7. 审批人工作量（待办 + 已处理）
+      await tx.select({
+        userId: workflowTasks.assigneeId,
+        userName: sql<string>`coalesce(${users.nickname}, ${users.username})`,
+        pendingCount: sql<number>`count(*) filter (where ${workflowTasks.status}::text = 'pending')::int`,
+        handledCount: sql<number>`count(*) filter (where ${workflowTasks.status}::text in ('approved','rejected'))::int`,
+        oldestPendingSec: sql<number | null>`extract(epoch from (now() - min(${workflowTasks.createdAt}) filter (where ${workflowTasks.status}::text = 'pending')))`,
+      })
+        .from(workflowTasks)
+        .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
+        .innerJoin(users, eq(workflowTasks.assigneeId, users.id))
+        .where(buildWhere(instTenant, instDefinition, inArray(workflowTasks.status, ['pending', 'approved', 'rejected'])))
+        .groupBy(workflowTasks.assigneeId, users.nickname, users.username)
+        .orderBy(desc(sql`count(*) filter (where ${workflowTasks.status}::text = 'pending')`), desc(sql`count(*)`))
+        .limit(10),
+      // 8a. 近 14 天发起趋势
+      await tx.select({ d: localDate(workflowInstances.createdAt), c: sql<number>`count(*)::int` })
+        .from(workflowInstances)
+        .where(buildWhere(instTenant, instDefinition, gte(workflowInstances.createdAt, since14)))
+        .groupBy(localDate(workflowInstances.createdAt)),
+      // 8b. 近 14 天完结趋势
+      await tx.select({ d: localDate(workflowInstances.updatedAt), c: sql<number>`count(*)::int` })
+        .from(workflowInstances)
+        .where(buildWhere(instTenant, instDefinition, inArray(workflowInstances.status, FINISHED), gte(workflowInstances.updatedAt, since14)))
+        .groupBy(localDate(workflowInstances.updatedAt)),
+      // 9. 已超时挂起任务数：仍 pending 且其 task_timeout 作业已到期未执行
+      await tx.select({ count: sql<number>`count(*)::int` })
+        .from(workflowTasks)
+        .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
+        .innerJoin(workflowJobs, eq(workflowJobs.taskId, workflowTasks.id))
+        .where(buildWhere(instTenant, instDefinition, eq(workflowTasks.status, 'pending'), eq(workflowJobs.jobType, 'task_timeout'), eq(workflowJobs.status, 'pending'), sql`${workflowJobs.runAt} <= now()`)),
+      // 10. 24h 内即将超时的挂起任务数
+      await tx.select({ count: sql<number>`count(*)::int` })
+        .from(workflowTasks)
+        .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
+        .innerJoin(workflowJobs, eq(workflowJobs.taskId, workflowTasks.id))
+        .where(buildWhere(instTenant, instDefinition, eq(workflowTasks.status, 'pending'), eq(workflowJobs.jobType, 'task_timeout'), eq(workflowJobs.status, 'pending'), sql`${workflowJobs.runAt} > now() and ${workflowJobs.runAt} < now() + interval '24 hours'`)),
+      // 11. 作业健康（按状态计数）
+      await tx.select({ status: workflowJobs.status, count: sql<number>`count(*)::int` }).from(workflowJobs).leftJoin(workflowInstances, eq(workflowJobs.instanceId, workflowInstances.id)).where(instWhere).groupBy(workflowJobs.status),
+      // 12. Webhook 投递（按状态计数）
+      await tx.select({ status: workflowJobs.status, count: sql<number>`count(*)::int` }).from(workflowJobs).leftJoin(workflowInstances, eq(workflowJobs.instanceId, workflowInstances.id)).where(buildWhere(instWhere, eq(workflowJobs.jobType, 'webhook_delivery'))).groupBy(workflowJobs.status),
+      // 13. 子流程实例（按状态计数）
+      await tx.select({ status: workflowInstances.status, count: sql<number>`count(*)::int` }).from(workflowInstances).where(buildWhere(instWhere, sql`${workflowInstances.parentInstanceId} is not null`)).groupBy(workflowInstances.status),
+    ];
+    const sumc = (rows: Array<{ status: string; count: number }>, ...st: string[]) => rows.filter((r) => st.includes(r.status)).reduce((s, r) => s + r.count, 0);
+    const jobsTotal = jobRows.reduce((sum, row) => sum + row.count, 0);
+    const jobsFailed = sumc(jobRows, 'failed'), jobsDead = sumc(jobRows, 'dead');
+    const whTotal = sumc(webhookRows, 'succeeded', 'failed', 'dead'), whOk = sumc(webhookRows, 'succeeded');
+    const subTotal = subRows.reduce((s, r) => s + r.count, 0), subRej = sumc(subRows, 'rejected');
+    const automation = {
+      jobsTotal, jobsFailed, jobsDead, jobFailRate: jobsTotal > 0 ? (jobsFailed + jobsDead) / jobsTotal : null,
+      webhookTotal: whTotal, webhookSuccessRate: whTotal > 0 ? whOk / whTotal : null,
+      subprocessTotal: subTotal, subprocessFailRate: subTotal > 0 ? subRej / subTotal : null,
+    };
 
-  const statusCounts = statusRows.map((r) => ({ status: r.status, count: r.count }));
-  const total = statusCounts.reduce((sum, s) => sum + s.count, 0);
-  const round = (v: number | null | undefined) => (v == null ? null : Math.round(Number(v)));
+    const statusCounts = statusRows.map((r) => ({ status: r.status, count: r.count }));
+    const total = statusCounts.reduce((sum, s) => sum + s.count, 0);
+    const round = (v: number | null | undefined) => (v == null ? null : Math.round(Number(v)));
 
-  // 驳回率 / 超时率
-  const approvedCount = statusCounts.find((s) => s.status === 'approved')?.count ?? 0;
-  const rejectedCount = statusCounts.find((s) => s.status === 'rejected')?.count ?? 0;
-  const decidedCount = approvedCount + rejectedCount;
-  const rejectionRate = decidedCount > 0 ? rejectedCount / decidedCount : null;
-  const pendingTaskCount = pendingRow[0]?.count ?? 0;
-  const overdueTaskCount = overdueRow[0]?.count ?? 0;
-  const timeoutRate = pendingTaskCount > 0 ? overdueTaskCount / pendingTaskCount : null;
+    // 驳回率 / 超时率
+    const approvedCount = statusCounts.find((s) => s.status === 'approved')?.count ?? 0;
+    const rejectedCount = statusCounts.find((s) => s.status === 'rejected')?.count ?? 0;
+    const decidedCount = approvedCount + rejectedCount;
+    const rejectionRate = decidedCount > 0 ? rejectedCount / decidedCount : null;
+    const pendingTaskCount = pendingRow[0]?.count ?? 0;
+    const overdueTaskCount = overdueRow[0]?.count ?? 0;
+    const timeoutRate = pendingTaskCount > 0 ? overdueTaskCount / pendingTaskCount : null;
 
-  // 趋势序列补齐 14 天
-  const createdMap = new Map(createdTrend.map((r) => [r.d, r.c]));
-  const completedMap = new Map(completedTrend.map((r) => [r.d, r.c]));
-  const trend: WorkflowAnalyticsTrendPoint[] = [];
-  const runningNow = statusCounts.find((s) => s.status === 'running')?.count ?? 0;
-  const dates = buildDateAxis(since14, 14);
-  const net = dates.reduce((sum, d) => sum + (createdMap.get(d) ?? 0) - (completedMap.get(d) ?? 0), 0);
-  let backlog = runningNow - net; // 14 天前的积压基线
-  for (const d of dates) {
-    backlog += (createdMap.get(d) ?? 0) - (completedMap.get(d) ?? 0);
-    trend.push({ date: d, created: createdMap.get(d) ?? 0, completed: completedMap.get(d) ?? 0, pending: Math.max(0, backlog) });
-  }
+    // 趋势序列补齐 14 天
+    const createdMap = new Map(createdTrend.map((r) => [r.d, r.c]));
+    const completedMap = new Map(completedTrend.map((r) => [r.d, r.c]));
+    const trend: WorkflowAnalyticsTrendPoint[] = [];
+    const runningNow = statusCounts.find((s) => s.status === 'running')?.count ?? 0;
+    const dates = buildDateAxis(since14, 14);
+    const net = dates.reduce((sum, d) => sum + (createdMap.get(d) ?? 0) - (completedMap.get(d) ?? 0), 0);
+    let backlog = runningNow - net; // 14 天前的积压基线
+    for (const d of dates) {
+      backlog += (createdMap.get(d) ?? 0) - (completedMap.get(d) ?? 0);
+      trend.push({ date: d, created: createdMap.get(d) ?? 0, completed: completedMap.get(d) ?? 0, pending: Math.max(0, backlog) });
+    }
 
-  return {
-    statusCounts,
-    total,
-    avgDurationSec: round(avgRow[0]?.avg),
-    pendingTaskCount,
-    overdueTaskCount,
-    dueSoonTaskCount: dueSoonRow[0]?.count ?? 0,
-    recentCreated: recentRow[0]?.count ?? 0,
-    rejectionRate,
-    timeoutRate,
-    definitionStats: definitionRows.map((r) => ({
-      definitionId: r.definitionId,
-      definitionName: r.definitionName,
-      total: r.total,
-      running: r.running,
-      approved: r.approved,
-      rejected: r.rejected,
-      avgDurationSec: round(r.avgDurationSec),
-    })),
-    nodeBottlenecks: nodeRows.map((r) => ({
-      definitionId: r.definitionId,
-      definitionName: r.definitionName,
-      nodeKey: r.nodeKey,
-      nodeName: r.nodeName,
-      avgHandleSec: round(r.avgHandleSec),
-      pendingCount: r.pendingCount,
-      doneCount: r.doneCount,
-    })),
-    approverWorkloads: approverRows
-      .filter((r) => r.userId != null)
-      .map((r) => ({
-        userId: r.userId as number,
-        userName: r.userName,
-        pendingCount: r.pendingCount,
-        handledCount: r.handledCount,
-        oldestPendingSec: round(r.oldestPendingSec),
+    return {
+      statusCounts,
+      total,
+      avgDurationSec: round(avgRow[0]?.avg),
+      pendingTaskCount,
+      overdueTaskCount,
+      dueSoonTaskCount: dueSoonRow[0]?.count ?? 0,
+      recentCreated: recentRow[0]?.count ?? 0,
+      rejectionRate,
+      timeoutRate,
+      definitionStats: definitionRows.map((r) => ({
+        definitionId: r.definitionId,
+        definitionName: r.definitionName,
+        total: r.total,
+        running: r.running,
+        approved: r.approved,
+        rejected: r.rejected,
+        avgDurationSec: round(r.avgDurationSec),
       })),
-    automation,
-    trend,
-  };
+      nodeBottlenecks: nodeRows.map((r) => ({
+        definitionId: r.definitionId,
+        definitionName: r.definitionName,
+        nodeKey: r.nodeKey,
+        nodeName: r.nodeName,
+        avgHandleSec: round(r.avgHandleSec),
+        pendingCount: r.pendingCount,
+        doneCount: r.doneCount,
+      })),
+      approverWorkloads: approverRows
+        .filter((r) => r.userId != null)
+        .map((r) => ({
+          userId: r.userId as number,
+          userName: r.userName,
+          pendingCount: r.pendingCount,
+          handledCount: r.handledCount,
+          oldestPendingSec: round(r.oldestPendingSec),
+        })),
+      automation,
+      trend,
+    };
+  });
 }
 
 /** 超时待办预警列表（已超时仍 pending 的任务，按到期时间正序） */
 export async function listOverdueTasks(query: QueryOutputOf<typeof workflowInstanceContract.overdue>): Promise<{ list: WorkflowOverdueTask[]; total: number; page: number; pageSize: number }> {
   const user = currentUser();
+  const scope = await getDataScopeCondition({ currentUserId: user.userId, deptColumn: users.departmentId, ownerColumn: workflowInstances.initiatorId });
+  const instScope = scope ? exists(db.select({ id: users.id }).from(users).where(buildWhere(eq(users.id, workflowInstances.initiatorId), scope))) : undefined;
   const { page, pageSize } = query;
   const where = buildWhere(
     eq(workflowTasks.status, 'pending'),
@@ -225,6 +232,7 @@ export async function listOverdueTasks(query: QueryOutputOf<typeof workflowInsta
     eq(workflowJobs.status, 'pending'),
     sql`${workflowJobs.runAt} <= now()`,
     tenantCondition(workflowInstances, user),
+    instScope,
     query.definitionId ? eq(workflowInstances.definitionId, query.definitionId) : undefined,
   );
   const assignee = users;

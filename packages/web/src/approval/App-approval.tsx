@@ -16,6 +16,7 @@ const TaskListPage = lazy(() => import('./pages/TaskListPage'));
 const TaskDetailPage = lazy(() => import('./pages/TaskDetailPage'));
 const LaunchListPage = lazy(() => import('./pages/LaunchListPage'));
 const LaunchFormPage = lazy(() => import('./pages/LaunchFormPage'));
+const StatisticsPage = lazy(() => import('./pages/StatisticsPage'));
 
 const routeFallback = (
   <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 120 }}>
@@ -46,6 +47,7 @@ export default function ApprovalApp() {
               <Route path="/launch" element={<LaunchListPage />} />
               <Route path="/launch/:definitionId" element={<LaunchFormPage />} />
               <Route path="/draft/:instanceId" element={<LaunchFormPage />} />
+              <Route path="/statistics" element={<StatisticsPage />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

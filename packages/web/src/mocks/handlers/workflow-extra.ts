@@ -300,12 +300,14 @@ function buildCompensationDetail(id: number): WorkflowCompensationDetail {
   return { ...row, logs };
 }
 
-function buildAnalytics(): WorkflowAnalytics {
-  const insts = mockWorkflowInstances;
+function buildAnalytics(definitionId?: number): WorkflowAnalytics {
+  const insts = mockWorkflowInstances.filter(instance => definitionId == null || instance.definitionId === definitionId);
+  const instanceIds = new Set(insts.map(instance => instance.id));
+  const tasks = mockWorkflowTasks.filter(task => instanceIds.has(task.instanceId));
   const statusMap = new Map<string, number>();
   for (const i of insts) statusMap.set(i.status, (statusMap.get(i.status) ?? 0) + 1);
   const statusCounts = [...statusMap.entries()].map(([status, count]) => ({ status: status as WorkflowInstanceStatus, count }));
-  const pending = mockWorkflowTasks.filter((t) => t.status === 'pending');
+  const pending = tasks.filter((t) => t.status === 'pending');
 
   // 各流程定义统计
   const defMap = new Map<number, { name: string; total: number; running: number; approved: number; rejected: number }>();
@@ -324,7 +326,7 @@ function buildAnalytics(): WorkflowAnalytics {
 
   // 节点瓶颈
   const nodeMap = new Map<string, { nodeName: string; pending: number; done: number }>();
-  for (const t of mockWorkflowTasks) {
+  for (const t of tasks) {
     const e = nodeMap.get(t.nodeKey) ?? { nodeName: t.nodeName, pending: 0, done: 0 };
     if (t.status === 'pending') e.pending += 1;
     if (t.status === 'approved' || t.status === 'rejected') e.done += 1;
@@ -356,7 +358,7 @@ function buildAnalytics(): WorkflowAnalytics {
   const approvedN = statusCounts.find((s) => s.status === 'approved')?.count ?? 0;
   const rejectedN = statusCounts.find((s) => s.status === 'rejected')?.count ?? 0;
   const decidedN = approvedN + rejectedN;
-  const overdueN = Math.min(pending.length, 2);
+  const overdueN = buildOverdueList(definitionId).length;
 
   return {
     statusCounts,
@@ -376,10 +378,11 @@ function buildAnalytics(): WorkflowAnalytics {
   };
 }
 
-function buildOverdueList(): WorkflowOverdueTask[] {
+function buildOverdueList(definitionId?: number): WorkflowOverdueTask[] {
   return mockWorkflowTasks
     .filter((t) => t.status === 'pending')
     .slice(0, 2)
+    .filter(task => definitionId == null || mockWorkflowInstances.find(instance => instance.id === task.instanceId)?.definitionId === definitionId)
     .map((t, idx) => {
       const inst = mockWorkflowInstances.find((i) => i.id === t.instanceId);
       return {
@@ -435,7 +438,7 @@ export const workflowExtraHandlers = [
     removeByIds(mockWorkflowInstances, [params.id]); return ok(null);
   }),
   // ── 数据分析（必须在 /instances/:id 之前注册）──
-  mock(workflowInstanceContract.analytics, ({ ok }) => ok(buildAnalytics())),
+  mock(workflowInstanceContract.analytics, ({ query, ok }) => ok(buildAnalytics(query.definitionId))),
 
   // ── 抄送我的（必须在 /instances/:id 之前注册）──
   mock(workflowInstanceContract.ccMine, ({ query, ok, paginate }) => {
@@ -821,7 +824,7 @@ export const workflowExtraHandlers = [
   }),
 
   // ── 超时待办预警 ──
-  mock(workflowInstanceContract.overdue, ({ ok, paginate }) => ok(paginate(buildOverdueList()))),
+  mock(workflowInstanceContract.overdue, ({ query, ok, paginate }) => ok(paginate(buildOverdueList(query.definitionId)))),
 
   // ── 流程评论 ──
   mock(workflowInstanceContract.comments, ({ params, ok }) => ok(mockComments.filter((c) => c.instanceId === params.id))),

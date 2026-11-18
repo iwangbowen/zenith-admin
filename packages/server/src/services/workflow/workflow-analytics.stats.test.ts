@@ -1,18 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { SQL } from 'drizzle-orm';
+import { getTableName, type SQL } from 'drizzle-orm';
 import { PgDialect } from 'drizzle-orm/pg-core';
 // 首次模块图转换在测试装配阶段完成；各用例再重载以选择业务时区。
 import './workflow-analytics.service';
 
-const { select } = vi.hoisted(() => ({ select: vi.fn() }));
-vi.mock('../../db', () => ({ db: { select } }));
-vi.mock('../../lib/context', () => ({ currentUser: () => ({ userId: 1, roles: ['super_admin'], tenantId: null }) }));
+const { select, readSnapshot, state } = vi.hoisted(() => ({ select: vi.fn(), readSnapshot: vi.fn(), state: { user: { userId: 1, roles: ['super_admin'], tenantId: null as number | null } } }));
+vi.mock('../../db', () => ({ db: { select }, readSnapshot }));
+vi.mock('../../lib/context', () => ({ currentUser: () => state.user }));
+vi.mock('../../lib/data-scope', () => ({ getDataScopeCondition: vi.fn(async () => undefined) }));
 
 const dialect = new PgDialect({ casing: 'snake_case' });
 
 beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
+  state.user = { userId: 1, roles: ['super_admin'], tenantId: null };
+  readSnapshot.mockImplementation((fn: (tx: { select: typeof select }) => Promise<unknown>) => fn({ select }));
   vi.stubEnv('TZ', 'UTC');
   vi.stubEnv('APP_TIME_ZONE', 'Asia/Shanghai');
   vi.useFakeTimers({ toFake: ['Date'] });
@@ -53,6 +56,7 @@ function mockAnalyticsQueries(created: string[], completed: string[], timeZone: 
       from: () => query,
       where: (where?: SQL) => { condition = where; return query; },
       innerJoin: () => query,
+      leftJoin: () => query,
       groupBy: () => query,
       orderBy: () => query,
       limit: () => query,
@@ -64,6 +68,35 @@ function mockAnalyticsQueries(created: string[], completed: string[], timeZone: 
 }
 
 describe('workflow analytics business-day trend', () => {
+  it('scopes every aggregate including jobs and subprocesses to the tenant and definition in one snapshot', async () => {
+    vi.stubEnv('MULTI_TENANT_MODE', 'true');
+    state.user = { userId: 7, roles: ['tenant_admin'], tenantId: 23 };
+    const renderedConditions: Array<{ sql: string; params: unknown[] }> = [];
+    const tables: string[] = [];
+    select.mockImplementation(() => {
+      const query = {
+        from: (table: Parameters<typeof getTableName>[0]) => { tables.push(getTableName(table)); return query; },
+        where: (where: SQL) => { renderedConditions.push(dialect.sqlToQuery(where)); return query; },
+        innerJoin: () => query, leftJoin: () => query, groupBy: () => query, orderBy: () => query, limit: () => query,
+        then: (resolve: (rows: object[]) => unknown) => Promise.resolve([]).then(resolve),
+      };
+      return query;
+    });
+    const { getWorkflowAnalytics } = await import('./workflow-analytics.service');
+    const result = await getWorkflowAnalytics({ definitionId: 42 });
+    expect(readSnapshot).toHaveBeenCalledTimes(1);
+    expect(tables).toHaveLength(14);
+    expect(tables.filter(table => table === 'workflow_jobs')).toHaveLength(2);
+    expect(renderedConditions).toHaveLength(14);
+    for (const condition of renderedConditions) {
+      expect(condition.sql).toContain('tenant_id');
+      expect(condition.sql).toContain('definition_id');
+      expect(condition.params).toEqual(expect.arrayContaining([23, 42]));
+    }
+    expect(result.total).toBe(0);
+    expect(result.avgDurationSec).toBeNull();
+    expect(result.trend).toHaveLength(14);
+  });
   it('includes the complete first and current business days while preserving the rolling seven-day KPI', async () => {
     const windows = mockAnalyticsQueries(
       ['2026-09-17T15:59:59Z', '2026-09-17T16:00:00Z', '2026-09-30T16:10:00Z'],

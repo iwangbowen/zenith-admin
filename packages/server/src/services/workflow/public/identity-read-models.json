@@ -86,9 +86,10 @@
     }
   },
   "services/workflow/workflow-analytics.service.ts": {
-    "purpose": "Read-only workflow aggregate labels.",
+    "purpose": "Read-only workflow aggregate labels and initiator department for operation data scope filtering.",
     "tables": {
       "users": [
+        "departmentId",
         "id",
         "nickname",
         "username"
