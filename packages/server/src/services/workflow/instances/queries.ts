@@ -13,7 +13,7 @@ import { workflowInstances, workflowTasks, workflowTaskConsults, workflowDefinit
 import { tenantCondition } from '../../../lib/tenant';
 import { getDataScopeCondition } from '../../../lib/data-scope';
 import type { WorkflowFlowData, WorkflowFormField } from '@zenith/shared/workflow';
-import { buildWorkflowSummaryItems, findNextApproverSelectNodes, normalizeWorkflowFormSnapshot } from '@zenith/shared/workflow';
+import { buildWorkflowSummaryItems, findNextApproverSelectNodes, normalizeWorkflowFormSnapshot, workflowApprovalRequirements } from '@zenith/shared/workflow';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser, hasPermission } from '../../../lib/context';
 import { isSuperAdmin, getUserPermissions } from '../../../lib/permissions';
@@ -220,7 +220,8 @@ export async function listPendingMine(query: QueryOutputOf<typeof workflowInstan
       const sla = computeTaskSla(node?.timeout, r.task.activatedAt ?? r.task.createdAt);
       const summary = resolveInstanceSummary(r.inst, flow);
       const pendingDelegatedFromName = r.task.delegatedFromId ? (delegatorNames.get(r.task.delegatedFromId) ?? `#${r.task.delegatedFromId}`) : null;
-      return { ...mapInstance(r.inst, { ...r, currentNodeKeys: activeNodeKeys.get(r.inst.id) }), pendingTaskId: r.task.id, pendingTaskNodeType: r.task.nodeType ?? null, pendingSignaturePolicy, requiresIndividual, summary, pendingDelegatedFromName, pendingDelegationMode: r.task.delegationMode ?? null, ...sla };
+      const requirements = workflowApprovalRequirements(node, requiresIndividual);
+      return { ...mapInstance(r.inst, { ...r, currentNodeKeys: activeNodeKeys.get(r.inst.id) }), pendingTaskId: r.task.id, pendingTaskNodeType: r.task.nodeType ?? null, pendingTaskNodeKey: r.task.nodeKey, pendingTaskNodeName: r.task.nodeName, pendingTaskKind: r.task.taskKind, pendingActivationId: r.task.activationId, canQuickApprove: requirements.canQuickApprove, canBatchApprove: requirements.canBatchApprove, pendingOpinionRequired: requirements.opinionRequired, pendingSignaturePolicy, requiresIndividual, summary, pendingDelegatedFromName, pendingDelegationMode: r.task.delegationMode ?? null, ...sla };
     }),
     total: Number(total),
     page,

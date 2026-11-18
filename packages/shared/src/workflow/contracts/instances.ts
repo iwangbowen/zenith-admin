@@ -292,6 +292,13 @@ export const workflowInstanceListItemSchema = workflowInstanceSchema.omit({
 }).extend({
   pendingTaskId: z.int().optional(),
   pendingTaskNodeType: z.string().nullable().optional(),
+  pendingTaskNodeKey: z.string().optional(),
+  pendingTaskNodeName: z.string().optional(),
+  pendingTaskKind: z.enum(WORKFLOW_TASK_KINDS).optional(),
+  pendingActivationId: z.string().nullable().optional(),
+  canQuickApprove: z.boolean().optional(),
+  canBatchApprove: z.boolean().optional(),
+  pendingOpinionRequired: z.boolean().optional(),
   pendingSignaturePolicy: workflowSignaturePolicySchema.optional(),
   requiresIndividual: z.boolean().optional(),
   pendingDelegatedFromName: z.string().nullable().optional().meta({ description: '待办任务来自委托时的委托人姓名' }),

@@ -19,7 +19,7 @@ import {
 import { ChevronDown } from 'lucide-react';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { WorkflowActionButtonConfig, WorkflowDefinition, WorkflowFieldPermission, WorkflowInstance, WorkflowTask } from '@zenith/shared/workflow';
-import { hasEditableFieldPermission, resolveWorkflowActionButton as resolveButton, WORKFLOW_RETURN_TO_INITIATOR_KEY } from '@zenith/shared/workflow';
+import { hasEditableFieldPermission, isWorkflowBaseApprovalTask, resolveWorkflowActionButton as resolveButton, WORKFLOW_RETURN_TO_INITIATOR_KEY } from '@zenith/shared/workflow';
 import { resolveRejectTargetHint } from '@/utils/workflow-reject';
 import { resolveWorkflowDetailDefinition } from '@/utils/workflow-snapshot';
 import { useQuickPhrases } from '@/hooks/useQuickPhrases';
@@ -212,8 +212,8 @@ export default function WorkflowApprovalDetailSheet({
   const btnAddSign = useMemo(() => resolveButton(actionButtons, 'addSign'), [actionButtons]);
   const btnReturn = useMemo(() => resolveButton(actionButtons, 'return'), [actionButtons]);
 
-  const canAddSign = currentTask?.taskKind === 'approval' && (detail?.approvalActivations ?? []).some((activation) =>
-    activation.slots.some((slot) => slot.id === currentTask.slotId && slot.origin === 'base'),
+  const canAddSign = !!currentTask && (detail?.approvalActivations ?? []).some((activation) =>
+    activation.slots.some((slot) => isWorkflowBaseApprovalTask(currentTask, slot, currentTask.id)),
   );
 
   const returnTargetOptions = useMemo(() => {

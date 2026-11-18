@@ -131,7 +131,7 @@ export function useTaskAction() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (vars: ApprovalTaskActionVariables) =>
-      runWorkflowTaskAction(vars, { ...client, headers: { 'X-Idempotency-Key': `approval-${vars.action}-${vars.taskId}` } }),
+      runWorkflowTaskAction(vars, { ...client, headers: { 'X-Idempotency-Key': `approval-${vars.action}-${vars.taskId}-${crypto.randomUUID()}` } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: approvalKeys.all }),
   });
 }
@@ -325,10 +325,12 @@ export function useDeleteApprovalDelegation() {
 
 /** 连续审批：处理完一条后取下一条待办（排除当前实例），供详情页自动跳转 */
 export async function fetchNextPendingTask(
-  excludeInstanceId: number,
+  excludeTaskId: number,
+  preferInstanceId?: number,
 ): Promise<{ next: { instanceId: number; taskId: number } | null; remaining: number }> {
   const data = await api(workflowInstanceContract.pendingMine, { query: { page: 1, pageSize: 5 } }, silentClient);
-  const item = data.list.find((i) => i.id !== excludeInstanceId && i.pendingTaskId != null);
+  const item = data.list.find((i) => i.id === preferInstanceId && i.pendingTaskId !== excludeTaskId)
+    ?? data.list.find((i) => i.pendingTaskId !== excludeTaskId && i.pendingTaskId != null);
   return {
     next: item?.pendingTaskId != null ? { instanceId: item.id, taskId: item.pendingTaskId } : null,
     remaining: data.total,

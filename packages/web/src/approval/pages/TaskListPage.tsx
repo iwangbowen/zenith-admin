@@ -77,12 +77,12 @@ interface CardProps {
 
 /** 现场手写、下游自选和必填附件逐条处理；个人签名可显式确认后批量使用。 */
 function isBatchable(item: ApprovalListItem): boolean {
-  return !item.requiresIndividual && item.pendingSignaturePolicy !== 'handwritten' && item.pendingTaskId != null;
+  return item.canBatchApprove === true && item.pendingTaskId != null;
 }
 
 /** 列表快捷同意没有签名确认步骤，只适用于无需签名的节点。 */
 function isQuickable(item: ApprovalListItem): boolean {
-  return isBatchable(item) && (item.pendingSignaturePolicy ?? 'none') === 'none';
+  return item.canQuickApprove === true && isBatchable(item);
 }
 
 function TaskCard({ item, tab, onOpen, onQuickApprove, quickApproving, batchMode, checked }: Readonly<CardProps>) {
@@ -123,6 +123,7 @@ function TaskCard({ item, tab, onOpen, onQuickApprove, quickApproving, batchMode
       {handledTask && (
         <div className="ap-card__meta">{handledTask.nodeName} · 第 {handledTask.round} 轮{handledTask.decision?.targetNodeName ? ` · 退回至 ${handledTask.decision.targetNodeName}` : ''}</div>
       )}
+      {tab === 'pending' && <div className="ap-card__meta">{item.pendingTaskNodeName} · {item.pendingTaskKind === 'suggestion' ? '待提交建议' : '待我处理'}</div>}
       <WorkflowSummaryLine items={item.summary} />
       <div className="ap-card__meta">
         <UserAvatar name={item.initiatorName ?? '—'} avatar={item.initiatorAvatar ?? undefined} size={18} semiSize="extra-extra-small" />

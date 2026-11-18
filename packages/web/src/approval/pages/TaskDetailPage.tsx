@@ -7,7 +7,7 @@ import {
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { BellRing, ChevronLeft, MoreHorizontal, Reply, RotateCcw, Send, Share2, X } from 'lucide-react';
 import type { WorkflowActionButtonConfig, WorkflowActionButtonKey, WorkflowFieldPermission, WorkflowTask } from '@zenith/shared/workflow';
-import { applyFieldPermissionsToFields, hasEditableFieldPermission, resolveWorkflowActionButton, WORKFLOW_RETURN_TO_INITIATOR_KEY, workflowAttachmentContract } from '@zenith/shared/workflow';
+import { applyFieldPermissionsToFields, hasEditableFieldPermission, isWorkflowBaseApprovalTask, resolveWorkflowActionButton, WORKFLOW_RETURN_TO_INITIATOR_KEY, workflowAttachmentContract } from '@zenith/shared/workflow';
 import { formatDateTime } from '@/utils/date';
 import { downloadBlob } from '@/utils/download';
 import { urlOf } from '@/lib/contract-query';
@@ -99,7 +99,7 @@ function TaskDetailContent() {
   const navigate = useNavigate();
   const params = useParams<{ instanceId: string; taskId?: string }>();
   const instanceId = Number(params.instanceId);
-  const taskId = params.taskId ? Number(params.taskId) : null;
+  const requestedTaskId = params.taskId ? Number(params.taskId) : null;
   const queryClient = useQueryClient();
 
   const detailQuery = useApprovalDetail(Number.isFinite(instanceId) ? instanceId : null);
@@ -111,6 +111,8 @@ function TaskDetailContent() {
   const commentMutation = useAddApprovalComment();
   const detail = detailQuery.data ?? null;
   const me = meQuery.data ?? null;
+  const myPendingTasks = (detail?.tasks ?? []).filter(t => t.status === 'pending' && t.assigneeId === me?.id && detail?.status === 'running');
+  const taskId = requestedTaskId ?? (myPendingTasks.length === 1 ? myPendingTasks[0].id : null);
 
   const [action, setAction] = useState<ActionKind>(null);
   const [signature, setSignature] = useState<SignatureInput | null>(null);
@@ -222,7 +224,8 @@ function TaskDetailContent() {
   const needSignature = signaturePolicy !== 'none';
   const approveLabel = needSignature ? `签名并${btnApprove.displayName ?? '同意'}` : btnApprove.displayName ?? '同意';
   const opinionRequired = nodeCfg?.operations?.includes('opinionRequired') ?? false;
-  const canAddSign = currentTask?.taskKind === 'approval';
+  const currentSlot = detail?.approvalActivations?.flatMap(a => a.slots).find(s => s.id === currentTask?.slotId);
+  const canAddSign = !!currentTask && isWorkflowBaseApprovalTask(currentTask, currentSlot, currentTask.id);
 
   const status = detail ? STATUS_MAP[detail.status] : null;
   const comments = detail?.comments ?? [];
@@ -257,7 +260,7 @@ function TaskDetailContent() {
   };
 
   const submitAction = async () => {
-    if (taskId == null || !action) return;
+    if (taskId == null || !action || actionMutation.isPending) return;
     try {
       const values = (await actionFormApi.current?.validate() ?? {}) as { comment?: string };
       if (action === 'approve' && needSignature && !signature) {
@@ -328,6 +331,7 @@ function TaskDetailContent() {
       await actionMutation.mutateAsync(vars);
       businessActionFormApi.current?.onActionSuccess?.();
       setAction(null);
+      if (action === 'addSign') { Toast.success('加签已创建，请继续完成本人的审批意见'); return; }
       // 连续审批（对标钉钉）：处理完自动进入下一条待办，清零后回列表
       const doneLabel = action === 'approve' ? '已同意'
         : action === 'reject' ? '已驳回'
@@ -336,13 +340,13 @@ function TaskDetailContent() {
               : action === 'addSign' ? '已加签'
                 : '已退回';
       try {
-        const { next, remaining } = await fetchNextPendingTask(instanceId);
+        const { next, remaining } = await fetchNextPendingTask(taskId, instanceId);
         if (next) {
           Toast.success(`${doneLabel} · 还剩 ${remaining} 条待办，已进入下一条`);
           navigate(`/detail/${next.instanceId}/${next.taskId}`, { replace: true });
           return;
         }
-        Toast.success(`${doneLabel} · 待办已清零 🎉`);
+        Toast.success(remaining > 0 ? `${doneLabel} · 还剩 ${remaining} 条待办，请返回列表继续` : `${doneLabel} · 待办已清零 🎉`);
       } catch {
         Toast.success(doneLabel);
       }
@@ -434,7 +438,7 @@ function TaskDetailContent() {
       <WorkflowFormRenderer
         attachmentInstanceId={instanceId}
         instanceSerialNo={detail?.serialNo}
-        key={`form-${instanceId}-${formEditable ? 'edit' : 'read'}`}
+        key={`form-${instanceId}-${taskId ?? 'view'}-${currentTask?.activationId ?? 'none'}-${formEditable ? 'edit' : 'read'}`}
         fields={visibleFields}
         initValues={(detail?.formData ?? {}) as Record<string, unknown>}
         readOnly={!formEditable}
@@ -498,6 +502,8 @@ function TaskDetailContent() {
       )}
     >
       <div className={`ap-body${hasFooter ? ' ap-body--with-footer' : ''}`}>
+        {requestedTaskId == null && myPendingTasks.length > 1 && <div className="ap-section"><Typography.Text>请选择本次处理的任务</Typography.Text>{myPendingTasks.map(t => <Button key={t.id} block onClick={() => navigate(`/detail/${instanceId}/${t.id}`, { replace: true })}>{t.nodeName}{t.signPosition ? ' · 加签意见' : ''}</Button>)}</div>}
+        {requestedTaskId != null && !actionable && <Banner type="info" closeIcon={null} description="此任务已处理或不再由你处理。可返回待办列表查看当前任务。" />}
         {detail.status === 'suspended' && (
           <Banner type="warning" closeIcon={null} description={`流程已挂起${detail.suspendReason ? `：${detail.suspendReason}` : ''}，恢复前不可审批`} style={{ marginBottom: 12 }} />
         )}
@@ -546,6 +552,8 @@ function TaskDetailContent() {
         <div className="ap-section">
           <div className="ap-section__title">流转记录</div>
           <ApprovalTimeline
+            approvalActivations={detail.approvalActivations}
+            childInstances={detail.childInstances ?? []}
             tasks={detail.tasks ?? []}
             consults={detail.consults ?? []}
             flowNodes={detail.predictedPath ?? linearizeApprovalNodes(flowData)}
@@ -693,9 +701,9 @@ function TaskDetailContent() {
       {/* 底部操作条：发起人（撤回 / 催办） */}
       {initiatorActionable && (
         <div className="ap-footer-bar">
-          <Popconfirm title="确定撤回该申请？" content="撤回后流程终止，可重新发起" onConfirm={() => void withdraw()}>
+          {detail.allowWithdraw && <Popconfirm title="确定撤回该申请？" content="撤回后流程终止，可重新发起" onConfirm={() => void withdraw()}>
             <Button theme="light" type="danger" disabled={!online} icon={<RotateCcw size={14} />} loading={withdrawMutation.isPending}>撤回</Button>
-          </Popconfirm>
+          </Popconfirm>}
           <Button
             theme="solid"
             type="primary"

@@ -15,7 +15,7 @@ import { advanceAndMaterialize, checkNodeCompletion } from './materialize';
 import { emitInstanceEvent, emitNodeEvent, emitTaskEvent, lockInstanceExpecting } from './shared';
 import { assertActionButtonEnabled, assertActionUploadRequirement, getOwnPendingTask, rejectTaskCore } from './task-actions';
 import type { WorkflowTaskAttachment } from './task-actions';
-import { WORKFLOW_RETURN_TO_INITIATOR_KEY } from '@zenith/shared/workflow';
+import { WORKFLOW_RETURN_TO_INITIATOR_KEY, isWorkflowBaseApprovalTask } from '@zenith/shared/workflow';
 import { currentUser } from '../../../lib/context';
 import { getUserPermissions, isSuperAdmin } from '../../../lib/permissions';
 import { loadApprovalActivations, loadApprovalActivation, reconcileApprovalActivation } from './approval-state';
@@ -193,7 +193,8 @@ export async function addSignTask(taskId: number, targetUserIds: number[], posit
     requireRow(fresh, '任务状态已变化，无法加签', 409);
     const activation = await loadApprovalActivation(tx, inst.id, task.activationId);
     const anchor = activation.slots.find((slot) => slot.id === task.slotId);
-    if (activation.status !== 'active' || anchor?.origin !== 'base' || anchor.currentTaskId !== task.id || anchor.status !== 'pending') throw new HTTPException(400, { message: '只有本轮待办基础席位可加签，加签席位不可再次加签' });
+    if (activation.status !== 'active' || !isWorkflowBaseApprovalTask(task, anchor, task.id)) throw new HTTPException(400, { message: '只有本轮待办基础席位可加签，加签席位不可再次加签' });
+    if (!anchor) throw new HTTPException(409, { message: '审批席位不存在' });
     await assertAssigneesNotActiveOnNode(tx, { instanceId: inst.id, nodeKey: task.nodeKey, activationId: task.activationId, userIds: targetUserIds });
     const [group] = await tx.insert(workflowSignGroups).values({ activationId: task.activationId, anchorSlotId: anchor.id, position, signMode, status: position === 'after' ? 'waiting' : 'active', tenantId: inst.tenantId }).returning();
     const created: typeof workflowTasks.$inferSelect[] = [];

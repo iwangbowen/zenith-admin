@@ -142,6 +142,8 @@ export default function ApprovalTimeline({ tasks, consults = [], approvalActivat
         else if (isSkipped) actionText = '已跳过';
         else actionText = task.waitReason ? WORKFLOW_TASK_WAIT_REASON_LABELS[task.waitReason] : '待处理';
         if (task.taskKind === 'suggestion') actionText = isApproved ? '建议同意' : isRejected ? '建议拒绝' : '待提交建议';
+        else if (task.decision?.action === 'returnInitiator') actionText = '已退回发起人';
+        else if (task.decision?.action === 'returnNode') actionText = '已退回前序节点';
         if (task.status === 'waiting' && task.waitReason === 'subprocess') {
           const children = childInstances.filter((child) => child.parentTaskId === task.id);
           actionText = !children.length ? '等待后台创建子流程'
