@@ -113,6 +113,20 @@
   min-height: 40px;
 }
 
+.ap-page .access-permission-summary {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  flex-wrap: wrap;
+  padding: 8px 0;
+  background: var(--semi-color-bg-1);
+}
+
+.semi-sidesheet.ap-sheet .semi-sidesheet-inner {
+  bottom: var(--ap-keyboard-offset, 0px);
+  max-height: var(--ap-viewport-height, 100dvh);
+}
+
 .ap-card {
   background: transparent;
   border: none;

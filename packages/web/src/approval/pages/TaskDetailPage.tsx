@@ -11,7 +11,6 @@ import { applyFieldPermissionsToFields, hasEditableFieldPermission, isWorkflowBa
 import { formatDateTime } from '@/utils/date';
 import { downloadBlob } from '@/utils/download';
 import { urlOf } from '@/lib/contract-query';
-import ApprovalTimeline from '@/components/ApprovalTimeline';
 import FileAttachment, { type AttachmentItem } from '@/components/FileAttachment';
 import { workflowFileToAttachment } from '@/components/FileAttachment/utils';
 import type { SignatureInput } from '@zenith/shared/core';
@@ -42,6 +41,7 @@ import { INSTANCE_STATUS_MAP as STATUS_MAP } from '@/components/workflow/workflo
 
 type ActionKind = 'approve' | 'reject' | 'transfer' | 'delegate' | 'addSign' | 'return' | null;
 const SignatureField = lazy(() => import('@/components/signature/SignatureField'));
+const ApprovalTimeline = lazy(() => import('@/components/ApprovalTimeline'));
 
 /** 移动审批端按钮默认值同样取 shared 唯一事实源（与审批面板 / 设计器 / 服务端一致） */
 function resolveBtn(
@@ -76,7 +76,12 @@ function SharePrintButton({ instanceId, title }: Readonly<{ instanceId: number; 
       const { blob, filename } = await fetchApprovalPrintPdf(instanceId);
       const file = new File([blob], filename, { type: 'application/pdf' });
       if (typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file], title });
+        try { await navigator.share({ files: [file], title }); }
+        catch (error) {
+          if (error instanceof DOMException && error.name === 'AbortError') return;
+          downloadBlob(blob, filename);
+          Toast.info('系统分享暂不可用，已转为保存文件');
+        }
       } else {
         downloadBlob(blob, filename);
       }
@@ -128,6 +133,8 @@ function TaskDetailContent() {
 
   const [action, setAction] = useState<ActionKind>(null);
   const [section, setSection] = useState('content');
+  const [progressOpen, setProgressOpen] = useState(false);
+  const [commentLimit, setCommentLimit] = useState(20);
   const [signature, setSignature] = useState<SignatureInput | null>(null);
   const [commentDraft, setCommentDraft] = useState('');
   const [replyTo, setReplyTo] = useState<{ id: number; userName?: string | null; content: string } | null>(null);
@@ -157,6 +164,9 @@ function TaskDetailContent() {
   // 连续审批跳转到下一条时复用组件实例，需重置操作状态
   useEffect(() => {
     setAction(null);
+    setSection('content');
+    setProgressOpen(false);
+    setCommentLimit(20);
     setSignature(null);
     setCommentDraft('');
     setReplyTo(null);
@@ -532,7 +542,7 @@ function TaskDetailContent() {
         </>
       )}
     >
-      <nav className="ap-detail-nav" aria-label="详情分区">{[{ key: 'content', label: '申请内容' }, { key: 'progress', label: '审批进度' }, { key: 'comments', label: '沟通' }].map(item => <Button key={item.key} theme={section === item.key ? 'light' : 'borderless'} onClick={() => { setSection(item.key); document.getElementById(`approval-${item.key}`)?.scrollIntoView({ block: 'start' }); }}>{item.label}</Button>)}</nav>
+      <nav className="ap-detail-nav" aria-label="详情分区">{[{ key: 'content', label: '申请内容' }, { key: 'progress', label: '审批进度' }, { key: 'comments', label: '沟通' }].map(item => <Button key={item.key} theme={section === item.key ? 'light' : 'borderless'} onClick={() => { setSection(item.key); if (item.key === 'progress') setProgressOpen(true); document.getElementById(`approval-${item.key}`)?.scrollIntoView({ block: 'start' }); }}>{item.label}</Button>)}</nav>
       <div className={`ap-body${hasFooter ? ' ap-body--with-footer' : ''}`}>
         <div className="ap-section">{detail.status !== 'draft' && me?.permissions?.some(p => p === '*' || p === 'workflow:instance:list') && <Button onClick={() => { setCollaborationAction('forward'); setCollaborationUsers([]); }}>抄送他人</Button>}{actionable && <Button onClick={() => { setCollaborationAction('consult'); setCollaborationUsers([]); }}>邀请协办</Button>}{recallableTask && detail.status === 'running' && <Popconfirm title="撤回我的处理？后续已处理时将无法撤回。" onConfirm={() => void collaboration.mutateAsync({ action: 'recall', taskId: recallableTask.id })}><Button>撤回我的处理</Button></Popconfirm>}</div>
         {requestedTaskId == null && myPendingTasks.length > 1 && <div className="ap-section"><Typography.Text>请选择本次处理的任务</Typography.Text>{myPendingTasks.map(t => <Button key={t.id} block onClick={() => navigate(`/detail/${instanceId}/${t.id}`, { replace: true })}>{t.nodeName}{t.signPosition ? ' · 加签意见' : ''}</Button>)}</div>}
@@ -584,7 +594,8 @@ function TaskDetailContent() {
         {/* 流转记录 */}
         <div className="ap-section" id="approval-progress">
           <div className="ap-section__title">流转记录</div>
-          <ApprovalTimeline
+          <Button block theme="borderless" onClick={() => setProgressOpen(value => !value)}>{progressOpen ? '收起流转记录' : `查看完整流转记录（${detail.tasks?.length ?? 0} 条任务）`}</Button>
+          {progressOpen && <Suspense fallback={<Spin />}><ApprovalTimeline
             approvalActivations={detail.approvalActivations}
             childInstances={detail.childInstances ?? []}
             tasks={detail.tasks ?? []}
@@ -594,7 +605,7 @@ function TaskDetailContent() {
             instanceStatus={detail.status}
             finishedAt={detail.updatedAt}
             currentUserId={me?.id ?? null}
-          />
+          /></Suspense>}
           {(detail.approvalActivations ?? []).map(activation => <div key={activation.id} className="ap-section"><Typography.Text strong>{activation.nodeName}：基础意见 {activation.baseApproved}/{activation.baseTotal}，需 {activation.baseRequired} 票</Typography.Text>{activation.signGroups.map(group => <div key={group.id}><Tag>{group.position === 'before' ? '前加签' : group.position === 'after' ? '后加签' : '并加签'} · {group.signMode === 'and' ? '会签' : '或签'} · {WORKFLOW_SIGN_GROUP_STATUS_LABELS[group.status]}</Tag>{group.slots.map(slot => <div key={slot.id}>{slot.assigneeName} · {WORKFLOW_APPROVAL_SLOT_STATUS_LABELS[slot.status]}{group.canReduce && slot.status === 'pending' && <Popconfirm title="移除此未办加签席位？" onConfirm={() => void collaboration.mutateAsync({ action: 'reduce', groupId: group.id, slotIds: [slot.id] })}><Button size="small" type="danger">减签</Button></Popconfirm>}</div>)}</div>)}</div>)}
           {(detail.consults ?? []).filter(c => c.consulteeId === me?.id && c.status === 'pending').map(c => <div key={c.id} className="ap-section"><Typography.Text>协办：{c.question}</Typography.Text><TextArea value={replyDrafts[c.id] ?? ''} onChange={v => setReplyDrafts(p => ({ ...p, [c.id]: v }))} placeholder="填写协办意见" /><Button disabled={!replyDrafts[c.id]?.trim()} onClick={() => void collaboration.mutateAsync({ action: 'reply', id: c.id, opinion: replyDrafts[c.id] })}>提交协办意见</Button></div>)}
         </div>
@@ -605,7 +616,7 @@ function TaskDetailContent() {
           {comments.length === 0 && (
             <Typography.Text type="tertiary" size="small">暂无评论</Typography.Text>
           )}
-          {comments.map((c) => (
+          {comments.slice(0, commentLimit).map((c) => (
             <div key={c.id} className="ap-comment">
               <Avatar size="extra-small" src={c.userAvatar ?? undefined} style={{ flexShrink: 0 }}>
                 {(c.userName ?? 'U').slice(0, 1)}
@@ -635,6 +646,7 @@ function TaskDetailContent() {
               </div>
             </div>
           ))}
+          {comments.length > commentLimit && <Button block onClick={() => setCommentLimit(value => value + 20)}>加载更多评论（还剩 {comments.length - commentLimit} 条）</Button>}
           {detail.allowComment !== false && (
             <div className="ap-comment-composer">
               {replyTo && (

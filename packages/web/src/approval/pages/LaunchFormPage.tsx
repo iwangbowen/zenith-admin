@@ -235,7 +235,7 @@ function LaunchFormContent() {
   const scheduleDraftAutosave = useDebouncedCallback(() => {
     if (manualSubmission.current) return;
     if (!dirty.current) return;
-    if (!isEditingDraft && def) saveApprovalRecovery(def.id, def.formFields ?? [], formApi.current?.getValues() ?? {}, title ?? defaultTitle);
+    if (!isEditingDraft && def) saveApprovalRecovery(def.id, def.formFields ?? [], businessApi.current?.getValues?.() ?? formApi.current?.getValues() ?? {}, title ?? defaultTitle);
     if (!isEditingDraft || draftInstanceId == null || !draftQuery.data || revision.current === undefined || !online
       || launchMutation.isPending || draftMutation.isPending || submitDraftMutation.isPending) return;
     if (editorQuery.data?.versionChanged && !versionAccepted) return;
@@ -400,7 +400,7 @@ function LaunchFormContent() {
           )}
         </div>
         <div className="ap-section-title">表单信息</div>
-        {def.formType === 'custom' ? <BusinessFormHost customForm={def.customForm} mode="create" container="tab" requestClient={approvalRequest} definitionId={def.id} value={draftQuery.data?.formData ?? {}} getFormApi={api => { businessApi.current = api; }} onValuesChange={() => { scheduleChainReload(); scheduleDraftAutosave(); }} /> : launchFields.length === 0
+        {def.formType === 'custom' ? <BusinessFormHost customForm={def.customForm} mode="create" container="tab" requestClient={approvalRequest} definitionId={def.id} value={draftQuery.data?.formData ?? recoveryValues ?? {}} getFormApi={api => { businessApi.current = api; }} onValuesChange={() => { dirty.current = true; scheduleChainReload(); scheduleDraftAutosave(); }} /> : launchFields.length === 0
           ? <Typography.Text type="tertiary">该流程无需填写表单，直接提交即可</Typography.Text>
           : (
             <WorkflowFormRenderer
@@ -446,7 +446,8 @@ function LaunchFormContent() {
         ) : null}
       </div>
       <div className={`ap-body${canSubmit ? ' ap-body--with-footer' : ''}`}>{renderBody()}</div>
-      {!online && <Banner className="ap-offline-banner" type="warning" closeIcon={null} description="当前处于离线状态，草稿会在网络恢复后继续保存。" />}
+      {!online && <Banner className="ap-offline-banner" type="warning" closeIcon={null} description={isEditingDraft ? '当前处于离线状态，请保留页面；网络恢复后重试保存。' : '当前处于离线状态，本地恢复稿不等于服务端草稿，请联网后保存。'} />}
+      {online && autosaveState === 'failed' && <Banner type="warning" closeIcon={null} description={<>自动保存失败，当前输入仍保留。<Button onClick={() => { dirty.current = true; scheduleDraftAutosave(); }}>重试保存</Button></>} />}
       {canSubmit && (
         <div className="ap-footer-bar">
           {isEditingDraft && <Typography.Text className="ap-autosave-status" type={autosaveState === 'failed' ? 'danger' : 'tertiary'}>

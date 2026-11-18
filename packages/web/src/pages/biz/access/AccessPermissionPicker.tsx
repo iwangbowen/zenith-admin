@@ -18,6 +18,7 @@ interface Props {
 function AccessPermissionPicker({ menus, coveredPermissionCodes, value = [], onChange }: Props) {
   const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
   const [search, setSearch] = useState('');
+  const [showSelected, setShowSelected] = useState(false);
   const [searchExpandedKeys, setSearchExpandedKeys] = useState<string[]>([]);
   usePinyinReady();
   const covered = new Set(coveredPermissionCodes);
@@ -53,8 +54,10 @@ function AccessPermissionPicker({ menus, coveredPermissionCodes, value = [], onC
 
   return <div>
     <Banner type="info" closeIcon={null} description="按业务模块逐项选择操作权限，目录只用于定位。页面查询和操作权限分别授权，请同时选择需要的查询能力；系统会补齐导航目录。" style={{ marginBottom: 8 }} />
-    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
+    <div className="access-permission-summary" style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
       <Typography.Text type="tertiary">直接申请 {value.length} 项 · 角色覆盖 {covered.size} 项</Typography.Text>
+      <Button size="small" theme="borderless" onClick={() => setShowSelected(value => !value)}>{showSelected ? '收起已选' : '查看已选'}</Button>
+      <Button size="small" theme="borderless" onClick={() => { setSearch(''); setExpandedKeys([]); setSearchExpandedKeys([]); }}>折叠模块</Button>
       <Button size="small" theme="borderless" disabled={!value.length} onClick={() => onChange?.([])}>清空直接申请项</Button>
     </div>
     <Tree treeData={treeData} value="" expandAction="click"
@@ -63,7 +66,7 @@ function AccessPermissionPicker({ menus, coveredPermissionCodes, value = [], onC
       onSearch={(input, keys) => { setSearch(input); setSearchExpandedKeys(keys); }}
       filterTreeNode={(input, _node, data) => textMatches(String(data?.filterLabel ?? ''), String(input))}
       showFilteredOnly searchPlaceholder="搜索名称、完整路径或权限码" virtualize={{ height: 288, itemSize: 36 }} />
-    {selected.length > 0 && <div style={{ marginTop: 12, display: 'grid', gap: 6 }} aria-label="直接申请的权限清单">
+    {showSelected && selected.length > 0 && <div style={{ marginTop: 12, display: 'grid', gap: 6 }} aria-label="直接申请的权限清单">
       {selected.map(menu => <div key={menu.id} style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ minWidth: 0 }}><Typography.Text>{menu.path.join(' / ')}</Typography.Text><Typography.Text type="tertiary" size="small" style={{ display: 'block', overflowWrap: 'anywhere' }}>{menu.permission}</Typography.Text></div>
         <Space><Button size="small" theme="borderless" onClick={() => locate(menu)}>定位</Button><Button size="small" theme="borderless" onClick={() => onChange?.(value.filter(code => code !== menu.permission))} aria-label={`移除${menu.path.join('/')}`}>移除</Button></Space>
