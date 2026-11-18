@@ -192,11 +192,14 @@ export const positionsExportDefinition = defineExport({
 
 取消/重试更新目标任务详情与列表，删除移除目标详情/下载日志缓存；批量删除等待全部请求结束，逐项处理成功与失败。详情链接为 `/system/export-jobs?jobId={id}`，可在已挂载页面消费后续任务深链；成功态显示文件已生成，不保留运行阶段备注。
 
+页面「导出统计」页签的统计口径与列表一致：普通用户只看本人任务，租户管理与全局管理按各自可见范围聚合；`expired` 代表文件已按保留策略清理的成功导出，计入成功率与累计行数，但不计入仍保留的产物文件汇总。
+
 ## API 与验证
 
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
 | GET | `/api/export-jobs/entities` | 当前可导出实体元数据 |
+| GET | `/api/export-jobs/stats` | 当前可见任务的统计概览（状态、趋势、格式/实体聚合、下载与产物） |
 | POST | `/api/export-jobs/preview` | 准备规格、能力、预算和脱敏样例 |
 | POST / GET | `/api/export-jobs` | 创建 / 分页查询任务 |
 | GET / DELETE | `/api/export-jobs/{id}` | 详情 / 删除 |

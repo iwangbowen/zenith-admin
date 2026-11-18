@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import ExportJobDetails from '@/components/ExportJobDetails';
 import { useQueryClient } from '@tanstack/react-query';
-import { Button, Descriptions, Modal, SideSheet, Space, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Button, Descriptions, Modal, SideSheet, Space, Spin, Tabs, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
@@ -32,6 +32,11 @@ import { FilterSelect, StatusSelect } from '@/components/search-filters';
 import { copyTextWithToast } from '@/utils/clipboard';
 import { useListPage } from '@/hooks/useListPage';
 import { useListDeepLink } from '@/hooks/useListDeepLink';
+import { useUrlTabState } from '@/hooks/useUrlTabState';
+import ExportJobStatsTab from './ExportJobStatsTab';
+
+type TabKey = 'list' | 'stats';
+
 const EMPTY_ENTITIES: ExportEntityMeta[] = [];
 const EMPTY_EXPORT_JOBS: ExportJob[] = [];
 
@@ -74,6 +79,7 @@ function renderProgress(record: ExportJob) {
 
 export default function ExportJobsPage() {
   const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useUrlTabState(['list', 'stats'] as const, 'list');
   const [detailId, setDetailId] = useState<number | undefined>();
   const queryClient = useQueryClient();
   const [logsVisible, setLogsVisible] = useState(false);
@@ -126,8 +132,9 @@ export default function ExportJobsPage() {
     try {
       await request.download(urlOf(exportJobContract.download, { params: { id: record.id } }), record.filename ?? `export-${record.id}.${record.format}`);
       Toast.success('已开始下载');
-      // 下载会写入该任务的下载记录（列表的下载次数列随之变化），不涉及可导出实体元数据
+      // 下载会写入该任务的下载记录（列表与统计的下载次数随之变化），不涉及可导出实体元数据
       void queryClient.invalidateQueries({ queryKey: exportJobKeys.lists });
+      void queryClient.invalidateQueries({ queryKey: exportJobKeys.stats });
       void queryClient.invalidateQueries({ queryKey: exportJobKeys.downloads(record.id) });
       void queryClient.invalidateQueries({ queryKey: exportJobKeys.detail(record.id) });
     } finally {
@@ -316,45 +323,59 @@ export default function ExportJobsPage() {
   ];
 
   return (
-    <div className="page-container">
-      <ListSearchToolbar
-        page={page}
-        filters={['keyword', 'entity', 'status', 'format']}
-        overrides={{
-          entity: (p) => (
-            <FilterSelect
-              placeholder="全部模块"
-              items={entityOptions}
-              {...p.bind('entity')}
-              width={160}
-            />
-          ),
-          status: (p) => (
-            <StatusSelect
-              items={statusOptions}
-              {...p.bind('status')}
-            />
-          ),
-          format: (p) => (
-            <FilterSelect
-              placeholder="全部格式"
-              items={formatOptions}
-              {...p.bind('format')}
-            />
-          ),
-        }}
-        actions={(
-          <>
-            <Button icon={<RefreshCw size={14} />} onClick={() => void listQuery.refetch()} loading={listQuery.isFetching}>刷新</Button>
-            {selectedRowKeys.length > 0 && <BatchDeleteButton count={selectedRowKeys.length} loading={batchDeleting} onClick={handleBatchDelete} />}
-          </>
-        )}
-      />
+    <div className="page-container page-tabs-page">
+      <Tabs
+        collapsible="auto"
+        type="line"
+        activeKey={activeTab}
+        onChange={(key) => setActiveTab(key as TabKey)}
+        lazyRender
+      >
+        <Tabs.TabPane tab="任务列表" itemKey="list">
+          <ListSearchToolbar
+            page={page}
+            filters={['keyword', 'entity', 'status', 'format']}
+            overrides={{
+              entity: (p) => (
+                <FilterSelect
+                  placeholder="全部模块"
+                  items={entityOptions}
+                  {...p.bind('entity')}
+                  width={160}
+                />
+              ),
+              status: (p) => (
+                <StatusSelect
+                  items={statusOptions}
+                  {...p.bind('status')}
+                />
+              ),
+              format: (p) => (
+                <FilterSelect
+                  placeholder="全部格式"
+                  items={formatOptions}
+                  {...p.bind('format')}
+                />
+              ),
+            }}
+            actions={(
+              <>
+                <Button icon={<RefreshCw size={14} />} onClick={() => void listQuery.refetch()} loading={listQuery.isFetching}>刷新</Button>
+                {selectedRowKeys.length > 0 && <BatchDeleteButton count={selectedRowKeys.length} loading={batchDeleting} onClick={handleBatchDelete} />}
+              </>
+            )}
+          />
 
-      <ConfigurableTable<ExportJob>
-        columns={columns}
-        {...tableProps}
-      />
+          <ConfigurableTable<ExportJob>
+            columns={columns}
+            {...tableProps}
+          />
+        </Tabs.TabPane>
+
+        <Tabs.TabPane tab="导出统计" itemKey="stats">
+          <ExportJobStatsTab />
+        </Tabs.TabPane>
+      </Tabs>
 
       {detailId !== undefined && <ExportJobDetails id={detailId} onClose={() => setDetailId(undefined)} />}
       <SideSheet

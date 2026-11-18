@@ -8,14 +8,16 @@ import { join } from 'node:path';
 import { requireRow } from '../../lib/db-assert';
 import { and, desc, eq, gte, inArray, isNull, lt, lte, or, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { stableStringify, type QueryOutputOf } from '@zenith/shared/core';
-import { EXPORT_SCOPES, exportJobContract } from '@zenith/shared/tasks';
+import dayjs from 'dayjs';
+import { percentOf, stableStringify, type QueryOutputOf } from '@zenith/shared/core';
+import { EXPORT_SCOPES, exportJobContract, type ExportJobStats } from '@zenith/shared/tasks';
 import type { JobStuckItem } from '@zenith/shared/platform';
 import { db } from '../../db';
 import { exportJobDownloads, exportJobs, exportDailyUsage, asyncTasks, managedFiles, users, tenants } from '../../db/schema';
 import { pageOffset } from '../../lib/pagination';
 import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
-import { formatDateTime, formatFileTimestamp, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
+import { APP_TIME_ZONE, formatDateTime, formatFileTimestamp, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
+import { localDate, localFormat } from '../../lib/datetime-sql';
 import { currentUser, runWithCurrentUser, runWithOperationPermissions } from '../../lib/context';
 import { getUserPermissions, isSuperAdmin, runWithFreshUserPermissions } from '../../lib/permissions';
 import { exactTenantCondition, getCreateTenantId, isTenantActive, tenantCondition } from '../../lib/tenant';
@@ -556,6 +558,182 @@ async function visibleJobWhere(user: JwtPayload): Promise<SQL | undefined> {
     return exactTenantCondition(exportJobs.tenantId, getCreateTenantId(user));
   }
   return buildWhere(eq(exportJobs.createdBy, user.userId), tenantCondition(exportJobs, user));
+}
+
+/** 导出中心统计概览：状态、今日/趋势、格式与实体聚合、下载与产物汇总（均按当前用户可见范围） */
+export async function getExportJobStats(): Promise<ExportJobStats> {
+  const user = currentUser();
+  const visibleWhere = await visibleJobWhere(user);
+  const dayMs = 24 * 60 * 60 * 1000;
+  const since24h = new Date(Date.now() - dayMs);
+  const since30d = new Date(Date.now() - 30 * dayMs);
+  const nowLocal = dayjs().tz(APP_TIME_ZONE);
+  const dailyBucket = localDate(exportJobs.createdAt);
+  const hourlyBucket = localFormat(exportJobs.createdAt, 'YYYY-MM-DD HH24:00');
+  const dailyStart = nowLocal.startOf('day').subtract(13, 'day').toDate();
+  const hourlyStart = nowLocal.startOf('hour').subtract(23, 'hour').toDate();
+  const todayStart = nowLocal.startOf('day').toDate();
+  const yesterdayStart = nowLocal.startOf('day').subtract(1, 'day').toDate();
+  const todayStartParam = sql.param(todayStart, exportJobs.createdAt);
+  const durationMsExpr = sql`extract(epoch from (${exportJobs.completedAt} - ${exportJobs.startedAt})) * 1000`;
+  // expired 表示导出已成功、文件按保留策略清理，成功率统计归入成功侧
+  const completedExpr = sql`${exportJobs.status} in ('success', 'expired')`;
+  const retainedFileExpr = sql`${exportJobs.status} = 'success' and ${exportJobs.fileDeletedAt} is null`;
+
+  const [
+    statusRows,
+    [duration],
+    dailyRows,
+    hourlyRows,
+    [todayRow],
+    formatRows,
+    entityRows,
+    submitterRows,
+    [fileRow],
+    [downloadRow],
+  ] = await Promise.all([
+    db.select({ status: exportJobs.status, count: sql<number>`count(*)::int` })
+      .from(exportJobs).where(visibleWhere).groupBy(exportJobs.status),
+    db.select({ avgMs: sql<number | null>`avg(${durationMsExpr})` })
+      .from(exportJobs)
+      .where(buildWhere(visibleWhere, eq(exportJobs.status, 'success'), gte(exportJobs.completedAt, since24h))),
+    db.select({
+      date: dailyBucket,
+      submitted: sql<number>`count(*)::int`,
+      success: sql<number>`count(*) filter (where ${completedExpr})::int`,
+      failed: sql<number>`count(*) filter (where ${exportJobs.status} = 'failed')::int`,
+    }).from(exportJobs)
+      .where(buildWhere(visibleWhere, gte(exportJobs.createdAt, dailyStart)))
+      .groupBy(dailyBucket)
+      .orderBy(dailyBucket),
+    db.select({
+      hour: hourlyBucket,
+      submitted: sql<number>`count(*)::int`,
+      failed: sql<number>`count(*) filter (where ${exportJobs.status} = 'failed')::int`,
+    }).from(exportJobs)
+      .where(buildWhere(visibleWhere, gte(exportJobs.createdAt, hourlyStart)))
+      .groupBy(hourlyBucket)
+      .orderBy(hourlyBucket),
+    db.select({
+      submitted: sql<number>`count(*) filter (where ${exportJobs.createdAt} >= ${todayStartParam})::int`,
+      success: sql<number>`count(*) filter (where ${exportJobs.createdAt} >= ${todayStartParam} and ${completedExpr})::int`,
+      failed: sql<number>`count(*) filter (where ${exportJobs.createdAt} >= ${todayStartParam} and ${exportJobs.status} = 'failed')::int`,
+      yesterdaySubmitted: sql<number>`count(*) filter (where ${exportJobs.createdAt} < ${todayStartParam})::int`,
+    }).from(exportJobs)
+      .where(buildWhere(visibleWhere, gte(exportJobs.createdAt, yesterdayStart))),
+    db.select({
+      format: exportJobs.format,
+      total: sql<number>`count(*)::int`,
+      success: sql<number>`count(*) filter (where ${completedExpr})::int`,
+      failed: sql<number>`count(*) filter (where ${exportJobs.status} = 'failed')::int`,
+      rowCount: sql<number>`coalesce(sum(${exportJobs.rowCount}) filter (where ${completedExpr}), 0)::float8`,
+      fileSize: sql<number>`coalesce(sum(${exportJobs.fileSize}) filter (where ${retainedFileExpr}), 0)::float8`,
+    }).from(exportJobs)
+      .where(visibleWhere)
+      .groupBy(exportJobs.format)
+      .orderBy(sql`count(*) desc`),
+    db.select({
+      entity: exportJobs.entity,
+      moduleName: exportJobs.moduleName,
+      total: sql<number>`count(*)::int`,
+      success: sql<number>`count(*) filter (where ${completedExpr})::int`,
+      failed: sql<number>`count(*) filter (where ${exportJobs.status} = 'failed')::int`,
+      rowCount: sql<number>`coalesce(sum(${exportJobs.rowCount}) filter (where ${completedExpr}), 0)::float8`,
+      fileSize: sql<number>`coalesce(sum(${exportJobs.fileSize}) filter (where ${retainedFileExpr}), 0)::float8`,
+    }).from(exportJobs)
+      .where(visibleWhere)
+      .groupBy(exportJobs.entity, exportJobs.moduleName)
+      .orderBy(sql`count(*) desc`)
+      .limit(5),
+    db.select({
+      userId: exportJobs.createdBy,
+      username: sql<string | null>`max(coalesce(nullif(${users.nickname}, ''), ${users.username}))`,
+      count: sql<number>`count(*)::int`,
+      failed: sql<number>`count(*) filter (where ${exportJobs.status} = 'failed')::int`,
+    }).from(exportJobs)
+      .leftJoin(users, eq(users.id, exportJobs.createdBy))
+      .where(buildWhere(visibleWhere, gte(exportJobs.createdAt, since30d)))
+      .groupBy(exportJobs.createdBy)
+      .orderBy(sql`count(*) desc`)
+      .limit(5),
+    db.select({
+      count: sql<number>`count(*) filter (where ${retainedFileExpr})::int`,
+      totalBytes: sql<number>`coalesce(sum(${exportJobs.fileSize}) filter (where ${retainedFileExpr}), 0)::float8`,
+      totalRows: sql<number>`coalesce(sum(${exportJobs.rowCount}) filter (where ${retainedFileExpr}), 0)::float8`,
+    }).from(exportJobs).where(visibleWhere),
+    db.select({
+      total: sql<number>`count(*)::int`,
+      jobs: sql<number>`count(distinct ${exportJobDownloads.jobId})::int`,
+      last30d: sql<number>`count(*) filter (where ${exportJobDownloads.createdAt} >= ${sql.param(since30d, exportJobDownloads.createdAt)})::int`,
+    }).from(exportJobDownloads)
+      .innerJoin(exportJobs, eq(exportJobs.id, exportJobDownloads.jobId))
+      .where(visibleWhere),
+  ]);
+
+  const counts: Record<string, number> = {};
+  for (const row of statusRows) counts[row.status] = row.count;
+  const success = counts.success ?? 0;
+  const expired = counts.expired ?? 0;
+  const failed = counts.failed ?? 0;
+  const round = (value: number | null | undefined): number | null => value == null ? null : Math.round(Number(value));
+  const fileCount = fileRow?.count ?? 0;
+  const totalBytes = Math.round(Number(fileRow?.totalBytes ?? 0));
+  const totalRows = Math.round(Number(fileRow?.totalRows ?? 0));
+
+  return {
+    total: statusRows.reduce((sum, row) => sum + row.count, 0),
+    pending: counts.pending ?? 0,
+    running: counts.running ?? 0,
+    success,
+    failed,
+    cancelled: counts.cancelled ?? 0,
+    expired,
+    successRate: percentOf(success + expired, success + expired + failed),
+    avgDurationMs: round(duration?.avgMs),
+    today: {
+      submitted: todayRow?.submitted ?? 0,
+      success: todayRow?.success ?? 0,
+      failed: todayRow?.failed ?? 0,
+      yesterdaySubmitted: todayRow?.yesterdaySubmitted ?? 0,
+    },
+    daily: dailyRows.map((row) => ({ date: row.date, submitted: row.submitted, success: row.success, failed: row.failed })),
+    hourly: hourlyRows.map((row) => ({ hour: row.hour, submitted: row.submitted, failed: row.failed })),
+    formats: formatRows.map((row) => ({
+      format: row.format,
+      total: row.total,
+      success: row.success,
+      failed: row.failed,
+      rowCount: Math.round(Number(row.rowCount)),
+      fileSize: Math.round(Number(row.fileSize)),
+    })),
+    topEntities: entityRows.map((row) => ({
+      entity: row.entity,
+      moduleName: row.moduleName,
+      total: row.total,
+      success: row.success,
+      failed: row.failed,
+      rowCount: Math.round(Number(row.rowCount)),
+      fileSize: Math.round(Number(row.fileSize)),
+    })),
+    topSubmitters: submitterRows.map((row) => ({
+      userId: row.userId,
+      username: row.userId == null ? '系统' : (row.username ?? `用户 #${row.userId}`),
+      count: row.count,
+      failed: row.failed,
+    })),
+    downloads: {
+      total: downloadRow?.total ?? 0,
+      jobs: downloadRow?.jobs ?? 0,
+      last30d: downloadRow?.last30d ?? 0,
+    },
+    files: {
+      count: fileCount,
+      totalBytes,
+      avgBytes: fileCount > 0 ? Math.round(totalBytes / fileCount) : null,
+      totalRows,
+      avgRows: fileCount > 0 ? Math.round(totalRows / fileCount) : null,
+    },
+  };
 }
 
 export async function listExportJobs(query: QueryOutputOf<typeof exportJobContract.list>) {

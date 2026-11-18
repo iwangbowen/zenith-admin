@@ -647,6 +647,9 @@ export function refreshMockAsyncTask(id: number) {
   return task;
 }
 
+/** 读取全部任务快照（先推进模拟进度），供其它业务 Mock 统计复用 */
+export function getMockAsyncTasks() { tickAll(); return tasks; }
+
 /** 读取仍在占用资源的任务；先推进模拟进度，避免把已经跑完的任务当成执行中 */
 export function getMockActiveAsyncTasks() { tickAll(); return tasks.filter(task => ['pending', 'running'].includes(task.status)); }
 

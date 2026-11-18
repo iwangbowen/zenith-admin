@@ -43,6 +43,73 @@ export const importInspectionSchema = z.object({
 }).meta({ id: 'ImportInspection' });
 export type ImportInspection = z.infer<typeof importInspectionSchema>;
 
+/** 导入模式聚合：预检 / 正式导入 */
+export const importJobModeStatSchema = z.object({
+  mode: z.enum(['preview', 'import']),
+  total: z.int(),
+  success: z.int(),
+  failed: z.int(),
+  processedRows: z.int(),
+  failedRows: z.int(),
+}).meta({ id: 'ImportJobModeStat' });
+
+export type ImportJobModeStat = z.infer<typeof importJobModeStatSchema>;
+
+/** 导入实体聚合 */
+export const importJobEntityStatSchema = z.object({
+  entity: z.string(),
+  total: z.int(),
+  success: z.int(),
+  failed: z.int(),
+  processedRows: z.int(),
+  failedRows: z.int(),
+}).meta({ id: 'ImportJobEntityStat' });
+
+export type ImportJobEntityStat = z.infer<typeof importJobEntityStatSchema>;
+
+/** 导入中心统计概览（登录用户仅统计自己提交的任务，管理员统计全部） */
+export const importJobStatsSchema = z.object({
+  total: z.int(),
+  pending: z.int(),
+  running: z.int(),
+  success: z.int(),
+  failed: z.int(),
+  cancelled: z.int(),
+  successRate: z.number().nullable().meta({ description: '已完成任务中的成功占比（百分比，保留一位小数）；无已结束任务为 null' }),
+  avgDurationMs: z.int().nullable().meta({ description: '近 24 小时成功导入任务平均耗时（毫秒）；无数据为 null' }),
+  today: z.object({
+    submitted: z.int(),
+    success: z.int(),
+    failed: z.int(),
+    yesterdaySubmitted: z.int(),
+  }).meta({ description: '今日提交概览与昨日提交数（环比用）' }),
+  daily: z.array(z.object({
+    date: z.string(),
+    submitted: z.int(),
+    success: z.int(),
+    failed: z.int(),
+  })).meta({ description: '近 14 天每日提交/成功/失败数（date: YYYY-MM-DD）' }),
+  hourly: z.array(z.object({
+    hour: z.string(),
+    submitted: z.int(),
+    failed: z.int(),
+  })).meta({ description: '近 24 小时每小时提交/失败数（hour: YYYY-MM-DD HH:00）' }),
+  modes: z.array(importJobModeStatSchema).meta({ description: '预检与正式导入的任务量' }),
+  topEntities: z.array(importJobEntityStatSchema).meta({ description: '导入次数 Top 5 实体' }),
+  topSubmitters: z.array(z.object({
+    userId: z.int().nullable(),
+    username: z.string(),
+    count: z.int(),
+    failed: z.int(),
+  })).meta({ description: '近 30 天提交人 Top 5（createdBy 为空合并为「系统」）' }),
+  rows: z.object({
+    processed: z.int(),
+    failed: z.int(),
+  }).meta({ description: '累计处理行数与失败行数' }),
+}).meta({ id: 'ImportJobStats' });
+
+export type ImportJobStats = z.infer<typeof importJobStatsSchema>;
+
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 
 export const importEntityParam = z.object({
@@ -56,6 +123,7 @@ export const importTaskParam = idParam;
  */
 export const importJobContract = defineContract('/api/import-jobs', {
   entities: op.get('/entities', { access: 'authenticated', response: z.array(importEntityMetaSchema), summary: '可导入实体列表（按权限过滤）' }),
+  stats: op.get('/stats', { access: 'authenticated', response: importJobStatsSchema, summary: '导入中心统计概览' }),
   template: op.get('/{entity}/template', { access: 'authenticated', params: importEntityParam, kind: 'file', summary: '下载导入模板' }),
   inspect: op.post('/inspect', { access: 'authenticated', audit: { description: '预览导入文件', recordBody: false, recordResponseBody: false }, body: submitImportJobSchema.pick({ entity: true, fileId: true, context: true }), response: importInspectionSchema, summary: '读取导入文件表头与脱敏样例（不创建任务）' }),
   submit: op.post('/', { access: 'authenticated', audit: '提交数据导入任务', body: submitImportJobSchema, response: asyncTaskSchema, summary: '提交导入任务（文件先经 /api/files/upload 上传）' }),

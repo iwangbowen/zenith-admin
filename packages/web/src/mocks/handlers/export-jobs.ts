@@ -1,5 +1,6 @@
-import type { QueryOf } from '@zenith/shared/core';
-import { exportJobContract, exportPresetContract, type ExportPreset } from '@zenith/shared/tasks';
+import dayjs from 'dayjs';
+import { percentOf, type QueryOf } from '@zenith/shared/core';
+import { EXPORT_JOB_FORMATS, exportJobContract, exportPresetContract, type ExportJobStats, type ExportPreset } from '@zenith/shared/tasks';
 import { CMS_STAT_METRIC_LABELS, CMS_STAT_REPORT_VERSION, cmsStatExportQuerySchema, isCmsStatMetricAvailable, type CmsStatReportRow } from '@zenith/shared/cms';
 import { getMockCmsStatsReportRows } from './cms-stats';
 import { mockTableFile } from '../utils/export-table';
@@ -7,7 +8,7 @@ import type { ExportEntityMeta, ExportJob, ExportJobDownload } from '@zenith/sha
 import { mock } from '@/mocks/utils/contract';
 import { requireItem } from '@/mocks/utils/crud';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
-import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
+import { mockDateOffset, mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
 import { includesKeyword } from '@/mocks/utils/filter';
 import { mockResource } from '@/mocks/utils/resource';
 
@@ -312,6 +313,92 @@ function filterJobs(query: QueryOf<typeof exportJobContract.list>) {
   });
 }
 
+function buildMockExportStats(): ExportJobStats {
+  advanceExportJobs();
+  const counts: Record<string, number> = { pending: 0, running: 0, success: 0, failed: 0, cancelled: 0, expired: 0 };
+  for (const job of jobs) counts[job.status] = (counts[job.status] ?? 0) + 1;
+  const success = counts.success ?? 0;
+  const expired = counts.expired ?? 0;
+  const failed = counts.failed ?? 0;
+  const files = jobs.filter((job) => job.status === 'success' && job.fileSize != null && job.fileDeletedAt == null);
+  const totalBytes = files.reduce((sum, job) => sum + (job.fileSize ?? 0), 0);
+  const totalRows = files.reduce((sum, job) => sum + (job.rowCount ?? 0), 0);
+  const formats = EXPORT_JOB_FORMATS.map((format) => {
+    const rows = jobs.filter((job) => job.format === format);
+    return {
+      format,
+      total: rows.length,
+      success: rows.filter((job) => job.status === 'success' || job.status === 'expired').length,
+      failed: rows.filter((job) => job.status === 'failed').length,
+      rowCount: rows.reduce((sum, job) => sum + (job.rowCount ?? 0), 0),
+      fileSize: rows.reduce((sum, job) => sum + (job.fileSize ?? 0), 0),
+    };
+  }).filter((row) => row.total > 0);
+  const entityMap = new Map<string, { entity: string; moduleName: string; total: number; success: number; failed: number; rowCount: number; fileSize: number }>();
+  for (const job of jobs) {
+    const row = entityMap.get(job.entity) ?? { entity: job.entity, moduleName: job.moduleName, total: 0, success: 0, failed: 0, rowCount: 0, fileSize: 0 };
+    row.total += 1;
+    if (job.status === 'success' || job.status === 'expired') row.success += 1;
+    if (job.status === 'failed') row.failed += 1;
+    row.rowCount += job.rowCount ?? 0;
+    row.fileSize += job.fileSize ?? 0;
+    entityMap.set(job.entity, row);
+  }
+  const submitterMap = new Map<string, { userId: number | null; username: string; count: number; failed: number }>();
+  for (const job of jobs) {
+    const key = String(job.createdBy ?? 'system');
+    const row = submitterMap.get(key) ?? { userId: job.createdBy, username: job.createdByName ?? '系统', count: 0, failed: 0 };
+    row.count += 1;
+    if (job.status === 'failed') row.failed += 1;
+    submitterMap.set(key, row);
+  }
+  return {
+    total: jobs.length,
+    pending: counts.pending ?? 0,
+    running: counts.running ?? 0,
+    success,
+    failed,
+    cancelled: counts.cancelled ?? 0,
+    expired,
+    successRate: percentOf(success + expired, success + expired + failed),
+    avgDurationMs: 2400,
+    today: { submitted: jobs.length, success, failed, yesterdaySubmitted: 5 },
+    daily: Array.from({ length: 14 }, (_, index) => {
+      const submitted = [2, 4, 3, 6, 5, 3, 7, 3, 5, 2, 6, 4, 7, jobs.length][index] ?? 3;
+      const dailyFailed = [0, 1, 0, 1, 0, 0, 2, 0, 1, 0, 1, 0, 2, failed][index] ?? 0;
+      return {
+        date: mockDateOffset(-(13 - index)),
+        submitted,
+        failed: dailyFailed,
+        success: Math.max(submitted - dailyFailed - (index === 13 ? (counts.pending ?? 0) + (counts.running ?? 0) : 0), 0),
+      };
+    }),
+    hourly: Array.from({ length: 24 }, (_, index) => {
+      const submitted = [0, 0, 1, 0, 0, 0, 0, 2, 3, 5, 4, 2, 1, 2, 4, 3, 2, 1, 0, 1, 0, 0, 0, 0][index] ?? 0;
+      return {
+        hour: dayjs().startOf('hour').subtract(23 - index, 'hour').format('YYYY-MM-DD HH:00'),
+        submitted,
+        failed: submitted > 3 ? 1 : 0,
+      };
+    }),
+    formats,
+    topEntities: [...entityMap.values()].sort((a, b) => b.total - a.total).slice(0, 5),
+    topSubmitters: [...submitterMap.values()].sort((a, b) => b.count - a.count).slice(0, 5),
+    downloads: {
+      total: downloads.length,
+      jobs: new Set(downloads.map((item) => item.jobId)).size,
+      last30d: downloads.length,
+    },
+    files: {
+      count: files.length,
+      totalBytes,
+      avgBytes: files.length > 0 ? Math.round(totalBytes / files.length) : null,
+      totalRows,
+      avgRows: files.length > 0 ? Math.round(totalRows / files.length) : null,
+    },
+  };
+}
+
 const statsSnapshots = new Map<number, CmsStatReportRow[]>();
 const mockStarted = new Map<number, number>();
 function advanceExportJobs() {
@@ -377,6 +464,8 @@ export const exportJobsHandlers = [
     return ok({ entity: entity.entity, title: entity.filenamePrefix, formats: entity.formats, columns, sensitive: entity.sensitive, canExportRaw: false, maxRows: entity.execution.maxRows, syncMaxRows: entity.execution.syncMaxRows, estimatedRows: body.scope === 'filtered' ? 42 : new Set(body.rowIds?.map(String)).size, sample: [], retentionDays: 7, executionMode: entity.execution.mode === 'async' ? 'async' : 'sync', supportsRowScope: entity.renderMode === 'table' && columns.some(c => c.key === 'id'), supportsColumns: entity.renderMode === 'table', supportsPartition: entity.renderMode === 'table' && entity.entity !== 'cms.statistics' });
   }),
   mock(exportJobContract.entities, ({ ok }) => ok(entities)),
+
+  mock(exportJobContract.stats, ({ ok }) => ok(buildMockExportStats())),
 
   mock(exportJobContract.list, ({ query, ok, paginate }) => { advanceExportJobs(); return ok(paginate(filterJobs(query).sort((a, b) => b.id - a.id))); }),
 

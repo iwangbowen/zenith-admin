@@ -10,6 +10,7 @@ import {
   deleteExportJob,
   getExportJob,
   getExportJobDownload,
+  getExportJobStats,
   listExportEntities,
   listExportJobDownloads,
   listExportJobs,
@@ -31,6 +32,10 @@ const previewRoute = defineContractRoute(exportJobContract.preview, {
 
 const entitiesRoute = defineContractRoute(exportJobContract.entities, {
   handler: async (c) => c.json(okBody(await listExportEntities()), 200),
+});
+
+const statsRoute = defineContractRoute(exportJobContract.stats, {
+  handler: async (c) => c.json(okBody(await getExportJobStats()), 200),
 });
 
 const downloadRoute = defineContractRoute(exportJobContract.download, {
@@ -71,7 +76,7 @@ mountCrud(exportJobsRoute, exportJobContract,
   {
     messages: { create: '导出任务已创建', remove: '已删除' },
   },
-  [entitiesRoute, previewRoute, downloadRoute, downloadsRoute, cancelRoute, retryRoute],
+  [entitiesRoute, statsRoute, previewRoute, downloadRoute, downloadsRoute, cancelRoute, retryRoute],
 );
 
 export default exportJobsRoute;

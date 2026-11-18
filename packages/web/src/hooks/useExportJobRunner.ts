@@ -19,7 +19,12 @@ interface ExportJobRunOptions {
 }
 
 export function useExportJobRunner() {
-  const exportMutation = useApiMutation(exportJobContract.create, { invalidate: (qc) => void qc.invalidateQueries({ queryKey: exportJobKeys.lists }) });
+  const exportMutation = useApiMutation(exportJobContract.create, {
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: exportJobKeys.lists });
+      void qc.invalidateQueries({ queryKey: exportJobKeys.stats });
+    },
+  });
 
   const runExport = async (options: ExportJobRunOptions) => {
     const { entity, format, query, columns, scope, rowIds, idempotencyKey, splitRows, raw = false, watermark = true, executionMode = 'auto' } = options;

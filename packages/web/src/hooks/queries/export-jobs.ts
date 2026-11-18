@@ -9,6 +9,7 @@ export type ExportJobListParams = NonNullable<QueryOf<typeof exportJobContract.l
 
 export const exportJobKeys = {
   entities: contractKey(exportJobContract.entities),
+  stats: contractKey(exportJobContract.stats),
   lists: contractKey(exportJobContract.list),
   list: (params: ExportJobListParams) => contractKey(exportJobContract.list, { query: params }),
   detail: (id: number) => contractKey(exportJobContract.detail, { params: { id } }),
@@ -17,6 +18,10 @@ export const exportJobKeys = {
 
 export function useExportEntities() {
   return useApiQuery(exportJobContract.entities, { requestOptions: { silent: true } });
+}
+
+export function useExportJobStats() {
+  return useApiQuery(exportJobContract.stats, { requestOptions: { silent: true } });
 }
 
 export function useExportPreview() {
@@ -49,6 +54,7 @@ export function useCancelExportJob() {
     // 仅改任务状态；`entities`（可导出实体元数据）与本次操作无关
     invalidate: (qc, _output, { params }) => {
       void qc.invalidateQueries({ queryKey: exportJobKeys.lists });
+      void qc.invalidateQueries({ queryKey: exportJobKeys.stats });
       void qc.invalidateQueries({ queryKey: exportJobKeys.detail(params.id) });
     },
   });
@@ -58,6 +64,7 @@ export function useRetryExportJob() {
   return useApiMutation(exportJobContract.retry, {
     invalidate: (qc, _output, { params }) => {
       void qc.invalidateQueries({ queryKey: exportJobKeys.lists });
+      void qc.invalidateQueries({ queryKey: exportJobKeys.stats });
       // 重试会重新产出文件，该任务的下载记录随之变化
       void qc.invalidateQueries({ queryKey: exportJobKeys.downloads(params.id) });
       void qc.invalidateQueries({ queryKey: exportJobKeys.detail(params.id) });
@@ -87,7 +94,10 @@ export type RerunExportJobVariables = InputOf<typeof exportJobContract.create> &
 /** 重新提交：另起一条新任务，原任务的下载记录不变；调用 `mutate({ body: rerunExportJobBody(record), sourceId: record.id })` */
 export function useRerunExportJob() {
   return useApiMutation<typeof exportJobContract.create, RerunExportJobVariables>(exportJobContract.create, {
-    invalidate: (qc) => void qc.invalidateQueries({ queryKey: exportJobKeys.lists }),
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: exportJobKeys.lists });
+      void qc.invalidateQueries({ queryKey: exportJobKeys.stats });
+    },
   });
 }
 
@@ -98,6 +108,7 @@ export function useDeleteExportJob() {
       qc.removeQueries({ queryKey: exportJobKeys.downloads(params.id) });
       qc.removeQueries({ queryKey: exportJobKeys.detail(params.id) });
       void qc.invalidateQueries({ queryKey: exportJobKeys.lists });
+      void qc.invalidateQueries({ queryKey: exportJobKeys.stats });
     },
   });
 }
@@ -119,6 +130,7 @@ export function useBatchDeleteExportJobs() {
     onError: error => Toast.error(error instanceof Error ? error.message : '批量删除失败'),
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: exportJobKeys.lists });
+      void qc.invalidateQueries({ queryKey: exportJobKeys.stats });
     },
   });
 }

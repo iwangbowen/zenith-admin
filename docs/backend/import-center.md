@@ -69,11 +69,14 @@
 
 窄屏下配置弹窗、映射列表和行级明细可滚动且不产生页面横向溢出。导入完成后，发起页面只失效实际受影响的业务列表；任务历史和行级明细继续由任务中心查询。
 
+「导入统计」页签按任务类型 `data-import` / `data-import-preview` 聚合，数据源仍是任务中心；持有全局任务查询权限时统计全部导入任务，否则只统计本人提交的任务。
+
 ## 契约与接口
 
 | 操作 | 路径 | 作用 |
 | --- | --- | --- |
 | entities | `GET /api/import-jobs/entities` | 按权限返回可导入实体与列元数据 |
+| stats | `GET /api/import-jobs/stats` | 导入任务统计概览（状态、趋势、预检/正式导入、实体与提交人聚合） |
 | template | `GET /api/import-jobs/{entity}/template` | 下载数据页仅含表头、独立填写说明页及枚举下拉的模板 |
 | inspect | `POST /api/import-jobs/inspect` | 读取表头、样例、行数和映射建议 |
 | submit | `POST /api/import-jobs` | 提交预检或正式导入任务 |

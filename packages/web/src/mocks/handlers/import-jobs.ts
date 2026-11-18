@@ -1,8 +1,10 @@
-import { importJobContract, IMPORT_TASK_TYPE, IMPORT_PREVIEW_TASK_TYPE } from '@zenith/shared/tasks';
+import dayjs from 'dayjs';
+import { percentOf } from '@zenith/shared/core';
+import { importJobContract, IMPORT_TASK_TYPE, IMPORT_TASK_TYPES, IMPORT_PREVIEW_TASK_TYPE } from '@zenith/shared/tasks';
 import { CMS_CONTENT_IMPORT_COLUMNS } from '@zenith/shared/cms';
-import type { ImportEntityMeta } from '@zenith/shared/tasks';
+import type { ImportEntityMeta, ImportJobStats } from '@zenith/shared/tasks';
 import { mock } from '@/mocks/utils/contract';
-import { createImmediateMockTask } from './async-tasks';
+import { createImmediateMockTask, getMockAsyncTasks } from './async-tasks';
 
 const entities: ImportEntityMeta[] = [
   {
@@ -85,7 +87,99 @@ const entities: ImportEntityMeta[] = [
   },
 ];
 
+function buildMockImportStats(): ImportJobStats {
+  const importTasks = getMockAsyncTasks().filter((task) => (IMPORT_TASK_TYPES as readonly string[]).includes(task.taskType));
+  const counts: Record<string, number> = { pending: 0, running: 0, success: 0, failed: 0, cancelled: 0 };
+  for (const task of importTasks) counts[task.status] = (counts[task.status] ?? 0) + 1;
+  const success = counts.success ?? 0;
+  const failed = counts.failed ?? 0;
+  const today = dayjs().startOf('day');
+  const durations = importTasks
+    .filter((task) => task.status === 'success' && task.startedAt && task.completedAt)
+    .map((task) => dayjs(task.completedAt).diff(dayjs(task.startedAt), 'millisecond'));
+  const dailyMap = new Map<string, { submitted: number; success: number; failed: number }>();
+  const hourlyMap = new Map<string, { submitted: number; failed: number }>();
+  for (const task of importTasks) {
+    const date = dayjs(task.createdAt).format('YYYY-MM-DD');
+    const daily = dailyMap.get(date) ?? { submitted: 0, success: 0, failed: 0 };
+    daily.submitted += 1;
+    if (task.status === 'success') daily.success += 1;
+    if (task.status === 'failed') daily.failed += 1;
+    dailyMap.set(date, daily);
+    const hour = dayjs(task.createdAt).format('YYYY-MM-DD HH:00');
+    const hourly = hourlyMap.get(hour) ?? { submitted: 0, failed: 0 };
+    hourly.submitted += 1;
+    if (task.status === 'failed') hourly.failed += 1;
+    hourlyMap.set(hour, hourly);
+  }
+  const entityMap = new Map<string, { entity: string; total: number; success: number; failed: number; processedRows: number; failedRows: number }>();
+  for (const task of importTasks) {
+    const entity = (task.payload as { entity?: string } | null)?.entity;
+    if (!entity) continue;
+    const row = entityMap.get(entity) ?? { entity, total: 0, success: 0, failed: 0, processedRows: 0, failedRows: 0 };
+    row.total += 1;
+    if (task.status === 'success') row.success += 1;
+    if (task.status === 'failed') row.failed += 1;
+    row.processedRows += task.processedCount;
+    row.failedRows += task.failedCount;
+    entityMap.set(entity, row);
+  }
+  const submitterMap = new Map<string, { userId: number | null; username: string; count: number; failed: number }>();
+  for (const task of importTasks) {
+    const key = String(task.createdBy ?? 'system');
+    const row = submitterMap.get(key) ?? { userId: task.createdBy, username: task.createdByName ?? '系统', count: 0, failed: 0 };
+    row.count += 1;
+    if (task.status === 'failed') row.failed += 1;
+    submitterMap.set(key, row);
+  }
+  const modeOf = (mode: 'preview' | 'import') => {
+    const rows = importTasks.filter((task) => (mode === 'preview' ? task.taskType === IMPORT_PREVIEW_TASK_TYPE : task.taskType === IMPORT_TASK_TYPE));
+    return {
+      mode,
+      total: rows.length,
+      success: rows.filter((task) => task.status === 'success').length,
+      failed: rows.filter((task) => task.status === 'failed').length,
+      processedRows: rows.reduce((sum, task) => sum + task.processedCount, 0),
+      failedRows: rows.reduce((sum, task) => sum + task.failedCount, 0),
+    };
+  };
+  return {
+    total: importTasks.length,
+    pending: counts.pending ?? 0,
+    running: counts.running ?? 0,
+    success,
+    failed,
+    cancelled: counts.cancelled ?? 0,
+    successRate: percentOf(success, success + failed),
+    avgDurationMs: durations.length > 0 ? Math.round(durations.reduce((sum, value) => sum + value, 0) / durations.length) : null,
+    today: {
+      submitted: importTasks.filter((task) => dayjs(task.createdAt).isAfter(today)).length,
+      success: importTasks.filter((task) => dayjs(task.createdAt).isAfter(today) && task.status === 'success').length,
+      failed: importTasks.filter((task) => dayjs(task.createdAt).isAfter(today) && task.status === 'failed').length,
+      yesterdaySubmitted: importTasks.filter((task) => dayjs(task.createdAt).isBefore(today) && dayjs(task.createdAt).isAfter(today.subtract(1, 'day'))).length,
+    },
+    daily: Array.from({ length: 14 }, (_, index) => {
+      const date = dayjs().subtract(13 - index, 'day').format('YYYY-MM-DD');
+      const row = dailyMap.get(date);
+      return { date, submitted: row?.submitted ?? 0, success: row?.success ?? 0, failed: row?.failed ?? 0 };
+    }),
+    hourly: Array.from({ length: 24 }, (_, index) => {
+      const hour = dayjs().startOf('hour').subtract(23 - index, 'hour').format('YYYY-MM-DD HH:00');
+      const row = hourlyMap.get(hour);
+      return { hour, submitted: row?.submitted ?? 0, failed: row?.failed ?? 0 };
+    }),
+    modes: [modeOf('import'), modeOf('preview')],
+    topEntities: [...entityMap.values()].sort((a, b) => b.total - a.total).slice(0, 5),
+    topSubmitters: [...submitterMap.values()].sort((a, b) => b.count - a.count).slice(0, 5),
+    rows: {
+      processed: importTasks.reduce((sum, task) => sum + task.processedCount, 0),
+      failed: importTasks.reduce((sum, task) => sum + task.failedCount, 0),
+    },
+  };
+}
+
 export const importJobsHandlers = [
+  mock(importJobContract.stats, ({ ok }) => ok(buildMockImportStats())),
   mock(importJobContract.entities, ({ ok }) => ok(entities)),
   mock(importJobContract.inspect, ({ body, ok }) => {
     const entity = entities.find(item => item.entity === body.entity);

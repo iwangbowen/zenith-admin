@@ -7,13 +7,17 @@ import { importJobContract } from '@zenith/shared/tasks';
 import { defineContractRoute } from '../../lib/contract-route';
 import { okBody, validationHook } from '../../lib/openapi-schemas';
 import { mapAsyncTask } from '../../lib/task-center/map';
-import { confirmImportPreview, getImportTaskForCreator, getImportTemplate, inspectImportFile, listImportEntities, submitImportJob } from '../../services/tasks/import-jobs.service';
+import { confirmImportPreview, getImportJobStats, getImportTaskForCreator, getImportTemplate, inspectImportFile, listImportEntities, submitImportJob } from '../../services/tasks/import-jobs.service';
 import { attachmentDisposition } from '../../lib/content-disposition';
 
 const importJobsRoute = new OpenAPIHono({ defaultHook: validationHook });
 
 const entitiesRoute = defineContractRoute(importJobContract.entities, {
   handler: async (c) => c.json(okBody(await listImportEntities()), 200),
+});
+
+const statsRoute = defineContractRoute(importJobContract.stats, {
+  handler: async (c) => c.json(okBody(await getImportJobStats()), 200),
 });
 
 const templateRoute = defineContractRoute(importJobContract.template, {
@@ -60,6 +64,6 @@ const errorFileRoute = defineContractRoute(importJobContract.errorFile, {
   },
 });
 
-importJobsRoute.openapiRoutes([entitiesRoute, templateRoute, inspectRoute, submitRoute, confirmRoute, errorFileRoute] as const);
+importJobsRoute.openapiRoutes([entitiesRoute, statsRoute, templateRoute, inspectRoute, submitRoute, confirmRoute, errorFileRoute] as const);
 
 export default importJobsRoute;

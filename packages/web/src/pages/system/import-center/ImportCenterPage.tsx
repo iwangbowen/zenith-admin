@@ -4,7 +4,7 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Tag, Typography } from '@douyinfe/semi-ui';
+import { Tabs, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { AsyncTask, ImportEntityMeta } from '@zenith/shared/tasks';
 import { ASYNC_TASK_STATUSES, IMPORT_TASK_TYPES } from '@zenith/shared/tasks';
@@ -18,11 +18,15 @@ import { CreateButton } from '@/components/toolbar-controls';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { dateTimeColumn, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { useListSearch, useManualSearchLoading } from '@/hooks/useListSearch';
-import { useImportEntities } from '@/hooks/queries/import-jobs';
+import { importJobKeys, useImportEntities } from '@/hooks/queries/import-jobs';
 import { asyncTaskKeys, useAsyncTaskList } from '@/hooks/queries/async-tasks';
+import { useUrlTabState } from '@/hooks/useUrlTabState';
 import NewImportModal from './NewImportModal';
 import { groupImportEntitiesByModule } from './import-entity-groups';
+import ImportJobStatsTab from './ImportJobStatsTab';
 import { useFilterQuery } from '@/hooks/useFilterQuery';
+
+type TabKey = 'list' | 'stats';
 
 const { Text } = Typography;
 
@@ -60,6 +64,7 @@ function parsePayload(task: AsyncTask): { entity: string | null; dryRun: boolean
 
 export default function ImportCenterPage() {
   const qc = useQueryClient();
+  const [activeTab, setActiveTab] = useUrlTabState(['list', 'stats'] as const, 'list');
   const {
     page, pageSize, buildPagination,
     bind, bindKeyword, submittedParams, searchVersion,
@@ -143,38 +148,52 @@ export default function ImportCenterPage() {
   ];
 
   return (
-    <div className="page-container">
-      <ListSearchToolbar
-        keyword={(
-          <KeywordInput
-            placeholder="搜索任务名/文件名"
-            {...bindKeyword('keyword')}
-            width={220}
+    <div className="page-container page-tabs-page">
+      <Tabs
+        collapsible="auto"
+        type="line"
+        activeKey={activeTab}
+        onChange={(key) => setActiveTab(key as TabKey)}
+        lazyRender
+      >
+        <Tabs.TabPane tab="导入记录" itemKey="list">
+          <ListSearchToolbar
+            keyword={(
+              <KeywordInput
+                placeholder="搜索任务名/文件名"
+                {...bindKeyword('keyword')}
+                width={220}
+              />
+            )}
+            filters={(
+              <>
+                <FilterSelect
+                  placeholder="全部导入实体"
+                  groups={entityOptions.map(([module, items]) => ({ label: module, items: items.map((e) => ({ value: e.entity, label: e.title })) }))}
+                  {...bind('entity')}
+                  width={160}
+                />
+                <StatusSelect
+                  items={statusOptions}
+                  {...bind('status')}
+                />
+              </>
+            )}
+            onSearch={handleSearch}
+            onReset={handleReset}
+            create={<CreateButton onClick={() => setNewImportVisible(true)}>新建导入</CreateButton>}
           />
-        )}
-        filters={(
-          <>
-            <FilterSelect
-              placeholder="全部导入实体"
-              groups={entityOptions.map(([module, items]) => ({ label: module, items: items.map((e) => ({ value: e.entity, label: e.title })) }))}
-              {...bind('entity')}
-              width={160}
-            />
-            <StatusSelect
-              items={statusOptions}
-              {...bind('status')}
-            />
-          </>
-        )}
-        onSearch={handleSearch}
-        onReset={handleReset}
-        create={<CreateButton onClick={() => setNewImportVisible(true)}>新建导入</CreateButton>}
-      />
 
-      <ConfigurableTable
-        columns={columns}
-        {...listTableProps(listQuery, { pagination: buildPagination, empty: '暂无导入记录，点击「新建导入」开始', loadingMode: 'initial', manualLoading })}
-      />
+          <ConfigurableTable
+            columns={columns}
+            {...listTableProps(listQuery, { pagination: buildPagination, empty: '暂无导入记录，点击「新建导入」开始', loadingMode: 'initial', manualLoading })}
+          />
+        </Tabs.TabPane>
+
+        <Tabs.TabPane tab="导入统计" itemKey="stats">
+          <ImportJobStatsTab />
+        </Tabs.TabPane>
+      </Tabs>
 
       <NewImportModal
         visible={newImportVisible}
@@ -191,7 +210,11 @@ export default function ImportCenterPage() {
         taskId={progressTask?.id ?? null}
         title={progressTask?.title ?? '数据'}
         onClose={() => setProgressTask(null)}
-        onFinished={() => void qc.invalidateQueries({ queryKey: asyncTaskKeys.lists })}
+        onFinished={() => {
+          void qc.invalidateQueries({ queryKey: asyncTaskKeys.lists });
+          void qc.invalidateQueries({ queryKey: asyncTaskKeys.stats });
+          void qc.invalidateQueries({ queryKey: importJobKeys.stats });
+        }}
       />
     </div>
   );

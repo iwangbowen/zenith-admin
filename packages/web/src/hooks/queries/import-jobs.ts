@@ -8,6 +8,7 @@ import { asyncTaskKeys } from './async-tasks';
 export const importJobKeys = {
   all: [resourceKeyOf(importJobContract.basePath)] as const,
   entities: contractKey(importJobContract.entities),
+  stats: contractKey(importJobContract.stats),
 };
 
 /** 可导入实体（按权限过滤，登录期内稳定） */
@@ -19,10 +20,19 @@ export function useImportEntities(enabled = true) {
   });
 }
 
+/** 导入中心统计概览（普通用户只统计本人任务） */
+export function useImportJobStats() {
+  return useApiQuery(importJobContract.stats, { requestOptions: { silent: true } });
+}
+
 /** 提交导入任务（文件先经文件中心 `fileContract.upload` 上传拿 fileId）；导入历史是任务中心的 data-import 过滤视图 */
 export function useSubmitImportJob() {
   return useApiMutation(importJobContract.submit, {
-    invalidate: (qc) => void qc.invalidateQueries({ queryKey: asyncTaskKeys.lists }),
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: asyncTaskKeys.lists });
+      void qc.invalidateQueries({ queryKey: asyncTaskKeys.stats });
+      void qc.invalidateQueries({ queryKey: importJobKeys.stats });
+    },
   });
 }
 
@@ -32,7 +42,11 @@ export function useInspectImportJob() {
 
 export function useConfirmImportJob() {
   return useApiMutation(importJobContract.confirm, {
-    invalidate: (qc) => void qc.invalidateQueries({ queryKey: asyncTaskKeys.lists }),
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: asyncTaskKeys.lists });
+      void qc.invalidateQueries({ queryKey: asyncTaskKeys.stats });
+      void qc.invalidateQueries({ queryKey: importJobKeys.stats });
+    },
   });
 }
 
