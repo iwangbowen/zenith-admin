@@ -98,6 +98,8 @@ function mapJob(row: WorkflowJobRow, extra?: { instanceTitle?: string | null; de
     lockedBy: row.lockedBy ?? null,
     leaseUntil: formatNullableDateTime(row.leaseUntil),
     executionDeadline: formatNullableDateTime(row.executionDeadline),
+    effectStatus: row.effectStatus,
+    effectEvidence: row.effectEvidence ?? null,
     lastError: row.lastError ?? null,
     result: (row.result ?? null) as Record<string, unknown> | null,
     tenantId: row.tenantId ?? null,
@@ -317,7 +319,7 @@ async function replayJobsWhere(filter: WorkflowJobReplayFilter) {
   return buildWhere(
     await workflowJobScope(),
     eq(workflowJobs.status, filter.status ?? 'dead'),
-    sql`coalesce(${workflowJobs.lastError}, '') not like '外部操作结果待确认：%'`,
+    sql`${workflowJobs.effectStatus} <> 'sent_unknown'`,
     filter.jobType ? eq(workflowJobs.jobType, filter.jobType) : undefined,
     filter.instanceId != null ? eq(workflowJobs.instanceId, filter.instanceId) : undefined,
     filter.correlationId ? eq(workflowJobs.correlationId, filter.correlationId) : undefined,

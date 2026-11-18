@@ -1,3 +1,4 @@
+import { WORKFLOW_EXTERNAL_EFFECT_STATUSES } from '../constants';
 import * as z from 'zod';
 import { batchIdsBody, idParam, idQuery, keywordQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
@@ -53,6 +54,8 @@ export const workflowJobSchema = z.object({
   lockedBy: z.string().nullable().meta({ description: '当前持有该作业租约的 worker 节点（hostname:pid）' }),
   leaseUntil: z.string().nullable().meta({ description: '当前执行租约到期时间' }),
   executionDeadline: z.string().nullable().meta({ description: '当前执行的硬截止时间' }),
+  effectStatus: z.enum(WORKFLOW_EXTERNAL_EFFECT_STATUSES),
+  effectEvidence: z.string().nullable(),
   lastError: z.string().nullable(),
   result: z.record(z.string(), z.unknown()).nullable(),
   tenantId: z.int().nullable(),

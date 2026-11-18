@@ -44,7 +44,7 @@ const job = {
   id: 1, jobType: 'webhook_delivery', status: 'running', instanceId: 2, taskId: null, nodeKey: null,
   idempotencyKey: 'job-1', correlationId: 'trace-1', payload: {}, priority: 0, attempts: 2, maxAttempts: 5,
   generation: 3, executionTimeoutMs: 600_000, leaseToken: 'private-lease', leaseUntil, executionDeadline,
-  runAt: startedAt, lockedAt: startedAt, lockedBy: 'worker-1', lastError: null, result: null, tenantId: 1,
+  runAt: startedAt, lockedAt: startedAt, lockedBy: 'worker-1', effectStatus: 'not_started', effectEvidence: null, lastError: null, result: null, tenantId: 1,
   createdAt: startedAt, updatedAt: startedAt,
 };
 const execution = {

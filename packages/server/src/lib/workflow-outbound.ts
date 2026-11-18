@@ -32,6 +32,9 @@ export async function workflowHttp(url: string, opts: WorkflowHttpOptions = {}):
   const headers = new Headers(opts.headers);
   headers.set('X-Idempotency-Key', context.operationKey);
   const { markWorkflowExternalEffect } = await import('./workflow-jobs/external-effects');
+  // Configuration/SSRF failures happen before the durable send marker. DNS is
+  // validated again by the pinned dispatcher when opening the connection.
+  await assertSafeWorkflowUrl(url);
   await markWorkflowExternalEffect(opts.method ?? 'GET', url);
   return httpRequest(url, {
     ...opts, headers, signal, retries: 0,

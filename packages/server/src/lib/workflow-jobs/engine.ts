@@ -73,6 +73,7 @@ async function closeExecution(tx: DbExecutor, token: string | null, status: 'suc
   if (!token) return;
   await tx.update(workflowJobExecutions).set({
     status, finishedAt: dbNow,
+    ...(detail.responseStatus != null ? { effectStatus: detail.responseStatus >= 200 && detail.responseStatus < 400 ? 'confirmed_success' as const : isIndeterminateExternalStatus(detail.responseStatus) ? 'sent_unknown' as const : 'confirmed_failure' as const } : {}),
     durationMs: sql`greatest(0, floor(extract(epoch from (clock_timestamp() - ${workflowJobExecutions.startedAt})) * 1000))::integer`,
     ...(detail.requestUrl !== undefined ? { requestUrl: detail.requestUrl } : {}),
     ...(detail.requestMethod !== undefined ? { requestMethod: detail.requestMethod } : {}),
@@ -85,9 +86,9 @@ async function closeExecution(tx: DbExecutor, token: string | null, status: 'suc
 
 async function hasUncertainExternalEffect(tx: DbExecutor, token: string | null, responseStatus?: number | null): Promise<boolean> {
   if (!token) return false;
-  const [execution] = await tx.select({ method: workflowJobExecutions.requestMethod, responseStatus: workflowJobExecutions.responseStatus }).from(workflowJobExecutions)
+  const [execution] = await tx.select({ effectStatus: workflowJobExecutions.effectStatus, method: workflowJobExecutions.requestMethod, responseStatus: workflowJobExecutions.responseStatus }).from(workflowJobExecutions)
     .where(eq(workflowJobExecutions.leaseToken, token)).limit(1);
-  return !!execution?.method
+  return execution?.effectStatus === 'sent_unknown' && !!execution?.method
     && !['GET', 'HEAD', 'OPTIONS'].includes(execution.method.toUpperCase())
     && isIndeterminateExternalStatus(responseStatus ?? execution.responseStatus);
 }
@@ -131,7 +132,7 @@ export async function pauseInstanceJobs(tx: DbExecutor, instanceId: number, jobT
       ? '外部操作结果待确认：实例挂起时外部写请求仍在执行或结果未知'
       : 'Instance paused';
     await tx.update(workflowJobs).set(uncertain ? {
-      status: 'dead', generation: sql`${workflowJobs.generation} + 1`,
+      status: 'dead', effectStatus: 'sent_unknown', generation: sql`${workflowJobs.generation} + 1`,
       pausedRemainingMs: null, lastError: message, ...clearedLease,
     } : {
       attempts: sql`greatest(${workflowJobs.attempts} - case when ${workflowJobs.status} = 'running' then 1 else 0 end, 0)`,
@@ -158,12 +159,12 @@ export async function resumeInstanceJobs(tx: DbExecutor, instanceId: number, job
 export async function retryJob(id: number, opts?: { payload?: Record<string, unknown>; runAt?: Date }, executor: DbExecutor = db): Promise<WorkflowJobRow | null> {
   return withAsyncSpan('zenith.workflow.job.retry', async () => {
     const [candidate] = await executor.select().from(workflowJobs).where(eq(workflowJobs.id, id)).limit(1);
-    if (candidate?.lastError?.startsWith('外部操作结果待确认：')) throw new HTTPException(409, { message: '外部操作结果待确认，禁止普通重试；请先核对外部结果' });
+    if (candidate?.effectStatus === 'sent_unknown') throw new HTTPException(409, { message: '外部操作结果待确认，禁止普通重试；请先核对外部结果' });
     const [row] = await executor.update(workflowJobs).set({
       status: 'pending', generation: sql`${workflowJobs.generation} + 1`, attempts: 0,
       lastError: null, result: null, pausedRemainingMs: null, ...clearedLease, runAt: opts?.runAt ?? new Date(),
-      ...(opts?.payload ? { payload: opts.payload, operationKey: randomUUID() } : {}),
-    }).where(and(eq(workflowJobs.id, id), inArray(workflowJobs.status, ['failed', 'dead', 'canceled']), sql`coalesce(${workflowJobs.lastError}, '') not like '外部操作结果待确认：%'`)).returning();
+      ...(opts?.payload ? { payload: opts.payload, operationKey: randomUUID(), effectStatus: 'not_started' as const } : {}),
+    }).where(and(eq(workflowJobs.id, id), inArray(workflowJobs.status, ['failed', 'dead', 'canceled']), ne(workflowJobs.effectStatus, 'sent_unknown'))).returning();
     if (row) {
       if (executor === db) scheduleJobPickup(row.id, row.runAt);
       else rememberWorkflowJobPickup(executor, row.id, row.runAt);
@@ -253,6 +254,7 @@ async function finishJob(context: WorkflowJobContext, error: unknown, result: Wo
     const detail = { ...sourceDetail, errorMessage: message };
     const [updated] = await tx.update(workflowJobs).set({
       status: succeeded ? 'succeeded' : retry ? 'pending' : 'dead', ...clearedLease,
+      effectStatus: uncertain ? 'sent_unknown' : sourceDetail.responseStatus != null ? succeeded ? 'confirmed_success' : 'confirmed_failure' : context.job.effectStatus,
       lastError: message?.slice(0, 2048) ?? null, result: succeeded ? result.result ?? null : null,
       ...(retry ? { runAt: sql`clock_timestamp() + ${computeBackoffMs(context.attempt)} * interval '1 millisecond'` } : {}),
     }).where(ownedJobCondition(context, !(error instanceof WorkflowJobDeadlineError))).returning();
@@ -360,6 +362,7 @@ async function recoverExpiredJobs(tx: DbTransaction, filter: DrainableFilter, li
     const message = uncertain ? '外部操作结果待确认：执行租约或执行时限已过期' : 'Workflow job lease or execution deadline expired';
     const [updated] = await tx.update(workflowJobs).set({
       status: exhausted ? 'dead' : 'pending', pausedRemainingMs: null,
+      ...(uncertain ? { effectStatus: 'sent_unknown' as const } : {}),
       ...clearedLease, runAt: dbNow, lastError: message,
     }).where(and(eq(workflowJobs.id, job.id), eq(workflowJobs.generation, job.generation), expiredWorkflowJobCondition()))
       .returning();

@@ -530,3 +530,6 @@ export const WORKFLOW_INSTANCE_PRIORITY_LABELS: Record<typeof WORKFLOW_INSTANCE_
 };
 /** 实例优先级筛选选项（契约 x-filter 与页面下拉共用） */
 export const WORKFLOW_INSTANCE_PRIORITY_OPTIONS = WORKFLOW_INSTANCE_PRIORITIES.map((value) => ({ value, label: WORKFLOW_INSTANCE_PRIORITY_LABELS[value] }));
+
+export const WORKFLOW_ACTIVATION_KINDS = ['approval', 'system', 'repair', 'cc'] as const;
+export const WORKFLOW_EXTERNAL_EFFECT_STATUSES = ['not_started', 'rejected_before_send', 'sent_unknown', 'confirmed_success', 'confirmed_failure'] as const;

@@ -22,7 +22,7 @@ type AttachmentSummary = Awaited<ReturnType<typeof getWorkflowAttachmentSummary>
 function idOf(key: string) { const id = Number(key); return /^[1-9]\d*$/.test(key) && Number.isSafeInteger(id) && id <= 2_147_483_647 ? id : undefined; }
 function item(row: AttachmentSummary, key: string): EntityRelationItem {
   return { ref: { type: 'workflow.attachment', key: String(row.id) }, title: row.name, relationKey: key,
-    subtitle: ({ form: '申请表单附件', task: '审批节点附件', comment: '流程沟通附件' })[row.source],
+    subtitle: ({ form: '申请表单附件', task: '审批节点附件', comment: '流程沟通附件', compensation: '修复工单附件' })[row.source],
     occurredAt: formatDateTime(row.createdAt), capabilities };
 }
 export const workflowAttachmentAnchorResolvers: readonly EntityAnchorResolver[] = [numericAnchorResolver('workflow.attachment',

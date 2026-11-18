@@ -88,7 +88,7 @@ export function createMockActivation(
   const method = node.approveMethod === 'ratio' || node.approveMethod === 'and' || node.approveMethod === 'sequential' ? node.approveMethod : 'or';
   const baseRequired = options.baseRequired ?? (method === 'ratio' ? Math.ceil(baseTasks.length * (node.approveRatio ?? 100) / 100) : method === 'or' ? 1 : baseTasks.length);
   const activation: WorkflowNodeActivation = { id: options.activationId ?? `demo-activation-${nextActivationId++}`, nodeKey: node.key, nodeName: node.label,
-    tokenId: null, status: 'active', approveMethod: method, approveRatio: method === 'ratio' ? node.approveRatio ?? 100 : null,
+    tokenId: null, kind: 'approval', settlementReason: null, status: 'active', approveMethod: method, approveRatio: method === 'ratio' ? node.approveRatio ?? 100 : null,
     baseTotal: baseTasks.length, baseRequired, baseApproved: 0, baseRejected: 0, baseSatisfied: false, slots: [], signGroups: [] };
   if (states.has(activation.id)) throw new Error('审批轮次已存在');
   const state: State = { instanceId: instance.id, activation, tasks: new Map() }; states.set(activation.id, state);

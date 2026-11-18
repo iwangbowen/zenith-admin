@@ -12,7 +12,7 @@ const harness = vi.hoisted(() => ({
 }));
 vi.mock('../../../db', () => ({ db: {} }));
 vi.mock('../../../lib/workflow-jobs/lease', () => ({ workflowTransaction: (fn: (tx: DbTransaction) => Promise<unknown>) => harness.transaction(fn) }));
-vi.mock('../../../lib/workflow-jobs/engine', () => ({ enqueueJob: vi.fn() }));
+vi.mock('../../../lib/workflow-jobs/engine', () => ({ enqueueJob: vi.fn(), cancelJobs: vi.fn(), WORKFLOW_ADVANCING_JOB_TYPES: [] }));
 vi.mock('./approval-state', () => ({ createStandaloneActivation: vi.fn() }));
 vi.mock('./async-jobs', () => ({ enqueueSubprocessJoin: vi.fn() }));
 vi.mock('../workflow-assignee-resolver.service', () => ({ buildStarterContext: async () => ({}), resolveAdminUserId: async () => 1 }));

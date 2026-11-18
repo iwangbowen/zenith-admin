@@ -1,3 +1,4 @@
+import { WORKFLOW_ACTIVATION_KINDS, WORKFLOW_EXTERNAL_EFFECT_STATUSES } from '@zenith/shared/workflow';
 import type { SignatureSnapshot } from '@zenith/shared/core';
 import { pgTable, varchar, pgEnum, integer, bigint, boolean, unique, text, uniqueIndex, index, jsonb, smallint, real, foreignKey, check, uuid as pgUuid, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
@@ -44,6 +45,8 @@ export const workflowEventSignModeEnum = pgEnum('workflow_event_sign_mode', ['hm
 export const workflowApproveMethodEnum = pgEnum('workflow_approve_method', ['and', 'or', 'sequential', 'ratio']);
 export const workflowTaskKindEnum = pgEnum('workflow_task_kind', WORKFLOW_TASK_KINDS);
 export const workflowTaskWaitReasonEnum = pgEnum('workflow_task_wait_reason', WORKFLOW_TASK_WAIT_REASONS);
+export const workflowActivationKindEnum = pgEnum('workflow_activation_kind', WORKFLOW_ACTIVATION_KINDS);
+export const workflowExternalEffectStatusEnum = pgEnum('workflow_external_effect_status', WORKFLOW_EXTERNAL_EFFECT_STATUSES);
 export const workflowApprovalActivationStatusEnum = pgEnum('workflow_approval_activation_status', WORKFLOW_APPROVAL_ACTIVATION_STATUSES);
 export const workflowApprovalSlotOriginEnum = pgEnum('workflow_approval_slot_origin', WORKFLOW_APPROVAL_SLOT_ORIGINS);
 export const workflowApprovalSlotStatusEnum = pgEnum('workflow_approval_slot_status', WORKFLOW_APPROVAL_SLOT_STATUSES);
@@ -361,6 +364,8 @@ export type NewWorkflowInstanceMigration = typeof workflowInstanceMigrations.$in
 export const workflowCompensations = pgTable('workflow_compensations', {
   id: idColumn(),
   instanceId: integer().notNull().references(() => workflowInstances.id, { onDelete: 'cascade' }),
+  repairActivationId: varchar({ length: 36 }),
+  repairTaskId: integer(),
   nodeKey: varchar({ length: 64 }).notNull(),
   nodeName: varchar({ length: 64 }),
   errorMessage: varchar({ length: 1024 }),
@@ -584,6 +589,8 @@ export const workflowNodeActivations = pgTable('workflow_node_activations', {
   tokenId: integer().references(() => workflowTokens.id, { onDelete: 'cascade' }).unique('workflow_node_activations_token_id_unique'),
   nodeKey: varchar({ length: 64 }).notNull(),
   nodeName: varchar({ length: 64 }).notNull(),
+  kind: workflowActivationKindEnum().notNull().default('system'),
+  settlementReason: text(),
   status: workflowApprovalActivationStatusEnum().notNull().default('active'),
   approveMethod: workflowApproveMethodEnum(),
   approveRatio: integer(),
@@ -742,6 +749,8 @@ export const workflowJobs = pgTable('workflow_jobs', {
   leaseUntil: timestamptz(),
   executionDeadline: timestamptz(),
   pausedRemainingMs: bigint({ mode: 'number' }),
+  effectStatus: workflowExternalEffectStatusEnum().notNull().default('not_started'),
+  effectEvidence: text(),
   lastError: text(),
   /** 执行结果（成功时写入，供审计/串联） */
   result: jsonb(),
@@ -772,6 +781,7 @@ export const workflowJobExecutions = pgTable('workflow_job_executions', {
   leaseToken: varchar({ length: 64 }).notNull().default(sql`gen_random_uuid()::text`),
   status: workflowJobExecutionStatusEnum().notNull().default('running'),
   /** HTTP 类作业（trigger/external/webhook）的请求/响应明细 */
+  effectStatus: workflowExternalEffectStatusEnum().notNull().default('not_started'),
   requestUrl: varchar({ length: 512 }),
   requestMethod: varchar({ length: 16 }),
   requestBody: text(),
@@ -923,7 +933,7 @@ export const workflowAttachmentLinks = pgTable('workflow_attachment_links', {
   taskId: integer(),
   commentId: integer(),
   fileId: pgUuid().notNull().references(() => managedFiles.id, { onDelete: 'restrict' }),
-  source: varchar({ length: 16 }).$type<'form' | 'task' | 'comment'>().notNull(),
+  source: varchar({ length: 16 }).$type<'form' | 'task' | 'comment' | 'compensation'>().notNull(),
   sourceKey: varchar({ length: 512 }).notNull(),
   fieldKeys: text().array().notNull().default(sql`'{}'::text[]`),
   tenantId: tenantIdColumn(),
@@ -936,5 +946,5 @@ export const workflowAttachmentLinks = pgTable('workflow_attachment_links', {
   index('workflow_attachment_links_task_id_idx').on(t.taskId, t.id),
   index('workflow_attachment_links_file_id_idx').on(t.fileId),
   index('workflow_attachment_links_tenant_idx').on(t.tenantId),
-  check('workflow_attachment_links_source_check', sql`(${t.source} = 'form' and ${t.taskId} is null and ${t.commentId} is null and cardinality(${t.fieldKeys}) > 0) or (${t.source} = 'task' and ${t.taskId} is not null and ${t.commentId} is null and ${t.sourceKey} = ${t.taskId}::text and cardinality(${t.fieldKeys}) = 0) or (${t.source} = 'comment' and ${t.commentId} is not null and ${t.taskId} is null and ${t.sourceKey} = ${t.commentId}::text and cardinality(${t.fieldKeys}) = 0)`),
+  check('workflow_attachment_links_source_check', sql`(${t.source} = 'form' and ${t.taskId} is null and ${t.commentId} is null and cardinality(${t.fieldKeys}) > 0) or (${t.source} = 'task' and ${t.taskId} is not null and ${t.commentId} is null and ${t.sourceKey} = ${t.taskId}::text and cardinality(${t.fieldKeys}) = 0) or (${t.source} = 'comment' and ${t.commentId} is not null and ${t.taskId} is null and ${t.sourceKey} = ${t.commentId}::text and cardinality(${t.fieldKeys}) = 0) or (${t.source} = 'compensation' and ${t.taskId} is null and ${t.commentId} is null and cardinality(${t.fieldKeys}) = 0)`),
 ]);

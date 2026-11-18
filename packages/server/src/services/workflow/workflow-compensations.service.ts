@@ -1,18 +1,20 @@
+import { bindWorkflowAttachments, type WorkflowAttachmentInput } from './workflow-attachments.service';
+import type { WorkflowAttachment } from '@zenith/shared/workflow';
+import { settleInstanceInTx } from './instances/settlement';
 import { workflowMonitorScope } from './workflow-access';
 import { workflowInstanceOpsContract } from '@zenith/shared/workflow';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { workflowTransaction } from '../../lib/workflow-jobs/lease';
-import { and, eq, asc, desc, inArray } from 'drizzle-orm';
+import { eq, asc, desc, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { WorkflowCompensationActionStatus, WorkflowCompensationAction } from '@zenith/shared/workflow';
 import { db } from '../../db';
-import { workflowCompensations, workflowCompensationLogs, workflowInstances, workflowTasks, workflowTokens, users } from '../../db/schema';
+import { workflowCompensations, workflowCompensationLogs, workflowInstances, users } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
 import { currentUser } from '../../lib/context';
 import { tenantCondition } from '../../lib/tenant';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { enqueueJob } from '../../lib/workflow-jobs/engine';
-import { bridgeReportFillWorkflowOutcome } from '../report/report-fill-workflow-bridge.service';
 import { buildWhere } from '../../lib/where-helpers';
 import { listRows } from '../../lib/list-query';
 import { requireFirstRow } from '../../lib/db-assert';
@@ -42,11 +44,13 @@ export async function recordCompensation(tx: DbExecutor, v: {
   const [row] = await tx.insert(workflowCompensations).values({
     instanceId: v.instanceId, nodeKey: v.nodeKey, nodeName: v.nodeName ?? null, errorMessage: v.errorMessage?.slice(0, 1000) ?? null,
     action: v.action, status: v.status,
+    ...(v.status !== 'pending' ? { resolvedAt: new Date(), resolution: `系统策略：${v.action}` } : {}),
     compensationActionStatus: v.compensationActionStatus ?? 'none',
     failedNodeKey: v.failedNodeKey ?? null,
     actionPayload: (v.actionPayload ?? null) as Record<string, unknown> | null,
     tenantId: v.tenantId,
   }).returning({ id: workflowCompensations.id });
+  await addCompensationLog(tx, { compensationId: row.id, action: 'auto', note: `系统策略：${v.action}；${v.errorMessage ?? ''}`, tenantId: v.tenantId });
   return row.id;
 }
 
@@ -55,7 +59,7 @@ export async function addCompensationLog(tx: DbExecutor, v: {
   compensationId: number;
   action: 'note' | 'attachment' | 'auto' | 'retry' | 'resume' | 'resolve' | 'terminate';
   note?: string | null;
-  attachments?: Array<{ id: number; name: string; url: string }> | null;
+  attachments?: WorkflowAttachment[] | null;
   operatorId?: number | null;
   tenantId: number | null;
 }): Promise<void> {
@@ -105,15 +109,7 @@ export async function resolveCompensation(id: number, action: 'resolve' | 'termi
   if (row.status !== 'pending') throw new HTTPException(400, { message: '工单已处理' });
   return workflowTransaction(async (tx) => {
     if (action === 'terminate') {
-      await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date() }).where(and(eq(workflowTasks.instanceId, row.instanceId), eq(workflowTasks.status, 'pending')));
-      await tx.update(workflowTokens).set({ status: 'consumed', consumedAt: new Date() }).where(and(eq(workflowTokens.instanceId, row.instanceId), eq(workflowTokens.status, 'active')));
-      await tx.update(workflowInstances).set({ status: 'rejected', currentNodeKey: null }).where(eq(workflowInstances.id, row.instanceId));
-      await bridgeReportFillWorkflowOutcome(tx, {
-        workflowInstanceId: row.instanceId,
-        outcome: 'rejected',
-        actorId: currentUser().userId,
-        comment: resolution,
-      });
+      await settleInstanceInTx(tx, row.instanceId, { outcome: 'rejected', actorId: currentUser().userId, comment: resolution ?? '运维终止' });
     }
     const [updated] = await tx.update(workflowCompensations)
       .set({ status: action === 'terminate' ? 'terminated' : 'resolved', resolution: resolution ?? null, resolvedBy: currentUser()?.userId ?? null, resolvedAt: new Date() })
@@ -127,7 +123,7 @@ const mapLog = (r: { id: number; compensationId: number; action: string; note: s
   id: r.id, compensationId: r.compensationId,
   action: r.action as 'note' | 'attachment' | 'auto' | 'retry' | 'resume' | 'resolve' | 'terminate',
   note: r.note ?? null,
-  attachments: (r.attachments ?? null) as Array<{ id: number; name: string; url: string }> | null,
+  attachments: (r.attachments ?? null) as WorkflowAttachment[] | null,
   operatorId: r.operatorId ?? null, operatorName: r.operatorName ?? null, createdAt: formatDateTime(r.createdAt),
 });
 
@@ -155,13 +151,12 @@ export async function getCompensationDetail(id: number) {
 }
 
 /** 追加处理备注 / 附件（任何状态均可，用于沉淀处理过程）。 */
-export async function addCompensationNote(id: number, note?: string, attachments?: Array<{ id: number; name: string; url: string }>) {
+export async function addCompensationNote(id: number, note?: string, attachments?: WorkflowAttachmentInput[]) {
   const row = await findCompensationOr404(id);
-  await addCompensationLog(db, {
-    compensationId: id,
-    action: attachments?.length ? 'attachment' : 'note',
-    note: note ?? null, attachments: attachments ?? null,
-    operatorId: currentUser()?.userId ?? null, tenantId: row.tenantId,
+  await workflowTransaction(async tx => {
+    const [instance] = await tx.select().from(workflowInstances).where(eq(workflowInstances.id, row.instanceId)).for('update').limit(1);
+    const bound = await bindWorkflowAttachments(tx, instance, { source: 'compensation', compensationId: id }, attachments);
+    await addCompensationLog(tx, { compensationId: id, action: bound.length ? 'attachment' : 'note', note: note ?? null, attachments: bound, operatorId: currentUser().userId, tenantId: row.tenantId });
   });
   return getCompensationDetail(id);
 }

@@ -50,6 +50,20 @@
       "when": 1794986552819,
       "tag": "0006_unique_mister_fear",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1795001940462,
+      "tag": "0007_workflow_recovery_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1795002094533,
+      "tag": "0008_workflow_repair_attachments",
+      "breakpoints": true
     }
   ]
 }

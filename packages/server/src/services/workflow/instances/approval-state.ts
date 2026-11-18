@@ -29,7 +29,7 @@ export async function loadApprovalActivations(executor: DbExecutor, instanceId: 
     return pickEntity(workflowNodeActivationSchema, row, {
       baseApproved: base.filter((slot) => slot.status === 'approved').length,
       baseRejected: base.filter((slot) => slot.status === 'rejected').length,
-      baseSatisfied: base.filter((slot) => slot.status === 'approved').length >= row.baseRequired,
+      baseSatisfied: row.kind === 'approval' && row.baseTotal > 0 && base.filter((slot) => slot.status === 'approved').length >= row.baseRequired,
       slots: members,
       signGroups: groups.filter((group) => group.activationId === row.id).map((group) => {
         const anchor = members.find((slot) => slot.id === group.anchorSlotId);
@@ -108,8 +108,8 @@ export async function cancelApprovalActivations(executor: DbExecutor, instanceId
 }
 
 /** 无基础票的独立抄送/异常办理也有显式进入身份，不伪装成某次审批轮。 */
-export async function createStandaloneActivation(executor: DbExecutor, args: { instanceId: number; nodeKey: string; nodeName: string; tenantId: number | null; tokenId?: number | null; status: 'active' | 'approved' }): Promise<string> {
+export async function createStandaloneActivation(executor: DbExecutor, args: { instanceId: number; nodeKey: string; nodeName: string; tenantId: number | null; tokenId?: number | null; status: 'active' | 'approved'; kind?: 'system' | 'repair' | 'cc' }): Promise<string> {
  const id = randomUUID();
- await executor.insert(workflowNodeActivations).values({ ...args, id, tokenId: args.tokenId ?? null, baseTotal: 0, baseRequired: 0 });
+ await executor.insert(workflowNodeActivations).values({ ...args, kind: args.kind ?? 'system', id, tokenId: args.tokenId ?? null, baseTotal: 0, baseRequired: 0, settledAt: args.status === 'approved' ? new Date() : null });
  return id;
 }

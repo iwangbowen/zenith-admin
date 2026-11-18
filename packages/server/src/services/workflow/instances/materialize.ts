@@ -417,14 +417,14 @@ async function getCompletedNodeKeys(exec: DbExecutor, instanceId: number): Promi
  return new Set(['start', ...[...latest.values()].filter((row) => row.status === 'approved').map((row) => row.nodeKey)]);
 }
 
-type WorkflowTokenSnapshot = { id: number; nodeKey: string; branchPath: BranchPath };
+type WorkflowTokenSnapshot = { id: number; nodeKey: string; branchPath: BranchPath; scopeKey: string | null };
 
 /** 读取实例当前全部 active token（含 parked join token） */
 export async function loadLiveTokens(exec: DbExecutor, instanceId: number): Promise<WorkflowTokenSnapshot[]> {
-  const rows = await exec.select({ id: workflowTokens.id, nodeKey: workflowTokens.nodeKey, branchPath: workflowTokens.branchPath })
+  const rows = await exec.select({ id: workflowTokens.id, nodeKey: workflowTokens.nodeKey, branchPath: workflowTokens.branchPath, scopeKey: workflowTokens.scopeKey })
     .from(workflowTokens)
     .where(and(eq(workflowTokens.instanceId, instanceId), eq(workflowTokens.status, 'active')));
-  return rows.map((r) => ({ id: r.id, nodeKey: r.nodeKey, branchPath: (r.branchPath ?? []) as BranchPath }));
+  return rows.map((r) => ({ id: r.id, nodeKey: r.nodeKey, branchPath: (r.branchPath ?? []) as BranchPath, scopeKey: r.scopeKey }));
 }
 
 /** 终止实例所有 active token（驳回 / 取消 / 撤销 / 强制跳转前清场） */
@@ -579,7 +579,7 @@ export async function advanceAndMaterialize(
       const ratio = method === 'ratio' ? basis.find((row) => row.approveRatio != null)?.approveRatio ?? 51 : null;
       const required = method === 'or' ? Math.min(1, basis.length) : method === 'ratio' ? Math.ceil(basis.length * ratio! / 100) : basis.length;
       const nodeConfig = ctx.flowData.nodes.find((node) => node.data.key === nodeKey)?.data;
-      await exec.insert(workflowNodeActivations).values({ id: activationId, instanceId: ctx.instanceId, tokenId: tokenByNode.get(nodeKey) ?? null, nodeKey, nodeName: rows[0].nodeName, status: tokenByNode.has(nodeKey) ? 'active' : 'approved', approveMethod: method, approveRatio: ratio, baseTotal: basis.length, baseRequired: required, includeInEfficiencyStats: nodeConfig?.includeInEfficiencyStats ?? true, tenantId: ctx.tenantId ?? null });
+      await exec.insert(workflowNodeActivations).values({ id: activationId, instanceId: ctx.instanceId, tokenId: tokenByNode.get(nodeKey) ?? null, nodeKey, nodeName: rows[0].nodeName, kind: basis.length > 0 ? 'approval' : rows[0].nodeType === 'ccNode' ? 'cc' : 'system', status: tokenByNode.has(nodeKey) ? 'active' : 'approved', approveMethod: method, approveRatio: ratio, baseTotal: basis.length, baseRequired: required, includeInEfficiencyStats: nodeConfig?.includeInEfficiencyStats ?? true, tenantId: ctx.tenantId ?? null });
       for (const expandedRow of rows) {
         const { taskOrder, approveMethod: _method, approveRatio: _ratio, taskKind: specifiedKind, ...row } = expandedRow;
         const kind = specifiedKind ?? (row.nodeType === 'ccNode' ? 'cc' : row.nodeType === 'approve' || row.nodeType === 'handler' ? 'approval' : 'system');

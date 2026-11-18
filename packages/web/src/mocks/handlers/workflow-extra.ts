@@ -224,7 +224,7 @@ function createScheduleRun(schedule: WorkflowSchedule): WorkflowScheduleRunDetai
     payload: { scheduleId: schedule.id, definitionId: schedule.definitionId, initiatorId: schedule.initiatorId, title,
       formData: structuredClone(schedule.formData ?? {}), scheduledAt: now, trigger: 'manual' },
     priority: 100, attempts: 0, maxAttempts: 5, generation: 0, executionTimeoutMs: 600000, runAt: now,
-    lockedAt: null, lockedBy: null, leaseUntil: null, executionDeadline: null, lastError: null, result: null,
+    lockedAt: null, lockedBy: null, leaseUntil: null, executionDeadline: null, effectStatus: 'not_started', effectEvidence: null, lastError: null, result: null,
     tenantId: schedule.tenantId, createdAt: now, updatedAt: now, scheduleId: schedule.id, scheduledAt: now, trigger: 'manual', executions: [],
   };
   mockScheduleRuns.push(run);
@@ -932,7 +932,7 @@ export const workflowExtraHandlers = [
       compensationId: params.id,
       action: body.attachments?.length ? 'attachment' : 'note',
       note: body.note ?? null,
-      attachments: body.attachments ?? null,
+      attachments: body.attachments?.map((a, i) => ({ ...a, id: i + 1, name: '附件', size: 0, mimeType: null, url: '' })) ?? null,
       operatorId: 1,
       operatorName: '管理员',
       createdAt: mockDateTime(),

@@ -885,7 +885,7 @@ export const resolveWorkflowCompensationSchema = z.object({
 
 export const addWorkflowCompensationNoteSchema = z.object({
   note: z.string().max(4000).optional(),
-  attachments: z.array(z.object({ id: z.number().int(), name: z.string(), url: z.string() })).optional(),
+  attachments: workflowTaskAttachmentsSchema.optional(),
 });
 
 // ── 流程引擎运维 ──

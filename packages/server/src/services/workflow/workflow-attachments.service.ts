@@ -5,7 +5,7 @@ import { HTTPException } from 'hono/http-exception';
 import { workflowAttachmentContract, workflowAttachmentSchema, workflowTaskAttachmentsSchema, mapWorkflowFormAttachments, type WorkflowAttachment, type WorkflowInstanceFormSnapshot } from '@zenith/shared/workflow';
 import { db } from '../../db';
 import type { DbExecutor } from '../../db/types';
-import { managedFiles, workflowAttachmentLinks, workflowAttachmentUploads, workflowComments, workflowInstances, workflowTasks } from '../../db/schema';
+import { managedFiles, workflowAttachmentLinks, workflowAttachmentUploads, workflowComments, workflowCompensations, workflowInstances, workflowTasks } from '../../db/schema';
 import { currentUser, hasPermission } from '../../lib/context';
 import { exactTenantCondition, getCreateTenantId, tenantCondition } from '../../lib/tenant';
 import { buildWhere } from '../../lib/where-helpers';
@@ -20,11 +20,11 @@ import { anchorIdsWhere } from '../platform/relations/anchor-batch';
 export type WorkflowAttachmentInput = { fileId: string };
 type Instance = Pick<typeof workflowInstances.$inferSelect, 'id' | 'tenantId' | 'formSnapshot'>;
 type Source = { source: 'task'; taskId: number } | { source: 'comment'; commentId: number }
-  | { source: 'form'; path: string; fieldKeys: string[] };
+  | { source: 'form'; path: string; fieldKeys: string[] } | { source: 'compensation'; compensationId: number };
 
 function sourceValues(source: Source) {
   return { source: source.source,
-    sourceKey: source.source === 'form' ? source.path : String(source.source === 'task' ? source.taskId : source.commentId),
+    sourceKey: source.source === 'form' ? source.path : String(source.source === 'task' ? source.taskId : source.source === 'comment' ? source.commentId : source.compensationId),
     taskId: source.source === 'task' ? source.taskId : null,
     commentId: source.source === 'comment' ? source.commentId : null,
     fieldKeys: source.source === 'form' ? source.fieldKeys : [] };
@@ -59,6 +59,7 @@ export async function bindWorkflowAttachments(
     requireRow((await executor.select({ id: workflowComments.id }).from(workflowComments)
       .where(and(eq(workflowComments.id, source.commentId), eq(workflowComments.instanceId, instance.id))).limit(1))[0], '附件所属评论不存在');
   }
+  if (source.source === 'compensation') requireRow((await executor.select({ id: workflowCompensations.id }).from(workflowCompensations).where(and(eq(workflowCompensations.id, source.compensationId), eq(workflowCompensations.instanceId, instance.id))).limit(1))[0], '附件所属修复工单不存在');
   const existing = await executor.select({ id: workflowAttachmentLinks.id, fileId: workflowAttachmentLinks.fileId })
     .from(workflowAttachmentLinks).where(and(eq(workflowAttachmentLinks.instanceId, instance.id),
       exactTenantCondition(workflowAttachmentLinks.tenantId, instance.tenantId), eq(workflowAttachmentLinks.source, source.source),

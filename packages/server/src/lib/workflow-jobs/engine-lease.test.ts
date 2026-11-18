@@ -68,7 +68,7 @@ const model = vi.hoisted(() => {
       const all = state[this.tableName];
       if (this.inserted) {
         const id = all.length + 1;
-        all.push({ id, generation: 0, attempts: 0, maxAttempts: 1, operationKey: `op-${id}`, status: 'pending',
+        all.push({ id, generation: 0, attempts: 0, maxAttempts: 1, operationKey: `op-${id}`, effectStatus: 'not_started', status: 'pending',
           executionTimeoutMs: 600_000, runAt: new Date(), createdAt: new Date(), leaseToken: null, leaseUntil: null,
           executionDeadline: null, ...this.inserted });
       }
@@ -230,7 +230,8 @@ describe('workflow execution leases', () => {
   });
   it('uncertain external writes are dead-lettered instead of automatically repeated', async () => {
     seed(); model.handler.mockImplementation(async () => {
-      model.state.executions[0].requestMethod = 'POST'; throw new Error('connection dropped');
+      model.state.executions[0].requestMethod = 'POST';
+    model.state.executions[0].effectStatus = 'sent_unknown'; throw new Error('connection dropped');
     });
     await runJob(1);
     expect(model.state.jobs[0].status).toBe('dead'); expect(model.state.jobs[0].lastError).toContain('外部操作结果待确认');
@@ -242,6 +243,7 @@ describe('workflow execution leases', () => {
   it('can retry a definitive client rejection while keeping the stable operation key', async () => {
     seed(); model.handler.mockImplementation(async () => {
       model.state.executions[0].requestMethod = 'POST';
+    model.state.executions[0].effectStatus = 'sent_unknown';
       throw new WorkflowJobError('invalid request', { detail: { responseStatus: 400 } });
     });
     await runJob(1);
@@ -253,6 +255,7 @@ describe('workflow execution leases', () => {
     seed(); const wait = deferred(); model.handler.mockReturnValue(wait.promise);
     const running = runJob(1); await flush();
     model.state.executions[0].requestMethod = 'POST';
+    model.state.executions[0].effectStatus = 'sent_unknown';
     model.state.jobs[0].leaseUntil = new Date(Date.now() - 1);
     expect(await drainWorkflowJobs()).toEqual({ recovered: 1, requeued: 0, dead: 1 });
     wait.resolve(); await running;
@@ -262,6 +265,7 @@ describe('workflow execution leases', () => {
     seed(); const wait = deferred(); model.handler.mockReturnValueOnce(wait.promise).mockResolvedValueOnce({ result: { receipt: 'reused' } });
     const running = runJob(1); await flush();
     model.state.executions[0].requestMethod = 'POST';
+    model.state.executions[0].effectStatus = 'sent_unknown';
     model.state.executions[0].responseStatus = 200;
     model.state.jobs[0].leaseUntil = new Date(Date.now() - 1);
     expect(await drainWorkflowJobs()).toEqual({ recovered: 1, requeued: 1, dead: 0 });
@@ -353,7 +357,7 @@ describe('workflow execution leases', () => {
     });
     model.state.executions = [{
       id: 1, jobId: 1, jobType: 'external_dispatch', attempt: 1, generation: 0,
-      leaseToken: 'unsafe-write', status: 'running', requestMethod: 'POST', startedAt: new Date(),
+      leaseToken: 'unsafe-write', status: 'running', effectStatus: 'sent_unknown', requestMethod: 'POST', startedAt: new Date(),
     }];
     await pauseInstanceJobs(model.db as unknown as DbExecutor, 7, ['external_dispatch']);
     expect(model.state.jobs[0]).toMatchObject({

@@ -1,5 +1,5 @@
 import { and, eq } from 'drizzle-orm';
-import { workflowJobExecutions } from '../../db/schema';
+import { workflowJobExecutions, workflowJobs } from '../../db/schema';
 import { currentWorkflowJobContext, workflowTransaction } from './lease';
 import { WorkflowJobError, WorkflowJobLeaseLostError } from './errors';
 import type { WorkflowJobResult } from './types';
@@ -16,7 +16,7 @@ export async function markWorkflowExternalEffect(method: string, target: string)
   if (!context || SAFE_METHODS.has(method.toUpperCase())) return;
   await workflowTransaction(async (tx) => {
     const [row] = await tx.update(workflowJobExecutions)
-      .set({ requestMethod: method.toUpperCase(), requestUrl: target })
+      .set({ requestMethod: method.toUpperCase(), requestUrl: target, effectStatus: 'sent_unknown' })
       .where(and(
         eq(workflowJobExecutions.id, context.executionId),
         eq(workflowJobExecutions.jobId, context.job.id),
@@ -24,6 +24,8 @@ export async function markWorkflowExternalEffect(method: string, target: string)
         eq(workflowJobExecutions.status, 'running'),
       )).returning({ id: workflowJobExecutions.id });
     if (!row) throw new WorkflowJobLeaseLostError();
+    await tx.update(workflowJobs).set({ effectStatus: 'sent_unknown' })
+      .where(and(eq(workflowJobs.id, context.job.id), eq(workflowJobs.generation, context.generation), eq(workflowJobs.leaseToken, context.leaseToken)));
   });
 }
 

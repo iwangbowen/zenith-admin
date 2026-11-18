@@ -1,11 +1,11 @@
+import { settleInstanceInTx } from './settlement';
 import { requireMonitorWorkflowInstance } from '../workflow-access';
 import { createStandaloneActivation } from './approval-state';
 import { workflowTransaction } from '../../../lib/workflow-jobs/lease';
-import { enqueueSubprocessJoin } from './async-jobs';
 // ─── 节点失败策略、Saga 回滚与补偿恢复（拆分自 workflow-instances.service.ts）───
 import { eq, and, desc, inArray } from 'drizzle-orm';
 import { db } from '../../../db';
-import { workflowJobs, workflowInstances, workflowTasks, workflowTokens, workflowCompensations } from '../../../db/schema';
+import { workflowJobs, workflowInstances, workflowTasks, workflowTokens, workflowCompensations, workflowNodeActivations } from '../../../db/schema';
 import { tenantCondition } from '../../../lib/tenant';
 import type { WorkflowFlowData, WorkflowEventActor } from '@zenith/shared/workflow';
 import { resolveFailurePolicy } from '@zenith/shared/workflow';
@@ -17,9 +17,8 @@ import type { DbExecutor } from '../../../db/types';
 import { enqueueJob } from '../../../lib/workflow-jobs/engine';
 import type { WorkflowNodeFailurePolicy } from '@zenith/shared/workflow';
 import { findExceptionCatchNode, mapInstance, mapTask } from './mapping';
-import { advanceAndMaterialize, killInstanceTokens, loadLiveTokens } from './materialize';
+import { advanceAndMaterialize, loadLiveTokens } from './materialize';
 import { emitInstanceEvent, emitNodeEvent, emitTaskEvent, emitTasksEnteredEvents } from './shared';
-import { bridgeReportFillWorkflowOutcome } from '../../report/report-fill-workflow-bridge.service';
 import { requireRow } from '../../../lib/db-assert';
 import { buildWhere } from '../../../lib/where-helpers';
 
@@ -61,19 +60,8 @@ async function enqueueSagaRollback(tx: DbExecutor, args: { instanceId: number; f
 
 /** 终局收尾：跳过存量待办（可带注释）→（可选）杀死 token → 实例置 rejected，返回更新后的实例行 */
 async function markInstanceRejected(tx: DbExecutor, args: { instanceId: number; comment?: string; killTokens?: boolean; actorId?: number | null }) {
-  await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date(), ...(args.comment ? { comment: args.comment } : {}) })
-    .where(and(eq(workflowTasks.instanceId, args.instanceId), inArray(workflowTasks.status, ['pending', 'waiting'])));
-  if (args.killTokens) await killInstanceTokens(tx, args.instanceId);
-  const [row] = await tx.update(workflowInstances).set({ status: 'rejected', currentNodeKey: null })
-    .where(eq(workflowInstances.id, args.instanceId)).returning();
-  await bridgeReportFillWorkflowOutcome(tx, {
-    workflowInstanceId: args.instanceId,
-    outcome: 'rejected',
-    actorId: args.actorId,
-    comment: args.comment,
-  });
-  await enqueueSubprocessJoin(row, tx);
-  return row;
+  const result = await settleInstanceInTx(tx, args.instanceId, { outcome: 'rejected', actorId: args.actorId ?? 0, comment: args.comment });
+  return result.row;
 }
 
 /**
@@ -91,10 +79,7 @@ async function settleMaterialized(
     return { row, finished: false, rejected: true };
   }
   if (materialized.finished) {
-    const [row] = await tx.update(workflowInstances).set({ status: 'approved', currentNodeKey: null })
-      .where(eq(workflowInstances.id, instanceId)).returning();
-    await bridgeReportFillWorkflowOutcome(tx, { workflowInstanceId: instanceId, outcome: 'approved', actorId: outcome.actorId, comment: outcome.comment });
-    await enqueueSubprocessJoin(row, tx);
+    const { row } = await settleInstanceInTx(tx, instanceId, { outcome: 'approved', actorId: outcome.actorId ?? 0, comment: outcome.comment });
     return { row, finished: true, rejected: false };
   }
   const [row] = await tx.update(workflowInstances).set({ currentNodeKey: materialized.currentNodeKeys[0] ?? null })
@@ -109,10 +94,12 @@ async function swapFailedTokenTo(tx: DbExecutor, args: { instanceId: number; fai
   if (failedTok) {
     await tx.update(workflowTokens).set({ status: 'consumed', consumedAt: new Date() }).where(eq(workflowTokens.id, failedTok.id));
   }
-  await tx.insert(workflowTokens).values({
-    instanceId: args.instanceId, nodeKey: args.targetNodeKey, status: 'active', branchPath: [],
-    parentTokenId: failedTok?.id ?? null, scopeKey: null, tenantId: args.tenantId,
-  });
+  if (failedTok) await tx.update(workflowNodeActivations).set({ status: 'rejected', settledAt: new Date(), settlementReason: '节点执行失败，进入修复' }).where(eq(workflowNodeActivations.tokenId, failedTok.id));
+  const [repairToken] = await tx.insert(workflowTokens).values({
+    instanceId: args.instanceId, nodeKey: args.targetNodeKey, status: 'active', branchPath: failedTok?.branchPath ?? [],
+    parentTokenId: failedTok?.id ?? null, scopeKey: failedTok?.scopeKey ?? null, tenantId: args.tenantId,
+  }).returning();
+  return repairToken;
 }
 
 /**
@@ -129,11 +116,10 @@ async function swapFailedTokenTo(tx: DbExecutor, args: { instanceId: number; fai
 /** 在异常处理节点落一条 catch 任务（处理人 / 状态 / 备注按失败策略而定），返回插入行 */
 async function insertCatchTask(tx: DbExecutor, args: {
   instanceId: number; nodeKey: string; nodeName: string; assigneeId: number | null;
-  status: 'pending' | 'approved' | 'rejected'; comment: string; actionAt?: Date;
+  status: 'pending' | 'approved' | 'rejected'; comment: string; actionAt?: Date; tokenId?: number;
 }) {
   const [parent] = await tx.select().from(workflowInstances).where(eq(workflowInstances.id, args.instanceId)).limit(1);
-  const [token] = await tx.select().from(workflowTokens).where(and(eq(workflowTokens.instanceId, args.instanceId), eq(workflowTokens.nodeKey, args.nodeKey), eq(workflowTokens.status, 'active'))).limit(1);
-  const activationId = await createStandaloneActivation(tx, { instanceId: args.instanceId, nodeKey: args.nodeKey, nodeName: args.nodeName, tenantId: parent.tenantId, tokenId: token?.id ?? null, status: args.status === 'pending' ? 'active' : 'approved' });
+  const activationId = await createStandaloneActivation(tx, { instanceId: args.instanceId, nodeKey: args.nodeKey, nodeName: args.nodeName, tenantId: parent.tenantId, tokenId: args.tokenId ?? null, kind: 'repair', status: args.status === 'pending' ? 'active' : 'approved' });
   const [task] = await tx.insert(workflowTasks).values({
     instanceId: args.instanceId,
     nodeKey: args.nodeKey,
@@ -175,6 +161,7 @@ async function applyNodeFailurePolicy(input: {
         }).where(and(eq(workflowTasks.id, input.task.id), inArray(workflowTasks.status, ['pending', 'waiting']))).returning()
         : [];
 
+      if (input.task && affectedTasks.length === 0) return null;
       const starter = await buildStarterContext(lockedInst.initiatorId, tx);
       const formData = (lockedInst.formData ?? {}) as Record<string, unknown>;
 
@@ -253,9 +240,9 @@ async function applyNodeFailurePolicy(input: {
       if (compensationCfg) {
         await enqueueJob({ jobType: 'compensation_action', payload: { compensationId: compId, instanceId: lockedInst.id, nodeKey: input.nodeKey, error: input.errorMessage, action: compensationCfg }, instanceId: lockedInst.id, nodeKey: input.nodeKey, idempotencyKey: `compaction:${compId}`, maxAttempts: (compensationCfg.maxRetries ?? 3) + 1, tenantId: lockedInst.tenantId }, tx);
       }
-      const repairTask = await insertCatchTask(tx, { instanceId: lockedInst.id, nodeKey: input.nodeKey, nodeName: `${input.nodeName}（待修复）`, assigneeId: adminId, status: 'pending', comment: errorComment });
-      // Token 一致性：消费失败节点 token，在同一节点新建 frontier token（其余分支保留）
-      await swapFailedTokenTo(tx, { instanceId: lockedInst.id, failedNodeKey: input.nodeKey, targetNodeKey: input.nodeKey, tenantId: lockedInst.tenantId });
+      const repairToken = await swapFailedTokenTo(tx, { instanceId: lockedInst.id, failedNodeKey: input.nodeKey, targetNodeKey: input.nodeKey, tenantId: lockedInst.tenantId });
+      const repairTask = await insertCatchTask(tx, { instanceId: lockedInst.id, nodeKey: input.nodeKey, nodeName: `${input.nodeName}（待修复）`, assigneeId: adminId, status: 'pending', comment: errorComment, tokenId: repairToken.id });
+      await tx.update(workflowCompensations).set({ repairTaskId: repairTask.id, repairActivationId: repairTask.activationId }).where(eq(workflowCompensations.id, compId));
       const [row] = await tx.update(workflowInstances).set({ currentNodeKey: input.nodeKey })
         .where(eq(workflowInstances.id, lockedInst.id)).returning();
       return { row, affectedTasks, newTasks: [repairTask], repairTask, finished: false, rejected: false };
@@ -294,8 +281,12 @@ export async function resumeInstanceForCompensation(id: number): Promise<{ resum
     const flowData = inst.definitionSnapshot?.flowData;
     if (!flowData) throw new HTTPException(400, { message: '实例定义快照缺失，无法恢复' });
 
-    await tx.update(workflowTasks).set({ status: 'approved', actionAt: new Date(), comment: '补偿完成，恢复推进' })
-      .where(and(eq(workflowTasks.instanceId, inst.id), eq(workflowTasks.nodeKey, failedNodeKey), eq(workflowTasks.status, 'pending')));
+    const [currentTicket] = await tx.select().from(workflowCompensations).where(eq(workflowCompensations.id, id)).for('update').limit(1);
+    if (currentTicket?.status !== 'pending' || !currentTicket.repairTaskId || !currentTicket.repairActivationId) throw new HTTPException(409, { message: '工单状态或修复身份已变化，请刷新' });
+    if (currentTicket.compensationActionStatus === 'pending' || currentTicket.compensationActionStatus === 'running' || currentTicket.compensationActionStatus === 'failed') throw new HTTPException(409, { message: '自动补偿尚未成功，不能恢复' });
+    const [repair] = await tx.update(workflowTasks).set({ status: 'approved', actionAt: new Date(), comment: '补偿完成，恢复推进' })
+      .where(and(eq(workflowTasks.id, currentTicket.repairTaskId), eq(workflowTasks.activationId, currentTicket.repairActivationId), eq(workflowTasks.status, 'pending'))).returning();
+    requireRow(repair, '修复任务已变化，不能重复推进', 409);
 
     const starter = await buildStarterContext(inst.initiatorId, tx);
     const formData = (inst.formData ?? {}) as Record<string, unknown>;
@@ -303,27 +294,14 @@ export async function resumeInstanceForCompensation(id: number): Promise<{ resum
       instanceId: inst.id, initiatorId: inst.initiatorId, executor: tx, flowData, formData, settings: flowData.settings, starter, tenantId: inst.tenantId,
     });
 
-    let row: typeof workflowInstances.$inferSelect;
-    if (materialized.rejected || (!materialized.finished && materialized.currentNodeKeys.length === 0 && materialized.createdTasks.length === 0)) {
-      row = await markInstanceRejected(tx, { instanceId: inst.id });
-    } else if (materialized.finished) {
-      [row] = await tx.update(workflowInstances).set({ status: 'approved', currentNodeKey: null }).where(eq(workflowInstances.id, inst.id)).returning();
-      await bridgeReportFillWorkflowOutcome(tx, {
-        workflowInstanceId: inst.id,
-        outcome: 'approved',
-        actorId: currentUser().userId,
-        comment: '补偿完成，恢复推进',
-      });
-    } else {
-      [row] = await tx.update(workflowInstances).set({ currentNodeKey: materialized.currentNodeKeys[0] ?? null }).where(eq(workflowInstances.id, inst.id)).returning();
-    }
-    await enqueueSubprocessJoin(row, tx);
+    const settled = await settleMaterialized(tx, inst.id, materialized, { comment: '补偿完成，恢复推进', actorId: cu.userId });
+    const row = settled.row;
 
     await tx.update(workflowCompensations)
       .set({ status: 'resolved', resolution: '恢复并继续推进', resolvedBy: cu?.userId ?? null, resolvedAt: new Date() })
       .where(eq(workflowCompensations.id, id));
     await addCompensationLog(tx, { compensationId: id, action: 'resume', note: '恢复并继续推进', operatorId: cu?.userId ?? null, tenantId: ticket.tenantId });
-    const updated = { row, newTasks: materialized.createdTasks, finished: materialized.finished, rejected: materialized.rejected };
+    const updated = { row, newTasks: materialized.createdTasks, finished: settled.finished, rejected: settled.rejected };
     const meta = { definitionId: updated.row.definitionId, tenantId: updated.row.tenantId, actor };
     await emitTasksEnteredEvents(updated.row.id, updated.newTasks, meta, tx);
     if (updated.finished) await emitInstanceEvent('instance.approved', mapInstance(updated.row), actor, tx);
@@ -396,9 +374,8 @@ export async function handleNodeExecutionError(input: {
           const row = await markInstanceRejected(tx, { instanceId: lockedInst.id, comment: errorComment, killTokens: true, actorId: input.actor.userId });
           return { row, affectedTasks, catchTask, newTasks: [] as typeof workflowTasks.$inferSelect[], finished: false, rejected: true };
         }
-        const catchTask = await insertCatchTask(tx, { instanceId: lockedInst.id, nodeKey: catchCfg.key, nodeName: catchCfg.label, assigneeId: adminId, status: 'pending', comment: errorComment });
-        // Token 一致性：消费失败节点 token，在 catch 节点新建 frontier token（其余分支 token 保留）
-        await swapFailedTokenTo(tx, { instanceId: lockedInst.id, failedNodeKey: input.nodeKey, targetNodeKey: catchCfg.key, tenantId: lockedInst.tenantId });
+        const repairToken = await swapFailedTokenTo(tx, { instanceId: lockedInst.id, failedNodeKey: input.nodeKey, targetNodeKey: catchCfg.key, tenantId: lockedInst.tenantId });
+        const catchTask = await insertCatchTask(tx, { instanceId: lockedInst.id, nodeKey: catchCfg.key, nodeName: catchCfg.label, assigneeId: adminId, status: 'pending', comment: errorComment, tokenId: repairToken.id });
         const [row] = await tx.update(workflowInstances)
           .set({ currentNodeKey: catchCfg.key })
           .where(eq(workflowInstances.id, lockedInst.id))

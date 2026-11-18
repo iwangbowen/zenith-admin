@@ -1,3 +1,5 @@
+import { settleInstanceInTx } from './settlement';
+import { settleSystemActivationOutcome } from './system-outcome';
 import { bindWorkflowAttachments, bindWorkflowFormAttachments, type WorkflowAttachmentInput } from '../workflow-attachments.service';
 import { assertIndependentReconApproval } from '../../payment/payment-recon-adjustment-policy';
 import { assertWorkflowFormUpdatesCurrent } from './signature-concurrency';
@@ -21,7 +23,6 @@ import type { WorkflowSelectableNextApproverGroup } from '@zenith/shared/workflo
 import logger from '../../../lib/logger';
 import { cancelJobs, WORKFLOW_ADVANCING_JOB_TYPES } from '../../../lib/workflow-jobs/engine';
 import { armTaskAsyncJobs } from './async-jobs';
-import { enqueueSubprocessJoin } from './async-jobs';
 import { assertSelectedNextApprovers } from './initiator-select';
 import { mapInstance, mapTask } from './mapping';
 import { advanceAndMaterialize, checkNodeCompletion, killInstanceTokens } from './materialize';
@@ -33,7 +34,6 @@ import { emitInstanceEvent, emitNodeEvent, emitTaskEvent, emitTasksEnteredEvents
 import { hasUserHandledTask } from './transfers';
 import { bridgeReportFillWorkflowOutcome } from '../../report/report-fill-workflow-bridge.service';
 import { submitReportFillSyncForWorkflowInstance } from '../../report/report-fill-task.service';
-import type { DbExecutor } from '../../../db/types';
 import { requireRow } from '../../../lib/db-assert';
 import { getWorkflowInstanceBusinessAdapter } from '../../../lib/workflow-business';
 import type { PreparedWorkflowBusinessApproval } from '../../../lib/workflow-business-types';
@@ -201,42 +201,6 @@ type InstanceRow = typeof workflowInstances.$inferSelect;
 type TaskRow = typeof workflowTasks.$inferSelect;
 type FillBridgeResult = Awaited<ReturnType<typeof bridgeReportFillWorkflowOutcome>>;
 
-/** 事务内落定实例终态：驳回时清理全部活动任务 / token，更新实例状态并触发报表填报桥接 */
-async function settleInstanceInTx(
-  tx: DbExecutor,
-  instanceId: number,
-  opts: {
-    outcome: 'approved' | 'rejected';
-    actorId: number;
-    comment?: string | null;
-  },
-): Promise<{ row: InstanceRow; fillBridge: FillBridgeResult; skippedTasks: TaskRow[] }> {
-  // 每条拒绝终止路径都必须清场，不让调用方分别选择任务 / token 清理而遗漏并行分支。
-  const skippedTasks = opts.outcome === 'rejected'
-    ? await tx.update(workflowTasks)
-      .set({ status: 'skipped', actionAt: new Date(), comment: '[流程驳回] 流程已被驳回终止，本待办作废' })
-      .where(and(eq(workflowTasks.instanceId, instanceId), inArray(workflowTasks.status, ['pending', 'waiting'])))
-      .returning()
-    : [];
-  if (opts.outcome === 'rejected') await killInstanceTokens(tx, instanceId);
-  // 终态清场：取消仍在途的推进类作业（延时唤醒/超时/触发器/外部派发/子流程），避免作业苏醒后推进已终结实例
-  await cancelJobs({ instanceId, jobTypes: WORKFLOW_ADVANCING_JOB_TYPES }, tx);
-  const [row] = await tx.update(workflowInstances)
-    .set({ status: opts.outcome, currentNodeKey: null })
-    .where(eq(workflowInstances.id, instanceId))
-    .returning();
-  const fillBridge = await bridgeReportFillWorkflowOutcome(tx, {
-    workflowInstanceId: instanceId,
-    outcome: opts.outcome,
-    actorId: opts.actorId,
-    comment: opts.comment ?? null,
-  });
-  await enqueueSubprocessJoin(row, tx);
-  return { row, fillBridge, skippedTasks };
-}
-
-
-
 /** 报表填报桥接确认通过后，异步补发同步任务 */
 function scheduleReportFillSync(fillBridge: FillBridgeResult | null, instanceId: number): void {
   if (!fillBridge?.approved) return;
@@ -305,8 +269,10 @@ export async function approveTaskCore(
     }
 
     // 检查当前节点是否已足够推进（会签/或签/顺序会签）
-    await recordSlotOutcome(tx, approvedTask, 'approved');
-    const { completed } = await checkNodeCompletion(tx, inst, task.nodeKey, flowData, activationId);
+    if (task.taskKind !== 'system') await recordSlotOutcome(tx, approvedTask, 'approved');
+    const { completed } = task.taskKind === 'system'
+      ? await settleSystemActivationOutcome(tx, task, 'approved', comment)
+      : await checkNodeCompletion(tx, inst, task.nodeKey, flowData, activationId);
     if (!completed) {
       const [row] = await tx.update(workflowInstances)
         .set({ currentNodeKey: task.nodeKey })
@@ -500,8 +466,10 @@ export async function rejectTaskCore(
     requireRow(rejectedTask, '任务已被处理，请刷新后重试', 409);
 
     // 比例会签：本任务驳回后若阈值仍可达成，仅记录该任务驳回、节点保持活动。
-    await recordSlotOutcome(tx, rejectedTask, 'rejected');
-    const completion = await reconcileApprovalActivation(tx, inst, activationId, actor, flowData ?? undefined);
+    if (task.taskKind !== 'system') await recordSlotOutcome(tx, rejectedTask, 'rejected');
+    const completion = task.taskKind === 'system'
+      ? await settleSystemActivationOutcome(tx, task, 'rejected', comment)
+      : await reconcileApprovalActivation(tx, inst, activationId, actor, flowData ?? undefined);
     if (!completion.failed) {
       return {
         row: inst,

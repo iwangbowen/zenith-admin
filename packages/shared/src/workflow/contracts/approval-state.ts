@@ -1,3 +1,4 @@
+import { WORKFLOW_ACTIVATION_KINDS } from '../constants';
 import * as z from 'zod';
 import {
   WORKFLOW_APPROVAL_ACTIVATION_STATUSES, WORKFLOW_APPROVAL_SLOT_ORIGINS,
@@ -41,6 +42,8 @@ export const workflowNodeActivationSchema = z.object({
   nodeKey: z.string(),
   nodeName: z.string(),
   tokenId: z.int().nullable(),
+  kind: z.enum(WORKFLOW_ACTIVATION_KINDS),
+  settlementReason: z.string().nullable(),
   status: z.enum(WORKFLOW_APPROVAL_ACTIVATION_STATUSES),
   approveMethod: z.enum(['and', 'or', 'sequential', 'ratio']).nullable(),
   approveRatio: z.int().nullable(),

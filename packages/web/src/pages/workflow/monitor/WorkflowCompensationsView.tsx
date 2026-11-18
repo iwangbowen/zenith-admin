@@ -4,7 +4,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Paperclip } from 'lucide-react';
 import { WORKFLOW_COMPENSATION_STATUSES, type WorkflowCompensation } from '@zenith/shared/workflow';
 import { enumValueOf } from '@zenith/shared/core';
-import { useUploadOneFile } from '@/hooks/queries/files';
+import { useUploadWorkflowAttachment } from '@/hooks/queries/workflow-monitor';
 import { createdAtColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -28,7 +28,7 @@ import { listTableProps } from '@/components/list-page';
 
 const STATUS: Record<string, { text: string; color: string }> = {
   pending: { text: '待修复', color: 'amber' },
-  resolved: { text: '已放行', color: 'green' },
+  resolved: { text: '已闭环', color: 'green' },
   terminated: { text: '已终止', color: 'red' },
 };
 const ACTION_STATUS: Record<string, { text: string; color: string }> = {
@@ -41,9 +41,9 @@ const ACTION_LABEL: Record<string, string> = {
   continue: '继续', retry: '重试', compensate: '反向补偿', fallback: '备用兜底', notify: '通知挂起', terminate: '终止', toAdmin: '转管理员',
 };
 const LOG_LABEL: Record<string, string> = {
-  note: '备注', attachment: '附件', auto: '自动动作', retry: '重试', resume: '恢复推进', resolve: '放行', terminate: '终止',
+  note: '备注', attachment: '附件', auto: '自动动作', retry: '重试', resume: '恢复推进', resolve: '仅关闭', terminate: '终止',
 };
-type Attachment = { id: number; name: string; url: string };
+type Attachment = { fileId: string; name: string };
 
 export default function WorkflowCompensationsView() {
   const { hasPermission } = usePermission();
@@ -61,7 +61,7 @@ export default function WorkflowCompensationsView() {
   const resumeMutation = useResumeWorkflowCompensation();
   const retryMutation = useRetryWorkflowCompensation();
   const noteMutation = useAddWorkflowCompensationNote();
-  const uploadOneMutation = useUploadOneFile();
+  const uploadOneMutation = useUploadWorkflowAttachment();
   const acting = resolveMutation.isPending || resumeMutation.isPending || retryMutation.isPending || noteMutation.isPending;
 
   const openDetail = (id: number) => {
@@ -71,8 +71,8 @@ export default function WorkflowCompensationsView() {
   };
 
   const resolve = (r: WorkflowCompensation, action: 'resolve' | 'terminate') => { confirmDanger({
-    title: action === 'resolve' ? '标记修复放行' : '终止流程',
-    content: action === 'resolve' ? '确认异常已处理，流程继续？' : '将终止该实例并跳过待办，不可恢复',
+    title: action === 'resolve' ? '仅关闭工单' : '终止流程',
+    content: action === 'resolve' ? '仅关闭本工单，不推进流程。需要继续时请使用恢复推进。' : '将终止该实例并跳过待办，不可恢复',
     okButtonProps: action === 'terminate' ? { type: 'danger' } : undefined,
     onOk: async () => {
       await resolveMutation.mutateAsync({ params: { id: r.id }, body: { action } });
@@ -126,7 +126,7 @@ export default function WorkflowCompensationsView() {
       <SearchToolbar primary={(
         <Space>
           <StatusSelect
-            items={[{ value: 'pending', label: '待修复' }, { value: 'resolved', label: '已放行' }, { value: 'terminated', label: '已终止' }]}
+            items={[{ value: 'pending', label: '待修复' }, { value: 'resolved', label: '已闭环' }, { value: 'terminated', label: '已终止' }]}
             value={status}
             onChange={(v) => setStatus(v as string)}
           />
@@ -182,10 +182,10 @@ export default function WorkflowCompensationsView() {
                       try {
                         const fd = new FormData();
                         fd.append('file', file.fileInstance as File);
-                        const res = await uploadOneMutation.mutateAsync({ formData: fd });
-                        if (res?.url) {
+                        const res = await uploadOneMutation.mutateAsync({ body: fd });
+                        if (res?.id) {
                           // 补偿备注附件的 id 是本地序号（服务端要求整数），与托管文件的 UUID 无关
-                          setPendingAtt((prev) => [...prev, { id: Date.now(), name: res.originalName || file.name || '附件', url: res.url }]);
+                          setPendingAtt((prev) => [...prev, { fileId: res.id, name: res.originalName || file.name || '附件' }]);
                           onSuccess?.({}, file as never);
                         } else { onError?.({ status: 0 } as never, file as never); }
                       } catch { onError?.({ status: 0 } as never, file as never); }

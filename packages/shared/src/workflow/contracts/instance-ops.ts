@@ -1,3 +1,4 @@
+import { workflowAttachmentSchema } from './attachments';
 import * as z from 'zod';
 import { idParam, paginated, paginationQuery, queryEnum, idQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
@@ -245,7 +246,7 @@ export const workflowCompensationLogSchema = z.object({
   compensationId: z.int(),
   action: z.enum(['note', 'attachment', 'auto', 'retry', 'resume', 'resolve', 'terminate']),
   note: z.string().nullable(),
-  attachments: z.array(z.object({ id: z.int(), name: z.string(), url: z.string() })).nullable(),
+  attachments: z.array(workflowAttachmentSchema).nullable(),
   operatorId: z.int().nullable(),
   operatorName: z.string().nullable(),
   createdAt: z.string(),
