@@ -18,12 +18,7 @@ export default defineConfig({
     include: ['src/**/*.test.{ts,tsx}'],
     setupFiles: ['src/test-setup.ts'],
     css: true,
-    // jsdom 里渲染 Semi Design 组件（尤其 SideSheet / Modal 这类带动画的浮层）
-    // 叠加 userEvent 的逐事件派发，单个交互用例普遍要 2-3s；机器负载高时轻易翻倍。
-    // vitest 默认 5s 会让这些用例随机报超时（并非真的卡死），故整体放宽。
-    // 发布流程四路并行（与 lint / build / docs 抢转译 + CPU）时还嫌挤，
-    // 曾在 17-21s 区间撞破 15s 线而单独跑能过，故与 server 一致放宽到 30s：
-    // 失败仍是超时而非断言失败，独立复跑可证实用例本身有效。
+    // Hook、异步请求与查询缓存测试在并行构建时也需要完整的观察窗口。
     testTimeout: 30_000,
     hookTimeout: 30_000,
     // 与 server 同理压住 worker 数：不设上限时 16 核默认起满 jsdom fork，与 build

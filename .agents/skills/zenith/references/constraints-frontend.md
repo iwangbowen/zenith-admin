@@ -32,6 +32,8 @@
 - **保留无 UI 的业务测试**：纯业务模型、校验 / 转换、契约、服务端授权、请求载荷及查询缓存继续验证；
   `renderHook` 仅用于不渲染业务控件、也不操作 DOM 的 Hook 逻辑，状态通过返回值或业务回调驱动。
   组件交互与破坏性操作确认改由按需页面实测验证，不为规避此边界把 UI 操作藏进测试 helper 或 mock。
+- **检查完整执行链**：测试触发的业务函数、Provider 与 helper 内若实际执行 DOM 创建 / 查询 / 修改或窗口交互，
+  对应用例同样删除；独立的 UI / DOM 冒烟脚本及其 npm、CI 入口也不保留。
 
 ## 必须复用的公共 hook / 工具
 
@@ -507,8 +509,8 @@ chunk 分层机理、度量脚本与预算数字见 [docs/frontend/bundle-perfor
   与 `/api/auth/me` 并行预取，**禁止**再往 `AdminRouteLoader` 首载 gate 里串行新增查询；
   只在错误 / 兜底路径使用的数据（如完整菜单树）由对应组件自行拉取
 - **提交前必须通过**：`npm run check:bundle -w @zenith/web`（`bundle-budget.json`：每入口关键路径预算与
-  `maxTotalJsChunks` / `maxTotalJsMB` 总量门禁）与 `npm run smoke -w @zenith/web`（demo 产物真实启动 `entries.json`
-  全部入口 + 登录链路）。预算只能因明确的产品决策上调，上调时同步更新 `bundle-performance.md` 的记录表；不得为让 CI 通过而放宽
+  `maxTotalJsChunks` / `maxTotalJsMB` 总量门禁）。入口启动与登录链路按需页面实测，不设置依赖 UI / DOM 操作的自动化门禁。
+  预算只能因明确的产品决策上调，上调时同步更新 `bundle-performance.md` 的记录表；不得为让 CI 通过而放宽
 
 ---
 

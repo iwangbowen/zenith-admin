@@ -132,44 +132,6 @@ describe('AuthProvider initialization', () => {
 });
 
 describe('AuthProvider actions', () => {
-  it('stores login credentials and fetches the session exactly once', async () => {
-    mockRequest.post.mockResolvedValueOnce({
-      code: 0,
-      message: 'success',
-      data: {
-        token: { accessToken: 'new-access-token', refreshToken: 'new-refresh-token' },
-        user: { id: 1 },
-      },
-    });
-    mockRequest.get.mockResolvedValueOnce(makeMeResponse());
-    const { result } = renderAuthHook();
-
-    await act(async () => {
-      await result.current.login('admin', 'password');
-    });
-
-    expect(localStorage.getItem(TOKEN_KEY)).toBe('new-access-token');
-    expect(localStorage.getItem(REFRESH_TOKEN_KEY)).toBe('new-refresh-token');
-    expect(result.current.user?.username).toBe('admin');
-    expect(mockRequest.get).toHaveBeenCalledTimes(1);
-  });
-
-  it('does not persist credentials after a failed login', async () => {
-    mockRequest.post.mockResolvedValueOnce({
-      code: 400,
-      message: '用户名或密码错误',
-      data: null,
-    });
-    const { result } = renderAuthHook();
-
-    await act(async () => {
-      await result.current.login('admin', 'wrong');
-    });
-
-    expect(result.current.status).toBe('anonymous');
-    expect(localStorage.getItem(TOKEN_KEY)).toBeNull();
-    expect(mockRequest.get).not.toHaveBeenCalled();
-  });
 
   it('logs out without issuing another /api/auth/me request and clears identity caches', async () => {
     localStorage.setItem(TOKEN_KEY, 'valid-token');
@@ -311,35 +273,6 @@ describe('AuthProvider account switching', () => {
     expect(switchResult?.ok).toBe(false);
     expect(switchResult?.expired).toBeUndefined();
     expect(listParkedAccounts().map((a) => a.userId)).toEqual([2]);
-  });
-
-  it('adds an account: parks the current one and activates the new identity', async () => {
-    localStorage.setItem(TOKEN_KEY, 'admin-token');
-    localStorage.setItem(REFRESH_TOKEN_KEY, 'admin-refresh');
-    mockRequest.get.mockResolvedValueOnce(makeMeResponse());
-    mockRequest.post.mockResolvedValueOnce({
-      code: 0,
-      message: 'ok',
-      data: {
-        token: { accessToken: 'lisi-access', refreshToken: 'lisi-refresh' },
-        user: { id: 2, username: 'lisi', nickname: '李四' },
-      },
-    });
-    const { result } = renderAuthHook();
-    await waitFor(() => expect(result.current.status).toBe('authenticated'));
-
-    await act(async () => {
-      await result.current.login('lisi', 'password', undefined, undefined, undefined, { addAccount: true });
-    });
-
-    expect(localStorage.getItem(TOKEN_KEY)).toBe('lisi-access');
-    expect(localStorage.getItem(REFRESH_TOKEN_KEY)).toBe('lisi-refresh');
-    const parked = listParkedAccounts();
-    expect(parked.map((a) => a.userId)).toEqual([1]);
-    expect(parked[0].refreshToken).toBe('admin-refresh');
-    expect(vi.mocked(broadcastSwitchAndReload)).toHaveBeenCalledTimes(1);
-    // 添加账号走整页重载，不应触发 SPA 内的 /me 重取
-    expect(mockRequest.get).toHaveBeenCalledTimes(1);
   });
 
   it('falls back to the most recent parked account on logout', async () => {

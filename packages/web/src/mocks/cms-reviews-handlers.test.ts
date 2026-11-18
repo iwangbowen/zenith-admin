@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CmsContentReviewPolicy, CmsContentReviewRecord } from '@zenith/shared/cms';
 import type { AsyncTask } from '@zenith/shared/tasks';
 import { mockCmsContents, mockCmsContentVersions } from './data/cms';
-import { mockCmsEditorialTasks, mockCmsEditorialHistory, mockCmsEditorialRounds } from './data/cms-operations';
+import { mockCmsEditorialTasks } from './data/cms-operations';
 import { cmsContentReviewHandlers, resetMockCmsContentReviews } from './handlers/cms-reviews';
 import { getMockCmsActivePublication, resetMockCmsReleases, submitMockCmsContentRelease } from './handlers/cms-releases';
 import { refreshMockAsyncTask } from './handlers/async-tasks';
@@ -34,12 +34,6 @@ async function liveArticle() {
   expect(getMockCmsActivePublication(content.id)?.revisionId).toBe(revision.id);
   return content;
 }
-async function scan(siteId: number, contentId: number) {
-  const submitted = await call<AsyncTask>('POST', '/scan', { siteId, contentId }); expect(submitted.status).toBe(200);
-  vi.setSystemTime(Date.now() + 1000);
-  const completed = refreshMockAsyncTask(submitted.data.id)!; expect(completed.status).toBe('success');
-  return completed;
-}
 
 describe('CMS Demo content review policies and scans', () => {
   it('requires policy CAS and the real active revision when recording a review', async () => {
@@ -55,20 +49,6 @@ describe('CMS Demo content review policies and scans', () => {
     expect(records.data[0].generationId).toBe(getMockCmsActivePublication(content.id)!.deploymentId);
   });
 
-  it('uses task completion for scans, deduplicates ongoing findings, and does not claim external links were checked', async () => {
-    const content = await liveArticle();
-    await call('PUT', `/${content.id}`, { ...config, expectedVersion: 0 });
-    const first = await scan(content.siteId, content.id);
-    expect(first.taskType).toBe('cms-content-review-scan');
-    expect(first.result).toMatchObject({ checked: 1, externalLinksUnchecked: 1 });
-    const detail = (await call<CmsContentReviewPolicy>('GET', `/${content.id}`)).data;
-    expect(detail.issues.map(row => row.kind).sort()).toEqual(['broken_link', 'review_due']);
-    expect(detail.issues.every(row => mockCmsEditorialTasks.some(task => task.id === row.taskId && task.source === 'review' && task.roundNo === 1))).toBe(true);
-    const previousIds = detail.issues.map(row => row.taskId);
-    await scan(content.siteId, content.id);
-    expect((await call<CmsContentReviewPolicy>('GET', `/${content.id}`)).data.issues.map(row => row.taskId)).toEqual(previousIds);
-  });
-
   it('skips a changed policy instead of writing stale scan findings', async () => {
     const content = await liveArticle();
     await call('PUT', `/${content.id}`, { ...config, expectedVersion: 0 });
@@ -79,22 +59,6 @@ describe('CMS Demo content review policies and scans', () => {
     expect(completed.result).toMatchObject({ checked: 0, skipped: 1 });
     expect((await call<CmsContentReviewPolicy>('GET', `/${content.id}`)).data.issues).toEqual([]);
     expect(mockCmsEditorialTasks).toHaveLength(0);
-  });
-
-  it('closes only the matching periodic review task and keeps link findings open', async () => {
-    const content = await liveArticle();
-    await call('PUT', `/${content.id}`, { ...config, expectedVersion: 0 });
-    await scan(content.siteId, content.id);
-    const current = (await call<CmsContentReviewPolicy>('GET', `/${content.id}`)).data;
-    const due = current.issues.find(row => row.kind === 'review_due')!;
-    const link = current.issues.find(row => row.kind === 'broken_link')!;
-    const completed = await call<CmsContentReviewPolicy>('POST', `/${content.id}/complete`, { expectedVersion: current.version, revisionId: content.approvedRevisionId, note: '资料准确性已逐项复核；链接另行修订' });
-    expect(completed.data.issues.map(row => row.kind)).toEqual(['broken_link']);
-    expect(mockCmsEditorialTasks.find(row => row.id === due.taskId)?.status).toBe('verified');
-    expect(mockCmsEditorialTasks.find(row => row.id === link.taskId)?.status).toBe('open');
-    expect(mockCmsEditorialRounds.find(row => row.taskId === due.taskId)).toMatchObject({ solutionRevisionId: content.approvedRevisionId, goal: { metric: 'manual' }, deploymentId: getMockCmsActivePublication(content.id)!.deploymentId });
-    const records = (await call<CmsContentReviewRecord[]>('GET', `/${content.id}/records`)).data;
-    expect(mockCmsEditorialHistory.find(row => row.taskId === due.taskId && row.action === 'review_confirmed')?.snapshot).toMatchObject({ reviewRecordId: records[0].id, revisionId: content.approvedRevisionId });
   });
 
   it('keeps draft-only content out of completed review records', async () => {

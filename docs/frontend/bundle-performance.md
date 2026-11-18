@@ -32,7 +32,7 @@ lucide 图标全表（615 KB / 153 KB gz）在任何口径下都是运行时按�
    手动部署时执行随包提供的 `node web/precompress.mjs web/dist` 生成。
 
 新增入口：新建 `<input>.html` 与 `src/<entry>/main-*.tsx`，在 `entries.json` 加一行，跑一次 `npm run analyze:bundle` 后在 `bundle-budget.json`
-补该入口预算（关键路径 + `maxTotalJsChunks / maxTotalJsMB`，实测留 ~10% 余量），并在 `scripts/smoke.mjs` 补启动检查。
+补该入口预算（关键路径 + `maxTotalJsChunks / maxTotalJsMB`，实测留 ~10% 余量），并按需实测入口启动。
 
 分入口构建的原因：rolldown 的 `$initial` 标签取「任一用户入口静态可达」的并集，多入口共建时后台关键路径会混入会员 / 审批入口的模块，
 并且每个共享模块的「入口集合」都掺进几十个懒加载页面，关键路径无法收敛为少数几个 chunk。各入口面向不同用户群，跨入口共享 chunk 的收益≈0。
@@ -88,7 +88,7 @@ lucide 图标全表（615 KB / 153 KB gz）在任何口径下都是运行时按�
 
 ### 禁止的分包手法
 
-以下写法都会让构建 `exit 0` 但产物退化或运行时白屏，任何分包改动必须同时通过 `check:bundle` 与 `smoke`：
+以下写法都会让构建 `exit 0` 但产物退化或运行时白屏，任何分包改动必须通过 `check:bundle`，并按需实测入口启动：
 
 | 手法 | 后果 |
 | --- | --- |
@@ -152,7 +152,6 @@ nginx 侧的 `gzip_static`、HTML `no-cache`、静态资源一年 immutable 与 
 | --- | --- | --- |
 | `npm run analyze:bundle` | 文本报告；`-- --json out.json --md out.md` 落盘；`-- --dist <dir>` 指定产物 | 已构建的 `dist/` |
 | `npm run check:bundle` | 按 `bundle-budget.json` 检查，超限 exit 1（CI `Bundle budget` 步骤） | 已构建的 `dist/` |
-| `npm run smoke` | 自起 `vite preview` 用系统 Chrome 真实启动全部入口 + 登录 → 仪表盘 → 用户管理，控制台错误 / 错误边界即失败（CI `smoke` job 基于 demo 产物）。`-- --url <url> --no-serve` 复用已有服务 | 系统 Chrome；非 demo 产物需要可用的 API |
 | `npm run bench:runtime` | 冷缓存首屏基准：匿名 `/login` 与已登录 `/` 的请求数 / 字节 / 可交互 / LCP，取多次中位数；`-- --latency 50 --download 10` 经 CDP 注入网络条件；`-- --json out.json` 落盘 | 另一终端 `npm run preview`；API 可用 |
 
 `bundle-budget.json` 的阈值以当前实测为基线并保留经过评估的余量。分包改动或新增首屏依赖导致超限时，先证明必要性再上调，并同步覆盖下方当前基准。

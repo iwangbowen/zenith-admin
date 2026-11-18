@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { HashRouter, MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
+import { describe, expect, it, vi } from 'vitest';
 import { useListDeepLink } from './useListDeepLink';
 
 function wrapper({ children }: { children: ReactNode }) {
@@ -9,8 +9,6 @@ function wrapper({ children }: { children: ReactNode }) {
 }
 
 describe('useListDeepLink', () => {
-  afterEach(() => window.history.replaceState(null, '', '/'));
-
   it('preserves existing callback behavior and unrelated query, hash and router state', async () => {
     // Existing callbacks may return an incidental value; their return remains ignored.
     const apply = vi.fn(() => true);
@@ -58,18 +56,5 @@ describe('useListDeepLink', () => {
 
     await waitFor(() => expect(hook.result.current.search).toBe('?view=compact&tab=hits'));
     expect(apply).toHaveBeenCalledExactlyOnceWith({ hitId: '7', reviewId: '11' });
-  });
-
-  it('preserves parameters inside the Electron hash route', async () => {
-    window.history.replaceState(null, '', '/#/list?keyword=first&view=compact#context');
-    const apply = vi.fn();
-    const hook = renderHook(() => {
-      useListDeepLink(['keyword'], apply, { getNextParams: () => ({ tab: 'cases' }) });
-      return useLocation();
-    }, { wrapper: ({ children }: { children: ReactNode }) => <HashRouter>{children}</HashRouter> });
-
-    await waitFor(() => expect(hook.result.current.search).toBe('?view=compact&tab=cases'));
-    expect(apply).toHaveBeenCalledExactlyOnceWith({ keyword: 'first' });
-    expect(window.location.hash).toBe('#/list?view=compact&tab=cases#context');
   });
 });

@@ -32,7 +32,7 @@ import { licensingKeys, useDeactivateLicense, useLicenseEvents, useLicensingStat
 import { sessionKeys, useForceLogoutSession, useSessionList } from './sessions';
 import { retentionKeys, useRetentionPolicies, useRunRetentionPolicy } from './retention';
 import { sslCertificateKeys, useGenerateSslCertificate, useSslCertificateDetail, useSslCertificateList } from './ssl-certificates';
-import { exportJobKeys, rerunExportJobBody, useExportEntities, useExportJobDownloads, useExportJobList, useRerunExportJob, useExportJobDetail, useCancelExportJob, useRetryExportJob, useBatchDeleteExportJobs } from './export-jobs';
+import { exportJobKeys, rerunExportJobBody, useExportEntities, useExportJobDownloads, useExportJobList, useRerunExportJob, useExportJobDetail, useCancelExportJob, useRetryExportJob } from './export-jobs';
 
 const PAGE = { page: 1, pageSize: 10 };
 const EMPTY_PAGE = { list: [], total: 0, page: 1, pageSize: 10 };
@@ -345,29 +345,6 @@ describe('export-jobs rerun', () => {
     await result.current[action].mutateAsync({ params: { id: 9 } });
     await waitFor(() => expect(fetches.countOf(exportJobKeys.detail(9))).toBe(1));
     expect(fetches.countOf(exportJobKeys.detail(10))).toBe(0);
-    fetches.stop();
-  });
-
-  it('waits for every deletion before refreshing and preserves failed task caches', async () => {
-    let finish: () => void = () => undefined;
-    const delayed = new Promise<void>(resolve => { finish = resolve; });
-    api.on('DELETE', '/api/export-jobs/9', () => { throw new Error('forbidden'); }).on('DELETE', '/api/export-jobs/10', () => delayed);
-    const qc = createTestQueryClient();
-    for (const id of [9, 10]) { qc.setQueryData(exportJobKeys.detail(id), { id }); qc.setQueryData(exportJobKeys.downloads(id), []); }
-    const { result } = renderHook(() => ({ list: useExportJobList(PAGE), remove: useBatchDeleteExportJobs() }), { wrapper: createWrapper(qc) });
-    await waitFor(() => expect(result.current.list.isSuccess).toBe(true));
-    const fetches = observeFetches(qc);
-    let settled = false;
-    const promise = result.current.remove.mutateAsync([9, 10]).catch(error => { settled = true; return error; });
-    await waitFor(() => expect(api.calls.filter(call => call.method === 'DELETE')).toHaveLength(2));
-    expect(settled).toBe(false);
-    expect(fetches.countOf(exportJobKeys.lists)).toBe(0);
-    finish();
-    expect((await promise).message).toContain('已删除 1 项');
-    await waitFor(() => expect(fetches.countOf(exportJobKeys.lists)).toBe(1));
-    expect(hasCacheEntry(qc, exportJobKeys.detail(9))).toBe(true);
-    expect(hasCacheEntry(qc, exportJobKeys.downloads(9))).toBe(true);
-    expect(hasCacheEntry(qc, exportJobKeys.detail(10))).toBe(false);
     fetches.stop();
   });
   it('re-submitting a job refreshes the list only; entities and the source job downloads stay fresh', async () => {
