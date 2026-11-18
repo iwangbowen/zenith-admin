@@ -1,4 +1,5 @@
 import { requireMonitorWorkflowInstance, workflowMonitorScope } from '../workflow-access';
+import { assertWorkflowPreview, issueWorkflowPreview } from '../operation-preview';
 import { workflowNodeActivations, workflowApprovalSlots } from '../../../db/schema';
 import { loadApprovalActivation } from './approval-state';
 // ─── 管理员强制操作与令牌运维恢复（拆分自 workflow-instances.service.ts）───
@@ -28,7 +29,7 @@ import { requireTenantUser } from '../../../lib/user-nicknames';
 import { buildWhere } from '../../../lib/where-helpers';
 
 /** 强制跳转：终止当前活动任务，直接推进到指定审批/办理节点 */
-export async function jumpInstance(id: number, targetNodeKey: string, comment?: string) {
+export async function jumpInstance(id: number, targetNodeKey: string, comment?: string, previewToken?: string) {
   const user = currentUser();
   const inst = await requireMonitorWorkflowInstance(id);
   if (inst.status !== 'running') throw new HTTPException(400, { message: '仅审批中的流程可强制跳转' });
@@ -45,6 +46,8 @@ export async function jumpInstance(id: number, targetNodeKey: string, comment?: 
   const note = `[管理员强制跳转至「${targetNode.data.label}」]${comment ? ' ' + comment : ''}`;
   const instance = await workflowTransaction(async (tx) => {
     await lockInstanceExpecting(tx, id, 'running', '流程状态已变化，无法跳转');
+    const currentTasks = await tx.select({ id: workflowTasks.id, status: workflowTasks.status, activationId: workflowTasks.activationId }).from(workflowTasks).where(eq(workflowTasks.instanceId, id)).orderBy(workflowTasks.id);
+    assertWorkflowPreview(previewToken, 'jump', { instanceId: id }, { status: inst.status, snapshot: inst.definitionSnapshot, tasks: currentTasks });
     await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date(), comment: note })
       .where(and(eq(workflowTasks.instanceId, id), inArray(workflowTasks.status, ['pending', 'waiting'])));
     await killInstanceTokens(tx, id);
@@ -191,7 +194,7 @@ async function loadTokenForOps(tokenId: number) {
  * 跳过卡死的执行 Token：消费该 Token、跳过其节点未结束任务，并从该节点推进流程。
  * 用于等待节点（trigger / subProcess / external）派发失败卡死等场景的外科式修复。
  */
-export async function skipStuckToken(tokenId: number, reason?: string) {
+export async function skipStuckToken(tokenId: number, reason?: string, previewToken?: string) {
   const { user, tok, inst } = await loadTokenForOps(tokenId);
   if (tok.status !== 'active') throw new HTTPException(400, { message: '仅活动 Token 可跳过' });
   if (inst.status !== 'running') throw new HTTPException(400, { message: '仅运行中实例可操作' });
@@ -204,6 +207,8 @@ export async function skipStuckToken(tokenId: number, reason?: string) {
 
   await workflowTransaction(async (tx) => {
     await lockInstanceExpecting(tx, inst.id, 'running', '实例状态已变化，请刷新后重试');
+    const tokenState = await tx.select({ id: workflowTokens.id, status: workflowTokens.status, nodeKey: workflowTokens.nodeKey }).from(workflowTokens).where(eq(workflowTokens.instanceId, inst.id)).orderBy(workflowTokens.id);
+    assertWorkflowPreview(previewToken, 'tokens', { instanceId: inst.id }, tokenState);
     await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date(), comment: note })
       .where(and(eq(workflowTasks.instanceId, inst.id), eq(workflowTasks.nodeKey, tok.nodeKey), inArray(workflowTasks.status, ['pending', 'waiting'])));
     const formData = (inst.formData ?? {}) as Record<string, unknown>;
@@ -236,10 +241,13 @@ export async function skipStuckToken(tokenId: number, reason?: string) {
  * 从指定 Token 的节点重放流程：清场全部活动 Token + 在该节点重建执行路径
  * （等价强制跳转到该 Token 所在节点，支持从历史/已消费 Token 处重跑；目标须为审批/办理节点）。
  */
-export async function replayFromToken(tokenId: number, reason?: string) {
+export async function replayFromToken(tokenId: number, reason?: string, previewToken?: string) {
   const { tok, inst } = await loadTokenForOps(tokenId);
   if (inst.status !== 'running') throw new HTTPException(400, { message: '仅运行中实例可重放' });
-  return jumpInstance(inst.id, tok.nodeKey, `[运营·从 Token #${tokenId} 重放]${reason ? ' ' + reason : ''}`);
+  const tokens = await db.select({ id: workflowTokens.id, status: workflowTokens.status, nodeKey: workflowTokens.nodeKey }).from(workflowTokens).where(eq(workflowTokens.instanceId, inst.id)).orderBy(workflowTokens.id);
+  assertWorkflowPreview(previewToken, 'tokens', { instanceId: inst.id }, tokens);
+  const detail = await getInstanceDetail(inst.id);
+  return jumpInstance(inst.id, tok.nodeKey, reason, detail.interventionPreviewToken);
 }
 
 const BATCH_RECOVERY_CAP = 200;
@@ -248,8 +256,8 @@ const BATCH_RECOVERY_CAP = 200;
  * 批量推进卡在指定节点的运行中实例：找出该流程定义下停在 nodeKey 的活动 Token，逐个 skipStuckToken 推进。
  * 用于某节点配置错误 / 外部派发失败导致多实例集体卡死时的批量外科恢复（按候选逐个隔离，单个失败不影响其它）。
  */
-export async function batchSkipStuckTokens(input: { definitionId: number; nodeKey: string; olderThanMinutes?: number; reason?: string }): Promise<WorkflowRecoveryBatchResult> {
-  const rows = await db.select({ tokenId: workflowTokens.id })
+async function batchRecoveryCandidates(input: { definitionId: number; nodeKey: string; olderThanMinutes?: number }) {
+  return db.select({ tokenId: workflowTokens.id })
     .from(workflowTokens)
     .innerJoin(workflowInstances, eq(workflowTokens.instanceId, workflowInstances.id))
     .where(buildWhere(
@@ -264,11 +272,25 @@ export async function batchSkipStuckTokens(input: { definitionId: number; nodeKe
     ))
     .orderBy(asc(workflowTokens.id))
     .limit(BATCH_RECOVERY_CAP);
+ }
+
+export async function previewBatchSkipStuckTokens(input: { definitionId: number; nodeKey: string; olderThanMinutes?: number }) {
+  const rows = await batchRecoveryCandidates(input);
+  const filter = { definitionId: input.definitionId, nodeKey: input.nodeKey, olderThanMinutes: input.olderThanMinutes };
+  return { total: rows.length, tokenIds: rows.map(r => r.tokenId), previewToken: issueWorkflowPreview('batch-recovery', filter, rows) };
+}
+
+export async function batchSkipStuckTokens(input: { definitionId: number; nodeKey: string; olderThanMinutes?: number; reason?: string; previewToken: string }): Promise<WorkflowRecoveryBatchResult> {
+  const rows = await batchRecoveryCandidates(input);
+  assertWorkflowPreview(input.previewToken, 'batch-recovery', { definitionId: input.definitionId, nodeKey: input.nodeKey, olderThanMinutes: input.olderThanMinutes }, rows);
   let success = 0;
   let failed = 0;
   for (const r of rows) {
     try {
-      await skipStuckToken(r.tokenId, input.reason ?? '批量推进卡死实例');
+      const { getInstanceExecutionTokens } = await import('./diagnostics');
+      const [token] = await db.select().from(workflowTokens).where(eq(workflowTokens.id, r.tokenId)).limit(1);
+      const preview = await getInstanceExecutionTokens(token.instanceId);
+      await skipStuckToken(r.tokenId, input.reason ?? '批量推进卡死实例', preview.previewToken);
       success += 1;
     } catch (err) {
       failed += 1;
@@ -323,6 +345,7 @@ export async function previewHandover(fromUserId: number): Promise<WorkflowHando
   }
 
   return {
+    previewToken: issueWorkflowPreview('handover', { fromUserId }, { tasks: tasks.map(t => ({ id: t.id, status: t.status })), delegations }),
     fromUserName: from.nickname || from.username,
     pendingTaskCount: tasks.filter((t) => t.status === 'pending').length,
     waitingTaskCount: tasks.filter((t) => t.status === 'waiting').length,
@@ -332,12 +355,15 @@ export async function previewHandover(fromUserId: number): Promise<WorkflowHando
 }
 
 /** 执行离职交接：逐条改派待办（互不阻断）+ 可选停用其审批代理规则 */
-export async function handoverTasks(input: { fromUserId: number; toUserId: number; disableDelegations?: boolean; comment?: string }): Promise<WorkflowHandoverResult> {
+export async function handoverTasks(input: { fromUserId: number; toUserId: number; disableDelegations?: boolean; comment?: string; previewToken: string }): Promise<WorkflowHandoverResult> {
   const user = currentUser();
   const { fromUserId, toUserId, disableDelegations = true, comment } = input;
   if (fromUserId === toUserId) throw new HTTPException(400, { message: '接手人不能与交接人相同' });
   const [tgt] = await db.select({ id: users.id }).from(users).where(eq(users.id, toUserId)).limit(1);
   requireRow(tgt, '接手人不存在', 400);
+  const currentTasks = await db.select({ id: workflowTasks.id, status: workflowTasks.status }).from(workflowTasks).innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id)).where(await handoverTaskScopeWhere(fromUserId, user));
+  const currentDelegations = await db.select({ id: workflowDelegations.id }).from(workflowDelegations).where(and(eq(workflowDelegations.principalId, fromUserId), eq(workflowDelegations.enabled, true)));
+  assertWorkflowPreview(input.previewToken, 'handover', { fromUserId }, { tasks: currentTasks, delegations: currentDelegations });
 
   const tasks = await db.select({ id: workflowTasks.id, nodeName: workflowTasks.nodeName, title: workflowInstances.title })
     .from(workflowTasks)

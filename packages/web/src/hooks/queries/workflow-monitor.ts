@@ -130,12 +130,12 @@ export function fetchWorkflowTraceDiagnosticBundle(correlationId: string) {
   return api(workflowEngineContract.jobChainBundle, { params: { correlationId } });
 }
 
-export function useWorkflowAnalytics(definitionId: number | undefined) {
-  return useApiQuery(workflowInstanceContract.analytics, { query: { definitionId } });
+export function useWorkflowAnalytics(definitionId: number | undefined, days = 14, timeAxis: 'created' | 'submitted' | 'completed' = 'created') {
+  return useApiQuery(workflowInstanceContract.analytics, { query: { definitionId, days, timeAxis } });
 }
 
-export function useWorkflowOverdueTasks(definitionId: number | undefined) {
-  return useApiQuery(workflowInstanceContract.overdue, { query: { pageSize: OVERDUE_PAGE_SIZE, definitionId } });
+export function useWorkflowOverdueTasks(definitionId: number | undefined, page = 1) {
+  return useApiQuery(workflowInstanceContract.overdue, { query: { page, pageSize: OVERDUE_PAGE_SIZE, definitionId } });
 }
 
 export function useWorkflowJobList(params: WorkflowJobListParams) {

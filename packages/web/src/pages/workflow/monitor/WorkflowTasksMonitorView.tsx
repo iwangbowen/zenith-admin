@@ -4,6 +4,7 @@
  * 审批状态 / 审批建议 / 耗时 / 流程编号 / 任务编号；行操作：详情（实例详情抽屉）/ 催办。
  */
 import { useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 import { Modal, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { enumValueOf } from '@zenith/shared/core';
@@ -51,6 +52,7 @@ interface Props {
 }
 
 export default function WorkflowTasksMonitorView({ onOpenInstance }: Props) {
+  const [view, setView] = useState<'actionable' | 'waiting' | 'suspended' | 'all'>('actionable');
   const queryClient = useQueryClient();
   const { hasPermission } = usePermission();
   const {
@@ -61,6 +63,7 @@ export default function WorkflowTasksMonitorView({ onOpenInstance }: Props) {
 
   // 已提交筛选 → 契约查询参数：只映射一次
   const filterQuery = useFilterQuery({
+    view,
     keyword: submittedParams.keyword,
     assigneeKeyword: submittedParams.assigneeKeyword,
     status: enumValueOf(WORKFLOW_TASK_STATUSES, submittedParams.status),
@@ -148,6 +151,8 @@ export default function WorkflowTasksMonitorView({ onOpenInstance }: Props) {
 
   return (
     <>
+      <FilterSelect placeholder="任务视角" value={view} onChange={v => setView(v ?? 'all')} items={[{value:'actionable',label:'可办理人工待办'},{value:'waiting',label:'等待中任务'},{value:'suspended',label:'挂起任务'},{value:'all',label:'全部任务事实'}]} width={220} />
+      <Typography.Paragraph type="tertiary">状态汇总为全部可见任务；列表按任务视角与筛选显示。抄送和系统跳过均属于任务事实。</Typography.Paragraph>
       <StatGrid minItemWidth={120} style={{ marginBottom: 16 }}>
         <StatCard title="全部" value={statValue(stats.total ?? 0)} accent="var(--semi-color-text-0)" onClick={() => handleStatCardClick(undefined)} active={!draftParams.status} />
         <StatCard title="待处理" value={statValue(stats.pending ?? 0)} accent="var(--semi-color-primary)" onClick={() => handleStatCardClick('pending')} active={draftParams.status === 'pending'} />
@@ -185,7 +190,7 @@ export default function WorkflowTasksMonitorView({ onOpenInstance }: Props) {
       />
 
       <ConfigurableTable<WorkflowTaskMonitorItem>
-        columns={columns}
+        columns={columns.filter(column => !['instanceCreatedAt', 'createdAt', 'actionAt', 'nodeType'].includes(String(column.dataIndex)))}
         {...listTableProps(listQuery, { pagination: buildPagination })}
       />
     </>

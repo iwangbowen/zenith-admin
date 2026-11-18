@@ -1,4 +1,6 @@
 import { requirePlatformWorkflowAccess, workflowJobScope } from './workflow-access';
+import { issueWorkflowPreview, assertWorkflowPreview } from './operation-preview';
+import { workflowJobs } from '../../db/schema';
 /**
  * 工作流引擎运维：健康快照采集（platform-wide）+ 历史趋势 + 告警指标源 + 运维恢复动作。
  * - 采集由 pg-boss 定时任务调用，写入 workflow_engine_health_snapshots，供趋势图与告警评估器消费。
@@ -196,6 +198,14 @@ async function previewEventConsumerRecovery(filter?: WorkflowEngineActionFilter)
   return { duePending: Number(row?.duePending ?? 0), stuckRunning: Number(row?.stuckRunning ?? 0), scheduledLater: Number(row?.scheduledLater ?? 0) };
 }
 
+async function actionObjects(action: WorkflowEngineActionKey, filter?: WorkflowEngineActionFilter) {
+  if (ACTION_META[action].kind === 'event-consumers') {
+    assertPlatformEventConsumerRecovery();
+    return db.select({ id: eventConsumerDeliveries.id, generation: eventConsumerDeliveries.generation, status: eventConsumerDeliveries.status }).from(eventConsumerDeliveries).innerJoin(eventOutbox, eq(eventOutbox.id, eventConsumerDeliveries.eventId)).where(eventConsumerFilter(filter)).orderBy(asc(eventConsumerDeliveries.id));
+  }
+  return db.select({ id: workflowJobs.id, generation: workflowJobs.generation, status: workflowJobs.status }).from(workflowJobs).where(buildWhere(await workflowJobScope(), inArray(workflowJobs.jobType, ACTION_META[action].jobTypes), inArray(workflowJobs.status, ['pending', 'running']), filter?.instanceId ? eq(workflowJobs.instanceId, filter.instanceId) : undefined)).orderBy(asc(workflowJobs.id));
+}
+
 async function recoverEventConsumers(filter?: WorkflowEngineActionFilter) {
   assertPlatformEventConsumerRecovery();
   const base = eventConsumerFilter(filter);
@@ -227,9 +237,10 @@ export async function previewWorkflowEngineAction(
   filter?: WorkflowEngineActionFilter,
 ): Promise<WorkflowEngineActionPreview> {
   const meta = ACTION_META[action];
+  const previewToken = issueWorkflowPreview(action, { instanceId: filter?.instanceId, olderThanMinutes: filter?.olderThanMinutes, limit: filter?.limit }, await actionObjects(action, filter));
   if (meta.kind === 'event-consumers') {
     const counts = await previewEventConsumerRecovery(filter);
-    return { action, label: meta.label, jobTypes: [], ...counts, matched: counts.duePending + counts.stuckRunning,
+    return { previewToken, action, label: meta.label, jobTypes: [], ...counts, matched: counts.duePending + counts.stuckRunning,
       limit: clampActionLimit(filter?.limit), sample: [] };
   }
   const { previewDrainableJobs } = await import('../../lib/workflow-jobs');
@@ -241,6 +252,7 @@ export async function previewWorkflowEngineAction(
     scope: await workflowJobScope(),
   });
   return {
+    previewToken,
     action,
     label: meta.label,
     jobTypes: meta.jobTypes,
@@ -261,6 +273,8 @@ export async function runWorkflowEngineAction(
   const meta = ACTION_META[action];
   // 授权失败必须置于结果归一化 catch 之外，向调用方返回 HTTP 403，不能变成 HTTP 200 + ok:false。
   if (meta.kind === 'event-consumers') assertPlatformEventConsumerRecovery();
+  if (!filter?.reason?.trim()) throw new HTTPException(400, { message: '请填写恢复原因' });
+  assertWorkflowPreview(filter.previewToken, action, { instanceId: filter.instanceId, olderThanMinutes: filter.olderThanMinutes, limit: filter.limit }, await actionObjects(action, filter));
   try {
     if (meta.kind === 'event-consumers') {
       const r = await recoverEventConsumers(filter);

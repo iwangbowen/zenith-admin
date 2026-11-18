@@ -172,7 +172,7 @@ function mockMigrationPreflight(inst: WorkflowInstance) {
     inNew: !!definition?.flowData?.nodes.some(node => node.data.key === nodeKey), activeTasks: openTasks.filter(task => task.nodeKey === nodeKey).length,
     activeTokens: activations.filter(activation => activation.nodeKey === nodeKey).length }));
   const blocked = nodes.filter(node => !node.inNew).map(node => node.nodeKey);
-  return { instanceId: inst.id, fromVersion, toVersion, migratable: inst.status === 'running' && definition?.status === 'published' && toVersion > fromVersion && !blocked.length, blocked, nodes };
+  return { previewToken: 'demo-migration-preview', instanceId: inst.id, fromVersion, toVersion, migratable: inst.status === 'running' && definition?.status === 'published' && toVersion > fromVersion && !blocked.length, blocked, nodes };
 }
 
 /** 批量任务动作骨架：逐个对 pending 任务执行 act（各动作副作用自理），汇总成功 / 失败与提示 */
@@ -224,7 +224,7 @@ function createScheduleRun(schedule: WorkflowSchedule): WorkflowScheduleRunDetai
     payload: { scheduleId: schedule.id, definitionId: schedule.definitionId, initiatorId: schedule.initiatorId, title,
       formData: structuredClone(schedule.formData ?? {}), scheduledAt: now, trigger: 'manual' },
     priority: 100, attempts: 0, maxAttempts: 5, generation: 0, executionTimeoutMs: 600000, runAt: now,
-    lockedAt: null, lockedBy: null, leaseUntil: null, executionDeadline: null, effectStatus: 'not_started', effectEvidence: null, lastError: null, result: null,
+    lockedAt: null, lockedBy: null, leaseUntil: null, executionDeadline: null, capabilities: { retry: false, cancel: true, confirmResult: false, reason: null }, effectStatus: 'not_started', effectEvidence: null, lastError: null, result: null,
     tenantId: schedule.tenantId, createdAt: now, updatedAt: now, scheduleId: schedule.id, scheduledAt: now, trigger: 'manual', executions: [],
   };
   mockScheduleRuns.push(run);

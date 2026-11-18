@@ -56,6 +56,7 @@ export const workflowJobSchema = z.object({
   executionDeadline: z.string().nullable().meta({ description: '当前执行的硬截止时间' }),
   effectStatus: z.enum(WORKFLOW_EXTERNAL_EFFECT_STATUSES),
   effectEvidence: z.string().nullable(),
+  capabilities: z.object({ retry: z.boolean(), cancel: z.boolean(), confirmResult: z.boolean(), reason: z.string().nullable() }),
   lastError: z.string().nullable(),
   result: z.record(z.string(), z.unknown()).nullable(),
   tenantId: z.int().nullable(),
@@ -140,6 +141,8 @@ export type WorkflowJobBatchResult = z.infer<typeof workflowJobBatchResultSchema
 
 export const workflowJobReplayPreviewSchema = z.object({
   matched: z.int(),
+  previewToken: z.string(),
+  sampleIds: z.array(z.int()),
 }).meta({ id: 'WorkflowJobReplayPreview' });
 
 export type WorkflowJobReplayPreview = z.infer<typeof workflowJobReplayPreviewSchema>;
@@ -578,6 +581,7 @@ export type WorkflowEngineActionSampleJob = z.infer<typeof workflowEngineActionS
 
 /** 运维动作预览结果：筛选后将被处理的作业统计 + 样本 */
 export const workflowEngineActionPreviewSchema = z.object({
+  previewToken: z.string(),
   action: z.enum(WORKFLOW_ENGINE_ACTION_KEYS),
   label: z.string(),
   jobTypes: z.array(z.enum(WORKFLOW_JOB_TYPES)),
@@ -637,5 +641,6 @@ export const workflowEngineContract = defineContract('/api/workflows/engine', {
   jobRuntimeStatus: op.get('/jobs/runtime-status', { access: { permission: 'workflow:engine:platform', platformOnly: true }, response: workflowJobRuntimeStatusSchema, summary: '作业平台运行状态（worker 心跳 + 派生指标）' }),
   jobDetail: op.get('/jobs/{id}', { access: { permission: 'workflow:instance:monitor' }, params: idParam, response: workflowJobDetailSchema, summary: '工作流作业详情（含执行记录）' }),
   retryJob: op.post('/jobs/{id}/retry', { access: { permission: 'workflow:engine:operate' }, audit: '重试工作流作业', params: idParam, body: workflowJobRetrySchema, response: workflowJobSchema, summary: '重试 / 改参重放作业' }),
+  confirmResult: op.post('/jobs/{id}/confirm-result', { access: { permission: 'workflow:engine:operate' }, audit: '核对外部执行结果', params: idParam, body: z.object({ generation: z.int(), outcome: z.enum(['success', 'failure']), evidence: z.string().trim().min(5).max(2000) }), response: workflowJobSchema, summary: '确认外部结果并收敛本地状态' }),
   skipJob: op.post('/jobs/{id}/skip', { access: { permission: 'workflow:engine:operate' }, audit: '跳过工作流作业', params: idParam, response: workflowJobSchema, summary: '跳过 / 取消作业' }),
 }, { auditModule: '流程引擎', tags: ['WorkflowEngine'] });

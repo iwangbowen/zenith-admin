@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Col, Descriptions, Empty, Form, JsonViewer, Modal, Popconfirm, Radio, RadioGroup, Row, SideSheet, Space, Tabs, TabPane, Tag, Timeline, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
+import { useListDeepLink } from '@/hooks/useListDeepLink';
+import { Button, Col, Descriptions, Empty, Form, Input, JsonViewer, Modal, Popconfirm, Radio, RadioGroup, Row, SideSheet, Space, Tabs, TabPane, Tag, Timeline, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ChevronsDownUp, ChevronsUpDown, Download } from 'lucide-react';
 import { WORKFLOW_JOB_TYPES, WORKFLOW_JOB_TYPE_LABELS, WORKFLOW_JOB_TYPE_OPTIONS, workflowEngineContract, type WorkflowJob, type WorkflowJobClusterDimension, type WorkflowJobExecution, type WorkflowJobStatus, type WorkflowJobSummaryItem, type WorkflowJobType } from '@zenith/shared/workflow';
@@ -183,7 +184,7 @@ function jobSummaryText(record: WorkflowJob): string {
 // ───────────────────────── 单作业类型明细面板 ─────────────────────────
 
 interface JobTypePanelProps {
-  jobType: WorkflowJobType;
+  jobType?: WorkflowJobType;
   summary: WorkflowJobSummaryItem;
   onMutated: () => void;
   /** 运行状态栏「死信」下钻信号：值变化时打开失败聚类弹窗 */
@@ -197,6 +198,7 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal, initialStat
 
   const [detailId, setDetailId] = useState<number | undefined>();
   const [detailVisible, setDetailVisible] = useState(false);
+  useListDeepLink(['jobId'], params => { const id = Number(params.jobId); if (id > 0) { setDetailId(id); setDetailVisible(true); } });
   const detailQuery = useWorkflowJobDetail(detailId, detailVisible);
   const detail = detailQuery.data ?? null;
   const detailLoading = detailQuery.isFetching;
@@ -231,6 +233,8 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal, initialStat
   const clusters = clustersQuery.data ?? EMPTY_FAILURE_CLUSTERS;
   const [replayOpen, setReplayOpen] = useState(false);
   const [replayPreview, setReplayPreview] = useState<number | null>(null);
+  const [previewToken, setPreviewToken] = useState<string>();
+  const [replayReason, setReplayReason] = useState('');
   const [replayFilter, setReplayFilter] = useState<ReplayFilterState>({ status: 'dead', jobType, ratePerSecond: 20, limit: 500 });
   const [replayFormKey, setReplayFormKey] = useState(0);
   const replayPreviewMutation = useWorkflowJobReplayPreview();
@@ -290,10 +294,12 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal, initialStat
   const doPreview = async () => {
     const result = await replayPreviewMutation.mutateAsync({ body: buildReplayBody(replayFilter) });
     setReplayPreview(result.matched);
+    setPreviewToken(result.previewToken);
   };
 
   const doReplay = async () => {
-    const result = await replayMutation.mutateAsync({ body: { ...buildReplayBody(replayFilter), ratePerSecond: replayFilter.ratePerSecond, limit: replayFilter.limit } });
+    if (!previewToken || !replayReason.trim()) return;
+    const result = await replayMutation.mutateAsync({ body: { ...buildReplayBody(replayFilter), previewToken, reason: replayReason, ratePerSecond: replayFilter.ratePerSecond, limit: replayFilter.limit } });
     Toast.success(`已重放 ${result.success}/${result.total}`);
     setReplayOpen(false);
     onMutated();
@@ -415,7 +421,7 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal, initialStat
       width: 180,
       desktopInlineKeys: ['detail', 'retry'],
       actions: (record) => {
-        const retryable = record.status === 'failed' || record.status === 'dead' || record.status === 'canceled';
+        const retryable = record.capabilities.retry;
         const skippable = ['pending', 'running', 'paused', 'failed', 'dead'].includes(record.status);
         return [
           { key: 'detail', label: '详情', onClick: () => void openDetail(record.id) },
@@ -430,7 +436,7 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal, initialStat
             key: 'skip',
             label: '跳过',
             danger: true,
-            hidden: !canOperate || !skippable,
+            hidden: !canOperate || !skippable || !record.capabilities.cancel,
             loading: actingId === record.id,
             onClick: () => { confirmDanger({ title: '确定跳过该作业？', content: '作业将被标记为已取消，不再执行', onOk: () => void handleSkip(record.id) }); },
           },
@@ -593,7 +599,7 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal, initialStat
   return (
     <>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-        <Tag size="large" color={JOB_TYPE_META[jobType].color}>{JOB_TYPE_META[jobType].text}</Tag>
+        <Tag size="large" color={jobType ? JOB_TYPE_META[jobType].color : 'grey'}>{jobType ? JOB_TYPE_META[jobType].text : '全部类型'}</Tag>
         <Tag size="large" color="grey">总数 {summary.total}</Tag>
         <Tag size="large" color="grey">待处理 {summary.pending}</Tag>
         <Tag size="large" color="blue">运行中 {summary.running}</Tag>
@@ -622,7 +628,7 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal, initialStat
             )}
           </>
         )}
-        filterTitle={`${JOB_TYPE_META[jobType].text}筛选`}
+        filterTitle={`${jobType ? JOB_TYPE_META[jobType].text : '全部类型'}筛选`}
       />
 
       {canOperate && selectedRowKeys.length > 0 && (
@@ -724,12 +730,17 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal, initialStat
 
             {canOperate && (
               <Space>
-                {(detail.status === 'failed' || detail.status === 'dead' || detail.status === 'canceled') && (
+                {detail.capabilities.confirmResult && <Button type="warning" onClick={() => {
+                  let evidence = '';
+                  let outcome: 'success' | 'failure' = 'success';
+                  Modal.confirm({ title: '核对外部执行结果', content: <div><Typography.Paragraph>核对外部平台单据后填写证据。确认成功只收敛本地状态；确认失败后允许安全重试。</Typography.Paragraph><RadioGroup defaultValue="success" onChange={e => { outcome = e.target.value; }}><Radio value="success">外部已成功</Radio><Radio value="failure">外部确认失败</Radio></RadioGroup><Input placeholder="必填：外部单号、查询结果与核对依据" onChange={v => { evidence = v; }} /></div>, onOk: async () => { if (evidence.trim().length < 5) { Toast.warning('请填写至少5个字符的核对证据'); throw new Error('missing evidence'); } await api(workflowEngineContract.confirmResult, { params: { id: detail.id }, body: { generation: detail.generation, outcome, evidence } }); await detailQuery.refetch(); onMutated(); } });
+                }}>确认外部结果</Button>}
+                {detail.capabilities.retry && (
                   <Popconfirm title="确定重新入队该作业？" onConfirm={() => void handleRetry(detail.id)}>
                     <Button type="primary" loading={actingId === detail.id}>重试</Button>
                   </Popconfirm>
                 )}
-                {(detail.status === 'pending' || detail.status === 'failed' || detail.status === 'dead') && (
+                {detail.capabilities.cancel && (
                   <Popconfirm title="确定跳过该作业？" onConfirm={() => void handleSkip(detail.id)}>
                     <Button type="danger" loading={actingId === detail.id}>跳过</Button>
                   </Popconfirm>
@@ -812,9 +823,10 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal, initialStat
         okText="确认重放"
         cancelText="取消"
         onOk={() => void doReplay()}
-        okButtonProps={{ loading: replayMutation.isPending, type: 'warning' }}
+        okButtonProps={{ loading: replayMutation.isPending, type: 'warning', disabled: replayPreview == null || !previewToken || replayReason.trim().length < 2 }}
         width={640}
       >
+        <Input placeholder="必填：重放原因" value={replayReason} onChange={setReplayReason} style={{ marginBottom: 12 }} />
         <Form
           key={replayFormKey}
           labelPosition="left"
@@ -923,7 +935,7 @@ function RuntimeStatusBar({ onDeadClick }: Readonly<{ onDeadClick?: () => void }
 
 export default function WorkflowJobsView({ initialStatus }: Readonly<{ initialStatus?: WorkflowJobStatus }> = {}) {
   const { hasPermission } = usePermission();
-  const [activeType, setActiveType] = useState<WorkflowJobType>(JOB_TYPES[0]);
+  const [activeType, setActiveType] = useState<WorkflowJobType | 'all'>('all');
   const [clustersSignal, setClustersSignal] = useState(0);
   const summaryQuery = useWorkflowJobSummary();
   const summaryMap = useMemo(() => {
@@ -936,11 +948,14 @@ export default function WorkflowJobsView({ initialStatus }: Readonly<{ initialSt
     <>
       {hasPermission('workflow:engine:platform') && <RuntimeStatusBar onDeadClick={() => setClustersSignal((s) => s + 1)} />}
       <Tabs
-        type="card"
+        type="line"
         collapsible="auto"
         activeKey={activeType}
         onChange={(k) => setActiveType(k as WorkflowJobType)}
       >
+        <TabPane itemKey="all" tab="全部类型">
+          {activeType === 'all' && <JobTypePanel summary={(summaryQuery.data ?? []).reduce((acc, row) => ({ ...acc, total: acc.total + row.total, pending: acc.pending + row.pending, running: acc.running + row.running, paused: acc.paused + row.paused, succeeded: acc.succeeded + row.succeeded, failed: acc.failed + row.failed, dead: acc.dead + row.dead, canceled: acc.canceled + row.canceled }), EMPTY_SUMMARY(JOB_TYPES[0]))} onMutated={() => void summaryQuery.refetch()} clustersSignal={clustersSignal} initialStatus={initialStatus} />}
+        </TabPane>
         {JOB_TYPES.map((t) => {
           const item = summaryMap[t] ?? EMPTY_SUMMARY(t);
           const problem = item.failed + item.dead;

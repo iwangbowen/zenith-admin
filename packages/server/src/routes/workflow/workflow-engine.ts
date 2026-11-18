@@ -7,8 +7,11 @@ import { getWorkflowEngineIntrospection } from '../../services/workflow/workflow
 import { getWorkflowEngineHealthHistory, previewWorkflowEngineAction, runWorkflowEngineAction } from '../../services/workflow/workflow-engine-ops.service';
 import { listWorkflowJobs, getWorkflowJobDetail, getWorkflowJobChain, retryWorkflowJob, skipWorkflowJob, getWorkflowJobsSummary, batchRetryWorkflowJobs, batchSkipWorkflowJobs, replayDeadJobs, previewReplayJobs, getJobFailureClusters, getWorkflowJobRuntimeStatus } from '../../services/workflow/workflow-jobs.service';
 import { exportTraceDiagnosticBundle } from '../../services/workflow/workflow-diagnostics.service';
+import { confirmWorkflowExternalResult } from '../../services/workflow/workflow-jobs.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
+const confirmResultRoute = defineContractRoute(workflowEngineContract.confirmResult, { handler: async c => c.json(okBody(await confirmWorkflowExternalResult(c.req.valid('param').id, c.req.valid('json'))), 200) });
+router.openapiRoutes([confirmResultRoute] as const);
 
 const introspectionRoute = defineContractRoute(workflowEngineContract.introspection, {
   handler: async (c) => {

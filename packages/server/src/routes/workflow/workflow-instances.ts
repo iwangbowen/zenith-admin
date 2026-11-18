@@ -2,6 +2,7 @@
 // 本文件仅负责聚合注册；⚠️ 三段 openapiRoutes 的注册顺序不可调整
 // （RegExpRouter 按注册顺序解析，静态路径必须先于同前缀的参数化路径）。
 import { OpenAPIHono } from '@hono/zod-openapi';
+import { batchSkipPreviewRoute } from './instances/admin-ops';
 import { validationHook } from '../../lib/openapi-schemas';
 import {
   listRoute, pendingMineRoute, pendingMineCountRoute, allRoute, ccMineRoute, handledMineRoute,
@@ -35,6 +36,7 @@ import {
 } from './instances/compensation';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
+router.openapiRoutes([batchSkipPreviewRoute] as const);
 router.openapiRoutes([ownDraftsRoute, draftEditorRoute, deleteOwnDraftRoute] as const);
 router.openapiRoutes([mySignGroupsRoute, searchSelectableUsersRoute] as const);
 

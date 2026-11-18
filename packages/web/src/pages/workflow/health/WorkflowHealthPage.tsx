@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { Modal, Select, Tag, Toast } from '@douyinfe/semi-ui';
+import { Button, Descriptions, Modal, Select, SideSheet, Tabs, TabPane, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { useNavigate } from 'react-router';
+import { usePagination } from '@/hooks/usePagination';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { WORKFLOW_HEALTH_ISSUE_TYPE_LABELS, WORKFLOW_HEALTH_ISSUE_TYPE_OPTIONS, workflowTaskContract, type WorkflowHealthIssue, type WorkflowHealthSummary } from '@zenith/shared/workflow';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -26,6 +28,10 @@ const THRESHOLD_OPTIONS = [
 ];
 
 export default function WorkflowHealthPage() {
+  const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState('active');
+  const [selectedIssue, setSelectedIssue] = useState<WorkflowHealthIssue | null>(null);
+  const { page, pageSize, buildPagination } = usePagination();
   const { hasPermission } = usePermission();
   const [issueType, setIssueType] = useState<WorkflowHealthIssue['type'] | undefined>();
   // 等待阈值走「草稿 → 查询」并回源健康汇总；问题类型为即时本地过滤，重置时一并清空
@@ -35,7 +41,7 @@ export default function WorkflowHealthPage() {
     onReset: () => setIssueType(undefined),
   });
   const [detailInstanceId, setDetailInstanceId] = useState<number | null>(null);
-  const summaryQuery = useWorkflowHealthSummary({ thresholdMinutes: submittedParams.thresholdMinutes });
+  const summaryQuery = useWorkflowHealthSummary({ thresholdMinutes: submittedParams.thresholdMinutes, type: issueType, page, pageSize });
   const data: WorkflowHealthSummary | null = summaryQuery.data ?? null;
 
   // 与任务监控同一入口：非 0 code（如催办限频）由 api() 抛错走全局提示
@@ -97,6 +103,7 @@ export default function WorkflowHealthPage() {
       width: 180,
       desktopInlineKeys: ['urge', 'instance'],
       actions: (row) => [
+        { key: 'evidence', label: '问题详情', onClick: () => setSelectedIssue(row) },
         {
           key: 'urge',
           label: '催办',
@@ -120,16 +127,19 @@ export default function WorkflowHealthPage() {
   ];
 
   return (
-    <div className="page-container">
+    <div className="page-container page-tabs-page">
+      <Typography.Text type="tertiary">检查时刻：{data?.checkedAt ?? '—'} · 当前授权范围 · {data?.ruleVersion ?? '—'} · 覆盖 {data?.coverage.instances ?? '—'} 个运行实例 / {data?.coverage.tasks ?? '—'} 个任务</Typography.Text>
+      {summaryQuery.isError && <div role="alert">巡检失败，请重试。<Button onClick={() => void summaryQuery.refetch()}>重新检查</Button></div>}
+      <Tabs activeKey={activeTab} onChange={setActiveTab} type="line">
+      <TabPane itemKey="active" tab="活动问题">
       <ListSearchToolbar
         filters={(
           <>
             <Select
               {...bind('thresholdMinutes', (v: unknown) => Number(v) || 30)}
               optionList={THRESHOLD_OPTIONS}
-              prefix="只看等待"
-              suffix="的问题"
-              style={{ width: 320 }}
+              prefix="人工滞留阈值"
+              style={{ width: 240 }}
             />
             <FilterSelect
               placeholder="全部问题类型"
@@ -147,18 +157,31 @@ export default function WorkflowHealthPage() {
       />
 
       <StatGrid minItemWidth={150} style={{ marginBottom: 12 }}>
-        <StatCard title="问题总数" value={data?.stats.total ?? 0} accent={(data?.stats.total ?? 0) > 0 ? 'var(--semi-color-danger)' : undefined} />
-        <StatCard title="严重" value={data?.stats.critical ?? 0} accent={(data?.stats.critical ?? 0) > 0 ? 'var(--semi-color-danger)' : undefined} />
-        <StatCard title="警告" value={data?.stats.warning ?? 0} />
-        <StatCard title="外部审批失败" value={data?.stats.externalFailed ?? 0} accent={(data?.stats.externalFailed ?? 0) > 0 ? 'var(--semi-color-danger)' : undefined} />
-        <StatCard title="触发器卡住" value={data?.stats.triggerStuck ?? 0} accent={(data?.stats.triggerStuck ?? 0) > 0 ? 'var(--semi-color-danger)' : undefined} />
-        <StatCard title="事件派发失败" value={data?.stats.outboxFailed ?? 0} accent={(data?.stats.outboxFailed ?? 0) > 0 ? 'var(--semi-color-danger)' : undefined} />
+        <StatCard title="问题总数" value={data?.stats.total ?? '—'} accent={(data?.stats.total ?? 0) > 0 ? 'var(--semi-color-danger)' : undefined} />
+        <StatCard title="严重" value={data?.stats.critical ?? '—'} accent={(data?.stats.critical ?? 0) > 0 ? 'var(--semi-color-danger)' : undefined} />
+        <StatCard title="警告" value={data?.stats.warning ?? '—'} />
+        <StatCard title="外部审批失败" value={data?.stats.externalFailed ?? '—'} accent={(data?.stats.externalFailed ?? 0) > 0 ? 'var(--semi-color-danger)' : undefined} />
+        <StatCard title="触发器卡住" value={data?.stats.triggerStuck ?? '—'} accent={(data?.stats.triggerStuck ?? 0) > 0 ? 'var(--semi-color-danger)' : undefined} />
+        <StatCard title="事件派发失败" value={data?.stats.outboxFailed ?? '—'} accent={(data?.stats.outboxFailed ?? 0) > 0 ? 'var(--semi-color-danger)' : undefined} />
       </StatGrid>
 
       <ConfigurableTable
         columns={columns}
-        {...listTableProps({ ...summaryQuery, data: (data?.issues ?? []).filter((issue) => !issueType || issue.type === issueType) })}
+        {...listTableProps({ ...summaryQuery, data: { list: data?.issues ?? [], total: data?.total ?? 0 } }, { pagination: buildPagination })}
       />
+      </TabPane>
+      <TabPane itemKey="coverage" tab="规则与检查覆盖">
+        <Typography.Paragraph>结构异常、明确失败、外部结果未知和待修复工单立即检查；人工滞留使用所选阈值；SLA 超时使用任务冻结截止时间。摘要按完整授权范围计算，列表独立分页。</Typography.Paragraph>
+        {WORKFLOW_HEALTH_ISSUE_TYPE_OPTIONS.map(rule => <Typography.Paragraph key={rule.value}>{rule.label} · {rule.value}</Typography.Paragraph>)}
+      </TabPane>
+      <TabPane itemKey="resolved" tab="恢复记录">
+        <Typography.Paragraph>修复、恢复与终止记录保存在修复工单及作业执行历史，可追溯操作人、原因和处理结果。</Typography.Paragraph>
+        <Button onClick={() => navigate('/workflow/monitor?tab=compensations')}>打开修复工单</Button>
+      </TabPane>
+      </Tabs>
+      <SideSheet visible={!!selectedIssue} title="巡检问题详情" onCancel={() => setSelectedIssue(null)} width={Math.min(640, window.innerWidth)}>
+        {selectedIssue && <><Typography.Title heading={5}>{selectedIssue.title}</Typography.Title><Typography.Paragraph>{selectedIssue.description}</Typography.Paragraph><Descriptions data={[{ key: '规则版本', value: selectedIssue.ruleVersion }, { key: '问题标识', value: selectedIssue.fingerprint }, { key: '实例 / 任务', value: '#' + selectedIssue.instanceId + ' / #' + (selectedIssue.taskId ?? '—') }, { key: '节点轮次', value: selectedIssue.activationId ?? '—' }]} />{selectedIssue.jobId && <Button onClick={() => navigate('/workflow/monitor?tab=jobs&jobId=' + selectedIssue.jobId)}>打开关联作业</Button>}<Button onClick={() => { setDetailInstanceId(selectedIssue.instanceId); setSelectedIssue(null); }}>查看实例</Button></>}
+      </SideSheet>
 
       <WorkflowInstanceDetailSheet
         instanceId={detailInstanceId}

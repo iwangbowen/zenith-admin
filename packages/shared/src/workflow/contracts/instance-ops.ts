@@ -61,6 +61,7 @@ export type WorkflowExecutionToken = z.infer<typeof workflowExecutionTokenSchema
 
 /** 实例执行 Token 视图 */
 export const workflowExecutionTokenViewSchema = z.object({
+  previewToken: z.string().optional(),
   instanceId: z.int(),
   activeCount: z.int().meta({ description: '活动 frontier token 数（不含 parked join）' }),
   parkedCount: z.int(),
@@ -199,6 +200,7 @@ export const workflowMigrationNodeSchema = z.object({
 export type WorkflowMigrationNode = z.infer<typeof workflowMigrationNodeSchema>;
 
 export const workflowMigrationPreflightSchema = z.object({
+  previewToken: z.string(),
   instanceId: z.int(),
   fromVersion: z.int(),
   toVersion: z.int(),
@@ -278,13 +280,14 @@ export const workflowInstanceOpsContract = defineContract('/api/workflows', {
   tokens: op.get('/instances/{id}/tokens', { access: { permission: 'workflow:instance:monitor' }, params: idParam, response: workflowExecutionTokenViewSchema, summary: '实例显式执行 Token（执行树/活动路径）' }),
   diagnosticBundle: op.get('/instances/{id}/diagnostic-bundle', { access: { permission: 'workflow:instance:monitor' }, params: idParam, response: workflowDiagnosticBundleSchema, summary: '导出实例诊断包' }),
   batchSkipStuck: op.post('/instances/batch-skip-stuck', { access: { permission: 'workflow:instance:intervene' }, audit: '批量推进卡死实例', body: batchSkipStuckTokensSchema, response: workflowRecoveryBatchResultSchema, summary: '批量推进卡在指定节点的实例' }),
+  batchSkipPreview: op.post('/instances/batch-skip-preview', { access: { permission: 'workflow:instance:intervene' }, body: batchSkipStuckTokensSchema.omit({ previewToken: true }), response: z.object({ previewToken: z.string(), total: z.int(), tokenIds: z.array(z.int()) }), summary: '预检系统等待节点恢复范围' }),
   skipToken: op.post('/instances/tokens/{id}/skip', { access: { permission: 'workflow:instance:intervene' }, audit: { description: '跳过卡死执行 Token', recordResponseBody: false }, params: idParam, body: workflowTokenOpSchema, response: workflowInstanceSchema, summary: '跳过卡死的执行 Token' }),
   replayToken: op.post('/instances/tokens/{id}/replay', { access: { permission: 'workflow:instance:intervene' }, audit: { description: '从执行 Token 重放流程', recordResponseBody: false }, params: idParam, body: workflowTokenOpSchema, response: workflowInstanceSchema, summary: '从执行 Token 节点重放流程' }),
   jump: op.post('/instances/{id}/jump', { access: { permission: 'workflow:instance:intervene' }, audit: { description: '强制跳转流程节点', recordResponseBody: false }, params: idParam, body: jumpWorkflowInstanceSchema, response: workflowInstanceSchema, summary: '管理员强制跳转节点' }),
   suspend: op.post('/instances/{id}/suspend', { access: { permission: 'workflow:engine:operate' }, audit: { description: '挂起流程实例', recordResponseBody: false }, params: idParam, body: suspendWorkflowInstanceSchema, response: workflowInstanceSchema, summary: '挂起流程实例' }),
   resume: op.post('/instances/{id}/resume', { access: { permission: 'workflow:engine:operate' }, audit: { description: '恢复挂起流程实例', recordResponseBody: false }, params: idParam, response: workflowInstanceSchema, summary: '恢复挂起的流程实例' }),
   migratePreflight: op.get('/{id}/migrate/preflight', { access: { permission: 'workflow:engine:operate' }, params: idParam, response: workflowMigrationPreflightSchema, summary: '实例迁移预检' }),
-  migrate: op.post('/{id}/migrate', { access: { permission: 'workflow:engine:operate' }, audit: '迁移流程实例', params: idParam, summary: '迁移实例到最新版本' }),
+  migrate: op.post('/{id}/migrate', { access: { permission: 'workflow:engine:operate' }, audit: '迁移流程实例', params: idParam, body: z.object({ targetVersion: z.int(), previewToken: z.string() }), summary: '迁移实例到预检版本' }),
   migrations: op.get('/{id}/migrations', { access: { permission: 'workflow:instance:monitor' }, params: idParam, response: z.array(workflowInstanceMigrationSchema), summary: '实例迁移记录' }),
   migrateBatch: op.post('/migrate/batch/{definitionId}', { access: { permission: 'workflow:engine:operate' }, audit: '批量迁移流程实例', params: workflowMigrateBatchParam, summary: '批量迁移定义下运行实例' }),
   compensations: op.get('/compensation/list', { access: { permission: 'workflow:instance:monitor' }, query: workflowCompensationListQuery, response: paginated(workflowCompensationSchema), summary: '补偿/修复工单列表' }),

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { Button, Card, Empty, Spin, Typography } from '@douyinfe/semi-ui';
+import { Button, Empty, Pagination, Select, Spin, Typography } from '@douyinfe/semi-ui';
+import WorkflowInstanceDetailSheet from '@/components/workflow/WorkflowInstanceDetailSheet';
 import { RotateCcw } from 'lucide-react';
 import {
   BarChart,
@@ -25,6 +26,7 @@ const STATUS_META: Record<string, { text: string; color: string }> = {
   draft: { text: WORKFLOW_INSTANCE_STATUS_LABELS.draft, color: '#8c8c8c' },
   running: { text: WORKFLOW_INSTANCE_STATUS_LABELS.running, color: '#3370ff' },
   suspended: { text: WORKFLOW_INSTANCE_STATUS_LABELS.suspended, color: '#d97706' },
+  returned: { text: WORKFLOW_INSTANCE_STATUS_LABELS.returned, color: '#d97706' },
   approved: { text: WORKFLOW_INSTANCE_STATUS_LABELS.approved, color: '#0dc87c' },
   rejected: { text: WORKFLOW_INSTANCE_STATUS_LABELS.rejected, color: '#ff4d4f' },
   withdrawn: { text: WORKFLOW_INSTANCE_STATUS_LABELS.withdrawn, color: '#faad14' },
@@ -54,18 +56,22 @@ function Kpi({ label, value, danger, warn }: Readonly<{ label: string; value: st
 
 function ChartCard({ title, children }: Readonly<{ title: string; children: React.ReactNode }>) {
   return (
-    <Card bodyStyle={{ padding: '12px 16px' }}>
+    <section className="zx-panel">
       <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>{title}</Typography.Text>
       {children}
-    </Card>
+    </section>
   );
 }
 
 export default function WorkflowAnalyticsView({ definitions }: Readonly<{ definitions: WorkflowDefinitionOption[] }>) {
   const palette = useChartPalette();
   const [definitionId, setDefinitionId] = useState<number | undefined>();
-  const analyticsQuery = useWorkflowAnalytics(definitionId);
-  const overdueQuery = useWorkflowOverdueTasks(definitionId);
+  const [days, setDays] = useState(14);
+  const [timeAxis, setTimeAxis] = useState<'created' | 'submitted' | 'completed'>('created');
+  const [overduePage, setOverduePage] = useState(1);
+  const [detailId, setDetailId] = useState<number | null>(null);
+  const analyticsQuery = useWorkflowAnalytics(definitionId, days, timeAxis);
+  const overdueQuery = useWorkflowOverdueTasks(definitionId, overduePage);
   const data = analyticsQuery.data ?? null;
   const overdue = overdueQuery.data?.list ?? [];
 
@@ -77,7 +83,7 @@ export default function WorkflowAnalyticsView({ definitions }: Readonly<{ defini
   );
 
   const defBar = useMemo(
-    () => (data?.definitionStats ?? []).map((d) => ({ name: d.definitionName, 进行中: d.running, 已通过: d.approved, 已驳回: d.rejected })),
+    () => (data?.definitionStats ?? []).map((d) => ({ name: d.definitionName, 进行中: d.running, 已通过: d.approved, 已驳回: d.rejected, 其它状态: d.total - d.running - d.approved - d.rejected })),
     [data],
   );
   const approverWorkloadData = useMemo(
@@ -111,6 +117,7 @@ export default function WorkflowAnalyticsView({ definitions }: Readonly<{ defini
       { field: '进行中', name: '进行中', color: '#3370ff' },
       { field: '已通过', name: '已通过', color: '#0dc87c' },
       { field: '已驳回', name: '已驳回', color: '#ff4d4f' },
+      { field: '其它状态', name: '其它状态', color: '#8c8c8c' },
     ],
     palette,
     horizontal: true,
@@ -132,11 +139,13 @@ export default function WorkflowAnalyticsView({ definitions }: Readonly<{ defini
   if (analyticsQuery.isFetching && !data) {
     return <div style={{ textAlign: 'center', padding: 60 }}><Spin /></div>;
   }
-  if (!data) return <Empty title="暂无分析数据" style={{ padding: 60 }} />;
+  if (!data) return <Empty title={analyticsQuery.isError ? '分析读取失败，请重试' : '暂无分析数据'} style={{ padding: 60 }}><Button onClick={() => void analyticsQuery.refetch()}>重新读取</Button></Empty>;
 
   return (
     <div className="zx-flat-panels" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+        <Select value={days} onChange={v => setDays(Number(v))} optionList={[7,14,30,90].map(value => ({value,label:'近 ' + value + ' 天'}))} />
+        <Select value={timeAxis} onChange={v => setTimeAxis(v as typeof timeAxis)} optionList={[{value:'created',label:'按创建时间'},{value:'submitted',label:'按提交时间'},{value:'completed',label:'按完成时间'}]} />
         <FilterSelect
           placeholder="全部流程"
           items={definitions.map((d) => ({ label: d.name, value: d.id }))}
@@ -168,7 +177,7 @@ export default function WorkflowAnalyticsView({ definitions }: Readonly<{ defini
         <Kpi label="子流程失败率" value={fmtPercent(data.automation?.subprocessFailRate)} warn={(data.automation?.subprocessFailRate ?? 0) >= 0.2} />
       </StatGrid>
       <div style={{ color: 'var(--semi-color-text-2)', fontSize: 12, marginTop: -6 }}>
-        比率类指标为全历史累计口径 · 作业失败率含触发器/延迟/Webhook 等全部引擎作业（死信 {data.automation?.jobsDead ?? 0} · 失败 {data.automation?.jobsFailed ?? 0} / 总 {data.automation?.jobsTotal ?? 0}）
+        截至 {data.asOf} · {data.window.timezone} · 耗时：提交至完成的自然时间（含挂起），样本 {data.duration.samples} · 中位数 {fmtDuration(data.duration.medianSec)} · P90 {fmtDuration(data.duration.p90Sec)} · 缺历史事实 {data.duration.unsupportedInstances} 个。作业失败率按窗口内终态尝试计算。
       </div>
 
       {/* 超时待办预警 */}
@@ -194,7 +203,7 @@ export default function WorkflowAnalyticsView({ definitions }: Readonly<{ defini
                     <tr key={o.taskId} style={{ borderTop: '1px solid var(--semi-color-border)' }}>
                       <td style={{ padding: '6px 8px' }}><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: lamp }} /></td>
                       <td style={{ padding: '6px 8px', maxWidth: 320 }}>
-                        <Typography.Text
+                        <Typography.Text onClick={() => setDetailId(o.instanceId)} link
                           size="small"
                           ellipsis={{ showTooltip: true }}
                           style={{ display: 'block', maxWidth: '100%', whiteSpace: 'nowrap' }}
@@ -214,10 +223,11 @@ export default function WorkflowAnalyticsView({ definitions }: Readonly<{ defini
           </div>
         )}
       </ChartCard>
+      <Pagination currentPage={overduePage} pageSize={50} total={overdueQuery.data?.total ?? 0} onPageChange={setOverduePage} />
 
       {/* 趋势 + 状态分布 */}
       <div className="chart-grid">
-        <ChartCard title="近 14 天发起 / 完结 / 积压趋势">
+        <ChartCard title={'近 ' + days + ' 天提交 / 完结 / 真实积压（无覆盖时断点）'}>
           <LineChart {...trendSpec} options={chartOptions} height={260} />
         </ChartCard>
         <ChartCard title="状态分布">
@@ -268,6 +278,7 @@ export default function WorkflowAnalyticsView({ definitions }: Readonly<{ defini
           <BarChart {...approverWorkloadSpec} options={chartOptions} height={Math.max(200, data.approverWorkloads.length * 32)} />
         )}
       </ChartCard>
+      <WorkflowInstanceDetailSheet instanceId={detailId} visible={detailId != null} onClose={() => setDetailId(null)} />
     </div>
   );
 }

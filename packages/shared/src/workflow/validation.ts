@@ -686,6 +686,7 @@ export const updateWorkflowDelegationSchema = partialForUpdate(createWorkflowDel
 
 // ── 管理员强制操作 ──
 export const jumpWorkflowInstanceSchema = z.object({
+  previewToken: z.string().min(1),
   /** 强制跳转到的目标节点 key */
   targetNodeKey: z.string().min(1, '请选择目标节点'),
   /** 跳转原因：强制干预必须留痕（审计与任务备注） */
@@ -704,6 +705,7 @@ export const suspendWorkflowInstanceSchema = z.object({
 
 /** 离职交接：把 fromUser 名下未处理待办批量移交 toUser */
 export const workflowHandoverSchema = z.object({
+  previewToken: z.string().min(1),
   fromUserId: z.number().int().positive('请选择交接人'),
   toUserId: z.number().int().positive('请选择接手人'),
   /** 同时停用交接人名下启用中的审批代理规则（默认 true） */
@@ -745,6 +747,7 @@ export const cloneFromTemplateSchema = z.object({
 
 /** 批量推进卡死实例：按流程定义 + 节点 + 卡死时长筛选活动 Token 后逐个跳过推进 */
 export const batchSkipStuckTokensSchema = z.object({
+  previewToken: z.string().min(1),
   definitionId: z.number().int().positive(),
   nodeKey: z.string().min(1, '请指定节点').max(64),
   olderThanMinutes: z.number().int().nonnegative().max(100000).optional(),
@@ -875,7 +878,7 @@ export type UpdateWorkflowEventSubscriptionInput = z.input<typeof updateWorkflow
 export type ReplayWorkflowEventDeliveriesInput = z.infer<typeof replayWorkflowEventDeliveriesSchema>;
 
 // ── 执行 Token 运维 ──
-export const workflowTokenOpSchema = z.object({ reason: z.string().max(255).optional() });
+export const workflowTokenOpSchema = z.object({ reason: z.string().trim().min(2).max(255), previewToken: z.string().min(1) });
 
 // ── 补偿工单 ──
 export const resolveWorkflowCompensationSchema = z.object({
@@ -891,6 +894,8 @@ export const addWorkflowCompensationNoteSchema = z.object({
 // ── 流程引擎运维 ──
 /** 运维动作筛选条件（jobType 由动作固定，此处为附加维度） */
 export const workflowEngineActionFilterSchema = z.object({
+  previewToken: z.string().optional(),
+  reason: z.string().trim().min(2).max(255).optional(),
   instanceId: z.number().int().positive().optional(),
   olderThanMinutes: z.number().int().min(0).max(60 * 24 * 30).optional(),
   limit: z.number().int().min(1).max(500).optional(),
@@ -919,6 +924,8 @@ export const workflowJobReplayFilterSchema = z.object({
 
 /** 死信重放：过滤条件 + 限流（ratePerSecond 条/秒错峰）+ 单次上限 limit */
 export const workflowJobReplaySchema = workflowJobReplayFilterSchema.extend({
+  previewToken: z.string().min(1),
+  reason: z.string().trim().min(2).max(255),
   ratePerSecond: z.number().int().min(1).max(200).optional(),
   limit: z.number().int().min(1).max(500).optional(),
 });

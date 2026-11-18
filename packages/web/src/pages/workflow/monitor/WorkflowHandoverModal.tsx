@@ -19,6 +19,7 @@ interface Props {
 
 export default function WorkflowHandoverModal({ visible, onClose }: Readonly<Props>) {
   // useEditModal 例外：工作流运行时表单（离职交接：预览待办 + 批量转移），非实体新增 / 编辑
+  const previewSequence = useRef(0);
   const formApi = useRef<FormApi | null>(null);
   const { userOptions } = useUserOptions({ immediate: true });
   const previewMutation = useWorkflowHandoverPreview();
@@ -29,6 +30,7 @@ export default function WorkflowHandoverModal({ visible, onClose }: Readonly<Pro
   const [result, setResult] = useState<WorkflowHandoverResult | null>(null);
 
   const reset = () => {
+    ++previewSequence.current;
     setFromUserId(null);
     setPreview(null);
     setResult(null);
@@ -36,12 +38,14 @@ export default function WorkflowHandoverModal({ visible, onClose }: Readonly<Pro
   };
 
   const handleFromChange = async (v: number) => {
+    const sequence = ++previewSequence.current;
     setFromUserId(v);
     setPreview(null);
     setResult(null);
     if (!v) return;
     try {
-      setPreview(await previewMutation.mutateAsync({ query: { fromUserId: v } }));
+      const next = await previewMutation.mutateAsync({ query: { fromUserId: v } });
+      if (sequence === previewSequence.current) setPreview(next);
     } catch { /* request 层已提示 */ }
   };
 
@@ -53,6 +57,7 @@ export default function WorkflowHandoverModal({ visible, onClose }: Readonly<Pro
       const res = await handoverMutation.mutateAsync({
         body: {
           fromUserId,
+          previewToken: preview!.previewToken,
           toUserId: values.toUserId,
           disableDelegations,
           comment: values.comment,

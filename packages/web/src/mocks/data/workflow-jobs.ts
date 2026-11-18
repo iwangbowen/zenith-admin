@@ -6,7 +6,7 @@ const offMin = (minutes: number) => mockDateTimeOffset(minutes * 60_000);
 
 
 /** 统一作业账本（workflow_jobs）演示数据，可被 retry/skip handler 原地变更 */
-const baseWorkflowJobs: Array<Omit<WorkflowJob, 'instanceTitle' | 'definitionName' | 'tenantId' | 'generation' | 'leaseUntil' | 'executionDeadline' | 'executionTimeoutMs'>> = [
+const baseWorkflowJobs: Array<Omit<WorkflowJob, 'instanceTitle' | 'definitionName' | 'tenantId' | 'capabilities' | 'generation' | 'leaseUntil' | 'executionDeadline' | 'executionTimeoutMs'>> = [
   {
     id: 9001,
     jobType: 'webhook_delivery',
@@ -309,6 +309,7 @@ const DEMO_JOB_FLOWS: Record<number, { flow: string; title: string }> = {
 
 export const mockWorkflowJobs: WorkflowJob[] = baseWorkflowJobs.map((j) => ({
   ...j,
+  capabilities: { retry: ['dead', 'failed', 'canceled'].includes(j.status), cancel: !['succeeded', 'canceled'].includes(j.status), confirmResult: false, reason: null },
   generation: 0,
   executionTimeoutMs: 600_000,
   leaseUntil: j.status === 'running' ? offMin(j.id === 9013 ? -10 : 1) : null,

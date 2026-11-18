@@ -10,7 +10,7 @@ export const migratePreflightRoute = defineContractRoute(workflowInstanceOpsCont
 
 export const migrateRoute = defineContractRoute(workflowInstanceOpsContract.migrate, {
   handler: async (c) => {
-    await migrateInstance(c.req.valid('param').id);
+    await migrateInstance(c.req.valid('param').id, c.req.valid('json'));
     return c.json(okBody(null, '迁移成功'), 200);
   },
 });

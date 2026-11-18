@@ -296,7 +296,9 @@ async function executeClaimedJob({ job, executionId }: ClaimedJob): Promise<void
   });
   void aborted.catch(() => undefined);
   try {
-    const handler = getJobHandler(job.jobType);
+    const handler = job.effectStatus === 'confirmed_success' && job.effectEvidence
+      ? (await import('./handlers/confirmed-result')).reconcileConfirmedExternalResult
+      : getJobHandler(job.jobType);
     if (!handler) throw new WorkflowJobPermanentError(`Unregistered workflow handler: ${job.jobType}`);
     const work = runWithPersistedOtelContext(job, () => runWithWorkflowJobContext(context, () => runWithCorrelationId(job.correlationId ?? randomUUID(),
       () => runWithParentRef(`job:${job.id}`, () => withAsyncSpan('zenith.workflow.job', () => handler(context), {

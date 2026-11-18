@@ -1,4 +1,5 @@
 import { canMonitorWorkflowInstance } from '../workflow-access';
+import { issueWorkflowPreview } from '../operation-preview';
 import { loadApprovalActivations } from './approval-state';
 import { sanitizeDetailFormDataForViewer } from '../workflow-form-access';
 import { workflowInstanceContract, workflowTaskContract, WORKFLOW_INSTANCE_STATUSES, workflowTaskActivationKey, workflowTaskActivationRounds, type WorkflowWorkbenchSummary, type WorkflowHandledInstanceItem } from '@zenith/shared/workflow';
@@ -617,6 +618,7 @@ async function loadInstanceDetail(id: number, business?: { bizType: string; bizI
       includeDefinitionSnapshot: true,
     }),
     predictedPath,
+    ...(isMonitor ? { interventionPreviewToken: issueWorkflowPreview('jump', { instanceId: id }, { status: row.status, snapshot: row.definitionSnapshot, tasks: row.tasks.map(t => ({ id: t.id, status: t.status, activationId: t.activationId })) }) } : {}),
   };
 }
 
@@ -646,6 +648,7 @@ export async function listAllTasks(query: QueryOutputOf<typeof workflowTaskContr
     tc,
     scopeCond,
     status ? eq(workflowTasks.status, status) : undefined,
+    query.view === 'actionable' ? and(eq(workflowInstances.status, 'running'), eq(workflowTasks.status, 'pending'), eq(workflowTasks.taskKind, 'approval')) : query.view === 'waiting' ? eq(workflowTasks.status, 'waiting') : query.view === 'suspended' ? and(eq(workflowInstances.status, 'suspended'), inArray(workflowTasks.status, ['pending', 'waiting'])) : undefined,
     nodeType ? eq(workflowTasks.nodeType, nodeType) : undefined,
     keyword ? titleOrDefinitionNameLike(keyword) : undefined,
     keywordCondition(assigneeKeyword, [assignee.nickname, assignee.username], 'ilike'),

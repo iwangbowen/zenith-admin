@@ -1012,6 +1012,8 @@ export type WorkflowEngineActionKey = (typeof WORKFLOW_ENGINE_ACTION_KEYS)[numbe
 
 /** 引擎运维动作的筛选条件（jobType 每个动作固定，此处为附加维度） */
 export interface WorkflowEngineActionFilter {
+  previewToken?: string;
+  reason?: string;
   /** 仅处理指定实例的作业 */
   instanceId?: number;
   /** 仅处理入库超过 N 分钟的作业（避开刚失败还在退避窗内的） */

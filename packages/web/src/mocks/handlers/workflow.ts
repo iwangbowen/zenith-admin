@@ -1923,6 +1923,7 @@ export const workflowHandlers = [
     }));
     return ok({
       action,
+      previewToken: 'demo-action-preview',
       label: ENGINE_ACTION_LABELS[action],
       jobTypes,
       duePending: due.length,
@@ -2043,7 +2044,7 @@ export const workflowHandlers = [
       && (!b.correlationId || j.correlationId === b.correlationId)
       && (!kw || (j.lastError ?? '').toLowerCase().includes(kw))
       && (b.olderThanMinutes == null || b.olderThanMinutes <= 0 || (Date.now() - new Date(j.createdAt).getTime()) >= b.olderThanMinutes * 60000)).length;
-    return ok({ matched });
+    return ok({ matched, previewToken: 'demo-preview', sampleIds: [] });
   }),
 
   mock(workflowEngineContract.failureClusters, ({ query, ok }) => {
@@ -2413,6 +2414,7 @@ export const workflowHandlers = [
       return inst?.status === 'running' || inst?.status === 'suspended';
     });
     return ok({
+      previewToken: 'demo-handover-preview',
       fromUserName: from.nickname ?? from.username,
       pendingTaskCount: open.filter(t => t.status === 'pending').length,
       waitingTaskCount: open.filter(t => t.status === 'waiting').length,

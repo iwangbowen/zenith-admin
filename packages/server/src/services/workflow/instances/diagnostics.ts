@@ -1,4 +1,5 @@
 import { workflowMonitorScope } from '../workflow-access';
+import { issueWorkflowPreview } from '../operation-preview';
 import { WORKFLOW_JOB_TYPE_LABELS as JOB_TYPE_LABELS } from '@zenith/shared/workflow';
 // ─── 运行时诊断、执行轨迹与引擎解释（拆分自 workflow-instances.service.ts）───
 import { formatDateTime, formatNullableDateTime } from '../../../lib/datetime';
@@ -71,6 +72,7 @@ function buildRuntimeIssues(input: {
   // 外部审批 / 触发器作业失败（workflow_jobs）
   for (const job of input.jobs) {
     if (job.status !== 'failed' && job.status !== 'dead') continue;
+    if (job.taskId && !activeTasks.some(task => task.id === job.taskId)) continue;
     if (job.jobType === 'external_dispatch') {
       issues.push({
         severity: 'critical',
@@ -223,7 +225,7 @@ export async function getInstanceExecutionTokens(id: number): Promise<WorkflowEx
   requireRow(inst, '流程实例不存在或无权查看');
   const nodeMeta = buildNodeMetaFromSnapshot(inst.definitionSnapshot);
   const rows = await db.select().from(workflowTokens).where(eq(workflowTokens.instanceId, id)).orderBy(workflowTokens.id);
-  return buildTokenView(id, rows.map((r) => mapExecutionToken(r, nodeMeta)));
+  return { ...buildTokenView(id, rows.map((r) => mapExecutionToken(r, nodeMeta))), previewToken: issueWorkflowPreview('tokens', { instanceId: id }, rows.map(r => ({ id: r.id, status: r.status, nodeKey: r.nodeKey }))) };
 }
 
 export async function getInstanceRuntimeDiagnostics(id: number): Promise<WorkflowRuntimeDiagnostics> {

@@ -1,4 +1,5 @@
 vi.mock('./workflow-access', () => ({ workflowJobScope: vi.fn(async () => undefined), requirePlatformWorkflowAccess: vi.fn(async () => undefined) }));
+vi.mock('./operation-preview', () => ({ issueWorkflowPreview: () => 'proof', assertWorkflowPreview: vi.fn() }));
 import { beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 import {
   workflowEngineContract,
@@ -97,7 +98,8 @@ describe('workflow recovery response', () => {
   it('reports reconciliation and submitted wakeups rather than completed execution', async () => {
     drain.mockResolvedValue({ recovered: 2, requeued: 1, dead: 1 });
 
-    const result = await runWorkflowEngineAction('recover-webhooks', { instanceId: 2, limit: 3 });
+    select.mockReturnValue(queryResult([]));
+    const result = await runWorkflowEngineAction('recover-webhooks', { instanceId: 2, limit: 3, reason: '修复恢复', previewToken: 'proof' });
 
     expect(drain).toHaveBeenCalledWith({ jobTypes: ['webhook_delivery'], instanceId: 2, olderThanMinutes: undefined, limit: 3, scope: undefined });
     expect(result).toMatchObject({ ok: true, detail: { recovered: 2, requeued: 1, dead: 1 } });
@@ -142,7 +144,8 @@ describe('workflow recovery response', () => {
     tx.update.mockReturnValue(updateChain);
     transaction.mockImplementation(async (callback: (executor: typeof tx) => unknown) => callback(tx));
 
-    const result = await runWorkflowEngineAction('replay-outbox', { limit: 1 });
+    select.mockReturnValue(queryResult([]));
+    const result = await runWorkflowEngineAction('replay-outbox', { limit: 1, reason: '恢复消费者', previewToken: 'proof' });
 
     expect(result).toMatchObject({ ok: true, detail: { recovered: 0, requeued: 0, dead: 0 } });
     expect(transaction).toHaveBeenCalledTimes(1);

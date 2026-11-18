@@ -1,4 +1,6 @@
 import { workflowJobScope } from './workflow-access';
+import { HTTPException } from 'hono/http-exception';
+import { assertWorkflowPreview, issueWorkflowPreview } from './operation-preview';
 import { workflowEngineContract, type WorkflowJobRuntimeStatus } from '@zenith/shared/workflow';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import type { JobStuckItem } from '@zenith/shared/platform';
@@ -100,6 +102,7 @@ function mapJob(row: WorkflowJobRow, extra?: { instanceTitle?: string | null; de
     executionDeadline: formatNullableDateTime(row.executionDeadline),
     effectStatus: row.effectStatus,
     effectEvidence: row.effectEvidence ?? null,
+    capabilities: { retry: ['failed', 'dead', 'canceled'].includes(row.status) && row.effectStatus !== 'sent_unknown', cancel: ['pending', 'running', 'paused', 'failed', 'dead'].includes(row.status) && row.effectStatus !== 'sent_unknown', confirmResult: row.effectStatus === 'sent_unknown', reason: row.effectStatus === 'sent_unknown' ? '请先核对并确认外部结果' : null },
     lastError: row.lastError ?? null,
     result: (row.result ?? null) as Record<string, unknown> | null,
     tenantId: row.tenantId ?? null,
@@ -204,6 +207,16 @@ export async function skipWorkflowJob(id: number) {
   await getWorkflowJobDetail(id);
   const row = await skipJob(id);
   return mapJob(requireRow(row, '仅待处理 / 运行中 / 已暂停 / 失败 / 死信的作业可跳过', 400));
+}
+
+export async function confirmWorkflowExternalResult(id: number, input: { generation: number; outcome: 'success' | 'failure'; evidence: string }) {
+  const detail = await getWorkflowJobDetail(id);
+  if (!['trigger_dispatch', 'external_dispatch', 'webhook_delivery', 'node_listener_delivery'].includes(detail.jobType)) throw new HTTPException(409, { message: '此类作业需在所属业务中核对，不能通用确认' });
+  const [row] = await db.update(workflowJobs).set({ effectStatus: input.outcome === 'success' ? 'confirmed_success' : 'confirmed_failure', effectEvidence: input.evidence,
+    ...(input.outcome === 'success' ? { status: 'pending' as const, generation: input.generation + 1, attempts: 0, runAt: new Date() } : {}) })
+    .where(and(eq(workflowJobs.id, id), eq(workflowJobs.generation, input.generation), eq(workflowJobs.effectStatus, 'sent_unknown'), inArray(workflowJobs.status, ['dead', 'failed']))).returning();
+  if (!row) throw new HTTPException(409, { message: '执行轮次或外部效果状态已变化，请刷新' });
+  return mapJob(row);
 }
 
 export interface WorkflowJobBatchResult {
@@ -331,9 +344,13 @@ async function replayJobsWhere(filter: WorkflowJobReplayFilter) {
 }
 
 /** 条件重放预览：仅统计匹配的死信/失败作业数量，不执行，供前端展示"将重放约 N 条"。 */
-export async function previewReplayJobs(filter: WorkflowJobReplayFilter): Promise<{ matched: number }> {
+export async function previewReplayJobs(filter: WorkflowJobReplayFilter) {
   const matched = await db.$count(workflowJobs, await replayJobsWhere(filter));
-  return { matched };
+  const objects = await replayObjects(filter);
+  return { matched, previewToken: issueWorkflowPreview('replay', filter, objects), sampleIds: objects.slice(0, 20).map(row => row.id) };
+}
+async function replayObjects(filter: WorkflowJobReplayFilter) {
+  return db.select({ id: workflowJobs.id, generation: workflowJobs.generation, status: workflowJobs.status, effectStatus: workflowJobs.effectStatus }).from(workflowJobs).where(await replayJobsWhere(filter)).orderBy(asc(workflowJobs.id));
 }
 
 export interface WorkflowJobReplayResult extends WorkflowJobBatchResult {
@@ -350,10 +367,13 @@ export interface WorkflowJobReplayResult extends WorkflowJobBatchResult {
  * 通过 {@link throttledRetry} 错峰入队，并以 limit 限制单次重放规模，避免瞬时压垮连接器/DB。
  */
 export async function replayDeadJobs(
-  opts?: WorkflowJobReplayFilter & { ratePerSecond?: number; limit?: number },
+  opts?: WorkflowJobReplayFilter & { ratePerSecond?: number; limit?: number; previewToken?: string; reason?: string },
 ): Promise<WorkflowJobReplayResult> {
   const rate = clampRate(opts?.ratePerSecond);
   const limit = clampLimit(opts?.limit);
+  const { ratePerSecond: _rate, limit: _limit, previewToken, reason, ...filter } = opts ?? {};
+  if (!reason?.trim()) throw new HTTPException(400, { message: '请填写重放原因' });
+  assertWorkflowPreview(previewToken, 'replay', filter, await replayObjects(filter));
   const where = await replayJobsWhere(opts ?? {});
   const [matched, rows] = await Promise.all([
     db.$count(workflowJobs, where),

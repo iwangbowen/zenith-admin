@@ -1,3 +1,4 @@
+import { RUNNING_STATUSES, ISSUE_SOURCE_MAP, NODE_STATE_MAP, NODE_STATE_TIMELINE_TYPE, FOCUS_SEVERITY_META, buildDiagNodes, getNodeConfigItems, buildFocusDiagnosis, type TagColor, type DiagNode } from './diagnostics-model';
 import { lazy, Suspense, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, Form, Input, JsonViewer, Modal, SideSheet, Space, Spin, Tabs, TabPane, Tag, Timeline, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
@@ -5,8 +6,10 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Download, FileText, UserRoundCog } from 'lucide-react';
 import dayjs from 'dayjs';
-import { WORKFLOW_APPROVE_METHOD_LABELS, WORKFLOW_INSTANCE_PRIORITIES, WORKFLOW_INSTANCE_STATUSES, WORKFLOW_JOB_STATUSES, type WorkflowAssigneeType, type WorkflowCategory, type WorkflowExecutionToken, type WorkflowFlowData, type WorkflowInstanceListItem, type WorkflowJobStatus, type WorkflowNodeConfig, type WorkflowRuntimeDiagnostics, type WorkflowRuntimeIssue, type WorkflowRuntimeOutboxEvent, type WorkflowTask, type WorkflowTriggerExecution } from '@zenith/shared/workflow';
+import { WORKFLOW_INSTANCE_PRIORITIES, WORKFLOW_INSTANCE_STATUSES, WORKFLOW_JOB_STATUSES, type WorkflowCategory, type WorkflowExecutionToken, type WorkflowInstanceListItem, type WorkflowJobStatus, type WorkflowRuntimeOutboxEvent, type WorkflowTask, type WorkflowTriggerExecution } from '@zenith/shared/workflow';
 import { enumValueOf } from '@zenith/shared/core';
+import { workflowInstanceOpsContract } from '@zenith/shared/workflow';
+import { api } from '@/lib/contract-query';
 import { WORKFLOW_ISSUE_SEVERITY_META as ISSUE_SEVERITY_MAP } from './constants';
 import { downloadBlob } from '@/utils/download';
 import { formatSecondsBetween } from '@/utils/format';
@@ -26,16 +29,16 @@ import WorkflowInstanceDetailPanel from '@/components/workflow/WorkflowInstanceD
 import WorkflowGraphView from '@/components/workflow/WorkflowGraphView';
 import { NODE_RT_STATUS_COLOR, NODE_RT_STATUS_LABEL, INSTANCE_STATUS_MAP, nodeStatusDisplay } from '@/components/workflow/workflow-runtime';
 import { resolveWorkflowFlowData, resolveWorkflowFormFields } from '@/utils/workflow-snapshot';
-import WorkflowAnalyticsView from './WorkflowAnalyticsView';
-import WorkflowTasksMonitorView from './WorkflowTasksMonitorView';
+const WorkflowAnalyticsView = lazy(() => import('./WorkflowAnalyticsView'));
+const WorkflowTasksMonitorView = lazy(() => import('./WorkflowTasksMonitorView'));
 import {
   WORKFLOW_NODE_TYPE_LABEL as NODE_TYPE_LABEL,
   taskAssigneeColumn, taskCommentColumn, taskIdColumn, taskNodeColumn, taskNodeTypeColumn, taskStatusColumn, taskStayDurationColumn,
 } from '@/components/workflow/workflow-task-columns';
 import WorkflowHandoverModal from './WorkflowHandoverModal';
-import WorkflowEngineDiagnosticsView from './WorkflowEngineDiagnosticsView';
-import WorkflowJobsView from './WorkflowJobsView';
-import WorkflowCompensationsView from './WorkflowCompensationsView';
+const WorkflowEngineDiagnosticsView = lazy(() => import('./WorkflowEngineDiagnosticsView'));
+const WorkflowJobsView = lazy(() => import('./WorkflowJobsView'));
+const WorkflowCompensationsView = lazy(() => import('./WorkflowCompensationsView'));
 import WorkflowEngineTraceView from './WorkflowEngineTraceView';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
 import { dateTimeColumn, EMPTY_PLACEHOLDER, overflowTagColumn, renderEllipsis } from '../../../utils/table-columns';
@@ -56,7 +59,6 @@ import {
   useWorkflowMonitorDefinitionOptions,
   useWorkflowMonitorList,
   useWorkflowRuntimeDiagnostics,
-  workflowMonitorDefinitionDetailQuery,
   workflowMonitorInstanceDetailQuery,
   workflowMonitorKeys,
 } from '@/hooks/queries/workflow-monitor';
@@ -71,284 +73,6 @@ import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useFilterQuery } from '@/hooks/useFilterQuery';
 /** 只读流程设计器（懒加载）：用于在诊断 SideSheet 内查看发起时的流程定义快照 */
 const WorkflowDesignerPage = lazy(() => import('@/pages/workflow/designer/WorkflowDesignerPage'));
-
-type TagColor = 'amber' | 'blue' | 'cyan' | 'green' | 'grey' | 'indigo' | 'light-blue' | 'light-green' | 'lime' | 'orange' | 'pink' | 'purple' | 'red' | 'teal' | 'violet' | 'yellow' | 'white';
-
-const RUNNING_STATUSES = new Set(['draft', 'running', 'suspended']);
-
-const ISSUE_SOURCE_MAP: Record<WorkflowRuntimeIssue['source'], string> = {
-  instance: '实例',
-  task: '任务',
-  trigger: '触发器',
-  outbox: '事件派发',
-  token: '执行令牌',
-};
-
-/** 审批人来源类型 → 中文标签 */
-const ASSIGNEE_TYPE_LABEL: Partial<Record<WorkflowAssigneeType, string>> = {
-  user: '指定成员',
-  role: '指定角色',
-  department: '部门负责人',
-  userGroup: '用户组',
-  post: '指定岗位',
-  deptMember: '部门成员',
-  initiator: '发起人本人',
-  initiatorLeader: '发起人上级',
-  initiatorDept: '发起人部门主管',
-  startUserDeptResponsible: '部门分管领导',
-  manager: '直属主管',
-  multiLevelManager: '连续多级上级',
-  multiLevelDeptHead: '连续多级部门负责人',
-  formUser: '表单联系人',
-  formDepartment: '表单部门',
-  nodeApprover: '关联节点审批人',
-  initiatorSelect: '发起人自选',
-  initiatorSelectScope: '发起人自选(范围)',
-  approverSelect: '上节点审批人自选',
-  expression: '流程表达式',
-};
-
-/** 节点运行态（由关联任务派生） */
-type DiagNodeState = 'done' | 'active' | 'rejected' | 'idle';
-
-const NODE_STATE_MAP: Record<DiagNodeState, { text: string; color: TagColor }> = {
-  done: { text: '已完成', color: 'green' },
-  active: { text: '进行中', color: 'blue' },
-  rejected: { text: '已驳回', color: 'red' },
-  idle: { text: '无任务', color: 'grey' },
-};
-
-/** 节点状态 → Semi Timeline 节点类型（进行中用 ongoing 呈现脉冲态） */
-const NODE_STATE_TIMELINE_TYPE: Record<DiagNodeState, 'success' | 'ongoing' | 'error' | 'default'> = {
-  done: 'success',
-  active: 'ongoing',
-  rejected: 'error',
-  idle: 'default',
-};
-
-/** 整合后的诊断节点：流程定义节点 + 关联运行时任务 + 派生状态 */
-interface DiagNode {
-  key: string;
-  name: string;
-  type: string;
-  config: WorkflowNodeConfig;
-  tasks: WorkflowTask[];
-  state: DiagNodeState;
-  isCurrent: boolean;
-}
-
-/** 提取节点配置中已静态指定的处理人名称（运行态解析的来源不在此列） */
-function getConfiguredAssigneeNames(cfg: WorkflowNodeConfig): string[] {
-  const names = [
-    ...(cfg.assigneeNames ?? []),
-    ...(cfg.assigneeName ? [cfg.assigneeName] : []),
-    ...(cfg.postNames ?? []),
-    ...(cfg.deptMemberDeptNames ?? []),
-  ].filter((name): name is string => !!name);
-  return [...new Set(names)];
-}
-
-/** 节点配置摘要项（处理人来源 / 审批方式 / 指定处理人 / 触发类型 / 子流程等），供节点列表与定义快照复用 */
-function getNodeConfigItems(cfg: WorkflowNodeConfig): Array<{ label: string; value: string }> {
-  const items: Array<{ label: string; value: string }> = [];
-  if (cfg.assigneeType && ASSIGNEE_TYPE_LABEL[cfg.assigneeType]) {
-    items.push({ label: '处理人来源', value: ASSIGNEE_TYPE_LABEL[cfg.assigneeType] as string });
-  }
-  if (cfg.approveMethod && WORKFLOW_APPROVE_METHOD_LABELS[cfg.approveMethod]) {
-    const ratio = cfg.approveMethod === 'ratio' && cfg.approveRatio ? ` ${cfg.approveRatio}%` : '';
-    items.push({ label: '审批方式', value: `${WORKFLOW_APPROVE_METHOD_LABELS[cfg.approveMethod]}${ratio}` });
-  }
-  const names = getConfiguredAssigneeNames(cfg);
-  if (names.length > 0) items.push({ label: '指定处理人', value: names.join('、') });
-  if (cfg.type === 'trigger' && cfg.triggerConfig?.triggerType) {
-    items.push({ label: '触发类型', value: String(cfg.triggerConfig.triggerType) });
-  }
-  if (cfg.type === 'subProcess' && cfg.subProcessName) {
-    items.push({ label: '子流程', value: cfg.subProcessName });
-  }
-  return items;
-}
-
-/**
- * 整合流程定义节点（flat flowData.nodes）与运行时任务（按 nodeKey 关联）。
- * 排序：发起节点置顶、结束节点置底，其余保持定义顺序；并派生每个节点的运行态。
- */
-function buildDiagNodes(
-  flowData: WorkflowFlowData | null,
-  tasks: WorkflowTask[],
-  currentNodeKeys: string[],
-): DiagNode[] {
-  const flatNodes = flowData?.nodes ?? [];
-  if (flatNodes.length === 0) return [];
-  const tasksByNode = new Map<string, WorkflowTask[]>();
-  for (const task of tasks) {
-    const arr = tasksByNode.get(task.nodeKey) ?? [];
-    arr.push(task);
-    tasksByNode.set(task.nodeKey, arr);
-  }
-  const currentSet = new Set(currentNodeKeys);
-  const rank = (type: string) => (type === 'start' ? 0 : type === 'end' ? 2 : 1);
-  const ordered = [...flatNodes].sort((a, b) => rank(a.data.type) - rank(b.data.type));
-  return ordered.map((node) => {
-    const cfg = node.data;
-    const nodeTasks = (tasksByNode.get(cfg.key) ?? []).slice().sort((a, b) => a.id - b.id);
-    let state: DiagNodeState;
-    if (nodeTasks.some((t) => t.status === 'rejected')) state = 'rejected';
-    else if (nodeTasks.some((t) => t.status === 'pending' || t.status === 'waiting')) state = 'active';
-    else if (nodeTasks.some((t) => t.status === 'approved' || t.status === 'skipped')) state = 'done';
-    else state = 'idle';
-    return {
-      key: cfg.key,
-      name: cfg.label || cfg.key,
-      type: cfg.type,
-      config: cfg,
-      tasks: nodeTasks,
-      state,
-      isCurrent: currentSet.has(cfg.key),
-    };
-  });
-}
-
-type FocusSeverity = 'success' | 'info' | 'warning' | 'critical';
-
-const FOCUS_SEVERITY_META: Record<FocusSeverity, { text: string; color: TagColor }> = {
-  success: { text: '正常', color: 'green' },
-  info: { text: '运行中', color: 'blue' },
-  warning: { text: '需关注', color: 'orange' },
-  critical: { text: '有风险', color: 'red' },
-};
-
-interface FocusMetric {
-  label: string;
-  value: string;
-  hint?: string;
-}
-
-interface FocusRiskTag {
-  label: string;
-  color: TagColor;
-}
-
-interface FocusDiagnosis {
-  severity: FocusSeverity;
-  title: string;
-  description: string;
-  nextAction: string;
-  metrics: FocusMetric[];
-  riskTags: FocusRiskTag[];
-  activeTasks: WorkflowTask[];
-}
-
-function diffSeconds(start: string | null | undefined, end: string | null | undefined): number {
-  if (!start || !end) return 0;
-  return Math.max(0, dayjs(end).diff(dayjs(start), 'second'));
-}
-
-function uniqueTexts(values: Array<string | null | undefined>): string[] {
-  return [...new Set(values.map((value) => value?.trim()).filter((value): value is string => !!value))];
-}
-
-function summarizeNames(values: Array<string | null | undefined>, emptyText: string): string {
-  const names = uniqueTexts(values);
-  if (names.length === 0) return emptyText;
-  if (names.length <= 3) return names.join('、');
-  return `${names.slice(0, 3).join('、')} 等 ${names.length} 人`;
-}
-
-function getTaskEndTime(task: WorkflowTask, generatedAt: string): string {
-  if (task.status === 'pending' || task.status === 'waiting') return generatedAt;
-  return task.actionAt || task.createdAt;
-}
-
-function buildFocusDiagnosis(diagnostics: WorkflowRuntimeDiagnostics, diagNodes: DiagNode[]): FocusDiagnosis {
-  const inst = diagnostics.instance;
-  const activeTasks = diagnostics.activeTasks.slice().sort((a, b) => dayjs(a.createdAt).valueOf() - dayjs(b.createdAt).valueOf());
-  const oldestActiveTask = activeTasks[0];
-  const oldestActiveNode = oldestActiveTask ? diagNodes.find((node) => node.key === oldestActiveTask.nodeKey) : undefined;
-  const longestTask = diagnostics.tasks
-    .map((task) => ({ task, seconds: diffSeconds(task.createdAt, getTaskEndTime(task, diagnostics.generatedAt)) }))
-    .sort((a, b) => b.seconds - a.seconds)[0];
-
-  const criticalIssues = diagnostics.issues.filter((issue) => issue.severity === 'critical');
-  const warningIssues = diagnostics.issues.filter((issue) => issue.severity === 'warning');
-  const failedTriggers = diagnostics.triggerExecutions.filter((item) => item.status === 'failed');
-  const retryingTriggers = diagnostics.triggerExecutions.filter((item) => item.status === 'retrying' || item.status === 'running');
-  const failedOutbox = diagnostics.outboxEvents.filter((item) => item.status.toLowerCase() === 'failed');
-  const pendingOutbox = diagnostics.outboxEvents.filter((item) => ['pending', 'retrying'].includes(item.status.toLowerCase()));
-  const externalFailedTasks = diagnostics.issues.filter((issue) => issue.title === '外部审批分派失败');
-  const triggerFailedTasks = diagnostics.issues.filter((issue) => issue.source === 'trigger' && issue.title === '触发器执行失败');
-  const emptyAssigneeTasks = activeTasks.filter((task) => task.assigneeId == null && !task.assigneeName);
-  const longestActiveWaitingSec = oldestActiveTask ? diffSeconds(oldestActiveTask.createdAt, diagnostics.generatedAt) : 0;
-  const longWaitingCritical = longestActiveWaitingSec >= 72 * 3600;
-  const longWaitingWarning = longestActiveWaitingSec >= 24 * 3600;
-
-  const riskTags: FocusRiskTag[] = [];
-  if (criticalIssues.length > 0) riskTags.push({ label: `严重 ${criticalIssues.length}`, color: 'red' });
-  if (warningIssues.length > 0) riskTags.push({ label: `警告 ${warningIssues.length}`, color: 'orange' });
-  if (failedTriggers.length > 0) riskTags.push({ label: `触发器失败 ${failedTriggers.length}`, color: 'red' });
-  if (failedOutbox.length > 0) riskTags.push({ label: `事件派发失败 ${failedOutbox.length}`, color: 'red' });
-  if (externalFailedTasks.length > 0) riskTags.push({ label: `外部分派失败 ${externalFailedTasks.length}`, color: 'red' });
-  if (triggerFailedTasks.length > 0) riskTags.push({ label: `任务触发失败 ${triggerFailedTasks.length}`, color: 'red' });
-  if (retryingTriggers.length > 0) riskTags.push({ label: `触发器重试中 ${retryingTriggers.length}`, color: 'orange' });
-  if (pendingOutbox.length > 0) riskTags.push({ label: `事件派发待处理 ${pendingOutbox.length}`, color: 'orange' });
-  if (emptyAssigneeTasks.length > 0) riskTags.push({ label: `处理人为空 ${emptyAssigneeTasks.length}`, color: 'orange' });
-  if (longWaitingCritical) riskTags.push({ label: '等待超3天', color: 'red' });
-  else if (longWaitingWarning) riskTags.push({ label: '等待超24小时', color: 'orange' });
-  if (activeTasks.length > 0) riskTags.push({ label: `活动任务 ${activeTasks.length}`, color: 'light-blue' });
-  if (riskTags.length === 0) riskTags.push({ label: '未发现阻断项', color: 'green' });
-
-  const hasCriticalRisk = criticalIssues.length > 0 || failedTriggers.length > 0 || failedOutbox.length > 0 || externalFailedTasks.length > 0 || triggerFailedTasks.length > 0 || longWaitingCritical;
-  const hasWarningRisk = warningIssues.length > 0 || retryingTriggers.length > 0 || pendingOutbox.length > 0 || emptyAssigneeTasks.length > 0 || longWaitingWarning;
-  const running = RUNNING_STATUSES.has(inst.status);
-  const severity: FocusSeverity = hasCriticalRisk ? 'critical' : hasWarningRisk || (running && activeTasks.length === 0) ? 'warning' : running ? 'info' : 'success';
-
-  const activeNodeText = oldestActiveTask ? (oldestActiveTask.nodeName || oldestActiveTask.nodeKey) : EMPTY_PLACEHOLDER;
-  const assigneeText = summarizeNames(activeTasks.map((task) => task.assigneeName), '未指定处理人');
-  const waitText = oldestActiveTask ? formatSecondsBetween(oldestActiveTask.createdAt, diagnostics.generatedAt) : EMPTY_PLACEHOLDER;
-  const assigneeSource = oldestActiveNode?.config.assigneeType ? ASSIGNEE_TYPE_LABEL[oldestActiveNode.config.assigneeType] ?? oldestActiveNode.config.assigneeType : EMPTY_PLACEHOLDER;
-  const longestStayText = longestTask && longestTask.seconds > 0
-    ? `${longestTask.task.nodeName || longestTask.task.nodeKey} ${formatSecondsBetween(longestTask.task.createdAt, getTaskEndTime(longestTask.task, diagnostics.generatedAt))}`
-    : EMPTY_PLACEHOLDER;
-
-  let title = '流程已结束';
-  let description = '该实例没有活动任务，可在任务、表单数据和定义快照中核对历史执行依据。';
-  let nextAction = '确认终态和历史审批记录即可；如结果异常，优先查看任务列表和定义快照。';
-
-  if (running && oldestActiveTask) {
-    title = `当前卡在「${activeNodeText}」`;
-    description = `最早活动任务 #${oldestActiveTask.id} 已等待 ${waitText}，当前处理人：${assigneeText}。`;
-    nextAction = '联系当前处理人继续审批；若处理人不合适，可使用改派处理人或强制跳转。';
-    if (oldestActiveTask.status === 'waiting' || oldestActiveTask.externalCallbackId) {
-      nextAction = '该任务正在等待外部系统回调，优先检查外部分派状态、回调地址和外部系统处理结果。';
-    } else if (oldestActiveTask.nodeType === 'trigger') {
-      nextAction = '该节点依赖触发器执行，优先打开“触发器”标签查看请求、响应、错误和重试状态。';
-    }
-  } else if (running) {
-    title = '运行中但无活动任务';
-    description = '实例仍处于运行态，但诊断接口未返回 pending / waiting 任务，可能需要检查流程推进或任务生成逻辑。';
-    nextAction = '查看“节点”和“定义快照”，确认当前节点是否应该生成任务；必要时使用强制跳转恢复流程。';
-  }
-
-  if (failedOutbox.length > 0) nextAction = '优先打开“事件派发”标签查看失败事件、错误信息和下次重试时间，必要时检查订阅地址或重试投递。';
-  if (failedTriggers.length > 0) nextAction = '优先打开“触发器”标签查看失败请求、HTTP 状态、响应体和最近错误。';
-  if (externalFailedTasks.length > 0) nextAction = '优先检查外部分派配置和外部系统回调；若无法恢复，可改派到人工处理。';
-  if (criticalIssues.length > 0) nextAction = '优先处理诊断结论中的严重项，再回到节点和任务列表确认流程是否恢复。';
-
-  return {
-    severity,
-    title,
-    description,
-    nextAction,
-    activeTasks,
-    riskTags,
-    metrics: [
-      { label: '当前等待', value: waitText, hint: oldestActiveTask ? `task #${oldestActiveTask.id}` : '无活动任务' },
-      { label: '处理人', value: assigneeText, hint: assigneeSource !== EMPTY_PLACEHOLDER ? `来源：${assigneeSource}` : undefined },
-      { label: '最久停留', value: longestStayText, hint: longestTask ? `task #${longestTask.task.id}` : undefined },
-      { label: '外部事件', value: `${diagnostics.triggerExecutions.length} 触发器 · ${diagnostics.outboxEvents.length} 事件派发`, hint: `${failedTriggers.length + failedOutbox.length} 个失败` },
-    ],
-  };
-}
 
 export default function WorkflowMonitorPage() {
   const [activeTab, setActiveTab] = useUrlTabState(['list', 'tasks', 'analytics', 'engine', 'jobs', 'compensations'] as const, 'list');
@@ -406,6 +130,7 @@ export default function WorkflowMonitorPage() {
   const definitions = definitionsQuery.data ?? [];
   // 管理员：强制跳转
   const [jumpRecord, setJumpRecord] = useState<WorkflowInstanceListItem | null>(null);
+  const [jumpPreviewToken, setJumpPreviewToken] = useState<string>();
   const [jumpNodes, setJumpNodes] = useState<Array<{ label: string; value: string }>>([]);
   const [jumpActiveTasks, setJumpActiveTasks] = useState<WorkflowTask[]>([]);
   // useEditModal 例外：工作流运行时表单（强制跳转节点），非实体新增 / 编辑
@@ -456,7 +181,11 @@ export default function WorkflowMonitorPage() {
 
   /** Token 运营恢复操作（跳过卡死 / 从节点重放）；成功后诊断由 hook 的失效回源 */
   const runTokenOp = async (tokenId: number, op: 'skip' | 'replay') => {
-    const input = { params: { id: tokenId }, body: {} };
+    if (!diagnosticsId) return;
+    const tokenView = await api(workflowInstanceOpsContract.tokens, { params: { id: diagnosticsId } });
+    let reason = '';
+    await new Promise<void>(resolve => { Modal.confirm({ title: '确认强制干预', content: <Input placeholder="必填：干预原因" onChange={v => { reason = v; }} />, onOk: () => { if (reason.trim().length < 2) { Toast.warning('请填写原因'); throw new Error('missing reason'); } resolve(); } }); });
+    const input = { params: { id: tokenId }, body: { reason, previewToken: tokenView.previewToken! } };
     await (op === 'skip' ? skipTokenMutation.mutateAsync(input) : replayTokenMutation.mutateAsync(input));
     Toast.success(op === 'skip' ? '已跳过并推进' : '已从该节点重放');
   };
@@ -526,7 +255,7 @@ export default function WorkflowMonitorPage() {
     Modal.confirm({
       title: '迁移到最新版本', content: `将实例「${record.title}」从 v${p.fromVersion} 迁移到 v${p.toVersion}？`,
       onOk: async () => {
-        await migrateMutation.mutateAsync({ params: { id: record.id } });
+        await migrateMutation.mutateAsync({ params: { id: record.id }, body: { targetVersion: p.toVersion, previewToken: p.previewToken } });
         Toast.success('迁移成功');
       },
     });
@@ -540,11 +269,9 @@ export default function WorkflowMonitorPage() {
     setJumpRecord(record);
     setJumpNodes([]);
     setJumpActiveTasks([]);
-    const [definition, instance] = await Promise.all([
-      queryClient.fetchQuery(workflowMonitorDefinitionDetailQuery(record.definitionId)),
-      queryClient.fetchQuery(workflowMonitorInstanceDetailQuery(record.id)),
-    ]);
-    const nodes = (definition.flowData?.nodes ?? [])
+    const instance = await queryClient.fetchQuery(workflowMonitorInstanceDetailQuery(record.id));
+    setJumpPreviewToken(instance.interventionPreviewToken);
+    const nodes = (instance.definitionSnapshot?.flowData?.nodes ?? [])
       .filter((n) => n.data.type === 'approve' || n.data.type === 'handler')
       .map((n) => ({ label: n.data.label ?? n.data.key, value: n.data.key }));
     setJumpNodes(nodes);
@@ -555,7 +282,8 @@ export default function WorkflowMonitorPage() {
     if (!jumpRecord) return;
     try {
       const values = await jumpFormApi.current?.validate() as { targetNodeKey: string; comment: string };
-      await jumpMutation.mutateAsync({ params: { id: jumpRecord.id }, body: values });
+      if (!jumpPreviewToken) return;
+      await jumpMutation.mutateAsync({ params: { id: jumpRecord.id }, body: { ...values, previewToken: jumpPreviewToken } });
       Toast.success('已强制跳转');
       setJumpRecord(null);
     } catch { /* validation */ }
@@ -566,7 +294,7 @@ export default function WorkflowMonitorPage() {
     setReassignTasks([]);
     const instance = await queryClient.fetchQuery(workflowMonitorInstanceDetailQuery(record.id));
     const tasks = (instance.tasks ?? [])
-      .filter((t: WorkflowTask) => t.status === 'pending')
+      .filter((t: WorkflowTask) => t.status === 'pending' || t.status === 'waiting')
       .map((t: WorkflowTask) => ({ label: `${t.nodeName} · ${t.assigneeName ?? '未指派'}`, value: t.id }));
     setReassignTasks(tasks);
   };
@@ -1022,8 +750,8 @@ export default function WorkflowMonitorPage() {
             hidden: !canJump,
             onClick: () => void openJump(record),
           },
-          { key: 'reassign', label: '改派处理人', hidden: !canJump, onClick: () => void openReassign(record) },
-          { key: 'migrate', label: '迁移版本', hidden: !canJump, onClick: () => void handleMigrate(record) },
+          { key: 'reassign', label: '改派处理人', hidden: !hasPermission('workflow:instance:cancel') || !['running', 'suspended'].includes(record.status), onClick: () => void openReassign(record) },
+          { key: 'migrate', label: '迁移版本', hidden: !hasPermission('workflow:engine:operate') || record.status !== 'running', onClick: () => void handleMigrate(record) },
           {
             key: 'suspend',
             label: '挂起',
@@ -1059,9 +787,9 @@ export default function WorkflowMonitorPage() {
 
   return (
     <div className="page-container page-tabs-page">
-      <Tabs collapsible="auto" type="line" activeKey={activeTab} onChange={(k) => setActiveTab(k as typeof activeTab)}>
+      <Suspense fallback={<Spin />}><Tabs lazyRender keepDOM={false} collapsible="auto" type="line" activeKey={activeTab} onChange={(k) => setActiveTab(k as typeof activeTab)}>
         <TabPane tab="实例监控" itemKey="list">
-      {/* 统计卡片 */}
+      <Typography.Text type="tertiary">统计范围：当前筛选（状态除外）</Typography.Text>
       <StatGrid minItemWidth={120} style={{ marginBottom: 16 }}>
         <StatCard title="全部" value={statValue(stats.total)} accent="var(--semi-color-text-0)" onClick={() => handleStatCardClick(undefined)} active={!draftParams.status} />
         <StatCard title="审批中" value={statValue(stats.running)} accent="var(--semi-color-primary)" onClick={() => handleStatCardClick('running')} active={draftParams.status === 'running'} />
@@ -1108,7 +836,7 @@ export default function WorkflowMonitorPage() {
             />
             <FilterSelect
               placeholder="全部所有状态"
-              items={['running', 'suspended', 'returned', 'approved', 'rejected', 'withdrawn', 'cancelled'].map((s) => ({ value: s, label: INSTANCE_STATUS_MAP[s].text }))}
+              items={['draft', 'running', 'suspended', 'returned', 'approved', 'rejected', 'withdrawn', 'cancelled'].map((s) => ({ value: s, label: INSTANCE_STATUS_MAP[s].text }))}
               {...bind('status')}
               width={140}
             />
@@ -1152,21 +880,21 @@ export default function WorkflowMonitorPage() {
       />
         </TabPane>
         <TabPane tab="任务监控" itemKey="tasks">
-          <WorkflowTasksMonitorView onOpenInstance={(id) => { setDetailVisible(true); loadDetail(id); }} />
+          {activeTab === 'tasks' && <WorkflowTasksMonitorView onOpenInstance={(id) => { setDetailVisible(true); loadDetail(id); }} />}
         </TabPane>
         <TabPane tab="数据分析" itemKey="analytics">
-          <WorkflowAnalyticsView definitions={definitions} />
+          {activeTab === 'analytics' && <WorkflowAnalyticsView definitions={definitions} />}
         </TabPane>
         <TabPane tab="引擎诊断" itemKey="engine">
-          <WorkflowEngineDiagnosticsView onOpenInstanceDiagnostics={openDiagnosticsById} />
+          {activeTab === 'engine' && <WorkflowEngineDiagnosticsView onOpenInstanceDiagnostics={openDiagnosticsById} />}
         </TabPane>
         <TabPane tab="作业账本" itemKey="jobs">
-          <WorkflowJobsView initialStatus={initialJobStatus} />
+          {activeTab === 'jobs' && <WorkflowJobsView initialStatus={initialJobStatus} />}
         </TabPane>
         <TabPane tab="补偿工单" itemKey="compensations">
-          <WorkflowCompensationsView />
+          {activeTab === 'compensations' && <WorkflowCompensationsView />}
         </TabPane>
-      </Tabs>
+      </Tabs></Suspense>
 
       {/* 详情弹窗 */}
       <SideSheet

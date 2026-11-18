@@ -276,6 +276,7 @@ export const workflowInstanceSchema = z.object({
   ccReadAt: z.string().nullable().optional(),
   ccDeliveredAt: z.string().nullable().optional(),
   predictedPath: z.array(workflowPredictedPathNodeSchema).nullable().optional().meta({ description: '运行中实例的预测剩余路径（详情场景填充）' }),
+  interventionPreviewToken: z.string().optional(),
   archive: workflowInstanceArchiveSchema.nullable().optional().meta({ description: '审批单归档件（详情场景填充；未归档为 null）' }),
   ...auditFieldsSchema,
   createdAt: z.string(),

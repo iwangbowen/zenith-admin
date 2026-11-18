@@ -113,6 +113,7 @@ export type WorkflowTaskMonitorResult = z.infer<typeof workflowTaskMonitorResult
 
 /** 离职交接影响范围预览 */
 export const workflowHandoverPreviewSchema = z.object({
+  previewToken: z.string(),
   fromUserName: z.string(),
   pendingTaskCount: z.int(),
   waitingTaskCount: z.int(),
@@ -146,6 +147,7 @@ export const workflowTaskIdParam = z.object({
 });
 
 export const workflowTaskMonitorQuery = paginationQuery.extend({
+  view: queryEnum(['actionable', 'waiting', 'suspended', 'all'] as const),
   status: queryEnum(WORKFLOW_TASK_STATUSES),
   nodeType: queryEnum(WORKFLOW_TASK_MONITOR_NODE_TYPES),
   keyword: keywordQuery(),

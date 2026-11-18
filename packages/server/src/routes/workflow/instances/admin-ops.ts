@@ -1,4 +1,5 @@
 import { redactWorkflowSignatureImages } from '../../../services/workflow/instances/signature-audit';
+import { previewBatchSkipStuckTokens } from '../../../services/workflow/instances/admin-ops';
 // ─── 管理员强制操作与令牌运维 ───
 import { workflowInstanceOpsContract, workflowTaskContract } from '@zenith/shared/workflow';
 import { setAuditAfterData, setAuditBeforeData } from '../../../middleware/guard';
@@ -9,7 +10,7 @@ import { skipStuckToken, replayFromToken, batchSkipStuckTokens, getInstanceForAd
 
 export const tokenSkipRoute = defineContractRoute(workflowInstanceOpsContract.skipToken, {
   handler: async (c) => {
-    const after = await skipStuckToken(c.req.valid('param').id, c.req.valid('json').reason);
+    const after = await skipStuckToken(c.req.valid('param').id, c.req.valid('json').reason, c.req.valid('json').previewToken);
     setAuditAfterData(c, redactWorkflowSignatureImages(after));
     return c.json(okBody(after, '已跳过并推进'), 200);
   },
@@ -17,7 +18,7 @@ export const tokenSkipRoute = defineContractRoute(workflowInstanceOpsContract.sk
 
 export const tokenReplayRoute = defineContractRoute(workflowInstanceOpsContract.replayToken, {
   handler: async (c) => {
-    const after = await replayFromToken(c.req.valid('param').id, c.req.valid('json').reason);
+    const after = await replayFromToken(c.req.valid('param').id, c.req.valid('json').reason, c.req.valid('json').previewToken);
     setAuditAfterData(c, redactWorkflowSignatureImages(after));
     return c.json(okBody(after, '已从该节点重放'), 200);
   },
@@ -29,14 +30,15 @@ export const batchSkipStuckRoute = defineContractRoute(workflowInstanceOpsContra
     return c.json(okBody(res, `已推进 ${res.success}/${res.total} 个实例`), 200);
   },
 });
+export const batchSkipPreviewRoute = defineContractRoute(workflowInstanceOpsContract.batchSkipPreview, { handler: async c => c.json(okBody(await previewBatchSkipStuckTokens(c.req.valid('json'))), 200) });
 
 export const jumpInstanceRoute = defineContractRoute(workflowInstanceOpsContract.jump, {
   handler: async (c) => {
     const { id } = c.req.valid('param');
-    const { targetNodeKey, comment } = c.req.valid('json');
+    const { targetNodeKey, comment, previewToken } = c.req.valid('json');
     const before = await getInstanceForAdminAudit(id);
     if (before) setAuditBeforeData(c, before);
-    const after = await jumpInstance(id, targetNodeKey, comment);
+    const after = await jumpInstance(id, targetNodeKey, comment, previewToken);
     setAuditAfterData(c, redactWorkflowSignatureImages(after));
     return c.json(okBody(after, '已跳转'), 200);
   },

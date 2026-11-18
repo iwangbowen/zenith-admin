@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Select, Input, InputNumber, Toast, Typography, Space } from '@douyinfe/semi-ui';
+import { Button, Select, Input, InputNumber, Toast, Typography, Space } from '@douyinfe/semi-ui';
+import { workflowInstanceOpsContract } from '@zenith/shared/workflow';
+import { useApiMutation } from '@/lib/contract-query';
 import AppModal from '@/components/AppModal';
 import { useWorkflowBatchRecovery, useWorkflowDefinitionDetail, useWorkflowMonitorDefinitionOptions } from '@/hooks/queries/workflow-monitor';
 
@@ -17,6 +19,8 @@ export default function WorkflowBatchRecoveryModal({ visible, onClose }: Readonl
   const [nodeKey, setNodeKey] = useState<string | undefined>();
   const [olderThanMinutes, setOlderThanMinutes] = useState<number | undefined>();
   const [reason, setReason] = useState('');
+  const previewMutation = useApiMutation(workflowInstanceOpsContract.batchSkipPreview);
+  const [preview, setPreview] = useState<{ previewToken: string; total: number; tokenIds: number[] } | null>(null);
   const recoveryMutation = useWorkflowBatchRecovery();
   const definitionsQuery = useWorkflowMonitorDefinitionOptions(visible);
   const definitionQuery = useWorkflowDefinitionDetail(definitionId, visible && definitionId !== undefined);
@@ -50,6 +54,7 @@ export default function WorkflowBatchRecoveryModal({ visible, onClose }: Readonl
     }
     const result = await recoveryMutation.mutateAsync({
       body: {
+        previewToken: preview!.previewToken,
         definitionId,
         nodeKey,
         ...(olderThanMinutes ? { olderThanMinutes } : {}),
@@ -67,10 +72,12 @@ export default function WorkflowBatchRecoveryModal({ visible, onClose }: Readonl
       onCancel={onClose}
       onOk={() => void submit()}
       okText="确认推进"
-      okButtonProps={{ loading: recoveryMutation.isPending }}
+      okButtonProps={{ loading: recoveryMutation.isPending, disabled: !preview || reason.trim().length < 2 }}
       width={520}
     >
       <Space vertical align="start" style={{ width: '100%' }} spacing={12}>
+        <Button loading={previewMutation.isPending} disabled={!definitionId || !nodeKey || reason.trim().length < 2} onClick={async () => { setPreview(await previewMutation.mutateAsync({ body: { definitionId: definitionId!, nodeKey: nodeKey!, olderThanMinutes, reason } })); }}>预检影响范围</Button>
+        {preview && <Typography.Text>匹配 {preview.total} 个 Token：{preview.tokenIds.join('、')}</Typography.Text>}
         <Typography.Text type="tertiary" size="small">
           找出所选流程下停在指定节点的全部运行中实例，逐个跳过该节点并推进流程。用于节点配置错误 / 外部派发失败导致的集体卡死恢复，单个失败不影响其它。
         </Typography.Text>

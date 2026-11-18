@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Col, Dropdown, Empty, Form, JsonViewer, List, Modal, Popover, Row, Select, Skeleton, Space, Tabs, TabPane, Tag, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
+import { Button, Col, Dropdown, Empty, Form, Input, JsonViewer, List, Modal, Popover, Row, Select, Skeleton, Space, Tabs, TabPane, Tag, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Activity, AlertTriangle, ArrowDownRight, ArrowUpRight, CheckCircle2, DatabaseZap, Download, GaugeCircle, GitBranch, Layers, LifeBuoy, Minus, RefreshCw, Stethoscope, Timer, TimerReset, TrendingUp, Wrench, Workflow, Zap } from 'lucide-react';
 import { WORKFLOW_ENGINE_ACTION_KEY_OPTIONS, WORKFLOW_ENGINE_COMPONENT_STATUS_LABELS, WORKFLOW_ENGINE_QUEUE_KEY_LABELS, WORKFLOW_JOB_TYPE_LABELS, WORKFLOW_NODE_TYPE_LABELS, type WorkflowEngineActionKey, type WorkflowEngineActionPreview, type WorkflowEngineActionSampleJob, type WorkflowEngineComponent, type WorkflowEngineComponentStatus, type WorkflowEngineDefinitionValidationItem, type WorkflowEngineHistogramBucket, type WorkflowEngineIntrospection, type WorkflowEngineOutboxEvent, type WorkflowEngineQueueKey, type WorkflowEngineQueueSnapshot, type WorkflowEngineRuntimeIssue, type WorkflowEngineRuntimeTask, type WorkflowEngineTriggerExecution } from '@zenith/shared/workflow';
@@ -512,6 +512,7 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
   const lastUpdated = diagnosticsQuery.data?.fetchedAt ?? null;
   const loading = diagnosticsQuery.isFetching;
   const [actionLoading, setActionLoading] = useState<WorkflowEngineActionKey | null>(null);
+  const [actionReason, setActionReason] = useState('');
   const actionPreviewMutation = useWorkflowEngineActionPreview();
   const actionMutation = useWorkflowEngineAction();
 
@@ -544,10 +545,10 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
   }, [actionPreviewMutation]);
 
   const confirmAction = useCallback(async () => {
-    if (!actionModal) return;
+    if (!actionModal || !actionPreview || actionReason.trim().length < 2) return;
     setActionLoading(actionModal.key);
     try {
-      const result = await actionMutation.mutateAsync({ params: { action: actionModal.key }, body: actionFilter });
+      const result = await actionMutation.mutateAsync({ params: { action: actionModal.key }, body: { ...actionFilter, previewToken: actionPreview.previewToken, reason: actionReason } });
       if (result.ok) {
         Toast.success({ content: result.message, duration: 4 });
       } else {
@@ -560,7 +561,7 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
     } finally {
       setActionLoading(null);
     }
-  }, [actionModal, actionFilter, actionMutation, diagnosticsQuery]);
+  }, [actionModal, actionFilter, actionMutation, diagnosticsQuery, actionPreview, actionReason]);
 
   const exportReport = useCallback(() => {
     if (!data) return;
@@ -881,7 +882,7 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
           okText="提交补投"
           cancelText="取消"
           onOk={() => void confirmAction()}
-          okButtonProps={{ loading: actionLoading === actionModal.key, type: 'warning' }}
+          okButtonProps={{ loading: actionLoading === actionModal.key, type: 'warning', disabled: !actionPreview || actionReason.trim().length < 2 }}
           width={760}
         >
           <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 12 }}>
@@ -889,6 +890,7 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
               <> 作业类型：{actionPreview.jobTypes.map((jt) => workflowJobTypeLabel(jt)).join(' / ')}。</>
             )}
           </Typography.Text>
+          <Input placeholder="必填：恢复原因" value={actionReason} onChange={setActionReason} style={{ marginBottom: 12 }} />
           <Form
             key={actionFormKey}
             labelPosition="left"
@@ -964,7 +966,7 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
               <GoldenTile
                 icon={<TrendingUp size={15} color="var(--semi-color-primary)" />}
                 label="吞吐 · Traffic"
-                value={t.events.last24h.total}
+                value={t.events.uniqueEvents24h}
                 delta={<DeltaChip current={t.events.last24h.total} prev={t.events.prev24h.total} palette={palette} />}
                 sub={`近 1h ${t.events.last1h.total} · 实例发起 ${t.instances.createdLast24h}`}
               />
@@ -994,10 +996,20 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
         </div>
       </div>
 
+      <div className="zx-panel">
+        <SectionTitle
+          icon={<AlertTriangle size={16} color={data.issues.length > 0 ? 'var(--semi-color-warning)' : 'var(--semi-color-success)'} />}
+          title="活动问题"
+          desc={data.issues.length > 0 ? `严重 ${criticalCount} · 警告 ${warningCount}` : '运行时巡检'}
+          extra={<Tag color={criticalCount > 0 ? 'red' : warningCount > 0 ? 'orange' : 'green'}>{data.issues.length}</Tag>}
+        />
+        <IssuesPanel issues={data.issues} components={data.components} onOpenInstanceDiagnostics={onOpenInstanceDiagnostics} />
+      </div>
+      <Typography.Paragraph type="tertiary">{data.scope === 'platform' ? '平台范围' : '业务授权范围'} · {data.ruleVersion} · 唯一事件 {t.events.uniqueEvents24h} / 投递 {t.events.deliveries24h} / 尝试 {t.events.attempts24h} · 问题 {data.completeness.issuesTotal}，展示 {data.completeness.issuesReturned}{data.completeness.truncated ? '（明细采样，摘要完整）' : ''}</Typography.Paragraph>
       {/* 趋势：事件吞吐 + 实例生命周期 */}
       <div className="chart-grid">
         <div className="zx-panel">
-          <SectionTitle icon={<Zap size={16} color="var(--semi-color-primary)" />} title="事件吞吐趋势" desc="近 24h 成功 / 失败（按小时）" />
+          <SectionTitle icon={<Zap size={16} color="var(--semi-color-primary)" />} title="消费者投递趋势" desc="近 24h 投递成功 / 失败（按小时）" />
           <AreaChart {...eventTrendSpec} options={chartOptions} height={150} />
         </div>
         <div className="zx-panel">
@@ -1031,15 +1043,7 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
       </div>
 
       {/* 活动问题 */}
-      <div className="zx-panel">
-        <SectionTitle
-          icon={<AlertTriangle size={16} color={data.issues.length > 0 ? 'var(--semi-color-warning)' : 'var(--semi-color-success)'} />}
-          title="活动问题"
-          desc={data.issues.length > 0 ? `严重 ${criticalCount} · 警告 ${warningCount}` : '运行时巡检'}
-          extra={<Tag color={criticalCount > 0 ? 'red' : warningCount > 0 ? 'orange' : 'green'}>{data.issues.length}</Tag>}
-        />
-        <IssuesPanel issues={data.issues} components={data.components} onOpenInstanceDiagnostics={onOpenInstanceDiagnostics} />
-      </div>
+
 
       {/* 队列饱和度 */}
       <div className="zx-panel">
