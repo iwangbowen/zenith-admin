@@ -127,6 +127,7 @@ function TaskDetailContent() {
   const taskId = requestedTaskId ?? (myPendingTasks.length === 1 ? myPendingTasks[0].id : null);
 
   const [action, setAction] = useState<ActionKind>(null);
+  const [section, setSection] = useState('content');
   const [signature, setSignature] = useState<SignatureInput | null>(null);
   const [commentDraft, setCommentDraft] = useState('');
   const [replyTo, setReplyTo] = useState<{ id: number; userName?: string | null; content: string } | null>(null);
@@ -493,7 +494,7 @@ function TaskDetailContent() {
         <div className="ap-body">
           {detailQuery.isError ? (
             <div className="ap-error" role="alert">
-              <Typography.Text type="danger">详情加载失败，请检查网络后重试。</Typography.Text>
+              <Typography.Text type="danger">{detailQuery.error?.message || '详情加载失败，请重试。'}</Typography.Text>
               <Button size="small" onClick={() => void detailQuery.refetch()}>重试</Button>
             </div>
           ) : <Empty description="流程不存在或无权查看" style={{ paddingTop: 60 }} />}
@@ -531,10 +532,11 @@ function TaskDetailContent() {
         </>
       )}
     >
+      <nav className="ap-detail-nav" aria-label="详情分区">{[{ key: 'content', label: '申请内容' }, { key: 'progress', label: '审批进度' }, { key: 'comments', label: '沟通' }].map(item => <Button key={item.key} theme={section === item.key ? 'light' : 'borderless'} onClick={() => { setSection(item.key); document.getElementById(`approval-${item.key}`)?.scrollIntoView({ block: 'start' }); }}>{item.label}</Button>)}</nav>
       <div className={`ap-body${hasFooter ? ' ap-body--with-footer' : ''}`}>
         <div className="ap-section">{detail.status !== 'draft' && me?.permissions?.some(p => p === '*' || p === 'workflow:instance:list') && <Button onClick={() => { setCollaborationAction('forward'); setCollaborationUsers([]); }}>抄送他人</Button>}{actionable && <Button onClick={() => { setCollaborationAction('consult'); setCollaborationUsers([]); }}>邀请协办</Button>}{recallableTask && detail.status === 'running' && <Popconfirm title="撤回我的处理？后续已处理时将无法撤回。" onConfirm={() => void collaboration.mutateAsync({ action: 'recall', taskId: recallableTask.id })}><Button>撤回我的处理</Button></Popconfirm>}</div>
         {requestedTaskId == null && myPendingTasks.length > 1 && <div className="ap-section"><Typography.Text>请选择本次处理的任务</Typography.Text>{myPendingTasks.map(t => <Button key={t.id} block onClick={() => navigate(`/detail/${instanceId}/${t.id}`, { replace: true })}>{t.nodeName}{t.signPosition ? ' · 加签意见' : ''}</Button>)}</div>}
-        {requestedTaskId != null && !actionable && <Banner type="info" closeIcon={null} description="此任务已处理或不再由你处理。可返回待办列表查看当前任务。" />}
+        {requestedTaskId != null && !actionable && <Banner type="info" closeIcon={null} description={<>此任务已处理或不再由你处理。{myPendingTasks.map(t => <Button key={t.id} onClick={() => navigate(`/detail/${instanceId}/${t.id}`, { replace: true })}>处理「{t.nodeName}」</Button>)}<Button theme="borderless" onClick={() => navigate('/')}>返回待办列表</Button></>} />}
         {detail.status === 'suspended' && (
           <Banner type="warning" closeIcon={null} description={`流程已挂起${detail.suspendReason ? `：${detail.suspendReason}` : ''}，恢复前不可审批`} style={{ marginBottom: 12 }} />
         )}
@@ -566,7 +568,7 @@ function TaskDetailContent() {
           </div>
           {detail.status === 'running' && pendingTasks.length > 0 && (
             <div className="ap-progress-hint">
-              当前节点「{pendingTasks[0].nodeName}」，等待
+              当前节点「{[...new Set(pendingTasks.map(t => t.nodeName))].join('、')}」，等待
               {' '}{[...new Set(pendingTasks.map((t) => t.assigneeName ?? `用户#${t.assigneeId}`))].slice(0, 3).join('、')}
               {pendingTasks.length > 3 ? ` 等 ${pendingTasks.length} 人` : ''} 处理
             </div>
@@ -574,13 +576,13 @@ function TaskDetailContent() {
         </div>
 
         {/* 审批表单 */}
-        <div className="ap-section">
+        <div className="ap-section" id="approval-content">
           <div className="ap-section__title">审批表单{formEditable && <Tag size="small" color="blue" style={{ marginLeft: 6 }}>可编辑</Tag>}</div>
           {renderForm()}
         </div>
 
         {/* 流转记录 */}
-        <div className="ap-section">
+        <div className="ap-section" id="approval-progress">
           <div className="ap-section__title">流转记录</div>
           <ApprovalTimeline
             approvalActivations={detail.approvalActivations}
@@ -598,7 +600,7 @@ function TaskDetailContent() {
         </div>
 
         {/* 沟通评论 */}
-        <div className="ap-section">
+        <div className="ap-section" id="approval-comments">
           <div className="ap-section__title">沟通评论{comments.length > 0 ? `（${comments.length}）` : ''}</div>
           {comments.length === 0 && (
             <Typography.Text type="tertiary" size="small">暂无评论</Typography.Text>

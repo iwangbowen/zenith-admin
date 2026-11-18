@@ -179,7 +179,6 @@ function TaskListContent() {
   const [size, setSize] = useState(10);
   const [keywordDraft, setKeywordDraft] = useState(() => searchParams.get('keyword') ?? '');
   const [keyword, setKeyword] = useState(() => searchParams.get('keyword') ?? '');
-  const tabAllowed = tab === 'pending' || tab === 'handled' ? canHandle : canList;
   const countsQuery = useApprovalCounts();
   const markCcRead = useMarkCcRead();
   const quickAction = useTaskAction();
@@ -196,6 +195,7 @@ function TaskListContent() {
   const [ccReadingAll, setCcReadingAll] = useState(false);
   const [filters, setFilters] = useState<ApprovalFilters>(() => ({ definitionId: Number(searchParams.get('definitionId')) || null, priority: searchParams.get('priority') as ApprovalFilters['priority'], overdue: searchParams.get('overdue') === 'true' }));
   const [instanceStatus, setInstanceStatus] = useState<ApplicationStatus | undefined>(() => (searchParams.get('status') || undefined) as ApplicationStatus | undefined);
+  const tabAllowed = tab === 'pending' || tab === 'handled' ? canHandle : canList || (tab === 'mine' && instanceStatus === 'draft' && canCreate);
   useEffect(() => { if (!canHandle && !canList && canCreate && instanceStatus !== 'draft') navigate('/launch', { replace: true }); }, [canHandle, canList, canCreate, instanceStatus, navigate]);
   const listQuery = useApprovalList(tab, size, keyword, tabAllowed || (tab === 'mine' && instanceStatus === 'draft' && canCreate), { ...filters, status: instanceStatus });
   const definitionsQuery = useApprovalDefinitionOptions(canHandle, canCreate);
@@ -205,6 +205,7 @@ function TaskListContent() {
   const [delegationTarget, setDelegationTarget] = useState<number | undefined>();
   const [delegationMode, setDelegationMode] = useState<'full' | 'suggest'>('full');
   const [online, setOnline] = useState(() => navigator.onLine);
+  const [unreadRetry, setUnreadRetry] = useState<number[]>([]);
   const notificationsQuery = useApprovalNotifications(notificationsVisible);
   const notificationUnreadQuery = useApprovalNotificationUnreadCount();
   const markNotificationRead = useMarkApprovalNotificationRead();
@@ -386,20 +387,18 @@ function TaskListContent() {
   };
 
   const openNotification = async (item: InAppMessage) => {
+    setNotificationsVisible(false);
+    const target = mobileApprovalLink(item.link);
+    if (target) navigate(target);
+    else Toast.info(item.link ? '请在管理后台打开该通知' : item.title);
     if (!item.isRead) {
       try { await markNotificationRead.mutateAsync(item.id); }
       catch (error) {
         if (error instanceof ApiError && error.code === 401) return;
-        Toast.warning('未能标记消息已读，可稍后重试');
+        setUnreadRetry(ids => [...new Set([...ids, item.id])]);
+        Toast.warning('未能标记消息已读，可在通知列表重试');
       }
     }
-    setNotificationsVisible(false);
-    const target = mobileApprovalLink(item.link);
-    if (target) {
-      navigate(target);
-      return;
-    }
-    Toast.info(item.link ? '请在管理后台打开该通知' : item.title);
   };
 
   const saveDelegation = async () => {
@@ -440,6 +439,7 @@ function TaskListContent() {
         <Button theme="borderless" icon={<LogOut size={16} />} onClick={() => void logout()} aria-label="退出" />
       </div>
       {!online && <Banner className="ap-offline-banner" type="warning" closeIcon={null} description="当前处于离线状态，网络恢复后可重试未完成操作。" />}
+      {unreadRetry.length > 0 && <Banner type="warning" closeIcon={null} description={<>有 {unreadRetry.length} 条通知未能标记已读。<Button loading={markNotificationRead.isPending} onClick={() => { void Promise.allSettled(unreadRetry.map(id => markNotificationRead.mutateAsync(id).then(() => setUnreadRetry(ids => ids.filter(value => value !== id))))); }}>重试已读</Button></>} />}
       <div className="ap-workbench" aria-label="审批工作台概览">
         <button type="button" className="ap-workbench__item" onClick={() => switchTab('pending')}>
           <span>待办</span><strong>{countsQuery.data?.pending ?? '—'}</strong>
@@ -471,6 +471,7 @@ function TaskListContent() {
           <Button theme="borderless" icon={<CheckCheck size={15} />} loading={ccReadingAll} onClick={() => void markAllCcRead()}>全部已读</Button>
         )}
       </div>
+      {(filtersActive || keyword || instanceStatus) && <div className="ap-filter-summary" aria-label="已选筛选条件"><Typography.Text size="small">共 {total} 条</Typography.Text>{keyword && <Tag closable onClose={() => { setKeyword(''); setKeywordDraft(''); }}>搜索：{keyword}</Tag>}{filters.definitionId && <Tag closable onClose={() => setFilters(p => ({ ...p, definitionId: null }))}>{definitionOptions.find(d => d.value === filters.definitionId)?.label ?? '指定流程'}</Tag>}{filters.priority && <Tag closable onClose={() => setFilters(p => ({ ...p, priority: null }))}>优先级：{filters.priority === 'urgent' ? '紧急' : filters.priority === 'high' ? '高' : filters.priority === 'low' ? '低' : '普通'}</Tag>}{filters.overdue && <Tag closable onClose={() => setFilters(p => ({ ...p, overdue: false }))}>已逾期</Tag>}<Button size="small" theme="borderless" onClick={() => { setFilters(EMPTY_FILTERS); setKeyword(''); setKeywordDraft(''); setInstanceStatus(undefined); Toast.info('筛选已清除'); }}>清除筛选</Button></div>}
       <div className="ap-body" ref={scrollRef}>
         {(pull > 0 || refreshing) && (
           <div className="ap-pull-indicator" style={{ height: pull }}>
