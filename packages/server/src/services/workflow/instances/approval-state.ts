@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { evaluateWorkflowApprovalActivation, workflowNodeActivationSchema, workflowApprovalSlotSchema, workflowSignGroupSchema, type WorkflowNodeActivation, type WorkflowEventActor, type WorkflowFlowData } from '@zenith/shared/workflow';
 import { workflowNodeActivations, workflowApprovalSlots, workflowSignGroups, workflowTasks, workflowInstances } from '../../../db/schema';
@@ -83,6 +83,7 @@ export async function reconcileApprovalActivation(
     if (desired === task.status && reason === task.waitReason) continue;
     await cancelJobs({ taskId: task.id, jobTypes: ['task_timeout'] }, executor);
     const [changed] = await executor.update(workflowTasks).set({ status: desired, waitReason: desired === 'waiting' ? reason : null,
+      ...(desired === 'waiting' && task.slaDeadline ? { slaPausedRemainingMs: sql`extract(epoch from (${workflowTasks.slaDeadline} - clock_timestamp())) * 1000`, slaDeadline: null } : {}),
       ...(desired === 'pending' && task.status !== 'pending' ? { activatedAt: new Date() } : {}),
       ...(desired === 'skipped' ? { actionAt: new Date(), comment: '[审批汇总] 本席位已取消' } : {}),
     }).where(eq(workflowTasks.id, task.id)).returning();

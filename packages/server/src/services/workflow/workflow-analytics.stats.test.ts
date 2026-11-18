@@ -15,7 +15,7 @@ beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
   state.user = { userId: 1, roles: ['super_admin'], tenantId: null };
-  readSnapshot.mockImplementation((fn: (tx: { select: typeof select }) => Promise<unknown>) => fn({ select }));
+  readSnapshot.mockImplementation((fn: (tx: { select: typeof select; execute: () => Promise<unknown[]> }) => Promise<unknown>) => fn({ select, execute: async () => [] }));
   vi.stubEnv('TZ', 'UTC');
   vi.stubEnv('APP_TIME_ZONE', 'Asia/Shanghai');
   vi.useFakeTimers({ toFake: ['Date'] });
@@ -85,9 +85,9 @@ describe('workflow analytics business-day trend', () => {
     const { getWorkflowAnalytics } = await import('./workflow-analytics.service');
     const result = await getWorkflowAnalytics({ definitionId: 42 });
     expect(readSnapshot).toHaveBeenCalledTimes(1);
-    expect(tables).toHaveLength(14);
+    expect(tables).toHaveLength(18);
     expect(tables.filter(table => table === 'workflow_jobs')).toHaveLength(2);
-    expect(renderedConditions).toHaveLength(14);
+    expect(renderedConditions).toHaveLength(18);
     for (const condition of renderedConditions) {
       expect(condition.sql).toContain('tenant_id');
       expect(condition.sql).toContain('definition_id');
@@ -109,8 +109,8 @@ describe('workflow analytics business-day trend', () => {
     expect(windows.get(3)).toBe('2026-09-23T16:30:00.000Z');
     expect(result.recentCreated).toBe(1);
     expect(result.trend).toHaveLength(14);
-    expect(result.trend[0]).toEqual({ date: '2026-09-18', created: 1, completed: 0, pending: 1 });
-    expect(result.trend.at(-1)).toEqual({ date: '2026-10-01', created: 1, completed: 1, pending: 1 });
+    expect(result.trend[0]).toEqual({ date: '2026-09-18', created: 1, completed: 0, pending: null });
+    expect(result.trend.at(-1)).toEqual({ date: '2026-10-01', created: 1, completed: 1, pending: null });
     expect(result.trend.reduce((total, day) => total + day.created, 0)).toBe(2);
     expect(result.trend.reduce((total, day) => total + day.completed, 0)).toBe(1);
   });
@@ -124,8 +124,8 @@ describe('workflow analytics business-day trend', () => {
     expect(windows.get(7)).toBe('2026-10-20T04:00:00.000Z');
     expect(windows.get(8)).toBe('2026-10-20T04:00:00.000Z');
     expect(result.trend).toHaveLength(14);
-    expect(result.trend[0]).toEqual({ date: '2026-10-20', created: 1, completed: 0, pending: 1 });
-    expect(result.trend.at(-1)).toEqual({ date: '2026-11-02', created: 1, completed: 1, pending: 1 });
+    expect(result.trend[0]).toEqual({ date: '2026-10-20', created: 1, completed: 0, pending: null });
+    expect(result.trend.at(-1)).toEqual({ date: '2026-11-02', created: 1, completed: 1, pending: null });
   });
 
   it('keeps the rolling seven-day KPI at exactly 168 hours in a process that crosses daylight saving', async () => {

@@ -458,7 +458,7 @@ export async function getWorkflowEngineIntrospection(
       triggerAttempt: sql<number>`coalesce(${triggerJob.attempts}, 0)`.mapWith(Number),
       triggerNextRetryAt: triggerJob.runAt,
       triggerLastError: triggerJob.lastError,
-      timeoutAt: timeoutJob.runAt,
+      timeoutAt: workflowTasks.slaDeadline,
       wakeAt: delayJob.runAt,
       createdAt: workflowTasks.createdAt,
     })

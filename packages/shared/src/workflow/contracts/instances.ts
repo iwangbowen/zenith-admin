@@ -445,12 +445,18 @@ export const workflowAnalyticsTrendPointSchema = z.object({
   date: z.string(),
   created: z.int(),
   completed: z.int(),
-  pending: z.int().optional().meta({ description: '当日积压（运行中实例估算）' }),
+  pending: z.int().nullable().meta({ description: '真实状态区间的当日运行积压；无历史覆盖时为null' }),
 }).meta({ id: 'WorkflowAnalyticsTrendPoint' });
 
 export type WorkflowAnalyticsTrendPoint = z.infer<typeof workflowAnalyticsTrendPointSchema>;
 
 export const workflowAnalyticsSchema = z.object({
+  asOf: z.string(),
+  metricVersion: z.literal('workflow-metrics-v2'),
+  window: z.object({ start: z.string(), end: z.string(), timezone: z.string(), days: z.int(), timeAxis: z.enum(['created', 'submitted', 'completed']) }),
+  duration: z.object({ samples: z.int(), medianSec: z.number().nullable(), p90Sec: z.number().nullable(), unsupportedInstances: z.int() }),
+  waitingTaskCount: z.int(),
+  suspendedTaskCount: z.int(),
   statusCounts: z.array(workflowAnalyticsStatusCountSchema),
   total: z.int(),
   avgDurationSec: z.number().nullable().meta({ description: '全部已完结实例平均耗时（秒）' }),
@@ -550,6 +556,8 @@ export const workflowRelationOptionsQuery = z.object({
 });
 
 export const workflowAnalyticsQuery = z.object({
+  days: z.coerce.number().int().min(1).max(90).optional(),
+  timeAxis: queryEnum(['created', 'submitted', 'completed'] as const),
   definitionId: idQuery(),
 });
 

@@ -18,6 +18,7 @@ export async function settleInstanceInTx(
     outcome: 'approved' | 'rejected';
     actorId: number;
     comment?: string | null;
+    outcomeReason?: string;
   },
 ): Promise<{ row: InstanceRow; fillBridge: FillBridgeResult; skippedTasks: TaskRow[] }> {
   // 每条拒绝终止路径都必须清场，不让调用方分别选择任务 / token 清理而遗漏并行分支。
@@ -31,7 +32,7 @@ export async function settleInstanceInTx(
   // 终态清场：取消仍在途的推进类作业（延时唤醒/超时/触发器/外部派发/子流程），避免作业苏醒后推进已终结实例
   await cancelJobs({ instanceId, jobTypes: WORKFLOW_ADVANCING_JOB_TYPES }, tx);
   const [row] = await tx.update(workflowInstances)
-    .set({ status: opts.outcome, currentNodeKey: null })
+    .set({ status: opts.outcome, currentNodeKey: null, outcomeReason: opts.outcomeReason ?? (opts.outcome === 'approved' ? 'business_approved' : 'business_rejected') })
     .where(eq(workflowInstances.id, instanceId))
     .returning();
   const fillBridge = await bridgeReportFillWorkflowOutcome(tx, {

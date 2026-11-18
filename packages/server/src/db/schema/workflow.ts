@@ -434,6 +434,10 @@ export const workflowInstances = pgTable('workflow_instances', {
   bizId: varchar({ length: 64 }),
   /** 挂起时间（status=suspended 时有值，恢复后清空） */
   suspendedAt: timestamptz(),
+  submittedAt: timestamptz(),
+  completedAt: timestamptz(),
+  outcomeReason: varchar({ length: 64 }),
+  cycle: integer().notNull().default(0),
   /** 挂起原因（管理员填写） */
   suspendReason: varchar({ length: 500 }),
   // ─── 审批单归档件：终态时按流程设置自动生成的 PDF（不可变存证），文件删除时解绑 ───
@@ -481,6 +485,11 @@ export const workflowTasks = pgTable('workflow_tasks', {
   attachments: jsonb().$type<WorkflowAttachment[]>(),
   actionAt: timestamptz(),
   activatedAt: timestamptz(),
+  slaDeadline: timestamptz(),
+  slaPausedRemainingMs: bigint({ mode: 'number' }),
+  slaVersion: integer().notNull().default(0),
+  breachedAt: timestamptz(),
+  pausedDurationMs: bigint({ mode: 'number' }).notNull().default(0),
   /** 当次处理事实：退回目标和动作不可由节点当前配置或意见文本推断。 */
   decision: jsonb().$type<WorkflowTaskDecision>(),
   slotId: integer().references((): AnyPgColumn => workflowApprovalSlots.id, { onDelete: 'cascade' }),
@@ -806,6 +815,29 @@ export const workflowJobExecutions = pgTable('workflow_job_executions', {
 export type WorkflowJobExecutionRow = typeof workflowJobExecutions.$inferSelect;
 
 export type NewWorkflowJobExecution = typeof workflowJobExecutions.$inferInsert;
+
+/** Durable lifecycle facts retained independently of the event outbox. */
+export const workflowInstanceCycles = pgTable('workflow_instance_cycles', {
+  id: idColumn(),
+  instanceId: integer().notNull().references(() => workflowInstances.id, { onDelete: 'cascade' }),
+  cycle: integer().notNull(),
+  submittedAt: timestamptz().notNull(),
+  completedAt: timestamptz(),
+  outcome: varchar({ length: 32 }),
+  outcomeReason: varchar({ length: 64 }),
+  tenantId: tenantIdColumn(),
+}, (t) => [unique('workflow_instance_cycles_unique').on(t.instanceId, t.cycle), index('workflow_instance_cycles_submitted_idx').on(t.submittedAt)]);
+
+export const workflowInstanceTransitions = pgTable('workflow_instance_transitions', {
+  id: idColumn(),
+  instanceId: integer().notNull().references(() => workflowInstances.id, { onDelete: 'cascade' }),
+  cycle: integer().notNull(),
+  fromStatus: workflowInstanceStatusEnum(),
+  toStatus: workflowInstanceStatusEnum().notNull(),
+  occurredAt: timestamptz().notNull().defaultNow(),
+  actorId: integer().references(() => users.id, { onDelete: 'set null' }),
+  tenantId: tenantIdColumn(),
+}, (t) => [index('workflow_instance_transitions_time_idx').on(t.instanceId, t.occurredAt)]);
 
 // ─── 流程评论 / 沟通时间线 ────────────────────────────────────────────────────
 // 审批人 / 抄送人 / 发起人均可在实例下自由留言（不影响审批流转），支持 @ 提及

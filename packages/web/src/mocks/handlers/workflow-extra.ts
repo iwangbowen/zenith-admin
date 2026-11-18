@@ -363,6 +363,10 @@ function buildAnalytics(definitionId?: number): WorkflowAnalytics {
   return {
     statusCounts,
     total: insts.length,
+    asOf: mockDateTime(), metricVersion: 'workflow-metrics-v2',
+    window: { start: mockDateTime(), end: mockDateTime(), timezone: 'Asia/Shanghai', days: 14, timeAxis: 'submitted' },
+    duration: { samples: 0, medianSec: null, p90Sec: null, unsupportedInstances: 0 },
+    waitingTaskCount: 0, suspendedTaskCount: 0,
     avgDurationSec: 3600 * 8,
     pendingTaskCount: pending.length,
     overdueTaskCount: overdueN,

@@ -129,20 +129,16 @@ export async function listMyInstances(query: QueryOutputOf<typeof workflowInstan
   });
 }
 
-type SlaTimeoutInput = { enabled?: boolean; duration?: number; unit?: 'minutes' | 'hours' | 'days' } | null | undefined;
-
-/** 根据节点超时配置与任务创建时间，计算待办 SLA：剩余/超时秒数与紧急度。 */
-function computeTaskSla(timeout: SlaTimeoutInput, createdAt: Date): { slaLevel: 'none' | 'safe' | 'warning' | 'overdue'; slaDeadline: string | null; slaOverdueSec: number | null } {
-  if (!timeout?.enabled || !timeout.duration || timeout.duration <= 0) {
+/** Frozen SLA deadline, shared by reminders, analytics and the mobile inbox. */
+function computeTaskSla(deadline: Date | null): { slaLevel: 'none' | 'safe' | 'warning' | 'overdue'; slaDeadline: string | null; slaOverdueSec: number | null } {
+  if (!deadline) {
     return { slaLevel: 'none', slaDeadline: null, slaOverdueSec: null };
   }
-  const unitMin = timeout.unit === 'minutes' ? 1 : timeout.unit === 'days' ? 1440 : 60;
-  const totalSec = timeout.duration * unitMin * 60;
-  const deadlineMs = createdAt.getTime() + totalSec * 1000;
+  const deadlineMs = deadline.getTime();
   const overdueSec = Math.round((Date.now() - deadlineMs) / 1000);
   let slaLevel: 'safe' | 'warning' | 'overdue';
   if (overdueSec >= 0) slaLevel = 'overdue';
-  else if (-overdueSec <= Math.max(3600, totalSec * 0.2)) slaLevel = 'warning';
+  else if (-overdueSec <= 3600) slaLevel = 'warning';
   else slaLevel = 'safe';
   return { slaLevel, slaDeadline: formatDateTime(new Date(deadlineMs)), slaOverdueSec: overdueSec };
 }
@@ -191,7 +187,7 @@ export async function listPendingMine(query: QueryOutputOf<typeof workflowInstan
     keyword ? titleOrDefinitionNameLike(keyword) : undefined,
     definitionId !== undefined ? eq(workflowInstances.definitionId, definitionId) : undefined,
     priority ? eq(workflowInstances.priority, priority) : undefined,
-    overdue ? sql`EXISTS (SELECT 1 FROM jsonb_array_elements(${workflowInstances.definitionSnapshot}->'flowData'->'nodes') n WHERE n->'data'->>'key' = ${workflowTasks.nodeKey} AND n->'data'->'timeout'->>'enabled' = 'true' AND (COALESCE(${workflowTasks.activatedAt}, ${workflowTasks.createdAt}) + make_interval(secs => ((n->'data'->'timeout'->>'duration')::numeric * CASE n->'data'->'timeout'->>'unit' WHEN 'minutes' THEN 60 WHEN 'days' THEN 86400 ELSE 3600 END)::double precision)) < now())` : undefined,
+    overdue ? sql`${workflowTasks.slaDeadline} <= now()` : undefined,
   );
   const [[{ total }], rows] = await Promise.all([
     db
@@ -220,7 +216,7 @@ export async function listPendingMine(query: QueryOutputOf<typeof workflowInstan
       const pendingSignaturePolicy = node?.signaturePolicy ?? 'none';
       // 紧邻下一节点为「审批人自选」的任务无法批量审批（需逐个指定下一节点审批人），列表提前标注
       const requiresIndividual = !!r.inst.definitionSnapshot?.customForm?.actionComponent || pendingSignaturePolicy === 'handwritten' || node?.actionButtons?.approve?.uploadMode === 'required' || (flow ? findNextApproverSelectNodes(flow, r.task.nodeKey).length > 0 : false);
-      const sla = computeTaskSla(node?.timeout, r.task.activatedAt ?? r.task.createdAt);
+      const sla = computeTaskSla(r.task.slaDeadline);
       const summary = resolveInstanceSummary(r.inst, flow);
       const pendingDelegatedFromName = r.task.delegatedFromId ? (delegatorNames.get(r.task.delegatedFromId) ?? `#${r.task.delegatedFromId}`) : null;
       const requirements = workflowApprovalRequirements(node, requiresIndividual);
@@ -313,18 +309,8 @@ async function countMyPendingConsults(user: ReturnType<typeof currentUser>): Pro
  * 取我的待办任务 + 所属实例快照后按 computeTaskSla 逐条求值（个人待办规模小）。
  */
 async function countMyOverduePending(user: ReturnType<typeof currentUser>): Promise<number> {
-  const rows = await db
-    .select({ nodeKey: workflowTasks.nodeKey, createdAt: workflowTasks.createdAt, snapshot: workflowInstances.definitionSnapshot })
-    .from(workflowTasks)
-    .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
-    .where(pendingMineWhere(user));
-  let overdue = 0;
-  for (const row of rows) {
-    const flow = row.snapshot?.flowData ?? undefined;
-    const node = flow?.nodes.find((n) => n.data.key === row.nodeKey)?.data;
-    if (computeTaskSla(node?.timeout, row.createdAt).slaLevel === 'overdue') overdue += 1;
-  }
-  return overdue;
+  const [row] = await db.select({ count: count() }).from(workflowTasks).innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id)).where(buildWhere(pendingMineWhere(user), sql`${workflowTasks.slaDeadline} <= now()`));
+  return row.count;
 }
 
 /**
@@ -449,10 +435,11 @@ export async function listAllInstances(query: QueryOutputOf<typeof workflowInsta
     keywordCondition(initiatorKeyword, [users.nickname], 'ilike'),
     priority ? eq(workflowInstances.priority, priority) : undefined,
   );
-  const statWhere = buildWhere(tc, scopeCond);
+  const statWhere = buildWhere(tc, scopeCond, keywordCondition(keyword, [workflowInstances.title, workflowDefinitions.name], 'ilike'), categoryId !== undefined ? eq(workflowDefinitions.categoryId, categoryId) : undefined, definitionId !== undefined ? eq(workflowInstances.definitionId, definitionId) : undefined, keywordCondition(initiatorKeyword, [users.nickname], 'ilike'), priority ? eq(workflowInstances.priority, priority) : undefined);
   const [statRows, [{ total }], rows] = await Promise.all([
     db.select({ status: workflowInstances.status, cnt: count() })
       .from(workflowInstances)
+      .leftJoin(workflowDefinitions, eq(workflowInstances.definitionId, workflowDefinitions.id))
       .leftJoin(users, eq(workflowInstances.initiatorId, users.id))
       .where(statWhere)
       .groupBy(workflowInstances.status),
@@ -481,7 +468,7 @@ export async function listAllInstances(query: QueryOutputOf<typeof workflowInsta
       page, pageSize,
     ),
   ]);
-  const stats: Record<string, number> = { total: 0, running: 0, suspended: 0, returned: 0, approved: 0, rejected: 0, withdrawn: 0, cancelled: 0 };
+  const stats: Record<string, number> = { total: 0, draft: 0, running: 0, suspended: 0, returned: 0, approved: 0, rejected: 0, withdrawn: 0, cancelled: 0 };
   for (const r of statRows) {
     stats[r.status] = r.cnt;
     stats.total += r.cnt;

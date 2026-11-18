@@ -2,7 +2,7 @@ import { requireMonitorWorkflowInstance, workflowMonitorScope } from '../workflo
 import { workflowNodeActivations, workflowApprovalSlots } from '../../../db/schema';
 import { loadApprovalActivation } from './approval-state';
 // ─── 管理员强制操作与令牌运维恢复（拆分自 workflow-instances.service.ts）───
-import { eq, and, asc, lte, inArray } from 'drizzle-orm';
+import { eq, and, asc, lte, inArray, sql, isNotNull } from 'drizzle-orm';
 import { db } from '../../../db';
 import { workflowInstances, workflowTasks, workflowTokens, workflowDefinitions, workflowDelegations, users } from '../../../db/schema';
 import { tenantCondition } from '../../../lib/tenant';
@@ -81,6 +81,7 @@ export async function suspendInstance(id: number, reason: string) {
     await lockInstanceExpecting(tx, id, 'running', '流程状态已变化，无法挂起');
     const now = new Date();
     await pauseInstanceJobs(tx, id, WORKFLOW_SUSPENDABLE_JOB_TYPES);
+    await tx.update(workflowTasks).set({ slaPausedRemainingMs: sql`extract(epoch from (${workflowTasks.slaDeadline} - clock_timestamp())) * 1000`, slaDeadline: null }).where(and(eq(workflowTasks.instanceId, id), eq(workflowTasks.status, 'pending'), isNotNull(workflowTasks.slaDeadline)));
     const [updated] = await tx.update(workflowInstances)
       .set({ status: 'suspended', suspendedAt: now, suspendReason: reason })
       .where(eq(workflowInstances.id, id)).returning();
@@ -99,6 +100,7 @@ export async function resumeInstance(id: number) {
   const { instance, restoredJobs } = await db.transaction(async (tx) => {
     await lockInstanceExpecting(tx, id, 'suspended', '流程状态已变化，无法恢复');
     const restored = await resumeInstanceJobs(tx, id, WORKFLOW_SUSPENDABLE_JOB_TYPES);
+    await tx.update(workflowTasks).set({ slaDeadline: sql`clock_timestamp() + ${workflowTasks.slaPausedRemainingMs} * interval '1 millisecond'`, slaPausedRemainingMs: null, pausedDurationMs: sql`${workflowTasks.pausedDurationMs} + extract(epoch from (clock_timestamp() - ${sql.param(inst.suspendedAt, workflowInstances.suspendedAt)})) * 1000` }).where(and(eq(workflowTasks.instanceId, id), eq(workflowTasks.status, 'pending'), isNotNull(workflowTasks.slaPausedRemainingMs)));
     const [updated] = await tx.update(workflowInstances)
       .set({ status: 'running', suspendedAt: null, suspendReason: null })
       .where(eq(workflowInstances.id, id)).returning();

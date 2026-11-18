@@ -60,7 +60,7 @@ async function enqueueSagaRollback(tx: DbExecutor, args: { instanceId: number; f
 
 /** 终局收尾：跳过存量待办（可带注释）→（可选）杀死 token → 实例置 rejected，返回更新后的实例行 */
 async function markInstanceRejected(tx: DbExecutor, args: { instanceId: number; comment?: string; killTokens?: boolean; actorId?: number | null }) {
-  const result = await settleInstanceInTx(tx, args.instanceId, { outcome: 'rejected', actorId: args.actorId ?? 0, comment: args.comment });
+  const result = await settleInstanceInTx(tx, args.instanceId, { outcome: 'rejected', actorId: args.actorId ?? 0, comment: args.comment, outcomeReason: 'execution_failed' });
   return result.row;
 }
 

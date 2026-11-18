@@ -1,5 +1,6 @@
 // ─── 任务异步作业（延时唤醒/触发器重试/超时）（拆分自 workflow-instances.service.ts）───
 import { db } from '../../../db';
+import { eq } from 'drizzle-orm';
 import { workflowInstances, workflowTasks } from '../../../db/schema';
 import { type TaskAction } from '../../../lib/workflow-engine';
 import type { WorkflowFlowData } from '@zenith/shared/workflow';
@@ -91,7 +92,8 @@ export async function armTaskAsyncJobs(
   }
   if ((task.nodeType === 'approve' || task.nodeType === 'handler') && task.status === 'pending') {
     if (!task.activatedAt) throw new Error('活动审批任务缺少激活时间');
-    const timeoutAt = computeTimeoutAt(cfg.timeout, task.activatedAt);
+    const timeoutAt = task.slaPausedRemainingMs != null ? new Date(Date.now() + task.slaPausedRemainingMs) : task.slaDeadline ?? computeTimeoutAt(cfg.timeout, task.activatedAt);
+    if (timeoutAt) await executor.update(workflowTasks).set({ slaDeadline: timeoutAt, slaPausedRemainingMs: null, slaVersion: task.slaVersion + 1 }).where(eq(workflowTasks.id, task.id));
     if (timeoutAt) {
       await enqueueJob({ ...base, jobType: 'task_timeout', runAt: timeoutAt, maxAttempts: 3, idempotencyKey: `task_timeout:${task.id}:${task.activatedAt.getTime()}` }, executor);
     }

@@ -64,6 +64,20 @@
       "when": 1795002094533,
       "tag": "0008_workflow_repair_attachments",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1795002801157,
+      "tag": "0009_workflow_lifecycle_facts",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1795002825356,
+      "tag": "0010_workflow_lifecycle_ledger",
+      "breakpoints": true
     }
   ]
 }

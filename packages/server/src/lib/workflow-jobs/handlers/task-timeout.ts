@@ -72,6 +72,9 @@ async function handle({ payload }: WorkflowJobContext): Promise<void> {
   if (!task || task.status !== 'pending') throw new WorkflowJobSkip('任务已非 pending，超时不再处理');
   const [inst] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, task.instanceId)).limit(1);
   if (!inst || inst.status !== 'running') throw new WorkflowJobSkip('实例不在运行中');
+  if (task.slaDeadline && !task.breachedAt) await workflowTransaction(async tx => {
+    await tx.update(workflowTasks).set({ breachedAt: task.slaDeadline }).where(eq(workflowTasks.id, task.id));
+  });
 
   const cfg = snapshotNodeConfig(inst, task.nodeKey)?.timeout;
   if (!cfg || !cfg.enabled) throw new WorkflowJobSkip('节点超时配置已移除');
