@@ -29,16 +29,16 @@ import WorkflowInstanceDetailPanel from '@/components/workflow/WorkflowInstanceD
 import WorkflowGraphView from '@/components/workflow/WorkflowGraphView';
 import { NODE_RT_STATUS_COLOR, NODE_RT_STATUS_LABEL, INSTANCE_STATUS_MAP, nodeStatusDisplay } from '@/components/workflow/workflow-runtime';
 import { resolveWorkflowFlowData, resolveWorkflowFormFields } from '@/utils/workflow-snapshot';
-const WorkflowAnalyticsView = lazy(() => import('./WorkflowAnalyticsView'));
-const WorkflowTasksMonitorView = lazy(() => import('./WorkflowTasksMonitorView'));
+import WorkflowAnalyticsView from './WorkflowAnalyticsView';
+import WorkflowTasksMonitorView from './WorkflowTasksMonitorView';
 import {
   WORKFLOW_NODE_TYPE_LABEL as NODE_TYPE_LABEL,
   taskAssigneeColumn, taskCommentColumn, taskIdColumn, taskNodeColumn, taskNodeTypeColumn, taskStatusColumn, taskStayDurationColumn,
 } from '@/components/workflow/workflow-task-columns';
 import WorkflowHandoverModal from './WorkflowHandoverModal';
-const WorkflowEngineDiagnosticsView = lazy(() => import('./WorkflowEngineDiagnosticsView'));
-const WorkflowJobsView = lazy(() => import('./WorkflowJobsView'));
-const WorkflowCompensationsView = lazy(() => import('./WorkflowCompensationsView'));
+import WorkflowEngineDiagnosticsView from './WorkflowEngineDiagnosticsView';
+import WorkflowJobsView from './WorkflowJobsView';
+import WorkflowCompensationsView from './WorkflowCompensationsView';
 import WorkflowEngineTraceView from './WorkflowEngineTraceView';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
 import { dateTimeColumn, EMPTY_PLACEHOLDER, overflowTagColumn, renderEllipsis } from '../../../utils/table-columns';
