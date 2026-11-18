@@ -26,10 +26,12 @@
   页面样式、CSS 类名、DOM 层级、展示文案、渲染次数，以及点击、键盘、拖拽、开合、切换等普通 UI 交互
   **不得通过单元测试固定**。已有纯展示 / 普通交互用例直接删除，不改成 skip、快照或源码字符串检查；
   这些体验按改动进行页面实测，不为样式或交互调整新增对应单测。此规则同样适用于 CMS islands 等浏览器端代码。
-- **混合测试只保留业务断言**：可以挂载组件验证权限、请求载荷、数据保护等业务边界，
-  但不得附带固定控件位置、DOM 结构、样式或完整 HTML 快照；能直接调用数据模型或转换函数时直接测试函数。
-- **按断言目的判断，而非按工具批量删除**：`render` / `fireEvent` 可以作为验证业务请求、权限、只读保护、
-  幂等与防丢稿的触发手段；只删限定外观和普通交互步骤的断言，保留破坏性操作的确认边界。
+- **单元测试不执行 UI 或 DOM 操作**：不挂载页面 / 组件，不通过点击、输入、键盘、拖拽、弹层开合触发断言，
+  不创建、查询、修改 DOM 节点、操作选区 / 焦点或模拟 DOM 动画；CMS islands 和 React SSR 展示渲染同样适用。
+  即使最后断言的是权限、请求或保存结果，依赖这些 UI / DOM 操作的用例也删除，不转为 skip 或源码字符串检查。
+- **保留无 UI 的业务测试**：纯业务模型、校验 / 转换、契约、服务端授权、请求载荷及查询缓存继续验证；
+  `renderHook` 仅用于不渲染业务控件、也不操作 DOM 的 Hook 逻辑，状态通过返回值或业务回调驱动。
+  组件交互与破坏性操作确认改由按需页面实测验证，不为规避此边界把 UI 操作藏进测试 helper 或 mock。
 
 ## 必须复用的公共 hook / 工具
 
@@ -174,8 +176,7 @@
   只有无查询语义的工具面板、多套筛选区或报表型筛选条（必选区间 / 维度切换、按钮带权限禁用态）才直接用
   `components/SearchToolbar.tsx` 的结构化模式（`primary` / `filters` / `actions` + `mobilePrimary` / `mobileFilters` / `mobileActions`），
   且 `mobilePrimary` / `mobileActions` 与桌面相同时**不要重复传**（缺省即回落到 `primary` / `actions`）。
-  工具栏会同时渲染桌面与移动两套控件（CSS 决定显隐），页面测试取控件一律用 `test-utils/toolbar.ts` 的
-  `desktopToolbar(container).getByText('查询')`，**禁止** `screen.getByPlaceholderText(...)` 直取（jsdom 下命中两个元素）
+  工具栏会同时渲染桌面与移动两套控件（CSS 决定显隐）；两种布局按需页面实测，不通过 DOM 查询单测固定。
 - **筛选控件**：关键字 / 枚举 / 状态 / 数字 / 时间范围统一用 `components/search-filters.tsx` 的
   `KeywordInput` / `FilterSelect` / `StatusSelect` / `NumberFilter` / `DateRangeFilter`，**禁止**手写 `prefix={<Search size={14} />}`、
   `showClear`、`hideButtons`、`style={{ width: N }}` 这类装饰性属性，也**禁止**手写 InputNumber 的

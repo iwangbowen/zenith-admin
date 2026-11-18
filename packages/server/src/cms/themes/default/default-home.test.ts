@@ -1,6 +1,3 @@
-import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
-import { load } from 'cheerio';
 import { describe, expect, it, vi } from 'vitest';
 import type { CmsContentItem, CmsHomeContext, CmsThemeContentQuery } from '../types';
 import { HomeTemplate } from './templates';
@@ -53,15 +50,5 @@ describe('默认主题首页数据加载', () => {
       { id: 'hot', count: 2 },
       { id: 'news', count: 1 },
     ]);
-  });
-
-  it('keeps external content links isolated from the opener', () => {
-    const ctx = context();
-    const url = 'https://example.test/external';
-    ctx.latest = [{ ...content(1), isExternal: true, contentType: 'link', url }];
-    const $ = load(renderToStaticMarkup(createElement(HomeTemplate.Component, { ...ctx, data: { channelBlocks: [] } })));
-    const external = $(`a[href="${url}"]`);
-    expect(external.attr('target')).toBe('_blank');
-    expect(external.attr('rel')).toContain('noopener');
   });
 });

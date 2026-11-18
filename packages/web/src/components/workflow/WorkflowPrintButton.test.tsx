@@ -1,28 +1,7 @@
-/**
- * 审批单打印入口：二进制通道的 URL / 文件名解析、错误信封透出；按钮 → 预览弹窗 → 下载 / 打印动作。
- */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-
-const mocks = vi.hoisted(() => ({
-  fetchRaw: vi.fn(),
-  downloadBlob: vi.fn(),
-}));
-
+const mocks = vi.hoisted(() => ({ fetchRaw: vi.fn() }));
 vi.mock('@/utils/request', () => ({ request: { fetchRaw: mocks.fetchRaw } }));
-vi.mock('@/utils/download', () => ({ downloadBlob: mocks.downloadBlob }));
-// embedpdf 引擎（wasm）不在 jsdom 中运行：替换为渲染文件名与动作槽的轻量面板
-vi.mock('@/components/PDFPreviewPanel', () => ({
-  PDFPreviewPanel: ({ file, actions }: { file: File; actions?: React.ReactNode }) => (
-    <div data-testid="pdf-panel">
-      <span>{file.name}</span>
-      {actions}
-    </div>
-  ),
-}));
-
 import { fetchWorkflowInstancePrintPdf } from '@/hooks/queries/workflow-instances';
-import WorkflowPrintButton from './WorkflowPrintButton';
 
 function pdfResponse(filename: string, source?: 'archive' | 'live') {
   return new Response(new Blob(['%PDF-1.4 demo'], { type: 'application/pdf' }), {
@@ -37,7 +16,7 @@ function pdfResponse(filename: string, source?: 'archive' | 'live') {
 
 beforeEach(() => {
   mocks.fetchRaw.mockReset();
-  mocks.downloadBlob.mockReset();
+
 });
 
 describe('fetchWorkflowInstancePrintPdf', () => {
@@ -64,32 +43,5 @@ describe('fetchWorkflowInstancePrintPdf', () => {
     await expect(fetchWorkflowInstancePrintPdf(7)).rejects.toThrow('无权查看');
     mocks.fetchRaw.mockResolvedValue(null);
     await expect(fetchWorkflowInstancePrintPdf(7)).rejects.toThrow('审批单生成失败');
-  });
-});
-
-describe('WorkflowPrintButton', () => {
-  it('归档关联入口明确请求原件，不回退为实时生成', async () => {
-    mocks.fetchRaw.mockResolvedValue(pdfResponse('归档.pdf', 'archive'));
-    render(<WorkflowPrintButton instanceId={7} source="archive">查看归档原件</WorkflowPrintButton>);
-    fireEvent.click(screen.getByRole('button', { name: '查看归档原件' }));
-    await waitFor(() => expect(mocks.fetchRaw).toHaveBeenCalledWith('/api/workflows/instances/7/print?source=archive'));
-  });
-  it('点击后拉取 PDF 并打开预览，下载动作把同一份文件交给 downloadBlob', async () => {
-    mocks.fetchRaw.mockResolvedValue(pdfResponse('审批单-7.pdf'));
-    render(<WorkflowPrintButton instanceId={7} />);
-    fireEvent.click(screen.getByRole('button', { name: /打印/ }));
-    fireEvent.click(await screen.findByRole('button', { name: /下载 PDF/ }));
-    expect(mocks.downloadBlob).toHaveBeenCalledTimes(1);
-    expect(mocks.downloadBlob.mock.calls[0][1]).toBe('审批单-7.pdf');
-  });
-
-  it('返回归档原件时显示标识，「重新生成」以 source=live 重新拉取', async () => {
-    mocks.fetchRaw.mockResolvedValue(pdfResponse('BX-0001.pdf', 'archive'));
-    render(<WorkflowPrintButton instanceId={7} />);
-    fireEvent.click(screen.getByRole('button', { name: /打印/ }));
-
-    mocks.fetchRaw.mockResolvedValue(pdfResponse('BX-0001.pdf', 'live'));
-    fireEvent.click(await screen.findByRole('button', { name: /按当前版式重新生成/ }));
-    await waitFor(() => expect(mocks.fetchRaw).toHaveBeenLastCalledWith('/api/workflows/instances/7/print?source=live'));
   });
 });

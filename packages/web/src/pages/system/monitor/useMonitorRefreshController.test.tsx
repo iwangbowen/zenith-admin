@@ -113,11 +113,9 @@ describe('useMonitorRefreshController', () => {
     expect(api.urls('GET')).toEqual([`${HISTORY_URL}?range=24h`]);
     expect(result.current.latestHistoryPeriod).toBe(nextPoint.t);
     expect(result.current.refreshInterval).toBe(0);
-    expect(Toast.success).toHaveBeenCalledWith('历史趋势已刷新');
     expect(request.fetchRaw).not.toHaveBeenCalled();
 
     await act(async () => { await result.current.refresh(); });
-    expect(Toast.info).toHaveBeenCalledWith('已刷新，暂无新增采样');
   });
 
   it('preserves history and its last successful update time after a failed manual refresh', async () => {
@@ -135,7 +133,6 @@ describe('useMonitorRefreshController', () => {
     expect(result.current.updatedAt).toBe(updatedAt);
     expect(result.current.loading).toBe(false);
     expect(api.urls('GET')).toEqual([`${HISTORY_URL}?range=1h`]);
-    expect(Toast.error).toHaveBeenCalledWith('历史趋势刷新失败：network unavailable');
   });
 
   it('does not show a toast when a pending history refresh finishes after unmount', async () => {

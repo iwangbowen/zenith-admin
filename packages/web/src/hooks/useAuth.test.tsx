@@ -1,9 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, render, renderHook, screen, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClientProvider, type QueryClient } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import {
-  ACCOUNT_SWITCH_BROADCAST_KEY,
   PREFERENCES_KEY,
   REFRESH_TOKEN_KEY,
   TABS_STORAGE_KEY,
@@ -11,14 +10,12 @@ import {
 } from '@zenith/shared/core';
 import { createTestQueryClient } from '@/test-utils/query-harness';
 import { AuthProvider } from '@/providers/AuthProvider';
-import { ADMIN_AUTH_INVALIDATED_EVENT, request } from '@/utils/request';
+import { request } from '@/utils/request';
 import {
   broadcastSwitchAndReload,
   listParkedAccounts,
   parkAccount,
-  reloadForExternalAccountSwitch,
 } from '@/lib/account-store';
-import { scopedStorageKey } from '@/utils/storage';
 import { useAuth } from './useAuth';
 
 vi.mock('@/utils/request', () => ({
@@ -87,33 +84,6 @@ describe('AuthProvider initialization', () => {
     expect(result.current.status).toBe('anonymous');
     expect(result.current.user).toBeNull();
     expect(mockRequest.get).not.toHaveBeenCalled();
-  });
-
-  it('loads one shared session for multiple consumers', async () => {
-    localStorage.setItem(TOKEN_KEY, 'valid-token');
-    mockRequest.get.mockResolvedValue(makeMeResponse());
-    const client = createClient();
-
-    function Consumer({ name }: Readonly<{ name: string }>) {
-      const auth = useAuth();
-      return <span data-testid={name}>{auth.user?.username ?? auth.status}</span>;
-    }
-
-    render(
-      <QueryClientProvider client={client}>
-        <AuthProvider>
-          <Consumer name="first" />
-          <Consumer name="second" />
-        </AuthProvider>
-      </QueryClientProvider>,
-    );
-
-    await waitFor(() => {
-      expect(screen.getByTestId('first')).toHaveTextContent('admin');
-      expect(screen.getByTestId('second')).toHaveTextContent('admin');
-    });
-    expect(mockRequest.get).toHaveBeenCalledTimes(1);
-    expect(mockRequest.get).toHaveBeenCalledWith('/api/auth/me', expect.objectContaining({ silent: true }));
   });
 
   it('keeps credentials and exposes unavailable status on network failure', async () => {
@@ -251,41 +221,6 @@ describe('AuthProvider actions', () => {
 
     expect(result.current.user?.id).toBe(1);
     expect(result.current.user?.nickname).toBe('管理员');
-  });
-});
-
-describe('AuthProvider invalidation synchronization', () => {
-  it('handles HTTP unauthorized notifications through the shared state machine', async () => {
-    localStorage.setItem(TOKEN_KEY, 'valid-token');
-    localStorage.setItem(REFRESH_TOKEN_KEY, 'valid-refresh');
-    mockRequest.get.mockResolvedValueOnce(makeMeResponse());
-    const { result } = renderAuthHook();
-    await waitFor(() => expect(result.current.status).toBe('authenticated'));
-
-    act(() => globalThis.dispatchEvent(new Event(ADMIN_AUTH_INVALIDATED_EVENT)));
-
-    await waitFor(() => expect(result.current.status).toBe('anonymous'));
-    expect(localStorage.getItem(TOKEN_KEY)).toBeNull();
-    expect(mockRequest.get).toHaveBeenCalledTimes(1);
-  });
-
-  it('synchronizes logout from another browser tab', async () => {
-    localStorage.setItem(TOKEN_KEY, 'valid-token');
-    mockRequest.get.mockResolvedValueOnce(makeMeResponse());
-    const { result } = renderAuthHook();
-    await waitFor(() => expect(result.current.status).toBe('authenticated'));
-    localStorage.removeItem(TOKEN_KEY);
-
-    act(() => {
-      globalThis.dispatchEvent(new StorageEvent('storage', {
-        key: scopedStorageKey(TOKEN_KEY),
-        oldValue: 'valid-token',
-        newValue: null,
-      }));
-    });
-
-    await waitFor(() => expect(result.current.status).toBe('anonymous'));
-    expect(mockRequest.get).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -470,23 +405,6 @@ describe('AuthProvider account switching', () => {
     await waitFor(() => expect(result.current.status).toBe('anonymous'));
     expect(listParkedAccounts()).toEqual([]);
     expect(localStorage.getItem(TOKEN_KEY)).toBeNull();
-  });
-
-  it('reloads the page when another tab broadcasts an account switch', async () => {
-    localStorage.setItem(TOKEN_KEY, 'admin-token');
-    mockRequest.get.mockResolvedValueOnce(makeMeResponse());
-    const { result } = renderAuthHook();
-    await waitFor(() => expect(result.current.status).toBe('authenticated'));
-
-    act(() => {
-      globalThis.dispatchEvent(new StorageEvent('storage', {
-        key: scopedStorageKey(ACCOUNT_SWITCH_BROADCAST_KEY),
-        oldValue: null,
-        newValue: String(Date.now()),
-      }));
-    });
-
-    expect(vi.mocked(reloadForExternalAccountSwitch)).toHaveBeenCalledTimes(1);
   });
 
   it('deduplicates the active user from the parked registry after any login path', async () => {

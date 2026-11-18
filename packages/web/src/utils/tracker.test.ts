@@ -101,17 +101,6 @@ describe('analytics tracker P0 reliability', () => {
     expect(sessionStorage.getItem('zenith_tracker_sid')).toBeNull();
   });
 
-  it('does not use sendBeacon for authenticated unload events', () => {
-    localStorage.setItem(TOKEN_KEY, 'account-a-token');
-    tracker.identify(7, 'account-a');
-    tracker.trackEvent('page_action');
-    document.dispatchEvent(new Event('pagehide'));
-    expect(sendBeacon).not.toHaveBeenCalled();
-    expect(fetchMock.mock.calls.some(([url, init]) =>
-      String(url).includes('/analytics/events') && (init as RequestInit).keepalive === true,
-    )).toBe(true);
-  });
-
   it('caches experiment assignments and deduplicates exposure per session', async () => {
     fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);

@@ -1,4 +1,4 @@
-import { act, renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ModalReactProps } from '@douyinfe/semi-ui/lib/es/modal';
 
@@ -26,13 +26,4 @@ describe('status change commands', () => {
     expect(confirmCalls).toHaveLength(0);
   });
 
-  it('does not perform a guarded disable until confirmation', async () => {
-    const toggle = vi.fn().mockResolvedValue(undefined);
-    const { result } = renderHook(() => useStatusToggle<Row>({ toggle, confirmDisable: () => ({ title: '停用确认' }) }));
-    act(() => { result.current.request(row, false); });
-    expect(toggle).not.toHaveBeenCalled();
-    expect(confirmCalls).toHaveLength(1);
-    await act(async () => { await confirmCalls[0].onOk?.({} as never); });
-    await waitFor(() => expect(toggle).toHaveBeenCalledExactlyOnceWith(row, false));
-  });
 });

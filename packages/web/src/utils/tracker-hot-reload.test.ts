@@ -1,7 +1,4 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ANALYTICS_CONFIG_VERSION_KEY } from '@zenith/shared/analytics';
-import { analyticsStorageKey } from '@zenith/analytics-sdk/runtime-config';
-import { config } from '@/config';
 
 /**
  * 行为中心阶段 1：设置热更新（tracker 侧）测试。
@@ -70,22 +67,6 @@ describe('tracker 设置热更新', () => {
     expect(configCalls().length).toBe(0);
     await vi.advanceTimersByTimeAsync(60_000);
     expect(configCalls().length).toBeGreaterThanOrEqual(1);
-  });
-
-  it('其它标签写入配置版本号触发 storage 事件后立即重拉', async () => {
-    fetchMock.mockClear();
-    window.dispatchEvent(new StorageEvent('storage', { key: analyticsStorageKey(config.deploymentId, ANALYTICS_CONFIG_VERSION_KEY, 'admin'), newValue: String(Date.now()) }));
-    await Promise.resolve(); await Promise.resolve();
-    const configCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes('/analytics/config'));
-    expect(configCalls.length).toBe(1);
-  });
-
-  it('不相关 key 的 storage 事件不会触发重拉', async () => {
-    fetchMock.mockClear();
-    window.dispatchEvent(new StorageEvent('storage', { key: 'unrelated_key', newValue: 'x' }));
-    await Promise.resolve(); await Promise.resolve();
-    const configCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes('/analytics/config'));
-    expect(configCalls.length).toBe(0);
   });
 
   it('reloadTrackerConfig() 手动触发一次重拉', async () => {

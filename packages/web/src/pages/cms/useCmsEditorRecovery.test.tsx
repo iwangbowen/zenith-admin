@@ -1,5 +1,5 @@
 import { act, renderHook } from '@testing-library/react';
-import { MemoryRouter, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { MemoryRouter, useNavigate, useSearchParams } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useCmsEditorRecovery } from './useCmsEditorRecovery';
@@ -12,51 +12,11 @@ const key = 'cms-editor-recovery:71:3:new-article';
 const otherKey = 'cms-editor-recovery:72:3:new-article';
 const draft = { values: { title: '未保存的新稿' }, body: '<p>正文修改</p>', albumImages: [], attachments: [], version: 3 };
 const wrapper = ({ children }: { children: ReactNode }) => <MemoryRouter initialEntries={['/cms/contents/edit']}>{children}</MemoryRouter>;
-/** 弹窗页脚（`ModalFooter`）的 props：确定 / 取消动作与第三个「直接离开」都在这里。 */
-const lastFooter = () => confirm.mock.calls[confirm.mock.calls.length - 1][0].footer.props;
 
 beforeEach(() => { confirm.mockReset(); account.id = 71; localStorage.removeItem(key); localStorage.removeItem(otherKey); });
 afterEach(() => { localStorage.removeItem(key); localStorage.removeItem(otherKey); });
 
 describe('CMS 编辑恢复', () => {
-  it('requires confirmation before leaving and writes the complete current draft before navigation', () => {
-    const dirty = { current: true };
-    const hook = renderHook(() => ({ recovery: useCmsEditorRecovery({ key: '3:new-article', dirty, getDraft: () => draft }), navigate: useNavigate(), location: useLocation() }), { wrapper });
-    act(() => hook.result.current.navigate('/cms/contents'));
-    expect(hook.result.current.location.pathname).toBe('/cms/contents/edit');
-    expect(JSON.parse(localStorage.getItem(key)!)).toMatchObject(draft);
-    expect(confirm).toHaveBeenCalledTimes(1);
-    act(() => lastFooter().onOk());
-    expect(hook.result.current.location.pathname).toBe('/cms/contents');
-    hook.unmount();
-  });
-
-  it('leaves immediately on request and drops the recovery copy written for the prompt', () => {
-    const dirty = { current: true };
-    const hook = renderHook(() => ({ recovery: useCmsEditorRecovery({ key: '3:new-article', dirty, getDraft: () => draft }), navigate: useNavigate(), location: useLocation() }), { wrapper });
-    act(() => hook.result.current.navigate('/cms/contents'));
-    expect(localStorage.getItem(key)).not.toBeNull();
-    act(() => lastFooter().extraActions.props.onClick());
-    expect(localStorage.getItem(key)).toBeNull();
-    expect(hook.result.current.location.pathname).toBe('/cms/contents');
-    hook.unmount();
-    // 卸载时的 persist 不得把刚丢弃的副本写回。
-    expect(localStorage.getItem(key)).toBeNull();
-  });
-
-  it('offers no recovery copy when it cannot be written, and warns that leaving loses the edits', () => {
-    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('quota exceeded'); });
-    const dirty = { current: true };
-    const hook = renderHook(() => ({ recovery: useCmsEditorRecovery({ key: '3:new-article', dirty, getDraft: () => draft }), navigate: useNavigate(), location: useLocation() }), { wrapper });
-    act(() => hook.result.current.navigate('/cms/contents'));
-    const footer = lastFooter();
-    expect(footer.extraActions).toBeUndefined();
-    expect(footer).toMatchObject({ okText: '放弃修改并离开', okType: 'danger' });
-    setItem.mockRestore();
-    act(() => footer.onOk());
-    expect(hook.result.current.location.pathname).toBe('/cms/contents');
-    hook.unmount();
-  });
 
   it('restores only the current account draft and expires recovery copies after seven days', () => {
     localStorage.setItem(key, JSON.stringify({ ...draft, savedAt: Date.now() }));
@@ -72,34 +32,6 @@ describe('CMS 编辑恢复', () => {
     expect(expired.result.current.pending).toBeNull();
     expect(localStorage.getItem(otherKey)).toBeNull();
     expired.unmount();
-  });
-
-  it('protects reloads but lets a saved-record route replacement proceed without prompting', () => {
-    const dirty = { current: true };
-    const hook = renderHook(() => ({ recovery: useCmsEditorRecovery({ key: '3:new-article', dirty, getDraft: () => draft }), navigate: useNavigate(), location: useLocation() }), { wrapper });
-    const event = new Event('beforeunload', { cancelable: true });
-    act(() => window.dispatchEvent(event));
-    expect(event.defaultPrevented).toBe(true);
-    expect(JSON.parse(localStorage.getItem(key)!)).toMatchObject(draft);
-    act(() => hook.result.current.recovery.navigateSaved(() => hook.result.current.navigate('/cms/contents/edit?id=19', { replace: true })));
-    expect(confirm).not.toHaveBeenCalled();
-    expect(hook.result.current.location.search).toBe('?id=19');
-    dirty.current = false;
-    act(() => hook.result.current.recovery.clear());
-    expect(localStorage.getItem(key)).toBeNull();
-    hook.unmount();
-  });
-
-  it('allows switching tabs inside the current draft while still protecting another content record', () => {
-    const dirty = { current: true };
-    const hook = renderHook(() => ({ recovery: useCmsEditorRecovery({ key: '3:new-article', dirty, getDraft: () => draft }), navigate: useNavigate(), location: useLocation() }), { wrapper });
-    act(() => hook.result.current.navigate('?tab=workflow', { replace: true }));
-    expect(hook.result.current.location.search).toBe('?tab=workflow');
-    expect(confirm).not.toHaveBeenCalled();
-    act(() => hook.result.current.navigate('/cms/contents/edit?id=99'));
-    expect(confirm).toHaveBeenCalledTimes(1);
-    expect(hook.result.current.location.search).toBe('?tab=workflow');
-    hook.unmount();
   });
 
   it('moves edits made during the initial POST to the created id without a restore prompt or orphaned new draft', () => {

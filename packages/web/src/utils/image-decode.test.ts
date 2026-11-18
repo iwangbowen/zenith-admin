@@ -16,24 +16,6 @@ function blobOf(type: string, bytes = 8) {
   return new Blob([new Uint8Array(bytes)], { type });
 }
 
-/** jsdom 无 canvas 实现，按 TIFF 解码链路所需的最小面替身 */
-function stubCanvas(output: Blob | null) {
-  const context = {
-    createImageData: (w: number, h: number) => ({ data: new Uint8ClampedArray(w * h * 4) }),
-    putImageData: vi.fn(),
-  };
-  vi.spyOn(document, 'createElement').mockImplementation(((tag: string) => {
-    if (tag !== 'canvas') throw new Error(`unexpected createElement(${tag})`);
-    return {
-      width: 0,
-      height: 0,
-      getContext: () => context,
-      toBlob: (cb: (b: Blob | null) => void) => cb(output),
-    } as unknown as HTMLElement;
-  }) as typeof document.createElement);
-  return context;
-}
-
 beforeEach(() => {
   vi.restoreAllMocks();
   heic2anyMock.mockReset();
@@ -93,21 +75,6 @@ describe('toDisplayableImageBlob', () => {
     const first = blobOf('image/png', 4);
     heic2anyMock.mockResolvedValue([first, blobOf('image/png', 5)]);
     await expect(toDisplayableImageBlob(blobOf('image/heic'), null, 'live.heic')).resolves.toBe(first);
-  });
-
-  it('decodes the first TIFF page to PNG via canvas', async () => {
-    const page = { width: 2, height: 1, data: new Uint8Array() };
-    utifMock.decode.mockReturnValue([page, { width: 9, height: 9 }]);
-    utifMock.toRGBA8.mockReturnValue(new Uint8Array(2 * 1 * 4));
-    const png = blobOf('image/png', 4);
-    const context = stubCanvas(png);
-
-    const result = await toDisplayableImageBlob(blobOf('image/tiff'), 'image/tiff', 'scan.tiff');
-
-    expect(result).toBe(png);
-    expect(utifMock.decodeImage).toHaveBeenCalledTimes(1);
-    expect(utifMock.toRGBA8).toHaveBeenCalledWith(page);
-    expect(context.putImageData).toHaveBeenCalledTimes(1);
   });
 
   it('falls back to the original blob when the decoder throws', async () => {
