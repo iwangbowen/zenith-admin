@@ -9,7 +9,7 @@ const router = new OpenAPIHono({ defaultHook: validationHook });
 const summaryRoute = defineContractRoute(workflowHealthContract.summary, {
   handler: async (c) => {
     const { thresholdMinutes } = c.req.valid('query');
-    return c.json(okBody(await getWorkflowHealthSummary(thresholdMinutes ?? 30)), 200);
+    return c.json(okBody(await getWorkflowHealthSummary(thresholdMinutes ?? 30, { query: c.req.valid('query') })), 200);
   },
 });
 

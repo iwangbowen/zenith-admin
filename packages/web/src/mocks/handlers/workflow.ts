@@ -790,6 +790,7 @@ function buildMockWorkflowEngineIntrospection(thresholdMinutes: number): Workflo
     scoreBreakdown,
     apdex: { score: 0.93, thresholdMs: 100, satisfied: 310, tolerating: 92, frustrated: 3, total: 405 },
     events: {
+      uniqueEvents24h: 324, deliveries24h: 1125, attempts24h: 1125,
       last1h: { total: 18, success: 17, failed: 1 },
       last24h: { total: 412, success: 405, failed: 4 },
       prev24h: { total: 388, success: 384, failed: 4 },
@@ -857,7 +858,9 @@ function buildMockWorkflowEngineIntrospection(thresholdMinutes: number): Workflo
   };
 
   return {
-    healthy: !issues.some((item) => item.severity === 'critical'),
+    scope: 'platform', ruleVersion: 'workflow-health-v2',
+    completeness: { issuesTotal: issues.length, issuesReturned: issues.length, tasksTotal: runtimeTasks.length, tasksReturned: runtimeTasks.length, truncated: false },
+    healthy: issues.length === 0,
     generatedAt: mockDateTime(),
     thresholdMinutes,
     thresholds: { healthWarn: 90, healthCritical: 70, backlogWarn: 50, backlogCritical: 200, errorRateWarn: 0.05, errorRateCritical: 0.15 },

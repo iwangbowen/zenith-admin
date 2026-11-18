@@ -9,6 +9,7 @@ import { registerEventConsumer, sealEventConsumerRegistry } from '../../../lib/d
 import { getWorkflowAnalytics, listOverdueTasks } from '../workflow-analytics.service';
 import { suspendInstance, resumeInstance } from './admin-ops';
 import { armTaskAsyncJobs } from './async-jobs';
+import { getWorkflowHealthSummary } from '../workflow-health.service';
 import type { WorkflowDefinitionSnapshot, WorkflowFlowData } from '@zenith/shared/workflow';
 
 const url = process.env.WORKFLOW_TEST_DATABASE_URL;
@@ -45,6 +46,9 @@ integration('workflow recovery on real PostgreSQL constraints', () => {
     expect(await fail()).toBe(true);
     const tickets = await db.select().from(workflowCompensations).where(eq(workflowCompensations.instanceId, f.instance.id));
     expect(tickets).toHaveLength(1);
+    const health = await getWorkflowHealthSummary(1440, { query: { instanceId: f.instance.id, page: 1, pageSize: 100 } });
+    expect(health.stats.critical).toBe(1);
+    expect(health.issues[0].type).toBe('repair_pending');
     const [repair] = await db.select().from(workflowNodeActivations).where(eq(workflowNodeActivations.id, tickets[0].repairActivationId!));
     expect(repair.kind).toBe('repair');
     expect(repair.tokenId).not.toBe(f.token.id);
@@ -57,6 +61,7 @@ integration('workflow recovery on real PostgreSQL constraints', () => {
     const [closed] = await db.select().from(workflowCompensations).where(eq(workflowCompensations.id, tickets[0].id));
     expect(closed.status).toBe('resolved');
     expect(closed.resolvedAt).toBeInstanceOf(Date);
+    expect((await getWorkflowHealthSummary(1440, { query: { instanceId: f.instance.id, page: 1, pageSize: 100 } })).stats.critical).toBe(0);
     expect(await db.$count(workflowCompensationLogs, eq(workflowCompensationLogs.compensationId, closed.id))).toBeGreaterThanOrEqual(2);
   }));
 
@@ -98,5 +103,16 @@ integration('workflow recovery on real PostgreSQL constraints', () => {
     expect((await getWorkflowAnalytics({ definitionId: f.instance.definitionId })).pendingTaskCount).toBe(0);
     await resumeInstance(f.instance.id);
     expect((await getWorkflowAnalytics({ definitionId: f.instance.definitionId })).overdueTaskCount).toBe(1);
+  }));
+
+  it('counts all 301 structural failures before paginating issue evidence', async () => asAdmin(async () => {
+    const f = await fixture('trigger');
+    await db.insert(workflowTasks).values(Array.from({ length: 301 }, (_, index) => ({ instanceId: f.instance.id, nodeKey: `missing-${index}`, nodeName: `结构校验${index}`, nodeType: 'trigger' as const, taskKind: 'system' as const, status: 'waiting' as const })));
+    const result = await getWorkflowHealthSummary(1440, { query: { instanceId: f.instance.id, page: 1, pageSize: 20 } });
+    expect(result.stats.critical).toBe(301);
+    expect(result.total).toBe(301);
+    expect(result.issues).toHaveLength(20);
+    expect(result.coverage.tasks).toBe(302);
+    expect(result.truncated).toBe(true);
   }));
 });

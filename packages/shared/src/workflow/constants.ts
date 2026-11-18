@@ -302,6 +302,7 @@ export const WORKFLOW_HEALTH_ISSUE_TYPES = [
   'external_dispatch_failed', 'external_dispatch_pending', 'trigger_waiting_no_execution', 'trigger_execution_failed',
   'subprocess_waiting', 'delay_overdue', 'delay_missing_wake_job', 'task_timeout_overdue', 'token_task_mismatch',
   'workflow_event_outbox_failed', 'workflow_event_outbox_pending', 'waiting_task_stuck', 'instance_stalled',
+  'repair_pending', 'external_result_unknown',
 ] as const;
 
 export const WORKFLOW_HEALTH_ISSUE_TYPE_LABELS: Record<(typeof WORKFLOW_HEALTH_ISSUE_TYPES)[number], string> = {
@@ -318,6 +319,8 @@ export const WORKFLOW_HEALTH_ISSUE_TYPE_LABELS: Record<(typeof WORKFLOW_HEALTH_I
   workflow_event_outbox_pending: '领域事件消费者待处理',
   waiting_task_stuck: '任务等待过久',
   instance_stalled: '实例疑似卡死',
+  repair_pending: '等待故障修复',
+  external_result_unknown: '外部结果待确认',
 };
 
 export const WORKFLOW_HEALTH_ISSUE_TYPE_OPTIONS: Array<{ value: (typeof WORKFLOW_HEALTH_ISSUE_TYPES)[number]; label: string }> =

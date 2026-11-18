@@ -170,22 +170,22 @@ export function useWorkflowCompensationDetail(id: number | undefined, enabled = 
   return useApiQuery(workflowInstanceOpsContract.compensationDetail, { params: { id: id ?? 0 } }, { enabled: enabled && id !== undefined });
 }
 
-/** H5：queryFn 组合两次请求（引擎内省 + 健康趋势）并附带取数时间戳 */
+/** Current state and platform history have independent loading/error boundaries. */
 export function useWorkflowEngineDiagnostics(params: WorkflowEngineDiagnosticsParams, refetchInterval: number | false) {
   const { hasPermission } = usePermission();
   const platform = hasPermission("workflow:engine:platform");
-  return useQuery({
+  const history = useApiQuery(workflowEngineContract.healthHistory, { query: { hours: params.historyHours } }, { enabled: platform, refetchInterval });
+  const current = useQuery({
     queryKey: workflowMonitorKeys.engineDiagnostics(params),
     queryFn: async () => {
-      const [introspection, history] = await Promise.all([
-        api(workflowEngineContract.introspection, { query: { thresholdMinutes: params.thresholdMinutes } }),
-        platform ? api(workflowEngineContract.healthHistory, { query: { hours: params.historyHours } }) : Promise.resolve(null),
-      ]);
-      return { introspection, history, fetchedAt: Date.now() };
+      const introspection = await api(workflowEngineContract.introspection, { query: { thresholdMinutes: params.thresholdMinutes } });
+      return { introspection, fetchedAt: Date.now() };
     },
     refetchInterval,
     refetchIntervalInBackground: false,
   });
+  // eslint-disable-next-line @tanstack/query/no-rest-destructuring -- Preserve the public query result while exposing independently fetched history.
+  return { ...current, data: current.data ? { ...current.data, history: history.data ?? null, historyError: history.error } : undefined, refetch: async () => { const result = await current.refetch(); if (platform) await history.refetch(); return result; } };
 }
 
 // ─── 实例状态变更（管理员） ───

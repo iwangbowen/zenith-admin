@@ -24,6 +24,10 @@ export function summarizeWorkflowHealth(
     healthy: sorted.length === 0,
     checkedAt: meta.checkedAt,
     thresholdMinutes: meta.thresholdMinutes,
+    ruleVersion: 'workflow-health-v2', scope: 'business',
+    coverage: { instances: new Set(sorted.map(i => i.instanceId)).size, tasks: 0, rules: 13, complete: true },
+    total: sorted.length, page: 1, pageSize: sorted.length || 20, truncated: false,
+    affectedInstances: new Set(sorted.map(i => i.instanceId).filter(id => id != null)).size,
     stats: {
       total: sorted.length,
       critical,
@@ -222,5 +226,5 @@ export function buildWorkflowEngineIssues(input: WorkflowEngineIssueSources): Wo
       refType: 'scheduler',
     });
   }
-  return issues.slice(0, WORKFLOW_ENGINE_ISSUE_LIMIT);
+  return issues;
 }

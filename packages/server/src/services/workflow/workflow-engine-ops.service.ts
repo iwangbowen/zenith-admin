@@ -19,7 +19,7 @@ import { buildWhere } from '../../lib/where-helpers';
 import { getWorkflowEngineIntrospection, getWorkflowEngineThresholds, severityFromHealth } from './workflow-engine-introspection.service';
 
 function backlogOf(queues: Array<{ ready: number; running: number; delayed: number; failed: number }>): number {
-  return queues.reduce((sum, q) => sum + q.ready + q.running + q.delayed + q.failed, 0);
+  return queues.reduce((sum, q) => sum + q.ready + q.running, 0);
 }
 
 /**
@@ -32,7 +32,7 @@ export async function captureWorkflowEngineHealthSnapshot(): Promise<{ healthSco
     getWorkflowEngineThresholds(),
   ]);
   const t = snapshot.telemetry;
-  const backlog = backlogOf(snapshot.queues);
+  const backlog = backlogOf(snapshot.queues.filter(q => q.key !== 'humanTasks' && q.key !== 'timeouts'));
   const errorRate = t.events.last24h.total > 0 ? t.events.last24h.failed / t.events.last24h.total : 0;
   const severity = severityFromHealth(t.healthScore, thresholds);
   const criticalCount = snapshot.issues.filter((i) => i.severity === 'critical').length;
@@ -104,11 +104,10 @@ export async function getWorkflowEngineHealthHistory(hours = 24): Promise<Workfl
   const safeHours = Math.max(1, Math.min(hours, 24 * 30));
   const since = new Date(Date.now() - safeHours * 60 * 60_000);
   const [rows, thresholds] = await Promise.all([
-    db.select()
+    db.selectDistinctOn([sql`date_trunc('hour', ${workflowEngineHealthSnapshots.createdAt})`])
       .from(workflowEngineHealthSnapshots)
       .where(gte(workflowEngineHealthSnapshots.createdAt, since))
-      .orderBy(workflowEngineHealthSnapshots.createdAt)
-      .limit(5000),
+      .orderBy(sql`date_trunc('hour', ${workflowEngineHealthSnapshots.createdAt})`, desc(workflowEngineHealthSnapshots.createdAt)),
     getWorkflowEngineThresholds(),
   ]);
   const points: WorkflowEngineHealthPoint[] = rows.map((row) => ({

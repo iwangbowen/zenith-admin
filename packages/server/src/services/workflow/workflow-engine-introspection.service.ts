@@ -1,12 +1,13 @@
 import { isPlatformAdmin } from '../../lib/tenant';
 import { workflowMonitorScope } from './workflow-access';
+import { getWorkflowHealthSummary } from './workflow-health.service';
 import { and, asc, desc, eq, gte, inArray, isNotNull, lt, notInArray, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { CronExpressionParser } from 'cron-parser';
 import type { WorkflowEngineApdex, WorkflowEngineComponent, WorkflowEngineComponentStatus, WorkflowEngineDefinitionSnapshot, WorkflowEngineEventBucket, WorkflowEngineHistogramBucket, WorkflowEngineInstanceBucket, WorkflowEngineIntrospection, WorkflowEngineMetric, WorkflowEngineQueueKey, WorkflowEngineQueueSnapshot, WorkflowEngineRuntimeIssue, WorkflowEngineRuntimeTask, WorkflowEngineScoreFactor, WorkflowEngineTelemetry, WorkflowEngineThresholds, WorkflowEngineTriggerExecution, WorkflowEngineOutboxEvent, WorkflowFlowData, WorkflowInstancePriority } from '@zenith/shared/workflow';
-import { buildWorkflowEngineIssues as buildIssues, buildWorkflowEngineQueueSnapshot as queueSnapshot, worstWorkflowEngineStatus as worstStatus } from '@zenith/shared/workflow';
+import { buildWorkflowEngineQueueSnapshot as queueSnapshot, worstWorkflowEngineStatus as worstStatus } from '@zenith/shared/workflow';
 import { db } from '../../db';
-import { eventConsumerDeliveries, eventOutbox, workflowDefinitions, workflowInstances, workflowJobExecutions, workflowJobs, workflowTasks, workflowTokens, users } from '../../db/schema';
+import { eventConsumerDeliveries, eventConsumerAttempts, eventOutbox, workflowDefinitions, workflowInstances, workflowJobExecutions, workflowJobs, workflowTasks, workflowTokens, users } from '../../db/schema';
 import { currentUser, hasPermission } from '../../lib/context';
 import { getDataScopeCondition } from '../../lib/data-scope';
 import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
@@ -234,7 +235,7 @@ function nextCronRun(cron: string, from: Date): string | null {
  */
 function computeHealthScore(
   issues: WorkflowEngineRuntimeIssue[],
-  queues: WorkflowEngineQueueSnapshot[],
+  _queues: WorkflowEngineQueueSnapshot[],
 ): { score: number; breakdown: WorkflowEngineScoreFactor[] } {
   let score = 100;
   const breakdown: WorkflowEngineScoreFactor[] = [];
@@ -249,18 +250,6 @@ function computeHealthScore(
     const delta = warningIssues * 4;
     score -= delta;
     breakdown.push({ reason: `警告问题 ×${warningIssues}`, delta, severity: 'warning' });
-  }
-  const failedQueues = queues.filter((q) => q.failed > 0).length;
-  if (failedQueues > 0) {
-    const delta = failedQueues * 5;
-    score -= delta;
-    breakdown.push({ reason: `队列存在失败任务 ×${failedQueues}`, delta, severity: 'critical' });
-  }
-  const staleQueues = queues.filter((q) => q.oldestAgeMinutes != null && q.oldestAgeMinutes >= 60).length;
-  if (staleQueues > 0) {
-    const delta = staleQueues * 3;
-    score -= delta;
-    breakdown.push({ reason: `队列积压≥60 分钟 ×${staleQueues}`, delta, severity: 'warning' });
   }
   return { score: Math.max(0, Math.min(100, Math.round(score))), breakdown };
 }
@@ -301,7 +290,6 @@ function buildApdex(satisfied: number, tolerating: number, frustrated: number, t
 const HOUR_MS = 60 * 60 * 1000;
 const SERIES_HOURS = 24;
 /** 单次内省拉取的时序明细行上限（manual 刷新的诊断端点，体量可控） */
-const SERIES_ROW_LIMIT = 20000;
 
 /** 生成对齐到整点的近 N 小时桶（含当前小时），桶时间用 formatDateTime 统一格式输出。 */
 function makeHourSlots(now: Date, count = SERIES_HOURS): Array<{ start: number; hour: string }> {
@@ -334,7 +322,7 @@ function buildEventSeries(rows: Array<{ createdAt: Date; status: string }>, now:
 }
 
 function buildInstanceSeries(
-  rows: Array<{ createdAt: Date; updatedAt: Date; status: string }>,
+  rows: Array<{ createdAt: Date; updatedAt: Date | null; status: string }>,
   now: Date,
   terminalStatuses: readonly string[],
 ): WorkflowEngineInstanceBucket[] {
@@ -481,7 +469,7 @@ export async function getWorkflowEngineIntrospection(
         )!,
       ))
       .orderBy(asc(workflowTasks.createdAt))
-      .limit(300),
+      ,
     jobExecutionsWithJob({ execution: workflowJobExecutions, job: workflowJobs, nodeName: workflowTasks.nodeName, instanceTitle: workflowInstances.title })
       .innerJoin(workflowInstances, eq(workflowJobs.instanceId, workflowInstances.id))
       .leftJoin(workflowTasks, eq(workflowJobs.taskId, workflowTasks.id))
@@ -495,13 +483,13 @@ export async function getWorkflowEngineIntrospection(
         gte(workflowJobExecutions.createdAt, since24h),
       ))
       .orderBy(desc(workflowJobExecutions.id))
-      .limit(100),
+      ,
     db.select({ delivery: eventConsumerDeliveries, event: eventOutbox })
       .from(eventConsumerDeliveries)
       .innerJoin(eventOutbox, eq(eventOutbox.id, eventConsumerDeliveries.eventId))
       .where(buildWhere(outboxScopeWhere, notInArray(eventConsumerDeliveries.status, ['succeeded', 'skipped'])))
       .orderBy(desc(eventConsumerDeliveries.id))
-      .limit(100),
+      ,
     db.select({
       total1h: sql<number>`count(*) filter (where ${gte(eventOutbox.occurredAt, since1h)})`.mapWith(Number),
       success1h: sql<number>`count(*) filter (where ${and(inArray(eventConsumerDeliveries.status, ['succeeded', 'skipped']), gte(eventOutbox.occurredAt, since1h))})`.mapWith(Number),
@@ -555,10 +543,10 @@ export async function getWorkflowEngineIntrospection(
       .where(triggerScopeWhere),
     db.select({
       createdLast24h: sql<number>`count(*) filter (where ${gte(workflowInstances.createdAt, since24h)})`.mapWith(Number),
-      completedLast24h: sql<number>`count(*) filter (where ${and(inArray(workflowInstances.status, [...terminalStatuses]), gte(workflowInstances.updatedAt, since24h))})`.mapWith(Number),
-      canceledLast24h: sql<number>`count(*) filter (where ${and(inArray(workflowInstances.status, [...canceledStatuses]), gte(workflowInstances.updatedAt, since24h))})`.mapWith(Number),
+      completedLast24h: sql<number>`count(*) filter (where ${and(inArray(workflowInstances.status, [...terminalStatuses]), gte(workflowInstances.completedAt, since24h))})`.mapWith(Number),
+      canceledLast24h: sql<number>`count(*) filter (where ${and(inArray(workflowInstances.status, [...canceledStatuses]), gte(workflowInstances.completedAt, since24h))})`.mapWith(Number),
       createdPrev24h: sql<number>`count(*) filter (where ${and(gte(workflowInstances.createdAt, since48h), lt(workflowInstances.createdAt, since24h))})`.mapWith(Number),
-      completedPrev24h: sql<number>`count(*) filter (where ${and(inArray(workflowInstances.status, [...terminalStatuses]), gte(workflowInstances.updatedAt, since48h), lt(workflowInstances.updatedAt, since24h))})`.mapWith(Number),
+      completedPrev24h: sql<number>`count(*) filter (where ${and(inArray(workflowInstances.status, [...terminalStatuses]), gte(workflowInstances.completedAt, since48h), lt(workflowInstances.completedAt, since24h))})`.mapWith(Number),
     })
       .from(workflowInstances)
       .leftJoin(users, eq(workflowInstances.initiatorId, users.id))
@@ -567,18 +555,18 @@ export async function getWorkflowEngineIntrospection(
       .from(eventConsumerDeliveries)
       .innerJoin(eventOutbox, eq(eventOutbox.id, eventConsumerDeliveries.eventId))
       .where(buildWhere(outboxScopeWhere, gte(eventOutbox.occurredAt, since24h)))
-      .limit(SERIES_ROW_LIMIT),
-    db.select({ createdAt: workflowInstances.createdAt, updatedAt: workflowInstances.updatedAt, status: workflowInstances.status })
+      ,
+    db.select({ createdAt: workflowInstances.createdAt, updatedAt: workflowInstances.completedAt, status: workflowInstances.status })
       .from(workflowInstances)
       .leftJoin(users, eq(workflowInstances.initiatorId, users.id))
       .where(buildWhere(
         instanceBaseWhere,
         or(
           gte(workflowInstances.createdAt, since24h),
-          and(inArray(workflowInstances.status, [...terminalStatuses]), gte(workflowInstances.updatedAt, since24h)),
+          and(inArray(workflowInstances.status, [...terminalStatuses]), gte(workflowInstances.completedAt, since24h)),
         )!,
       ))
-      .limit(SERIES_ROW_LIMIT),
+      ,
   ]);
 
   const definitionsSnapshot = validateDefinitions(definitions);
@@ -598,8 +586,7 @@ export async function getWorkflowEngineIntrospection(
       currentNodeKey: row.currentNodeKey ?? null,
       ageMinutes: ageMinutes(row.createdAt, now) ?? 0,
       createdAt: formatDateTime(row.createdAt),
-    }))
-    .slice(0, 50);
+    }));
 
   const waitingSubTaskIds = runtimeTaskRows.filter((row) => row.nodeType === 'subProcess' && row.status === 'waiting').map((row) => row.taskId);
   const children = waitingSubTaskIds.length ? await db.select({ parentTaskId: workflowInstances.parentTaskId, status: workflowInstances.status })
@@ -693,15 +680,11 @@ export async function getWorkflowEngineIntrospection(
     }),
   ];
 
-  const issues = buildIssues({
-    definitions: definitionsSnapshot,
-    runningWithoutActiveTasks,
-    runtimeTasks,
-    triggerExecutions,
-    outboxEvents,
-    eventBusListeners: eventBus.totalListenerCount,
-    schedulerInitialized: scheduler.initialized,
-  }).filter((issue) => platform || (issue.component !== 'scheduler' && issue.component !== 'eventBus'));
+  const health = await getWorkflowHealthSummary(threshold, { systemWide, allIssues: true });
+  const issues: WorkflowEngineRuntimeIssue[] = health.issues.map(issue => ({
+    id: issue.fingerprint ?? issue.id, component: issue.type.startsWith('trigger') ? 'triggerDispatcher' : issue.type.startsWith('external') ? 'externalApprover' : issue.type.startsWith('subprocess') ? 'subProcessRecovery' : issue.type.startsWith('workflow_event') ? 'outbox' : issue.type.startsWith('delay') ? 'delayScheduler' : issue.type === 'task_timeout_overdue' ? 'timeoutProcessor' : 'taskMaterializer',
+    severity: issue.severity, title: issue.title, description: issue.description, refType: issue.type.startsWith('workflow_event') ? 'outbox' : issue.taskId ? 'task' : 'instance', refId: issue.taskId ?? issue.instanceId ?? undefined, instanceId: issue.instanceId, ageMinutes: issue.ageMinutes, createdAt: issue.createdAt, metadata: issue.evidence,
+  }));
 
   const componentStatusByIssue = (key: ComponentKey): WorkflowEngineComponentStatus => worstStatus(issues.filter((issue) => issue.component === key).map((issue) => issue.severity === 'info' ? 'healthy' : issue.severity));
   if (platform && jobRuntime.backlog > 0 && (jobRuntime.activeWorkers === 0 || (jobRuntime.oldestDueSeconds ?? 0) >= 30)) {
@@ -781,11 +764,14 @@ export async function getWorkflowEngineIntrospection(
   const instanceSeries = buildInstanceSeries(instanceSeriesRows, now, terminalStatuses);
   const { score: healthScore, breakdown: scoreBreakdown } = computeHealthScore(issues, queues);
 
+  const uniqueEvents24h = await db.$count(eventOutbox, buildWhere(outboxScopeWhere, gte(eventOutbox.occurredAt, since24h)));
+  const [attemptCount] = await db.select({ count: sql<number>`count(*)::int` }).from(eventConsumerAttempts).innerJoin(eventConsumerDeliveries, eq(eventConsumerAttempts.deliveryId, eventConsumerDeliveries.id)).innerJoin(eventOutbox, eq(eventConsumerDeliveries.eventId, eventOutbox.id)).where(buildWhere(outboxScopeWhere, gte(eventConsumerAttempts.startedAt, since24h)));
   const telemetry: WorkflowEngineTelemetry = {
     healthScore,
     scoreBreakdown,
     apdex: buildApdex(eventStats.apdexSatisfied, eventStats.apdexTolerating, eventStats.apdexFrustrated, apdexT),
     events: {
+      uniqueEvents24h, deliveries24h: eventStats.total24h, attempts24h: Number(attemptCount?.count ?? 0),
       last1h: { total: eventStats.total1h, success: eventStats.success1h, failed: eventStats.failed1h },
       last24h: { total: eventStats.total24h, success: eventStats.success24h, failed: eventStats.failed24h },
       prev24h: { total: eventStats.totalPrev24h, success: eventStats.successPrev24h, failed: eventStats.failedPrev24h },
@@ -822,7 +808,9 @@ export async function getWorkflowEngineIntrospection(
   };
 
   return {
-    healthy: !issues.some((issue) => issue.severity === 'critical'),
+    scope: platform ? 'platform' : 'business', ruleVersion: 'workflow-health-v2',
+    completeness: { issuesTotal: issues.length, issuesReturned: Math.min(issues.length, 100), tasksTotal: runtimeTasks.length, tasksReturned: Math.min(runtimeTasks.length, 300), truncated: issues.length > 100 || runtimeTasks.length > 300 },
+    healthy: issues.length === 0 && healthScore >= thresholds.healthWarn,
     generatedAt: formatDateTime(now),
     thresholdMinutes: threshold,
     thresholds: {
@@ -847,6 +835,6 @@ export async function getWorkflowEngineIntrospection(
       triggerExecutions,
       outboxEvents,
     },
-    issues,
+    issues: issues.slice(0, 100),
   };
 }

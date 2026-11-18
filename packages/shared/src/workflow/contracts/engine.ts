@@ -469,6 +469,9 @@ export const workflowEngineTelemetrySchema = z.object({
   scoreBreakdown: z.array(workflowEngineScoreFactorSchema),
   apdex: workflowEngineApdexSchema,
   events: z.object({
+    uniqueEvents24h: z.int(),
+    deliveries24h: z.int(),
+    attempts24h: z.int(),
     last1h: workflowEngineThroughputWindowSchema,
     last24h: workflowEngineThroughputWindowSchema,
     prev24h: workflowEngineThroughputWindowSchema,
@@ -507,6 +510,9 @@ export const workflowEngineTelemetrySchema = z.object({
 export type WorkflowEngineTelemetry = z.infer<typeof workflowEngineTelemetrySchema>;
 
 export const workflowEngineIntrospectionSchema = z.object({
+  scope: z.enum(['business', 'platform']),
+  ruleVersion: z.string(),
+  completeness: z.object({ issuesTotal: z.int(), issuesReturned: z.int(), tasksTotal: z.int(), tasksReturned: z.int(), truncated: z.boolean() }),
   healthy: z.boolean(),
   generatedAt: z.string(),
   thresholdMinutes: z.int(),

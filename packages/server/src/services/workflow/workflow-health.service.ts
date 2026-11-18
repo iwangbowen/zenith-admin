@@ -1,9 +1,11 @@
 import { workflowMonitorScope } from './workflow-access';
-import { and, desc, eq, inArray, lte } from 'drizzle-orm';
-import { buildWhere } from '../../lib/where-helpers';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { buildWhere, keywordCondition } from '../../lib/where-helpers';
+import { workflowHealthContract, workflowHealthQuery } from '@zenith/shared/workflow';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { summarizeWorkflowHealth, type WorkflowHealthIssue, type WorkflowHealthSummary } from '@zenith/shared/workflow';
 import { db } from '../../db';
-import { workflowJobExecutions, workflowJobs, workflowInstances, workflowTasks, workflowTokens } from '../../db/schema';
+import { workflowJobExecutions, workflowJobs, workflowInstances, workflowTasks, workflowTokens, workflowCompensations, eventOutbox, eventConsumerDeliveries } from '../../db/schema';
 import { currentUser } from '../../lib/context';
 import { formatDateTime } from '../../lib/datetime';
 import { tenantCondition } from '../../lib/tenant';
@@ -41,20 +43,22 @@ function taskIssue(input: {
     status: task.status,
     ageMinutes: ageMinutes(task.createdAt, input.now),
     createdAt: formatDateTime(task.createdAt),
+    activationId: task.activationId,
   };
 }
 
-export async function getWorkflowHealthSummary(thresholdMinutes = 30): Promise<WorkflowHealthSummary> {
+export async function getWorkflowHealthSummary(thresholdMinutes = 30, options: { systemWide?: boolean; allIssues?: boolean; query?: QueryOutputOf<typeof workflowHealthContract.summary> } = {}): Promise<WorkflowHealthSummary> {
   const now = new Date();
   const cutoff = new Date(now.getTime() - Math.max(1, thresholdMinutes) * 60_000);
-  const user = currentUser();
-  const scope = await workflowMonitorScope();
+  const user = options.systemWide ? null : currentUser();
+  const scope = options.systemWide ? undefined : await workflowMonitorScope();
+  const query = options.query ?? workflowHealthQuery.parse({});
+  const contextWhere = buildWhere(scope, query.definitionId ? eq(workflowInstances.definitionId, query.definitionId) : undefined, query.instanceId ? eq(workflowInstances.id, query.instanceId) : undefined, keywordCondition(query.keyword, [workflowInstances.title, workflowInstances.serialNo]));
   const taskWhere = buildWhere(
     eq(workflowInstances.status, 'running' as const),
-    lte(workflowTasks.createdAt, cutoff),
     inArray(workflowTasks.status, ['pending', 'waiting']),
-    tenantCondition(workflowInstances, user),
-    scope,
+    user ? tenantCondition(workflowInstances, user) : undefined,
+    contextWhere,
   );
 
   const taskRows = await db.select({
@@ -64,8 +68,7 @@ export async function getWorkflowHealthSummary(thresholdMinutes = 30): Promise<W
     .from(workflowTasks)
     .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
     .where(taskWhere)
-    .orderBy(desc(workflowTasks.id))
-    .limit(300);
+    .orderBy(desc(workflowTasks.id));
 
   const triggerTaskIds = taskRows
     .filter((row) => row.task.nodeType === 'trigger')
@@ -111,7 +114,6 @@ export async function getWorkflowHealthSummary(thresholdMinutes = 30): Promise<W
     const externalJob = findJob(task.id, 'external_dispatch');
     const triggerJob = findJob(task.id, 'trigger_dispatch');
     const delayJob = findJob(task.id, 'delay_wake');
-    const timeoutJob = findJob(task.id, 'task_timeout');
     if (!activeTokenKeys.has(`${task.instanceId}:${task.nodeKey}`)) {
       issues.push(taskIssue({
         type: 'token_task_mismatch',
@@ -134,7 +136,7 @@ export async function getWorkflowHealthSummary(thresholdMinutes = 30): Promise<W
       }));
       continue;
     }
-    if (externalJob?.status === 'pending') {
+    if (externalJob?.status === 'pending' && task.createdAt <= cutoff) {
       issues.push(taskIssue({
         type: 'external_dispatch_pending',
         severity: 'warning',
@@ -158,7 +160,7 @@ export async function getWorkflowHealthSummary(thresholdMinutes = 30): Promise<W
       }));
       continue;
     }
-    if (task.nodeType === 'trigger' && task.status === 'waiting' && !triggerTaskIdsWithExecution.has(task.id)) {
+    if (task.nodeType === 'trigger' && task.status === 'waiting' && !triggerTaskIdsWithExecution.has(task.id) && task.createdAt <= cutoff) {
       issues.push(taskIssue({
         type: 'trigger_waiting_no_execution',
         severity: 'critical',
@@ -169,7 +171,7 @@ export async function getWorkflowHealthSummary(thresholdMinutes = 30): Promise<W
       }));
       continue;
     }
-    if (task.nodeType === 'subProcess' && task.status === 'waiting') {
+    if (task.nodeType === 'subProcess' && task.status === 'waiting' && task.createdAt <= cutoff) {
       const children = subChildren.filter((child) => child.parentTaskId === task.id);
       const outstanding = jobsByTask.get(task.id)?.filter((job) => ['subprocess_spawn', 'subprocess_join'].includes(job.jobType)
         && ['pending', 'running', 'failed', 'dead'].includes(job.status)) ?? [];
@@ -206,19 +208,19 @@ export async function getWorkflowHealthSummary(thresholdMinutes = 30): Promise<W
       }));
       continue;
     }
-    if (task.status === 'pending' && timeoutJob?.status === 'pending' && timeoutJob.runAt <= now) {
+    if (task.taskKind === 'approval' && task.status === 'pending' && task.slaDeadline && task.slaDeadline <= now) {
       issues.push(taskIssue({
         type: 'task_timeout_overdue',
         severity: 'warning',
         title: '审批任务已超时未处理',
-        description: '审批超时作业 runAt 已到期，等待超时处理器执行。',
+        description: '冻结的 SLA 截止已到期；提醒是否已发送不改变超时事实。',
         row,
         now,
       }));
       continue;
     }
     // 无失败或超时标记的人工待办也须检测滞留。
-    if (task.status === 'pending') {
+    if (task.taskKind === 'approval' && task.status === 'pending' && task.createdAt <= cutoff) {
       issues.push(taskIssue({
         type: 'waiting_task_stuck',
         severity: 'warning',
@@ -236,12 +238,10 @@ export async function getWorkflowHealthSummary(thresholdMinutes = 30): Promise<W
     .from(workflowInstances)
     .where(buildWhere(
       eq(workflowInstances.status, 'running' as const),
-      lte(workflowInstances.updatedAt, cutoff),
-      tenantCondition(workflowInstances, user),
-    scope,
+      user ? tenantCondition(workflowInstances, user) : undefined,
+    contextWhere,
     ))
-    .orderBy(desc(workflowInstances.id))
-    .limit(200);
+    .orderBy(desc(workflowInstances.id));
   if (runningRows.length > 0) {
     const runningIds = runningRows.map((r) => r.id);
     const [aliveTaskRows, aliveJobRows] = await Promise.all([
@@ -274,5 +274,15 @@ export async function getWorkflowHealthSummary(thresholdMinutes = 30): Promise<W
     }
   }
 
-  return summarizeWorkflowHealth(issues, { thresholdMinutes, checkedAt: formatDateTime(now) });
+  const deliveries = await db.select({ delivery: eventConsumerDeliveries, event: eventOutbox }).from(eventConsumerDeliveries).innerJoin(eventOutbox, eq(eventConsumerDeliveries.eventId, eventOutbox.id)).innerJoin(workflowInstances, sql`${eventOutbox.orderingKey} = 'workflow:' || ${workflowInstances.id}::text`).where(buildWhere(contextWhere, eq(eventOutbox.domain, 'workflow'), eq(eventConsumerDeliveries.status, 'dead')));
+  for (const { delivery, event } of deliveries) issues.push({ id: `delivery:${delivery.id}`, type: 'workflow_event_outbox_failed', severity: 'critical', title: '领域事件消费者失败', description: `${delivery.consumerKey}：${delivery.lastError ?? '执行失败'}`, instanceId: Number(event.orderingKey.split(':')[1]), ageMinutes: ageMinutes(event.occurredAt, now), createdAt: formatDateTime(event.occurredAt), evidence: { deliveryId: delivery.id, eventId: event.eventId, generation: delivery.generation } });
+  const repairs = await db.select({ ticket: workflowCompensations, title: workflowInstances.title }).from(workflowCompensations).innerJoin(workflowInstances, eq(workflowCompensations.instanceId, workflowInstances.id)).where(buildWhere(contextWhere, eq(workflowCompensations.status, 'pending'), eq(workflowInstances.status, 'running')));
+  for (const { ticket, title } of repairs) issues.push({ id: `repair:${ticket.id}`, type: 'repair_pending', severity: 'critical', title: '节点故障等待修复', description: ticket.errorMessage ?? '自动执行失败，修复工单待处理', instanceId: ticket.instanceId, instanceTitle: title, taskId: ticket.repairTaskId, activationId: ticket.repairActivationId, nodeKey: ticket.failedNodeKey ?? ticket.nodeKey, nodeName: ticket.nodeName, ageMinutes: ageMinutes(ticket.createdAt, now), createdAt: formatDateTime(ticket.createdAt), evidence: { compensationId: ticket.id, actionStatus: ticket.compensationActionStatus } });
+  const unknownJobs = await db.select({ job: workflowJobs, title: workflowInstances.title }).from(workflowJobs).innerJoin(workflowInstances, eq(workflowJobs.instanceId, workflowInstances.id)).where(buildWhere(contextWhere, eq(workflowJobs.effectStatus, 'sent_unknown')));
+  for (const { job, title } of unknownJobs) issues.push({ id: `external-result:${job.id}:${job.generation}`, type: 'external_result_unknown', severity: 'critical', title: '外部操作结果待确认', description: job.lastError ?? '先核对外部执行结果，禁止普通重放', instanceId: job.instanceId, instanceTitle: title, taskId: job.taskId, nodeKey: job.nodeKey, jobId: job.id, ageMinutes: ageMinutes(job.createdAt, now), createdAt: formatDateTime(job.createdAt), evidence: { generation: job.generation, effectStatus: job.effectStatus } });
+  const enriched = issues.map(issue => ({ ...issue, fingerprint: issue.id, ruleVersion: 'workflow-health-v2' }));
+  const filtered = enriched.filter(issue => (!query.type || issue.type === query.type) && (!query.severity || issue.severity === query.severity));
+  const result = summarizeWorkflowHealth(filtered, { thresholdMinutes, checkedAt: formatDateTime(now) });
+  const { page, pageSize } = query;
+  return { ...result, scope: options.systemWide ? 'platform' : 'business', coverage: { instances: runningRows.length, tasks: taskRows.length, rules: 13, complete: true }, total: result.issues.length, page, pageSize, truncated: !options.allIssues && result.issues.length > pageSize, issues: options.allIssues ? result.issues : result.issues.slice((page - 1) * pageSize, page * pageSize) };
 }

@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm';
 import type { WorkflowTimeoutConfig } from '@zenith/shared/workflow';
 import { db } from '../../../db';
+import { workflowTransaction } from '../lease';
 import { workflowTasks, workflowInstances } from '../../../db/schema';
 import type { workflowTasks as workflowTasksTable } from '../../../db/schema';
 import { approveTaskCore, rejectTaskCore, systemTransferTaskToManagerInTransaction, mapTask } from '../../../services/workflow/workflow-instances.service';
