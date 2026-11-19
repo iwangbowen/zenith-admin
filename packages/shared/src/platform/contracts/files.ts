@@ -5,7 +5,7 @@ import {
   FILE_ACCESS_PURPOSES,
   FILE_STORAGE_PROVIDERS,
   FILE_TYPE_FILTERS,
-  FILE_URL_STRATEGIES,
+  FILE_URL_RESULT_STRATEGIES,
   FILE_VISIBILITIES,
   UPLOAD_SESSION_STATUSES,
 } from '../constants';
@@ -37,7 +37,7 @@ export type ManagedFile = z.infer<typeof managedFileSchema>;
 /** access-url 接口返回的文件访问地址（presigned 每次返回新鲜签名，禁止长期缓存） */
 export const fileAccessUrlSchema = z.object({
   url: z.string().meta({ example: 'https://bucket.oss-cn-hangzhou.aliyuncs.com/2026/07/11/a.png?Expires=...' }),
-  strategy: z.enum(FILE_URL_STRATEGIES),
+  strategy: z.enum(FILE_URL_RESULT_STRATEGIES),
   expiresAt: z.string().nullable().meta({ description: '签名过期时间（YYYY-MM-DD HH:mm:ss）；public/proxy 为 null' }),
 }).meta({ id: 'FileAccessUrl' });
 

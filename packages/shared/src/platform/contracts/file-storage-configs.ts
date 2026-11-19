@@ -1,7 +1,7 @@
 import * as z from 'zod';
 import { auditFieldsSchema, dateRangeQuery, entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
-import { FILE_OBJECT_ACLS, FILE_STORAGE_PROVIDERS, FILE_URL_STRATEGIES } from '../constants';
+import { FILE_ACCESS_STRATEGIES, FILE_BUCKET_ACLS, FILE_OBJECT_ACLS, FILE_STORAGE_PROVIDERS } from '../constants';
 import { createFileStorageConfigSchema, updateFileStorageConfigSchema } from '../validation';
 
 // ─── 实体 ────────────────────────────────────────────────────────────────────
@@ -18,7 +18,13 @@ export const fileStorageConfigSchema = z.object({
   isDefault: z.boolean(),
   basePath: z.string().nullable().optional(),
   objectAcl: z.enum(FILE_OBJECT_ACLS).meta({ description: '对象读写权限（仅 oss/s3/cos/obs/bos 生效）；default = 继承 Bucket' }),
-  urlStrategy: z.enum(FILE_URL_STRATEGIES).meta({ description: '文件访问 URL 策略' }),
+  accessStrategy: z.enum(FILE_ACCESS_STRATEGIES).meta({ description: '文件下载方式' }),
+  /** 最近一次探测的 Bucket / Container 读写权限 */
+  bucketAcl: z.enum(FILE_BUCKET_ACLS).nullable().optional(),
+  /** 最近一次探测的阻止公共访问状态；null = 该 provider 无此能力或尚未探测 */
+  bucketBlockPublicAccess: z.boolean().nullable().optional(),
+  bucketAccessCheckedAt: z.string().nullable().optional(),
+  bucketAccessError: z.string().nullable().optional(),
   publicBaseUrl: z.string().nullable().optional().meta({ description: '自定义访问域名（CDN/加速域名），public 策略优先使用' }),
   presignedExpirySeconds: z.int().meta({ description: '临时签名有效期（秒）' }),
   localRootPath: z.string().nullable().optional(),
@@ -68,6 +74,23 @@ export const fileStorageConfigSchema = z.object({
 
 export type FileStorageConfig = z.infer<typeof fileStorageConfigSchema>;
 
+/** Bucket / Container 级访问状态探测结果 */
+export const fileBucketAccessInfoSchema = z.object({
+  bucketAcl: z.enum(FILE_BUCKET_ACLS).nullable(),
+  blockPublicAccess: z.boolean().nullable(),
+  effectivePublic: z.boolean(),
+  checkedAt: z.string(),
+}).meta({ id: 'FileBucketAccessInfo' });
+
+export type FileBucketAccessInfo = z.infer<typeof fileBucketAccessInfoSchema>;
+
+export const updateFileBucketAccessSchema = z.object({
+  acl: z.enum(FILE_BUCKET_ACLS).optional(),
+  blockPublicAccess: z.boolean().optional(),
+}).refine((value) => value.acl !== undefined || value.blockPublicAccess !== undefined, {
+  message: '至少提供一个要修改的权限项',
+});
+
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 
 export const fileStorageConfigListQuery = paginationQuery.extend({
@@ -81,6 +104,8 @@ export const fileStorageConfigContract = defineContract('/api/file-storage-confi
   test: op.post('/test', { access: { permission: 'system:file:config' }, audit: { description: '测试文件存储连接', recordBody: false }, body: createFileStorageConfigSchema, summary: '测试存储配置连接' }),
   testExisting: op.post('/{id}/test', { access: { permission: 'system:file:config' }, audit: { description: '测试文件存储连接', recordBody: false }, params: idParam, body: updateFileStorageConfigSchema, summary: '测试已保存存储配置连接' }),
   detail: op.get('/{id}', { access: { permission: 'system:file:config' }, params: idParam, response: fileStorageConfigSchema, summary: '存储配置详情' }),
+  probeBucketAccess: op.post('/{id}/bucket-access/probe', { access: { permission: 'system:file:config' }, params: idParam, response: fileBucketAccessInfoSchema, summary: '探测 Bucket 访问权限' }),
+  updateBucketAccess: op.put('/{id}/bucket-access', { access: { permission: 'system:file:config:update' }, audit: '修改 Bucket 访问权限', params: idParam, body: updateFileBucketAccessSchema, response: fileBucketAccessInfoSchema, summary: '修改 Bucket 访问权限' }),
   create: op.post('/', { access: { permission: 'system:file:config:create' }, audit: '创建文件存储配置', body: createFileStorageConfigSchema, response: fileStorageConfigSchema, summary: '创建配置' }),
   update: op.put('/{id}', { access: { permission: 'system:file:config:update' }, audit: '更新文件存储配置', params: idParam, body: updateFileStorageConfigSchema, response: fileStorageConfigSchema, summary: '更新配置' }),
   setDefault: op.put('/{id}/default', { access: { permission: 'system:file:config:default' }, audit: { description: '设置默认文件存储', recordBody: false }, params: idParam, response: fileStorageConfigSchema, summary: '设为默认' }),
