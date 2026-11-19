@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { Button, Col, Form, Radio, Row, Select, Switch, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import { PlugZap } from 'lucide-react';
 import { fileStorageConfigContract, type CreateFileStorageConfigInput, type FileAccessStrategy, type FileBucketAccessInfo, type FileBucketAcl, type FileObjectAcl, type FileStorageConfig, type FileStorageProvider, type UpdateFileStorageConfigInput } from '@zenith/shared/platform';
-import { FILE_ACCESS_STRATEGY_LABELS, FILE_ACCESS_STRATEGY_OPTIONS, FILE_BUCKET_ACCESS_SUPPORT, FILE_BUCKET_ACL_LABELS, FILE_OBJECT_ACL_LABELS, FILE_OBJECT_ACL_SUPPORT, FILE_STORAGE_PROVIDER_LABELS, FILE_STORAGE_PROVIDER_OPTIONS, PRESIGNED_EXPIRY_DEFAULT_SECONDS, PRESIGNED_EXPIRY_MAX_SECONDS, PRESIGNED_EXPIRY_MIN_SECONDS } from '@zenith/shared/platform';
+import { FILE_ACCESS_STRATEGY_LABELS, FILE_ACCESS_STRATEGY_OPTIONS, FILE_BUCKET_ACCESS_SUPPORT, FILE_BUCKET_ACL_LABELS, FILE_DIRECT_UPLOAD_SUPPORT, FILE_OBJECT_ACL_LABELS, FILE_OBJECT_ACL_SUPPORT, FILE_STORAGE_PROVIDER_LABELS, FILE_STORAGE_PROVIDER_OPTIONS, FILE_UPLOAD_MODE_OPTIONS, PRESIGNED_EXPIRY_DEFAULT_SECONDS, PRESIGNED_EXPIRY_MAX_SECONDS, PRESIGNED_EXPIRY_MIN_SECONDS } from '@zenith/shared/platform';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -57,6 +57,7 @@ function baseStorageFields(values: FileStorageConfigFormValues, isDefault: boole
     isDefault,
     basePath: normalizeOptional(values.basePath),
     accessStrategy: values.accessStrategy ?? 'proxy',
+    uploadMode: values.uploadMode ?? 'server-proxy',
     publicBaseUrl: normalizeOptional(values.publicBaseUrl),
     presignedExpirySeconds: values.presignedExpirySeconds ?? PRESIGNED_EXPIRY_DEFAULT_SECONDS,
   };
@@ -224,6 +225,7 @@ export default function FileStorageConfigsPage() {
       basePath: 'uploads',
       objectAcl: 'default',
       accessStrategy: 'proxy',
+      uploadMode: 'server-proxy',
       publicBaseUrl: '',
       presignedExpirySeconds: PRESIGNED_EXPIRY_DEFAULT_SECONDS,
       localRootPath: 'storage/local',
@@ -235,6 +237,7 @@ export default function FileStorageConfigsPage() {
       basePath: config.basePath ?? '',
       objectAcl: config.objectAcl ?? 'default',
       accessStrategy: config.accessStrategy ?? 'proxy',
+      uploadMode: config.uploadMode ?? 'server-proxy',
       publicBaseUrl: config.publicBaseUrl ?? '',
       presignedExpirySeconds: config.presignedExpirySeconds ?? PRESIGNED_EXPIRY_DEFAULT_SECONDS,
       localRootPath: config.localRootPath ?? '',
@@ -575,6 +578,9 @@ export default function FileStorageConfigsPage() {
                   if (currentAcl && !(FILE_OBJECT_ACL_SUPPORT[next] ?? []).includes(currentAcl)) {
                     modal.formApi.current?.setValue('objectAcl', 'default');
                   }
+                  if (!FILE_DIRECT_UPLOAD_SUPPORT[next]) {
+                    modal.formApi.current?.setValue('uploadMode', 'server-proxy');
+                  }
                 }}
                 placeholder="请选择存储类型"
               />
@@ -863,6 +869,24 @@ export default function FileStorageConfigsPage() {
               ))}
             </Form.RadioGroup>
           )}
+
+          <Row gutter={16}>
+            <Col span={24}>
+              <Form.Select
+                field="uploadMode"
+                label="上传方式"
+                style={{ width: '100%' }}
+                disabled={!FILE_DIRECT_UPLOAD_SUPPORT[formProvider]}
+                extraText={FILE_DIRECT_UPLOAD_SUPPORT[formProvider]
+                  ? '服务端中转：文件经服务端转发；浏览器直传：服务端只签发临时上传地址，文件直接从浏览器上传到云存储。'
+                  : '当前存储类型仅支持服务端中转。'}
+              >
+                {FILE_UPLOAD_MODE_OPTIONS.map((opt) => (
+                  <Select.Option key={opt.value} value={opt.value}>{opt.label}</Select.Option>
+                ))}
+              </Form.Select>
+            </Col>
+          </Row>
 
           <Row gutter={16}>
             <Col span={24}>
