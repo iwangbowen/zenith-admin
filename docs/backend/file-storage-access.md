@@ -43,7 +43,7 @@
 | Kodo | ✅（私有/公开） | ❌ |
 | local / SFTP | ❌ | ❌ |
 
-写操作使用独立权限 `system:file:config:bucket-access`，并记审计。账号级 OSS 全局阻止公共访问只展示，不提供修改。
+写操作使用独立权限 `system:file:config:bucket-access`，并记审计。当前面板探测和修改的是 Bucket / Container 级状态。OSS 账号级阻止公共访问尚未接入探测或展示，不能从 Bucket 状态推断账号级开关。
 
 ## 4. 浏览器直传
 
@@ -51,32 +51,33 @@
 
 ```text
 浏览器 → POST /api/files/direct-uploads
-服务端 → 生成 objectKey + 预签名 PUT URL（短期）
-浏览器 → PUT 文件到云存储（不经过服务端）
+服务端 → 初始化 provider multipart 会话并返回分片大小
+浏览器 → 为每片申请短时 PUT URL / 凭证并直传云存储
+浏览器 → 确认分片 ETag；刷新后查询状态并只重传缺失分片
 浏览器 → POST /api/files/direct-uploads/{uploadId}/complete
-服务端 → HEAD 校验大小/类型/ETag → 写入 managed_files
+服务端 → 合并、HEAD 校验真实对象大小、校验类型与 SHA-256、写入 managed_files
 ```
 
-失败或取消：`DELETE /api/files/direct-uploads/{uploadId}`，服务端删除对象并关闭会话。
+上传状态复用 `upload_sessions` / `upload_chunks`，localStorage 保存会话 ID。网络中断或刷新后重新选择同一文件会续传；显式取消调用 `DELETE /api/files/direct-uploads/{uploadId}`，服务端中止 multipart 并关闭会话。过期会话由既有上传会话清理任务处理。
 
 ### 4.2 Provider 能力
 
 | Provider | 直传机制 | 状态 |
 | --- | --- | --- |
-| OSS | 预签名 PUT | 已实现并实测 |
-| S3 | 预签名 PUT | 已实现 |
-| COS | 预签名 PUT | 已实现 |
-| OBS | 预签名 PUT | 已实现 |
-| Azure Blob | SAS | 已实现 |
-| BOS | 未接入 | 走服务端中转 |
-| Kodo | 未接入（uploadToken） | 走服务端中转 |
+| OSS | multipart 分片预签名 PUT | 已实现 |
+| S3 | UploadPart 预签名 PUT | 已实现 |
+| COS | multipart 分片预签名 PUT | 已实现 |
+| OBS | multipart 分片预签名 PUT | 已实现 |
+| Azure Blob | SAS + staged block | 已实现 |
+| BOS | multipart 分片签名 PUT | 已实现 |
+| Kodo | 对象级短时 uploadToken + 分片 v2 | 已实现 |
 | local / SFTP | 不支持 | 走服务端中转 |
 
 ### 4.3 前置条件
 
-- Bucket 配置 CORS：允许后台站点 Origin 的 `PUT` / `POST` / `GET` / `HEAD`。
-- 云账号 AccessKey 具备对应对象的 `PutObject` 权限；预签名 PUT 使用现有 AccessKey 在服务端签名，不下发长期密钥。
-- 完成校验依赖 `HEAD` 权限。
+- Bucket 配置 CORS：允许后台站点 Origin 的 `PUT` / `POST` / `GET` / `HEAD` 与 `Content-Type`、`Authorization`、`x-ms-version` 等 provider 请求头；OSS、S3、COS、OBS、BOS 需暴露 `ETag`，Kodo 响应体包含分片标签，Azure 使用服务端确定的 block id。
+- 云账号 AccessKey 具备初始化 multipart、上传分片、完成 multipart、中止 multipart 和 `HEAD` 权限；服务端按对象签发短时 URL 或 uploadToken，不下发长期密钥。
+- Kodo multipart v2 单片为 4 MiB；其他 provider 使用运行时 `files.chunkSizeMb`（5–32 MiB）。
 
 ### 4.4 秒传
 

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { FILE_DIRECT_UPLOAD_SUPPORT } from './constants';
 import { createFileStorageConfigSchema } from './validation';
 
 const ossBase = {
@@ -17,6 +18,10 @@ const ossBase = {
 } as const;
 
 describe('file storage access strategy validation', () => {
+  it('enables browser-direct for every cloud object storage provider only', () => {
+    expect(Object.keys(FILE_DIRECT_UPLOAD_SUPPORT).sort()).toEqual(['azure', 'bos', 'cos', 'kodo', 'obs', 'oss', 's3']);
+  });
+
   it('accepts inherited objects with a public-read bucket', () => {
     const result = createFileStorageConfigSchema.safeParse({
       ...ossBase,

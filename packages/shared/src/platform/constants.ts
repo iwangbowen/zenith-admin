@@ -70,7 +70,7 @@ export const FILE_OBJECT_ACL_SUPPORT: Partial<Record<(typeof FILE_STORAGE_PROVID
 export const FILE_UPLOAD_MODES = ['server-proxy', 'browser-direct'] as const;
 export type FileUploadMode = (typeof FILE_UPLOAD_MODES)[number];
 
-/** 各 provider 支持的浏览器直传机制；未列出的 provider 只能走服务端中转 */
+/** 各云对象存储支持的浏览器直传凭证；本地磁盘与 SFTP 只能走服务端中转 */
 export const FILE_DIRECT_UPLOAD_SUPPORT: Partial<Record<
   (typeof FILE_STORAGE_PROVIDERS)[number],
   'presigned-put' | 'sas' | 'upload-token'
@@ -79,6 +79,8 @@ export const FILE_DIRECT_UPLOAD_SUPPORT: Partial<Record<
   s3: 'presigned-put',
   cos: 'presigned-put',
   obs: 'presigned-put',
+  kodo: 'upload-token',
+  bos: 'presigned-put',
   azure: 'sas',
 };
 

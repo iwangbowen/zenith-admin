@@ -879,7 +879,7 @@ export default function FileStorageConfigsPage() {
                 style={{ width: '100%' }}
                 disabled={!FILE_DIRECT_UPLOAD_SUPPORT[formProvider]}
                 extraText={FILE_DIRECT_UPLOAD_SUPPORT[formProvider]
-                  ? '服务端中转：文件经服务端转发；浏览器直传：服务端只签发临时上传地址，文件直接从浏览器上传到云存储。'
+                  ? '服务端中转：文件经服务端转发；浏览器直传：浏览器分片上传到云存储，服务端仅签发短时、限定对象范围的上传凭证并完成校验。'
                   : '当前存储类型仅支持服务端中转。'}
               >
                 {FILE_UPLOAD_MODE_OPTIONS.map((opt) => (

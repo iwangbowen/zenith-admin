@@ -2,7 +2,7 @@ import type OSS from 'ali-oss';
 import type * as QiniuTypes from 'qiniu';
 import SftpClient from 'ssh2-sftp-client';
 import { createRequire } from 'node:module';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { promises as fs, createWriteStream } from 'node:fs';
 import { Readable, PassThrough } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -12,7 +12,7 @@ import { FILE_OBJECT_ACL_SUPPORT, type FileBucketAcl } from '@zenith/shared/plat
 import { trimTrailingSlash } from '@zenith/shared/core';
 import { HTTPException } from 'hono/http-exception';
 import { formatDate } from './datetime';
-import { httpGet } from './http-client';
+import { httpDelete, httpGet, httpPost, httpPut } from './http-client';
 import logger from './logger';
 
 // 惰性加载：各云存储 SDK 模块图大（Azure/ali-oss 实测 1.5-2.3s），仅在首次使用对应存储类型时加载。
@@ -125,6 +125,8 @@ function normalizeBucketAcl(value: unknown): FileBucketAcl | null {
   return value === 'private' || value === 'public-read' || value === 'public-read-write' ? value : null;
 }
 
+const kodoZones = new Map<string, Promise<QiniuTypes.conf.Zone>>();
+
 function toBooleanOrNull(value: unknown): boolean | null {
   if (value === true || value === 'true') return true;
   if (value === false || value === 'false') return false;
@@ -138,11 +140,24 @@ export async function getBucketAccessInfo(config: FileStorageConfigRow): Promise
     const info = await client.getBucketInfo(config.ossBucket!);
     const bucket = (info as { bucket?: Record<string, unknown> }).bucket ?? info as Record<string, unknown>;
     const acl = normalizeBucketAcl((bucket.AccessControlList as { Grant?: unknown } | undefined)?.Grant);
-    const blockPublicAccess = toBooleanOrNull(bucket.BlockPublicAccess);
+    let blockPublicAccess: boolean | null;
+    try {
+      const result = await (client as unknown as { request(params: Record<string, unknown>): Promise<{ data?: Record<string, unknown> }> }).request({
+        method: 'GET',
+        bucket: config.ossBucket!,
+        subres: 'publicAccessBlock',
+        successStatuses: [200],
+      });
+      const policy = result.data?.PublicAccessBlockConfiguration as Record<string, unknown> | undefined;
+      blockPublicAccess = toBooleanOrNull(policy?.BlockPublicAccess);
+    } catch (error) {
+      if ((error as { code?: string }).code === 'NoSuchPublicAccessBlockConfiguration') blockPublicAccess = false;
+      else throw error;
+    }
     return {
       bucketAcl: acl,
       blockPublicAccess,
-      effectivePublic: (acl === 'public-read' || acl === 'public-read-write') && blockPublicAccess !== true,
+      effectivePublic: (acl === 'public-read' || acl === 'public-read-write') && blockPublicAccess === false,
       checkedAt: new Date(),
     };
   }
@@ -163,7 +178,7 @@ export async function getBucketAccessInfo(config: FileStorageConfigRow): Promise
       if ((err as { name?: string }).name === 'NoSuchPublicAccessBlockConfiguration') blockPublicAccess = false;
       else blockPublicAccess = null;
     }
-    return { bucketAcl: acl, blockPublicAccess, effectivePublic: (acl === 'public-read' || acl === 'public-read-write') && blockPublicAccess !== true, checkedAt: new Date() };
+    return { bucketAcl: acl, blockPublicAccess, effectivePublic: (acl === 'public-read' || acl === 'public-read-write') && blockPublicAccess === false, checkedAt: new Date() };
   }
   if (config.provider === 'cos') {
     const cos = createCosClient(config);
@@ -198,8 +213,8 @@ export async function getBucketAccessInfo(config: FileStorageConfigRow): Promise
   if (config.provider === 'azure') {
     const properties = await createAzureBlobClient(config).getProperties();
     const access = (properties as unknown as { blobPublicAccess?: string }).blobPublicAccess;
-    const acl: FileBucketAcl = access === 'container' || access === 'blob' ? 'public-read' : 'private';
-    return { bucketAcl: acl, blockPublicAccess: null, effectivePublic: acl === 'public-read', checkedAt: new Date() };
+    const acl: FileBucketAcl = access === 'container' ? 'public-read' : 'private';
+    return { bucketAcl: acl, blockPublicAccess: null, effectivePublic: access !== null && access !== undefined, checkedAt: new Date() };
   }
   if (config.provider === 'obs') {
     const obs = createObsClient(config) as unknown as {
@@ -286,7 +301,7 @@ export async function setBucketAccessInfo(
   }
   if (config.provider === 'azure') {
     if (!input.acl) throw new HTTPException(400, { message: 'Azure 仅支持修改 Container 访问级别' });
-    await createAzureBlobClient(config).setAccessPolicy(input.acl === 'private' ? undefined : 'container');
+    await createAzureBlobClient(config).setAccessPolicy(input.acl === 'private' ? undefined : 'blob');
     return getBucketAccessInfo(config);
   }
   if (config.provider === 'obs') {
@@ -447,9 +462,16 @@ function splitEndpoint(endpoint: string): { scheme: string; host: string } {
 export function isPublicAccessAllowed(file: FileUrlSource, config: FileStorageConfigRow): boolean {
   switch (config.accessStrategy) {
     case 'public-object':
-      return file.objectAcl === 'public-read' || file.objectAcl === 'public-read-write';
+      return (file.objectAcl === 'public-read' || file.objectAcl === 'public-read-write')
+        && (config.provider === 'oss' || config.provider === 's3'
+          ? config.bucketBlockPublicAccess === false
+          : config.bucketBlockPublicAccess !== true);
     case 'public-bucket':
-      return file.publicAccess === true;
+      return file.publicAccess === true
+        && (config.bucketAcl === 'public-read' || config.bucketAcl === 'public-read-write')
+        && (config.provider === 'oss' || config.provider === 's3'
+          ? config.bucketBlockPublicAccess === false
+          : config.bucketBlockPublicAccess !== true);
     case 'public-domain':
       return Boolean(config.publicBaseUrl?.trim())
         || (config.provider === 'kodo' && Boolean(config.kodoEndpoint))
@@ -469,10 +491,13 @@ export function resolvePublicAccess(
 ): boolean {
   switch (config.accessStrategy) {
     case 'public-object':
-      return objectAcl === 'public-read' || objectAcl === 'public-read-write';
+      return (objectAcl === 'public-read' || objectAcl === 'public-read-write')
+        && (config.provider === 'oss' || config.provider === 's3' ? config.bucketBlockPublicAccess === false : true);
     case 'public-bucket':
       return (config.bucketAcl === 'public-read' || config.bucketAcl === 'public-read-write')
-        && config.bucketBlockPublicAccess !== true;
+        && (config.provider === 'oss' || config.provider === 's3'
+          ? config.bucketBlockPublicAccess === false
+          : config.bucketBlockPublicAccess !== true);
     case 'public-domain':
       return Boolean(config.publicBaseUrl?.trim())
         || (config.provider === 'kodo' && Boolean(config.kodoEndpoint))
@@ -490,77 +515,76 @@ export interface DirectUploadTarget {
   url: string;
   method: 'PUT';
   headers?: Record<string, string>;
+  partTag?: string;
   expiresAt: Date;
 }
 
-export async function createDirectUploadTarget(
+/** 为指定云端 multipart 分片签发短期地址。 */
+export async function createDirectPartTarget(
   config: FileStorageConfigRow,
   objectKey: string,
-  mimeType: string | undefined,
+  uploadId: string,
+  partNumber: number,
   expirySeconds: number,
 ): Promise<DirectUploadTarget> {
   const expiresAt = new Date(Date.now() + expirySeconds * 1000);
-  const contentType = mimeType || 'application/octet-stream';
+  const query = { uploadId, partNumber: String(partNumber) };
   switch (config.provider) {
+    case 'kodo':
+      return createKodoDirectPartTarget(config, objectKey, uploadId, partNumber, expirySeconds);
     case 'oss': {
-      const client = createOssClient(config);
-      const url = client.signatureUrl(objectKey, {
-        method: 'PUT',
-        expires: expirySeconds,
-        'Content-Type': contentType,
+      const url = createOssClient(config).signatureUrl(objectKey, {
+        method: 'PUT', expires: expirySeconds, subResource: query,
       });
-      return { url, method: 'PUT', headers: { 'Content-Type': contentType }, expiresAt };
+      return { url, method: 'PUT', expiresAt };
     }
     case 's3': {
-      const client = createS3Client(config);
-      const { PutObjectCommand } = loadS3();
-      const { getSignedUrl } = loadS3Presigner();
-      const url = await getSignedUrl(client, new PutObjectCommand({
-        Bucket: config.s3Bucket!,
-        Key: objectKey,
-        ContentType: contentType,
+      const { UploadPartCommand } = loadS3();
+      const url = await loadS3Presigner().getSignedUrl(createS3Client(config), new UploadPartCommand({
+        Bucket: config.s3Bucket!, Key: objectKey, UploadId: uploadId, PartNumber: partNumber,
       }), { expiresIn: expirySeconds });
-      return { url, method: 'PUT', headers: { 'Content-Type': contentType }, expiresAt };
+      return { url, method: 'PUT', expiresAt };
     }
     case 'cos': {
       const cos = createCosClient(config);
       const url = await new Promise<string>((resolve, reject) => {
-        cos.getObjectUrl({
-          Bucket: config.cosBucket!,
-          Region: config.cosRegion!,
-          Key: objectKey,
-          Sign: true,
-          Method: 'PUT',
-          Expires: expirySeconds,
+        cos.getObjectUrl({ Bucket: config.cosBucket!, Region: config.cosRegion!, Key: objectKey,
+          Sign: true, Method: 'PUT', Expires: expirySeconds, Query: query,
         }, (err, data) => (err ? reject(err instanceof Error ? err : new Error(String(err))) : resolve(data.Url)));
       });
-      return { url, method: 'PUT', headers: { 'Content-Type': contentType }, expiresAt };
+      return { url, method: 'PUT', expiresAt };
     }
     case 'obs': {
-      const obs = createObsClient(config) as ObsClientType & {
-        createSignedUrlSync(params: Record<string, unknown>): { SignedUrl: string };
-      };
-      const url = obs.createSignedUrlSync({
-        Method: 'PUT',
-        Bucket: config.obsBucket!,
-        Key: objectKey,
-        Expires: expirySeconds,
-        Headers: { 'Content-Type': contentType },
-      }).SignedUrl;
-      return { url, method: 'PUT', headers: { 'Content-Type': contentType }, expiresAt };
+      const obs = createObsClient(config) as ObsClientType & { createSignedUrlSync(params: Record<string, unknown>): { SignedUrl: string } };
+      const url = obs.createSignedUrlSync({ Method: 'PUT', Bucket: config.obsBucket!, Key: objectKey,
+        Expires: expirySeconds, QueryParams: query }).SignedUrl;
+      return { url, method: 'PUT', expiresAt };
     }
     case 'azure': {
-      const containerClient = createAzureBlobClient(config);
-      const blockBlobClient = containerClient.getBlockBlobClient(objectKey);
-      const url = await blockBlobClient.generateSasUrl({
-        permissions: loadAzureBlob().BlobSASPermissions.parse('cw'),
-        expiresOn: expiresAt,
-        contentType,
-      });
-      return { url, method: 'PUT', headers: { 'Content-Type': contentType }, expiresAt };
+      const blob = createAzureBlobClient(config).getBlockBlobClient(objectKey);
+      const url = new URL(await blob.generateSasUrl({ permissions: loadAzureBlob().BlobSASPermissions.parse('cw'), expiresOn: expiresAt }));
+      url.searchParams.set('comp', 'block');
+      url.searchParams.set('blockid', makeAzureBlockId(partNumber));
+      return { url: url.toString(), method: 'PUT', headers: { 'x-ms-version': '2021-12-02' }, partTag: makeAzureBlockId(partNumber), expiresAt };
+    }
+    case 'bos': {
+      const timestamp = Math.floor(Date.now() / 1000);
+      const client = createBosClient(config) as unknown as {
+        generatePresignedUrl(bucket: string, key: string, timestamp: number, expiry: number, headers: Record<string, string>, params: Record<string, string>, headersToSign: string[]): string;
+      };
+      const url = new URL(client.generatePresignedUrl(config.bosBucket!, objectKey, timestamp, expirySeconds, {}, query, ['host']));
+      url.searchParams.delete('authorization');
+      const signedParams = Object.fromEntries(url.searchParams.entries());
+      const Auth = require('@baiducloud/sdk/src/auth') as new (ak: string, sk: string) => {
+        generateAuthorization(method: string, resource: string, params: Record<string, string>, headers: Record<string, string>, timestamp: number, expiry: number): string;
+      };
+      const auth = new Auth(config.bosAccessKeyId!, config.bosSecretAccessKey!);
+      const signature = auth.generateAuthorization('PUT', url.pathname, signedParams, { Host: url.host }, timestamp, expirySeconds);
+      url.searchParams.set('authorization', signature);
+      return { url: url.toString(), method: 'PUT', expiresAt };
     }
     default:
-      throw new HTTPException(400, { message: `当前存储类型不支持浏览器直传：${config.provider}` });
+      throw new HTTPException(400, { message: `当前存储类型不支持分片直传：${config.provider}` });
   }
 }
 
@@ -633,6 +657,28 @@ export async function headStoredObject(config: FileStorageConfigRow, objectKey: 
         etag: properties.etag ?? null,
       };
     }
+    case 'kodo': {
+      const { mac, conf } = createKodoUploader(config);
+      const manager = new (loadQiniu().rs.BucketManager)(mac, conf);
+      const result = await manager.stat(config.kodoBucket!, objectKey);
+      return {
+        size: Number(result.data.fsize ?? 0),
+        mimeType: result.data.mimeType ?? null,
+        etag: result.data.hash ?? null,
+      };
+    }
+    case 'bos': {
+      const client = createBosClient(config) as unknown as {
+        getObjectMetadata(bucket: string, key: string): Promise<{ http_headers?: Record<string, string> }>;
+      };
+      const result = await client.getObjectMetadata(config.bosBucket!, objectKey);
+      const headers = result.http_headers ?? {};
+      return {
+        size: Number(headers['content-length'] ?? 0),
+        mimeType: headers['content-type'] ?? null,
+        etag: headers.etag ?? null,
+      };
+    }
     default:
       throw new HTTPException(400, { message: `当前存储类型不支持浏览器直传：${config.provider}` });
   }
@@ -676,6 +722,14 @@ export async function applyObjectAcl(
           else resolve();
         });
       });
+      return;
+    }
+    case 'bos': {
+      const client = createBosClient(config) as unknown as {
+        putObjectCannedAcl(bucket: string, key: string, acl: 'private' | 'public-read'): Promise<unknown>;
+      };
+      if (acl === 'public-read-write') throw new HTTPException(400, { message: 'BOS 不支持对象公共写 ACL' });
+      await client.putObjectCannedAcl(config.bosBucket!, objectKey, acl);
       return;
     }
     default:
@@ -860,7 +914,7 @@ function extractBucketName(config: FileStorageConfigRow): string | null {
  * 用文件记录中快照的 bucketName 覆盖 config 里对应 provider 的 bucket 字段，
  * 返回一个不影响原 config 的浅拷贝。对 local / sftp 或无快照的旧记录直接返回原 config。
  */
-function withFileBucket(file: { bucketName?: string | null; provider: string }, config: FileStorageConfigRow): FileStorageConfigRow {
+export function withFileBucket(file: { bucketName?: string | null; provider: string }, config: FileStorageConfigRow): FileStorageConfigRow {
   if (!file.bucketName) return config;
   switch (config.provider) {
     case 'oss': return { ...config, ossBucket: file.bucketName };
@@ -1240,6 +1294,80 @@ function makeAzureBlockId(partNumber: number): string {
   return Buffer.from(String(partNumber).padStart(6, '0')).toString('base64');
 }
 
+async function kodoMultipartContext(config: FileStorageConfigRow, objectKey: string) {
+  const { mac, conf } = createKodoUploader(config);
+  const qiniu = loadQiniu();
+  const token = new qiniu.rs.PutPolicy({ scope: `${config.kodoBucket!}:${objectKey}`, expires: 3600 }).uploadToken(mac);
+  const getZoneInfo = (qiniu.zone as unknown as { getZoneInfo: (
+    accessKey: string,
+    bucket: string,
+    callback: (err: Error | null, result: QiniuTypes.conf.Zone) => void,
+  ) => void }).getZoneInfo;
+  const zoneKey = `${config.kodoAccessKey}:${config.kodoBucket}`;
+  let zonePromise = kodoZones.get(zoneKey);
+  if (!zonePromise && !conf.zone) {
+    zonePromise = new Promise<QiniuTypes.conf.Zone>((resolve, reject) => {
+      getZoneInfo(config.kodoAccessKey!, config.kodoBucket!, (err, result) => err ? reject(err) : resolve(result));
+    });
+    kodoZones.set(zoneKey, zonePromise);
+    void zonePromise.catch(() => kodoZones.delete(zoneKey));
+  }
+  const zone = conf.zone ?? await zonePromise!;
+  const host = zone.srcUpHosts[0];
+  if (!host) throw new Error('七牛云未返回上传域名');
+  const base = `https://${host}/buckets/${encodeURIComponent(config.kodoBucket!)}/objects/${Buffer.from(objectKey).toString('base64url')}/uploads`;
+  return { token, base };
+}
+
+async function kodoMultipartRequest<T>(url: string, token: string, method: 'POST' | 'PUT' | 'DELETE', body?: unknown): Promise<T> {
+  const options = { headers: { Authorization: `UpToken ${token}`, 'Content-Type': Buffer.isBuffer(body) ? 'application/octet-stream' : 'application/json',
+    ...(Buffer.isBuffer(body) ? { 'Content-MD5': createHash('md5').update(body).digest('base64') } : {}) },
+    httpLog: { logRequestBody: false, logResponseBody: false } };
+  const postBody = typeof body === 'string' || Buffer.isBuffer(body)
+    ? body as unknown as BodyInit
+    : body as Record<string, unknown> | undefined;
+  const response = method === 'POST' ? await httpPost(url, postBody, options)
+    : method === 'PUT' ? await httpPut(url, body as unknown as BodyInit, options)
+      : await httpDelete(url, options);
+  if (!response.ok) throw new Error(`七牛云分片请求失败：HTTP ${response.status}`);
+  if (response.status === 204) return undefined as T;
+  return response.json<T>();
+}
+
+const kodoMultipartDriver: MultipartDriver = {
+  async init(config, objectKey) {
+    const { base, token } = await kodoMultipartContext(config, objectKey);
+    const result = await kodoMultipartRequest<{ uploadId: string }>(base, token, 'POST', '');
+    if (!result.uploadId) throw new Error('七牛云初始化分片上传未返回 uploadId');
+    return result.uploadId;
+  },
+  async uploadPart(config, objectKey, uploadId, partNumber, body) {
+    const { base, token } = await kodoMultipartContext(config, objectKey);
+    const result = await kodoMultipartRequest<{ etag?: string }>(`${base}/${encodeURIComponent(uploadId)}/${partNumber}`, token, 'PUT', body);
+    if (!result.etag) throw new Error('七牛云分片上传未返回 ETag');
+    return result.etag;
+  },
+  async complete(config, objectKey, uploadId, parts, mimeType) {
+    const { base, token } = await kodoMultipartContext(config, objectKey);
+    await kodoMultipartRequest(`${base}/${encodeURIComponent(uploadId)}`, token, 'POST', {
+      mimeType: mimeType ?? 'application/octet-stream',
+      parts: sortMultipartParts(parts).map((part) => ({ partNumber: part.partNumber, etag: part.etag })),
+    });
+  },
+  async abort(config, objectKey, uploadId) {
+    const { base, token } = await kodoMultipartContext(config, objectKey);
+    await kodoMultipartRequest(`${base}/${encodeURIComponent(uploadId)}`, token, 'DELETE');
+  },
+};
+
+/** 七牛云按对象签发上传凭证，分片 API 返回的 ETag 在响应 JSON 中。 */
+async function createKodoDirectPartTarget(config: FileStorageConfigRow, objectKey: string, uploadId: string, partNumber: number, expirySeconds: number): Promise<DirectUploadTarget> {
+  const { base, token } = await kodoMultipartContext(config, objectKey);
+  return { url: `${base}/${encodeURIComponent(uploadId)}/${partNumber}`, method: 'PUT',
+    headers: { Authorization: `UpToken ${token}`, 'Content-Type': 'application/octet-stream' },
+    expiresAt: new Date(Date.now() + Math.min(expirySeconds, 3600) * 1000) };
+}
+
 const azureMultipartDriver: MultipartDriver = {
   async init(_config, objectKey) {
     return objectKey;
@@ -1305,8 +1433,7 @@ const bosMultipartDriver: MultipartDriver = {
 
 /**
  * 返回指定 provider 的原生 multipart 驱动；返回 null 表示该 provider 走本地暂存 + 流式合并路径。
- * 当前已接入：oss / s3 / cos / obs / azure / bos。
- * kodo 的 Node SDK 不暴露可外部控制的 uploadId/part/etag，仍走本地暂存 + 流式合并路径。
+ * 当前已接入：oss / s3 / cos / obs / azure / bos；Kodo 的服务端中转仍使用本地暂存。
  */
 export function getMultipartDriver(provider: FileStorageConfigRow['provider']): MultipartDriver | null {
   switch (provider) {
@@ -1325,6 +1452,10 @@ export function getMultipartDriver(provider: FileStorageConfigRow['provider']): 
     default:
       return null;
   }
+}
+
+export function getDirectMultipartDriver(provider: FileStorageConfigRow['provider']): MultipartDriver | null {
+  return provider === 'kodo' ? kodoMultipartDriver : getMultipartDriver(provider);
 }
 
 export interface StoredFileRange {

@@ -1,4 +1,5 @@
 import { fileContract, managedFileSchema } from '@zenith/shared/platform';
+import { createHash } from 'node:crypto';
 import { openAsBlob } from 'node:fs';
 import { Readable } from 'node:stream';
 import type { QueryOutputOf } from '@zenith/shared/core';
@@ -205,6 +206,7 @@ export async function findReusableFileByHash(input: { fileName: string; fileSize
     .where(and(
       eq(managedFiles.storageConfigId, config.id),
       eq(managedFiles.contentHash, input.contentHash),
+      eq(managedFiles.visibility, 'public'),
       eq(managedFiles.gcState, 'live'),
       tenantCondition(managedFiles, user),
     ))
@@ -213,6 +215,17 @@ export async function findReusableFileByHash(input: { fileName: string; fileSize
   if (!file) return null;
   const head = await headStoredObject(config, file.objectKey).catch(() => null);
   if (!head || head.size !== input.fileSize) return null;
+  const { stream } = await readStoredFile({
+    objectKey: file.objectKey,
+    bucketName: file.bucketName,
+    provider: file.provider,
+    mimeType: file.mimeType,
+    originalName: file.originalName,
+  }, config).catch(() => ({ stream: null }));
+  if (!stream) return null;
+  const hash = createHash('sha256');
+  for await (const chunk of Readable.fromWeb(stream as Parameters<typeof Readable.fromWeb>[0])) hash.update(chunk as Buffer);
+  if (hash.digest('hex') !== input.contentHash.toLowerCase()) return null;
   return mapManagedFile(file, config);
 }
 

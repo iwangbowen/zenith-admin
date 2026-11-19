@@ -162,7 +162,7 @@ export const uploadChunkBody = multipart(z.object({
   chunk: fileField('分片内容'),
 }));
 
-/** 浏览器直传：创建会话后由客户端直接 PUT 到 uploadUrl，完成时服务端 HEAD 校验并落库 */
+/** 浏览器直传：客户端按分片直传云存储，服务端负责会话、合并、校验与落库 */
 export const directUploadInitSchema = z.object({
   fileName: z.string().min(1).max(256),
   fileSize: z.int().nonnegative(),
@@ -175,18 +175,37 @@ export const directUploadSessionSchema = z.object({
   provider: z.enum(FILE_STORAGE_PROVIDERS),
   objectKey: z.string(),
   bucketName: z.string().nullable().optional(),
-  uploadUrl: z.string(),
-  method: z.literal('PUT'),
-  headers: z.record(z.string(), z.string()).optional(),
-  expiresAt: z.string(),
+  chunkSize: z.int().positive(),
+  totalChunks: z.int().nonnegative(),
+  received: z.array(z.int()),
   publicAccess: z.boolean(),
   accessStrategy: z.enum(FILE_ACCESS_STRATEGIES),
 }).meta({ id: 'DirectUploadSession' });
 
+export type DirectUploadSession = z.infer<typeof directUploadSessionSchema>;
+
+export const directUploadPartUrlSchema = z.object({
+  partNumber: z.int().positive(),
+  url: z.string(),
+  method: z.literal('PUT'),
+  headers: z.record(z.string(), z.string()).optional(),
+  partTag: z.string().optional(),
+  expiresAt: z.string(),
+}).meta({ id: 'DirectUploadPartUrl' });
+
+export type DirectUploadPartUrl = z.infer<typeof directUploadPartUrlSchema>;
+
+export const directUploadPartAckSchema = z.object({
+  etag: z.string().min(1).max(256),
+  size: z.int().nonnegative(),
+}).meta({ id: 'DirectUploadPartAck' });
+
 export const directUploadCompleteSchema = z.object({
-  size: z.int().nonnegative().optional(),
-  etag: z.string().max(256).optional(),
   contentHash: z.string().max(64).optional(),
+});
+
+const directUploadPartParams = uploadIdParam.extend({
+  partNumber: z.coerce.number().int().positive().meta({ description: '分片序号（从 1 计）' }),
 });
 
 /** 秒传：按内容 SHA-256 复用同存储配置下仍存在的对象 */
@@ -217,6 +236,9 @@ export const fileContract = defineContract('/api/files', {
   uploadStatus: op.get('/upload/{uploadId}/status', { access: 'authenticated', params: uploadIdParam, response: uploadSessionStatusSchema, summary: '查询分片上传进度' }),
   uploadAbort: op.delete('/upload/{uploadId}', { access: { permission: 'system:file:upload' }, audit: '中止分片上传', params: uploadIdParam, summary: '中止分片上传' }),
   directUploadInit: op.post('/direct-uploads', { access: { permission: 'system:file:upload' }, body: directUploadInitSchema, response: directUploadSessionSchema, summary: '创建浏览器直传会话' }),
+  directUploadPartUrl: op.post('/direct-uploads/{uploadId}/parts/{partNumber}/url', { access: { permission: 'system:file:upload' }, params: directUploadPartParams, response: directUploadPartUrlSchema, summary: '签发浏览器直传分片地址' }),
+  directUploadPartAck: op.post('/direct-uploads/{uploadId}/parts/{partNumber}/complete', { access: { permission: 'system:file:upload' }, params: directUploadPartParams, body: directUploadPartAckSchema, response: uploadChunkResultSchema, summary: '确认浏览器直传分片' }),
+  directUploadStatus: op.get('/direct-uploads/{uploadId}/status', { access: 'authenticated', params: uploadIdParam, response: uploadSessionStatusSchema, summary: '查询浏览器直传续传状态' }),
   directUploadComplete: op.post('/direct-uploads/{uploadId}/complete', { access: { permission: 'system:file:upload' }, audit: { description: '完成浏览器直传', recordBody: false }, params: uploadIdParam, body: directUploadCompleteSchema, response: managedFileSchema, summary: '完成浏览器直传' }),
   directUploadAbort: op.delete('/direct-uploads/{uploadId}', { access: { permission: 'system:file:upload' }, audit: { description: '中止浏览器直传', recordBody: false }, params: uploadIdParam, summary: '中止浏览器直传' }),
   quickUpload: op.post('/quick-upload', { access: { permission: 'system:file:upload' }, audit: { description: '秒传文件', recordBody: false }, body: quickUploadSchema, response: managedFileSchema.nullable(), summary: '按内容哈希秒传' }),

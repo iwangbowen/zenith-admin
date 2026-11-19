@@ -5,7 +5,7 @@
 import { createRequire } from 'node:module';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FileStorageConfigRow } from '../db/schema';
-import { getMultipartDriver } from './file-storage';
+import { getDirectMultipartDriver, getMultipartDriver } from './file-storage';
 
 const require = createRequire(import.meta.url);
 const s3 = require('@aws-sdk/client-s3') as typeof import('@aws-sdk/client-s3');
@@ -80,5 +80,12 @@ describe('getMultipartDriver', () => {
   it('只有具备可控 multipart 的 provider 返回驱动，其余走本地暂存', () => {
     for (const p of ['oss', 's3', 'cos', 'obs', 'azure', 'bos'] as const) expect(getMultipartDriver(p)).not.toBeNull();
     for (const p of ['local', 'kodo', 'sftp'] as const) expect(getMultipartDriver(p)).toBeNull();
+  });
+
+  it('direct multipart covers every cloud object storage provider', () => {
+    for (const provider of ['oss', 's3', 'cos', 'obs', 'azure', 'bos', 'kodo'] as const) {
+      expect(getDirectMultipartDriver(provider)).not.toBeNull();
+    }
+    for (const provider of ['local', 'sftp'] as const) expect(getDirectMultipartDriver(provider)).toBeNull();
   });
 });

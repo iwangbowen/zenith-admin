@@ -9,7 +9,7 @@ import { HTTPException } from 'hono/http-exception';
 import { countUploadChunks, expectedUploadChunkSize, resolveUploadChunkSize, UPLOAD_CHUNK_MAX_BYTES, UPLOAD_MAX_CHUNKS, type InitChunkUploadInput } from '@zenith/shared/platform';
 import { db } from '../../db';
 import { uploadSessions, uploadChunks, managedFiles, fileStorageConfigs, type FileStorageConfigRow, type UploadSessionRow } from '../../db/schema';
-import { buildUploadObjectKey, uploadObjectByConfig, extractBucketName, getMultipartDriver, mapObjectAclError, resolveObjectAcl, resolvePublicAccess, readStoredFile, deleteObjectByConfig } from '../../lib/file-storage';
+import { buildUploadObjectKey, uploadObjectByConfig, extractBucketName, getDirectMultipartDriver, getMultipartDriver, headStoredObject, mapObjectAclError, resolveObjectAcl, resolvePublicAccess, readStoredFile, deleteObjectByConfig, withFileBucket } from '../../lib/file-storage';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { currentUser } from '../../lib/context';
 import { config } from '../../config';
@@ -88,12 +88,12 @@ async function getSessionConfig(storageConfigId: number) {
 }
 
 async function abortCloudMultipart(
-  session: Pick<UploadSessionRow, 'provider' | 'multipartUploadId' | 'objectKey'>,
+  session: Pick<UploadSessionRow, 'provider' | 'multipartUploadId' | 'objectKey' | 'uploadMode' | 'bucketName'>,
   config: FileStorageConfigRow | null | undefined,
 ) {
-  const driver = getMultipartDriver(session.provider);
+  const driver = session.uploadMode === 'browser-direct' ? getDirectMultipartDriver(session.provider) : getMultipartDriver(session.provider);
   if (!driver || !session.multipartUploadId || !config) return;
-  await driver.abort(config, session.objectKey, session.multipartUploadId).catch(() => { /* 忽略云端中止失败 */ });
+  await driver.abort(withFileBucket(session, config), session.objectKey, session.multipartUploadId).catch(() => { /* 忽略云端中止失败 */ });
 }
 
 /** 中止会话：中止云端 multipart（尚未合并时）、删除本地临时分片、状态置 aborted */
@@ -349,7 +349,8 @@ async function mergeAndRegister(
   user: ReturnType<typeof currentUser>,
 ) {
   const { uploadId } = session;
-  const config = await getSessionConfig(session.storageConfigId);
+  const config = withFileBucket(session, await getSessionConfig(session.storageConfigId));
+  if (config.provider !== session.provider) throw new HTTPException(400, { message: '存储类型已变更，请重新上传' });
   // 逐片校验之外再核对总量：声明大小写入 managed_files.size 并用于配额与上限检查，不允许与实际字节数不一致
   const receivedBytes = chunkRows.reduce((sum, row) => sum + row.size, 0);
   if (receivedBytes !== session.fileSize) {
@@ -358,12 +359,29 @@ async function mergeAndRegister(
   const expectedHash = options.expectedHash?.toLowerCase() ?? null;
   const needHash = expectedHash !== null || options.computeHash === true;
   let contentHash: string | null = null;
-  const driver = getMultipartDriver(session.provider);
+  const driver = session.uploadMode === 'browser-direct' ? getDirectMultipartDriver(session.provider) : getMultipartDriver(session.provider);
 
   if (driver && session.multipartUploadId) {
     // 云原生 multipart：合并后校验完整内容，CFB 的目录可能位于首片之后。
     const parts = chunkRows.map((r) => ({ partNumber: r.index + 1, etag: r.etag ?? '' }));
-    await driver.complete(config, session.objectKey, session.multipartUploadId, parts, session.mimeType ?? undefined);
+    try {
+      await driver.complete(config, session.objectKey, session.multipartUploadId, parts, session.mimeType ?? undefined);
+    } catch (error) {
+      if (session.uploadMode !== 'browser-direct') throw error;
+      const head = await headStoredObject(config, session.objectKey).catch(() => null);
+      if (!head) throw error;
+    }
+    if (session.uploadMode === 'browser-direct') {
+      const head = await headStoredObject(config, session.objectKey);
+      if (head.size !== session.fileSize) {
+        await deleteObjectByConfig(config, session.objectKey, session.bucketName).catch(() => {});
+        await failSession(session, config, `云端对象大小校验失败（期望 ${session.fileSize} 字节，实际 ${head.size} 字节）`, { multipartCompleted: true });
+      }
+      if (session.mimeType && head.mimeType && !head.mimeType.toLowerCase().startsWith(session.mimeType.toLowerCase())) {
+        await deleteObjectByConfig(config, session.objectKey, session.bucketName).catch(() => {});
+        await failSession(session, config, `云端对象类型校验失败（期望 ${session.mimeType}，实际 ${head.mimeType}）`, { multipartCompleted: true });
+      }
+    }
     if (!options.skipTypeCheck) {
       try {
         await assertStoredObjectTypeAllowed(session, config);
@@ -429,9 +447,7 @@ async function mergeAndRegister(
   }
 
   const extension = path.extname(session.fileName).replace('.', '').toLowerCase() || null;
-  const [created] = await db
-    .insert(managedFiles)
-    .values({
+  const fileValues = {
       storageConfigId: config.id,
       storageName: config.name,
       provider: config.provider,
@@ -449,10 +465,18 @@ async function mergeAndRegister(
       orphanedAt: options.visibility === 'restricted' ? new Date() : null,
       contentHash,
       tenantId: getCreateTenantId(user),
+  } satisfies typeof managedFiles.$inferInsert;
+  const created = session.uploadMode === 'browser-direct'
+    ? await db.transaction(async (tx) => {
+      const [row] = await tx.insert(managedFiles).values([fileValues]).returning();
+      await tx.update(uploadSessions).set({ status: 'completed' }).where(eq(uploadSessions.id, session.id));
+      return row;
     })
-    .returning();
-
-  await db.update(uploadSessions).set({ status: 'completed' }).where(eq(uploadSessions.id, session.id));
+    : await (async () => {
+      const [row] = await db.insert(managedFiles).values([fileValues]).returning();
+      await db.update(uploadSessions).set({ status: 'completed' }).where(eq(uploadSessions.id, session.id));
+      return row;
+    })();
   await cleanupSession(uploadId);
 
   return mapManagedFile(created, config);
@@ -491,12 +515,14 @@ export async function cleanupStaleUploadSessions(ttlHours = 24): Promise<{ stale
       provider: uploadSessions.provider,
       multipartUploadId: uploadSessions.multipartUploadId,
       objectKey: uploadSessions.objectKey,
+      bucketName: uploadSessions.bucketName,
+      uploadMode: uploadSessions.uploadMode,
       storageConfigId: uploadSessions.storageConfigId,
     })
     .from(uploadSessions)
     .where(and(lt(uploadSessions.createdAt, cutoff), notExists(recentChunkExists)));
   for (const s of stale) {
-    if (getMultipartDriver(s.provider) && s.multipartUploadId) {
+    if ((s.uploadMode === 'browser-direct' ? getDirectMultipartDriver(s.provider) : getMultipartDriver(s.provider)) && s.multipartUploadId) {
       const [config] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.id, s.storageConfigId)).limit(1);
       await abortCloudMultipart(s, config);
     }

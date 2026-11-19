@@ -80,13 +80,13 @@ describe('buildPublicFileUrl', () => {
   it('uses object ACL for public-object', () => {
     const url = buildPublicFileUrl(
       { ...file, objectAcl: 'public-read' },
-      config({ accessStrategy: 'public-object' }),
+      config({ accessStrategy: 'public-object', bucketBlockPublicAccess: false }),
     );
     expect(url).toBe('https://demo-bucket.oss-cn-hangzhou.aliyuncs.com/uploads/a.txt');
   });
 
   it('rejects inherited object ACL for public-object', () => {
-    expect(buildPublicFileUrl(file, config({ accessStrategy: 'public-object' }))).toBeNull();
+    expect(buildPublicFileUrl(file, config({ accessStrategy: 'public-object', bucketBlockPublicAccess: false }))).toBeNull();
   });
 
   it('uses the upload snapshot for public-bucket', () => {
@@ -116,8 +116,9 @@ describe('buildPublicFileUrl', () => {
 
 describe('resolvePublicAccess', () => {
   it('requires public object ACL for public-object', () => {
-    expect(resolvePublicAccess(config({ accessStrategy: 'public-object' }), 'public-read')).toBe(true);
+    expect(resolvePublicAccess(config({ accessStrategy: 'public-object', bucketBlockPublicAccess: false }), 'public-read')).toBe(true);
     expect(resolvePublicAccess(config({ accessStrategy: 'public-object' }), 'default')).toBe(false);
+    expect(resolvePublicAccess(config({ accessStrategy: 'public-object', bucketBlockPublicAccess: null }), 'public-read')).toBe(false);
   });
 
   it('requires bucket public-read and block public access off for public-bucket', () => {
@@ -125,6 +126,7 @@ describe('resolvePublicAccess', () => {
     expect(resolvePublicAccess({ ...base, bucketBlockPublicAccess: false }, 'default')).toBe(true);
     expect(resolvePublicAccess({ ...base, bucketBlockPublicAccess: true }, 'default')).toBe(false);
     expect(resolvePublicAccess({ ...base, bucketAcl: 'private', bucketBlockPublicAccess: false }, 'default')).toBe(false);
+    expect(resolvePublicAccess({ ...base, bucketBlockPublicAccess: null }, 'default')).toBe(false);
   });
 
   it('trusts the configured domain for public-domain', () => {

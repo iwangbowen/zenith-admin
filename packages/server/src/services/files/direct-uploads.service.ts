@@ -1,27 +1,32 @@
-import { and, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { HTTPException } from 'hono/http-exception';
 import type { z } from '@hono/zod-openapi';
-import type { directUploadInitSchema, directUploadCompleteSchema } from '@zenith/shared/platform';
-import { db } from '../../db';
-import { fileStorageConfigs, managedFiles, uploadSessions } from '../../db/schema';
-import { requireRow } from '../../lib/db-assert';
-import { currentUser } from '../../lib/context';
-import { getCreateTenantId } from '../../lib/tenant';
-import { formatDateTime } from '../../lib/datetime';
 import {
-  applyObjectAcl,
-  buildUploadObjectKey,
-  createDirectUploadTarget,
-  deleteObjectByConfig,
-  extractBucketName,
-  headStoredObject,
-  resolveObjectAcl,
-  resolvePublicAccess,
-} from '../../lib/file-storage';
+  countUploadChunks,
+  expectedUploadChunkSize,
+  FILE_DIRECT_UPLOAD_SUPPORT,
+  resolveUploadChunkSize,
+  UPLOAD_MAX_CHUNKS,
+  type directUploadInitSchema,
+  type directUploadCompleteSchema,
+} from '@zenith/shared/platform';
+import { db } from '../../db';
+import { fileStorageConfigs, uploadChunks, uploadSessions, type UploadSessionRow } from '../../db/schema';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
+import { currentUser } from '../../lib/context';
+import { buildUploadObjectKey, createDirectPartTarget, extractBucketName, getDirectMultipartDriver, mapObjectAclError, resolveObjectAcl, resolvePublicAccess, withFileBucket } from '../../lib/file-storage';
+import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
+import { formatDateTime } from '../../lib/datetime';
+import { getSettings } from '../../lib/settings';
+import { buildWhere } from '../../lib/where-helpers';
+import { assertUploadSizeAllowed } from './files.service';
+import { abortChunkUpload, completeChunkUpload } from './upload-sessions.service';
 
 type DirectUploadInit = z.infer<typeof directUploadInitSchema>;
 type DirectUploadComplete = z.infer<typeof directUploadCompleteSchema>;
+
+const KODO_CHUNK_SIZE = 4 * 1024 * 1024;
 
 async function resolveConfig(storageConfigId?: number) {
   const where = storageConfigId
@@ -31,114 +36,131 @@ async function resolveConfig(storageConfigId?: number) {
   return requireRow(config, storageConfigId ? '文件存储配置不存在或未启用' : '当前没有可用的默认文件服务', 400);
 }
 
+async function ensureDirectSession(uploadId: string) {
+  const user = currentUser();
+  const where = buildWhere(eq(uploadSessions.uploadId, uploadId), eq(uploadSessions.createdBy, user.userId), tenantCondition(uploadSessions, user));
+  const session = await requireFirstRow(db.select().from(uploadSessions).where(where).limit(1), '直传会话不存在或已过期');
+  if (session.uploadMode !== 'browser-direct') throw new HTTPException(404, { message: '直传会话不存在或已过期' });
+  return session;
+}
+
+async function getSessionConfig(session: UploadSessionRow) {
+  const [config] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.id, session.storageConfigId)).limit(1);
+  const current = requireRow(config, '文件存储配置不存在', 400);
+  if (current.provider !== session.provider) throw new HTTPException(400, { message: '存储类型已变更，请重新上传' });
+  return withFileBucket(session, current);
+}
+
 export async function createDirectUpload(input: DirectUploadInit) {
   const user = currentUser();
+  const settings = await getSettings('files');
+  await assertUploadSizeAllowed(input.fileSize, settings);
+
   const config = await resolveConfig(input.storageConfigId);
-  if (config.uploadMode !== 'browser-direct') {
-    throw new HTTPException(400, { message: '该文件服务未开启浏览器直传，请使用服务端上传' });
+  const driver = getDirectMultipartDriver(config.provider);
+  if (config.uploadMode !== 'browser-direct' || !FILE_DIRECT_UPLOAD_SUPPORT[config.provider] || !driver) {
+    throw new HTTPException(400, { message: '该文件服务不支持浏览器分片直传，请使用服务端中转' });
   }
-  const objectKey = buildUploadObjectKey(input.fileName, config.basePath).objectKey;
-  const expirySeconds = config.presignedExpirySeconds || 900;
-  const target = await createDirectUploadTarget(config, objectKey, input.mimeType, expirySeconds);
+
+  const chunkSize = config.provider === 'kodo'
+    ? KODO_CHUNK_SIZE
+    : resolveUploadChunkSize(input.fileSize, settings.chunkSizeMb * 1024 * 1024);
+  if (chunkSize === null) throw new HTTPException(400, { message: '文件过大，超过分片上传上限' });
+  const totalChunks = countUploadChunks(input.fileSize, chunkSize);
+  if (totalChunks > UPLOAD_MAX_CHUNKS) {
+    throw new HTTPException(400, { message: `文件过大：超过分片上传上限（${UPLOAD_MAX_CHUNKS} 片）` });
+  }
+
+  const { objectKey } = buildUploadObjectKey(input.fileName, config.basePath);
+  const uploadId = randomUUID();
+  const multipartUploadId = await driver.init(config, objectKey, input.mimeType).catch((error) => { throw mapObjectAclError(error); });
   const objectAcl = resolveObjectAcl(config);
   const publicAccess = resolvePublicAccess(config, objectAcl);
-  const uploadId = randomUUID();
+  const bucketName = extractBucketName(config);
 
-  await db.insert(uploadSessions).values({
-    uploadId,
-    fileName: input.fileName,
-    fileSize: input.fileSize,
-    mimeType: input.mimeType ?? null,
-    chunkSize: input.fileSize,
-    totalChunks: 1,
-    storageConfigId: config.id,
-    provider: config.provider,
-    objectKey,
-    bucketName: extractBucketName(config),
-    multipartUploadId: null,
-    objectAcl,
-    publicAccess,
-    accessStrategy: config.accessStrategy,
-    uploadMode: config.uploadMode,
-    tenantId: getCreateTenantId(user),
-  });
+  try {
+    await db.insert(uploadSessions).values({
+      uploadId,
+      fileName: input.fileName,
+      fileSize: input.fileSize,
+      mimeType: input.mimeType ?? null,
+      chunkSize,
+      totalChunks,
+      storageConfigId: config.id,
+      provider: config.provider,
+      objectKey,
+      bucketName,
+      multipartUploadId,
+      objectAcl,
+      publicAccess,
+      accessStrategy: config.accessStrategy,
+      uploadMode: 'browser-direct',
+      tenantId: getCreateTenantId(user),
+    });
+  } catch (error) {
+    await driver.abort(config, objectKey, multipartUploadId).catch(() => {});
+    throw error;
+  }
 
   return {
     uploadId,
     provider: config.provider,
     objectKey,
-    bucketName: extractBucketName(config),
-    uploadUrl: target.url,
-    method: 'PUT' as const,
-    headers: target.headers,
-    expiresAt: formatDateTime(target.expiresAt),
+    bucketName,
+    chunkSize,
+    totalChunks,
+    received: [] as number[],
     publicAccess,
     accessStrategy: config.accessStrategy,
   };
 }
 
-export async function completeDirectUpload(uploadId: string, input: DirectUploadComplete) {
-  const [session] = await db.select().from(uploadSessions).where(eq(uploadSessions.uploadId, uploadId)).limit(1);
-  const current = requireRow(session, '直传会话不存在', 404);
-  if (current.status !== 'uploading') {
-    throw new HTTPException(400, { message: current.status === 'completed' ? '直传会话已完成' : '直传会话已结束' });
+export async function getDirectUploadPartUrl(uploadId: string, partNumber: number) {
+  const session = await ensureDirectSession(uploadId);
+  if (session.status !== 'uploading') throw new HTTPException(400, { message: '上传会话已结束' });
+  if (!Number.isInteger(partNumber) || partNumber < 1 || partNumber > session.totalChunks) {
+    throw new HTTPException(400, { message: '分片序号越界' });
   }
-  const [config] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.id, current.storageConfigId)).limit(1);
-  const storage = requireRow(config, '文件存储配置不存在', 400);
-  const head = await headStoredObject(storage, current.objectKey);
-  const expectedSize = input.size ?? current.fileSize;
-  if (head.size !== expectedSize) {
-    throw new HTTPException(400, { message: `对象大小校验失败（期望 ${expectedSize}，实际 ${head.size}）` });
-  }
-  if (current.mimeType && head.mimeType && !head.mimeType.toLowerCase().startsWith(current.mimeType.toLowerCase())) {
-    throw new HTTPException(400, { message: `对象类型校验失败（期望 ${current.mimeType}，实际 ${head.mimeType}）` });
-  }
-  if (input.etag) {
-    const normalize = (value: string) => value.replaceAll('"', '');
-    if (head.etag && normalize(head.etag) !== normalize(input.etag)) {
-      throw new HTTPException(400, { message: '对象 ETag 校验失败' });
-    }
-  }
+  if (!session.multipartUploadId) throw new HTTPException(400, { message: '分片上传会话无效' });
+  const config = await getSessionConfig(session);
+  const target = await createDirectPartTarget(config, session.objectKey, session.multipartUploadId,
+    partNumber, config.presignedExpirySeconds || 900);
+  return { partNumber, url: target.url, method: target.method, headers: target.headers, partTag: target.partTag, expiresAt: formatDateTime(target.expiresAt) };
+}
 
-  const objectAcl = resolveObjectAcl(storage);
-  if (storage.accessStrategy === 'public-object' && objectAcl) {
-    await applyObjectAcl(storage, current.objectKey, objectAcl);
-  }
-  const publicAccess = resolvePublicAccess(storage, objectAcl);
-  const extension = current.fileName.includes('.')
-    ? current.fileName.slice(current.fileName.lastIndexOf('.') + 1).toLowerCase()
-    : undefined;
-
-  const [created] = await db.transaction(async (tx) => {
-    const [row] = await tx.insert(managedFiles).values({
-      storageConfigId: storage.id,
-      storageName: storage.name,
-      provider: storage.provider,
-      originalName: current.fileName,
-      objectKey: current.objectKey,
-      bucketName: current.bucketName,
-      size: head.size,
-      mimeType: head.mimeType ?? current.mimeType,
-      extension,
-      objectAcl,
-      publicAccess,
-      accessStrategy: storage.accessStrategy,
-      visibility: 'public',
-      gcState: 'live',
-      contentHash: input.contentHash ?? null,
-      tenantId: current.tenantId,
-    }).returning();
-    await tx.update(uploadSessions).set({ status: 'completed' }).where(eq(uploadSessions.id, current.id));
-    return [row] as const;
+export async function acknowledgeDirectUploadPart(uploadId: string, partNumber: number, input: { etag: string; size: number }) {
+  const session = await ensureDirectSession(uploadId);
+  if (session.status !== 'uploading') throw new HTTPException(400, { message: '上传会话已结束' });
+  const index = partNumber - 1;
+  if (!Number.isInteger(partNumber) || index < 0 || index >= session.totalChunks) throw new HTTPException(400, { message: '分片序号越界' });
+  const expectedSize = expectedUploadChunkSize(session.fileSize, session.chunkSize, index);
+  if (input.size !== expectedSize) throw new HTTPException(400, { message: `分片 ${partNumber} 大小不匹配：期望 ${expectedSize} 字节，实际 ${input.size} 字节` });
+  await db.transaction(async (tx) => {
+    const [locked] = await tx.select({ status: uploadSessions.status }).from(uploadSessions)
+      .where(eq(uploadSessions.id, session.id)).for('update');
+    if (!locked || locked.status !== 'uploading') throw new HTTPException(409, { message: '上传正在合并或会话已结束' });
+    await tx.insert(uploadChunks).values({ uploadSessionId: session.id, index, size: input.size, etag: input.etag })
+      .onConflictDoUpdate({ target: [uploadChunks.uploadSessionId, uploadChunks.index], set: { size: input.size, etag: input.etag, createdAt: new Date() } });
   });
-  return created;
+  const rows = await db.select({ index: uploadChunks.index }).from(uploadChunks)
+    .where(eq(uploadChunks.uploadSessionId, session.id)).orderBy(asc(uploadChunks.index));
+  return { index, receivedCount: rows.length };
+}
+
+export async function getDirectUploadStatus(uploadId: string) {
+  const session = await ensureDirectSession(uploadId);
+  const rows = await db.select({ index: uploadChunks.index }).from(uploadChunks)
+    .where(eq(uploadChunks.uploadSessionId, session.id)).orderBy(asc(uploadChunks.index));
+  return { uploadId, status: session.status, chunkSize: session.chunkSize, totalChunks: session.totalChunks, received: rows.map((row) => row.index) };
+}
+
+export async function completeDirectUpload(uploadId: string, input: DirectUploadComplete) {
+  await ensureDirectSession(uploadId);
+  const file = await completeChunkUpload(uploadId, { expectedHash: input.contentHash });
+  return file;
 }
 
 export async function abortDirectUpload(uploadId: string) {
-  const [session] = await db.select().from(uploadSessions).where(eq(uploadSessions.uploadId, uploadId)).limit(1);
-  const current = requireRow(session, '直传会话不存在', 404);
-  if (current.status !== 'uploading') return;
-  const [config] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.id, current.storageConfigId)).limit(1);
-  if (config) await deleteObjectByConfig(config, current.objectKey).catch(() => { /* 对象可能尚未上传 */ });
-  await db.update(uploadSessions).set({ status: 'aborted' }).where(eq(uploadSessions.id, current.id));
+  await ensureDirectSession(uploadId);
+  await abortChunkUpload(uploadId);
 }

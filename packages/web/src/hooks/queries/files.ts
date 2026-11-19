@@ -5,6 +5,7 @@ import { fileContract, UPLOAD_CHUNK_MIN_BYTES, type FileAccessPurpose, type File
 import { api, contractKey, createResourceQueries, urlOf, useApiQuery } from '@/lib/contract-query';
 import { unwrap } from '@/lib/query';
 import { request } from '@/utils/request';
+import { directMultipartUpload } from '@/utils/direct-multipart-upload';
 import { useMySettings } from './settings-projections';
 
 export type FileListParams = QueryOf<typeof fileContract.list>;
@@ -72,28 +73,6 @@ export function invalidateAfterFilesAdded(qc: QueryClient) {
   void qc.invalidateQueries({ queryKey: contractKey(fileContract.browse) });
 }
 
-function putFileDirect(
-  url: string,
-  headers: Record<string, string> | undefined,
-  file: File,
-  onProgress?: (percent: number) => void,
-  signal?: AbortSignal,
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open('PUT', url);
-    for (const [key, value] of Object.entries(headers ?? {})) xhr.setRequestHeader(key, value);
-    xhr.upload.onprogress = (event) => {
-      if (event.lengthComputable) onProgress?.(Math.round((event.loaded / event.total) * 100));
-    };
-    xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`直传失败（HTTP ${xhr.status}）`)));
-    xhr.onerror = () => reject(new Error('直传网络错误'));
-    xhr.onabort = () => reject(new DOMException('上传已取消', 'AbortError'));
-    signal?.addEventListener('abort', () => xhr.abort(), { once: true });
-    xhr.send(file);
-  });
-}
-
 /** 秒传哈希上限：超过后跳过去重，避免一次性把大文件读入内存 */
 const QUICK_UPLOAD_HASH_LIMIT = 32 * 1024 * 1024;
 
@@ -110,11 +89,19 @@ interface DirectUploadVariables {
   storageConfigId?: number;
 }
 
-/** 浏览器直传：申请会话 → 直接 PUT 到云存储 → 服务端 HEAD 校验并落库。 */
+/** 浏览器直传：申请 multipart 会话 → 并行上传分片 → 服务端合并、校验并落库。 */
 export function useDirectUploadFile() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ file, onProgress, signal, storageConfigId }: DirectUploadVariables) => {
+      if (import.meta.env.VITE_DEMO_MODE === 'true') {
+        const formData = new FormData();
+        formData.append('file', file);
+        const uploaded = await request.postForm<OutputOf<typeof fileContract.upload>>(
+          urlOf(fileContract.upload), formData, { onProgress, signal },
+        ).then(unwrap);
+        return uploaded[0];
+      }
       const contentHash = await sha256Hex(file);
       if (contentHash) {
         const existing = await api(fileContract.quickUpload, {
@@ -125,24 +112,7 @@ export function useDirectUploadFile() {
           return existing;
         }
       }
-      const session = await api(fileContract.directUploadInit, {
-        body: {
-          fileName: file.name,
-          fileSize: file.size,
-          mimeType: file.type || undefined,
-          storageConfigId,
-        },
-      });
-      try {
-        await putFileDirect(session.uploadUrl, session.headers, file, onProgress, signal);
-        return await api(fileContract.directUploadComplete, {
-          params: { uploadId: session.uploadId },
-          body: { size: file.size, contentHash },
-        });
-      } catch (err) {
-        await api(fileContract.directUploadAbort, { params: { uploadId: session.uploadId } }).catch(() => {});
-        throw err;
-      }
+      return directMultipartUpload({ file, storageConfigId, contentHash, onProgress, signal });
     },
     onSuccess: () => invalidateAfterFilesAdded(qc),
   });

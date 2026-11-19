@@ -18,7 +18,7 @@ import {
   findReusableFileByHash,
 } from '../../services/files/files.service';
 import { initChunkUpload, uploadChunk, completeChunkUpload, getUploadStatus, abortChunkUpload } from '../../services/files/upload-sessions.service';
-import { abortDirectUpload, completeDirectUpload, createDirectUpload } from '../../services/files/direct-uploads.service';
+import { abortDirectUpload, acknowledgeDirectUploadPart, completeDirectUpload, createDirectUpload, getDirectUploadPartUrl, getDirectUploadStatus } from '../../services/files/direct-uploads.service';
 import { readStoredFile } from '../../lib/file-storage';
 import { parseRangeHeader, rangeNotSatisfiable, supportsRange, rangeContentHeaders } from '../../lib/http-range';
 import { attachmentDisposition, inlineOrAttachmentDisposition } from '../../lib/content-disposition';
@@ -160,6 +160,24 @@ const directUploadInitRoute = defineContractRoute(fileContract.directUploadInit,
   handler: async (c) => c.json(okBody(await createDirectUpload(c.req.valid('json'))), 200),
 });
 
+const directUploadPartUrlRoute = defineContractRoute(fileContract.directUploadPartUrl, {
+  handler: async (c) => {
+    const { uploadId, partNumber } = c.req.valid('param');
+    return c.json(okBody(await getDirectUploadPartUrl(uploadId, partNumber)), 200);
+  },
+});
+
+const directUploadPartAckRoute = defineContractRoute(fileContract.directUploadPartAck, {
+  handler: async (c) => {
+    const { uploadId, partNumber } = c.req.valid('param');
+    return c.json(okBody(await acknowledgeDirectUploadPart(uploadId, partNumber, c.req.valid('json'))), 200);
+  },
+});
+
+const directUploadStatusRoute = defineContractRoute(fileContract.directUploadStatus, {
+  handler: async (c) => c.json(okBody(await getDirectUploadStatus(c.req.valid('param').uploadId)), 200),
+});
+
 const directUploadCompleteRoute = defineContractRoute(fileContract.directUploadComplete, {
   responses: { 400: { content: jsonContent(ErrorResponse), description: '对象校验失败或会话已结束' } },
   handler: async (c) => c.json(okBody(await completeDirectUpload(c.req.valid('param').uploadId, c.req.valid('json')), '上传成功'), 200),
@@ -210,6 +228,9 @@ mountCrud(filesRouter, fileContract,
     uploadStatusRoute,
     uploadAbortRoute,
     directUploadInitRoute,
+    directUploadPartUrlRoute,
+    directUploadPartAckRoute,
+    directUploadStatusRoute,
     directUploadCompleteRoute,
     directUploadAbortRoute,
     quickUploadRoute,

@@ -266,7 +266,7 @@ export default function FilesPage() {
         controller.signal,
         chunkThreshold,
         defaultStorageConfig?.uploadMode ?? 'server-proxy',
-        (file, onProgress, signal) => directUploadMutation.mutateAsync({ file, onProgress, signal }),
+        (file, onProgress, signal) => directUploadMutation.mutateAsync({ file, onProgress, signal, storageConfigId: defaultStorageConfig?.id }),
         setUploadItems,
         (formData, onProgress, signal) => uploadFileMutation.mutateAsync({ formData, onProgress, signal }),
       );

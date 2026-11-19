@@ -48,6 +48,9 @@ vi.mock('../../lib/file-storage', () => ({
   uploadObjectByConfig: vi.fn(async () => undefined),
   extractBucketName: vi.fn(() => null),
   getMultipartDriver: vi.fn(() => null),
+  getDirectMultipartDriver: vi.fn(() => null),
+  headStoredObject: vi.fn(),
+  withFileBucket: vi.fn((_file: unknown, config: unknown) => config),
   mapObjectAclError: vi.fn((err: unknown) => err),
   resolveObjectAcl: vi.fn(() => null),
   resolvePublicAccess: vi.fn(() => false),
@@ -56,11 +59,11 @@ vi.mock('../../lib/file-storage', () => ({
 }));
 
 import { db } from '../../db';
-import { deleteObjectByConfig, getMultipartDriver, readStoredFile, uploadObjectByConfig } from '../../lib/file-storage';
+import { deleteObjectByConfig, getDirectMultipartDriver, getMultipartDriver, headStoredObject, readStoredFile, uploadObjectByConfig } from '../../lib/file-storage';
 import { abortChunkUpload, completeChunkUpload, initChunkUpload, uploadChunk } from './upload-sessions.service';
 
 const dbMock = vi.mocked(db);
-const storage = { getMultipartDriver: vi.mocked(getMultipartDriver), uploadObjectByConfig: vi.mocked(uploadObjectByConfig), readStoredFile: vi.mocked(readStoredFile), deleteObjectByConfig: vi.mocked(deleteObjectByConfig) };
+const storage = { getMultipartDriver: vi.mocked(getMultipartDriver), getDirectMultipartDriver: vi.mocked(getDirectMultipartDriver), headStoredObject: vi.mocked(headStoredObject), uploadObjectByConfig: vi.mocked(uploadObjectByConfig), readStoredFile: vi.mocked(readStoredFile), deleteObjectByConfig: vi.mocked(deleteObjectByConfig) };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Chain = Record<string, any>;
@@ -123,6 +126,7 @@ async function expectHttp(promise: Promise<unknown>, status: number, messagePart
 beforeEach(() => {
   vi.resetAllMocks();
   storage.getMultipartDriver.mockReturnValue(null);
+  storage.getDirectMultipartDriver.mockReturnValue(null);
   dbMock.$count.mockResolvedValue(1);
 });
 
@@ -211,7 +215,7 @@ describe('completeChunkUpload', () => {
 
     expect(file).toMatchObject({ id: 'file-1' });
     expect(storage.uploadObjectByConfig).toHaveBeenCalledTimes(1);
-    expect(insert.values.mock.calls[0][0]).toMatchObject({ contentHash: hash, size: stale.fileSize, visibility: 'restricted' });
+    expect(insert.values.mock.calls[0][0][0]).toMatchObject({ contentHash: hash, size: stale.fileSize, visibility: 'restricted' });
     const statuses = claim.set.mock.calls.map((c: unknown[]) => (c[0] as { status: string }).status);
     expect(statuses).toEqual(['completing', 'completed']);
     await expect(fs.stat(path.join(TEMP_ROOT, 'u-3'))).rejects.toThrow();
@@ -288,6 +292,48 @@ describe('completeChunkUpload', () => {
     expect(storage.deleteObjectByConfig).toHaveBeenCalledWith(expect.anything(), 'uploads/demo.bin', 'bkt');
     expect(driver.abort).not.toHaveBeenCalled();
     expect(update.set.mock.calls.at(-1)?.[0]).toEqual({ status: 'aborted' });
+  });
+
+  it('浏览器直传合并后使用云端 HEAD 校验真实大小后才落库', async () => {
+    const driver = { init: vi.fn(), uploadPart: vi.fn(), complete: vi.fn(async () => undefined), abort: vi.fn(async () => undefined) };
+    storage.getDirectMultipartDriver.mockReturnValue(driver);
+    storage.headStoredObject.mockResolvedValue({ size: UPLOAD_CHUNK_MIN_BYTES + 10, mimeType: 'application/octet-stream', etag: 'final' });
+    const browser = session({ uploadId: 'u-direct', provider: 's3', uploadMode: 'browser-direct', multipartUploadId: 'mp-direct', bucketName: 'bkt' });
+    const browserRows = [{ index: 0, size: UPLOAD_CHUNK_MIN_BYTES, etag: 'part-1' }, { index: 1, size: 10, etag: 'part-2' }];
+    dbMock.select
+      .mockReturnValueOnce(createChain([browser]))
+      .mockReturnValueOnce(createChain(browserRows))
+      .mockReturnValueOnce(createChain([{ ...CONFIG, provider: 's3' }]));
+    const update = createChain([{ id: 11 }]);
+    dbMock.update.mockReturnValue(update);
+    const file = { id: 90, objectKey: 'uploads/demo.bin' };
+    dbMock.insert.mockReturnValue(createChain([file]));
+
+    await expect(completeChunkUpload('u-direct', { skipTypeCheck: true })).resolves.toBe(file);
+
+    expect(driver.complete).toHaveBeenCalledOnce();
+    expect(storage.headStoredObject).toHaveBeenCalledOnce();
+    expect(dbMock.transaction).toHaveBeenCalledOnce();
+    expect(dbMock.insert).toHaveBeenCalledOnce();
+  });
+
+  it('浏览器直传实际对象大小不一致时删除对象且不登记文件', async () => {
+    const driver = { init: vi.fn(), uploadPart: vi.fn(), complete: vi.fn(async () => undefined), abort: vi.fn(async () => undefined) };
+    storage.getDirectMultipartDriver.mockReturnValue(driver);
+    storage.headStoredObject.mockResolvedValue({ size: UPLOAD_CHUNK_MIN_BYTES, mimeType: 'application/octet-stream', etag: 'final' });
+    const browser = session({ uploadId: 'u-direct-bad-size', provider: 's3', uploadMode: 'browser-direct', multipartUploadId: 'mp-direct', bucketName: 'bkt' });
+    const browserRows = [{ index: 0, size: UPLOAD_CHUNK_MIN_BYTES, etag: 'part-1' }, { index: 1, size: 10, etag: 'part-2' }];
+    dbMock.select
+      .mockReturnValueOnce(createChain([browser]))
+      .mockReturnValueOnce(createChain(browserRows))
+      .mockReturnValueOnce(createChain([{ ...CONFIG, provider: 's3' }]));
+    const update = createChain([{ id: 11 }]);
+    dbMock.update.mockReturnValue(update);
+
+    await expectHttp(completeChunkUpload('u-direct-bad-size', { skipTypeCheck: true }), 400, '云端对象大小校验失败');
+
+    expect(storage.deleteObjectByConfig).toHaveBeenCalledWith(expect.anything(), 'uploads/demo.bin', 'bkt');
+    expect(dbMock.insert).not.toHaveBeenCalled();
   });
 });
 
