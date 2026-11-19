@@ -156,11 +156,11 @@ export async function getDirectUploadStatus(uploadId: string) {
 
 export async function completeDirectUpload(uploadId: string, input: DirectUploadComplete) {
   await ensureDirectSession(uploadId);
-  const file = await completeChunkUpload(uploadId, { expectedHash: input.contentHash });
+  const file = await completeChunkUpload(uploadId, { expectedHash: input.contentHash, allowBrowserDirect: true });
   return file;
 }
 
 export async function abortDirectUpload(uploadId: string) {
   await ensureDirectSession(uploadId);
-  await abortChunkUpload(uploadId);
+  await abortChunkUpload(uploadId, { allowBrowserDirect: true });
 }

@@ -31,6 +31,20 @@ function expectedPartSize(fileSize: number, chunkSize: number, partNumber: numbe
   return Math.max(0, Math.min(chunkSize, fileSize - offset));
 }
 
+async function kodoPartMd5(blob: Blob): Promise<string> {
+  const { createMD5 } = await import('hash-wasm');
+  const hash = await createMD5();
+  hash.init();
+  const bytesPerChunk = 4 * 1024 * 1024;
+  for (let offset = 0; offset < blob.size; offset += bytesPerChunk) {
+    const end = Math.min(offset + bytesPerChunk, blob.size);
+    hash.update(new Uint8Array(await blob.slice(offset, end).arrayBuffer()));
+  }
+  const hex = hash.digest('hex');
+  const bytes = Uint8Array.from({ length: hex.length / 2 }, (_, index) => Number.parseInt(hex.slice(index * 2, index * 2 + 2), 16));
+  return btoa(String.fromCharCode(...bytes));
+}
+
 function putPart(
   url: string,
   headers: Record<string, string> | undefined,
@@ -141,12 +155,19 @@ export async function directMultipartUpload<TFile = unknown>(options: DirectMult
         const start = (partNumber - 1) * status.chunkSize;
         const end = Math.min(start + status.chunkSize, file.size);
         const blob = file.slice(start, end);
+        let partMd5: string | undefined;
         for (let attempt = 0; ; attempt++) {
           try {
             const target = await api(fileContract.directUploadPartUrl, {
               params: { uploadId, partNumber },
             }, { signal });
-            const transfer = await putPart(target.url, target.headers, blob, (loaded) => {
+            if (target.headers?.Authorization?.startsWith('UpToken ') && partMd5 === undefined) {
+              partMd5 = blob.size > 0 ? await kodoPartMd5(blob) : undefined;
+            }
+            const partHeaders = target.headers?.Authorization?.startsWith('UpToken ') && partMd5
+              ? { ...target.headers, 'Content-MD5': partMd5 }
+              : target.headers;
+            const transfer = await putPart(target.url, partHeaders, blob, (loaded) => {
               inFlight.set(partNumber, loaded);
               reportProgress();
             }, signal);

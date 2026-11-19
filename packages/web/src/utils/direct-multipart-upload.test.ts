@@ -11,6 +11,7 @@ vi.mock('@/lib/contract-query', async (importOriginal) => ({
 }));
 
 const apiMock = vi.mocked(api);
+const sentHeaders: Array<Record<string, string>> = [];
 
 class SuccessfulXhr {
   status = 200;
@@ -20,25 +21,27 @@ class SuccessfulXhr {
   onerror: (() => void) | null = null;
   onabort: (() => void) | null = null;
   url = '';
+  headers: Record<string, string> = {};
 
   open(_method: string, url: string) { this.url = url; }
-  setRequestHeader() {}
+  setRequestHeader(name: string, value: string) { this.headers[name] = value; }
   getResponseHeader(name: string) { return name.toLowerCase() === 'etag' ? 'part-etag' : null; }
   send(body: Blob) {
+    sentHeaders.push(this.headers);
     this.upload.onprogress?.({ loaded: body.size } as ProgressEvent);
     this.onload?.();
   }
   abort() { this.onabort?.(); }
 }
 
-function responseSession(uploadId: string) {
+function responseSession(uploadId: string, provider = 's3') {
   return {
     uploadId,
-    provider: 's3',
+    provider,
     objectKey: 'uploads/file.bin',
     bucketName: 'bucket',
-    chunkSize: 2,
-    totalChunks: 3,
+    chunkSize: provider === 'kodo' ? 4 * 1024 * 1024 : 2,
+    totalChunks: provider === 'kodo' ? 1 : 3,
     received: [],
     publicAccess: false,
     accessStrategy: 'proxy',
@@ -47,6 +50,7 @@ function responseSession(uploadId: string) {
 
 beforeEach(() => {
   localStorage.clear();
+  sentHeaders.length = 0;
   vi.stubGlobal('XMLHttpRequest', SuccessfulXhr);
   const implementation = async (
     op: unknown,
@@ -99,5 +103,28 @@ describe('directMultipartUpload', () => {
     expect(partNumbers).toEqual([2, 3]);
     expect(apiMock.mock.calls[0]?.[0]).toBe(fileContract.directUploadStatus);
     expect(apiMock.mock.calls.some(([op]) => op === fileContract.directUploadInit)).toBe(false);
+  });
+
+  it('sends Content-MD5 on each Kodo v2 block upload', async () => {
+    apiMock.mockImplementation((async (op: unknown, input?: { params?: Record<string, unknown> }) => {
+      if (op === fileContract.directUploadInit) return responseSession('kodo-upload', 'kodo');
+      if (op === fileContract.directUploadPartUrl) {
+        return {
+          partNumber: input?.params?.partNumber,
+          url: 'https://upload.test/kodo',
+          method: 'PUT',
+          headers: { Authorization: 'UpToken scoped-token', 'Content-Type': 'application/octet-stream' },
+          expiresAt: '2026-01-01 00:00:00',
+        };
+      }
+      if (op === fileContract.directUploadPartAck) return { index: 0, receivedCount: 1 };
+      if (op === fileContract.directUploadComplete) return { id: 'managed-file' };
+      throw new Error('Unexpected API operation');
+    }) as typeof api);
+
+    const file = new File([new Uint8Array([1, 2])], 'file.bin', { lastModified: 123 });
+    await directMultipartUpload({ file, storageConfigId: 7 });
+
+    expect(sentHeaders).toEqual([expect.objectContaining({ 'Content-MD5': 'DLmI0EKn8o3V/itVs/Wseg==' })]);
   });
 });

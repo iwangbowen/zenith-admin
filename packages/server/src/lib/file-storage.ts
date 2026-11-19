@@ -142,13 +142,18 @@ export async function getBucketAccessInfo(config: FileStorageConfigRow): Promise
     const acl = normalizeBucketAcl((bucket.AccessControlList as { Grant?: unknown } | undefined)?.Grant);
     let blockPublicAccess: boolean | null;
     try {
-      const result = await (client as unknown as { request(params: Record<string, unknown>): Promise<{ data?: Record<string, unknown> }> }).request({
+      const oss = client as unknown as {
+        request(params: Record<string, unknown>): Promise<{ data?: Buffer | string }>;
+        parseXML(value: Buffer | string): Promise<Record<string, unknown>>;
+      };
+      const result = await oss.request({
         method: 'GET',
         bucket: config.ossBucket!,
         subres: 'publicAccessBlock',
         successStatuses: [200],
       });
-      const policy = result.data?.PublicAccessBlockConfiguration as Record<string, unknown> | undefined;
+      const parsed = result.data ? await oss.parseXML(result.data) : {};
+      const policy = (parsed.PublicAccessBlockConfiguration ?? parsed) as Record<string, unknown>;
       blockPublicAccess = toBooleanOrNull(policy?.BlockPublicAccess);
     } catch (error) {
       if ((error as { code?: string }).code === 'NoSuchPublicAccessBlockConfiguration') blockPublicAccess = false;
@@ -193,10 +198,10 @@ export async function getBucketAccessInfo(config: FileStorageConfigRow): Promise
   }
   if (config.provider === 'bos') {
     const bos = createBosClient(config) as unknown as {
-      getBucketAcl(bucket: string): Promise<{ accessControlList?: Array<{ grantee?: Array<{ id?: string }>; permission?: string[] }> }>;
+      getBucketAcl(bucket: string): Promise<{ body?: { accessControlList?: Array<{ grantee?: Array<{ id?: string }>; permission?: string[] }> } }>;
     };
     const result = await bos.getBucketAcl(config.bosBucket!);
-    const entries = result.accessControlList ?? [];
+    const entries = result.body?.accessControlList ?? [];
     const publicRead = entries.some((entry) => entry.grantee?.some((g) => g.id === 'AllUsers') && entry.permission?.some((p) => p.includes('READ')));
     const publicWrite = entries.some((entry) => entry.grantee?.some((g) => g.id === 'AllUsers') && entry.permission?.some((p) => p.includes('WRITE')));
     const acl: FileBucketAcl = publicWrite ? 'public-read-write' : publicRead ? 'public-read' : 'private';
@@ -206,15 +211,17 @@ export async function getBucketAccessInfo(config: FileStorageConfigRow): Promise
     const { mac, conf } = createKodoUploader(config);
     const bucketManager = new (loadQiniu().rs.BucketManager)(mac, conf);
     const result = await bucketManager.getBucketInfo(config.kodoBucket!);
-    const data = (result as unknown as { data?: { private?: number } }).data;
-    const acl: FileBucketAcl = Number(data?.private ?? 0) === 1 ? 'private' : 'public-read';
-    return { bucketAcl: acl, blockPublicAccess: null, effectivePublic: acl === 'public-read', checkedAt: new Date() };
+    const data = (result as unknown as { data?: { private?: number | string } }).data;
+    const accessMode = Number(data?.private);
+    const acl: FileBucketAcl | null = accessMode === 1 ? 'private' : accessMode === 0 ? 'public-read' : null;
+    return { bucketAcl: acl, blockPublicAccess: null, effectivePublic: accessMode === 0, checkedAt: new Date() };
   }
   if (config.provider === 'azure') {
     const properties = await createAzureBlobClient(config).getProperties();
     const access = (properties as unknown as { blobPublicAccess?: string }).blobPublicAccess;
-    const acl: FileBucketAcl = access === 'container' ? 'public-read' : 'private';
-    return { bucketAcl: acl, blockPublicAccess: null, effectivePublic: access !== null && access !== undefined, checkedAt: new Date() };
+    const publicAccess = access === 'container' || access === 'blob';
+    const acl: FileBucketAcl = publicAccess ? 'public-read' : 'private';
+    return { bucketAcl: acl, blockPublicAccess: null, effectivePublic: publicAccess, checkedAt: new Date() };
   }
   if (config.provider === 'obs') {
     const obs = createObsClient(config) as unknown as {
@@ -242,9 +249,8 @@ export async function setBucketAccessInfo(
 ): Promise<FileBucketAccessInfo> {
   if (config.provider === 'oss') {
     const client = createOssClient(config);
-    if (input.acl) await client.putBucketACL(config.ossBucket!, input.acl);
-    if (input.blockPublicAccess !== undefined) {
-      const xml = `<?xml version="1.0" encoding="UTF-8"?><PublicAccessBlockConfiguration><BlockPublicAccess>${input.blockPublicAccess}</BlockPublicAccess></PublicAccessBlockConfiguration>`;
+    const setBlockPublicAccess = async (enabled: boolean) => {
+      const xml = `<?xml version="1.0" encoding="UTF-8"?><PublicAccessBlockConfiguration><BlockPublicAccess>${enabled}</BlockPublicAccess></PublicAccessBlockConfiguration>`;
       await (client as unknown as { request(params: Record<string, unknown>): Promise<unknown> }).request({
         method: 'PUT',
         bucket: config.ossBucket!,
@@ -253,26 +259,38 @@ export async function setBucketAccessInfo(
         content: xml,
         successStatuses: [200],
       });
-    }
+    };
+    if (input.blockPublicAccess === false) await setBlockPublicAccess(false);
+    if (input.acl) await client.putBucketACL(config.ossBucket!, input.acl);
+    if (input.blockPublicAccess === true) await setBlockPublicAccess(true);
     return getBucketAccessInfo(config);
   }
   if (config.provider === 's3') {
     const client = createS3Client(config);
     const s3 = loadS3();
+    const setPublicAccessBlock = (enabled: boolean) => client.send(new s3.PutPublicAccessBlockCommand({
+      Bucket: config.s3Bucket!,
+      PublicAccessBlockConfiguration: {
+        BlockPublicAcls: enabled,
+        IgnorePublicAcls: enabled,
+        BlockPublicPolicy: enabled,
+        RestrictPublicBuckets: enabled,
+      },
+    }));
+    if (input.blockPublicAccess === false) await setPublicAccessBlock(false);
     if (input.acl) {
+      if (input.blockPublicAccess !== false) {
+        const publicAcl = input.acl === 'public-read' || input.acl === 'public-read-write';
+        if (publicAcl) {
+          const current = await getBucketAccessInfo(config);
+          if (current.blockPublicAccess === true) {
+            throw new HTTPException(400, { message: '请先关闭 S3 Bucket 的阻止公共访问，再设置公共 ACL' });
+          }
+        }
+      }
       await client.send(new s3.PutBucketAclCommand({ Bucket: config.s3Bucket!, ACL: input.acl }));
     }
-    if (input.blockPublicAccess !== undefined) {
-      await client.send(new s3.PutPublicAccessBlockCommand({
-        Bucket: config.s3Bucket!,
-        PublicAccessBlockConfiguration: {
-          BlockPublicAcls: input.blockPublicAccess,
-          IgnorePublicAcls: input.blockPublicAccess,
-          BlockPublicPolicy: input.blockPublicAccess,
-          RestrictPublicBuckets: input.blockPublicAccess,
-        },
-      }));
-    }
+    if (input.blockPublicAccess === true) await setPublicAccessBlock(true);
     return getBucketAccessInfo(config);
   }
   if (config.provider === 'cos') {
@@ -294,6 +312,7 @@ export async function setBucketAccessInfo(
   }
   if (config.provider === 'kodo') {
     if (!input.acl) throw new HTTPException(400, { message: '七牛云仅支持修改 Bucket 访问模式' });
+    if (input.acl === 'public-read-write') throw new HTTPException(400, { message: '七牛云不支持 Bucket 公共写' });
     const { mac, conf } = createKodoUploader(config);
     const bucketManager = new (loadQiniu().rs.BucketManager)(mac, conf);
     await bucketManager.putBucketAccessMode(config.kodoBucket!, { private: input.acl === 'private' ? 1 : 0 });
@@ -301,6 +320,7 @@ export async function setBucketAccessInfo(
   }
   if (config.provider === 'azure') {
     if (!input.acl) throw new HTTPException(400, { message: 'Azure 仅支持修改 Container 访问级别' });
+    if (input.acl === 'public-read-write') throw new HTTPException(400, { message: 'Azure Blob 不支持 Container 公共写' });
     await createAzureBlobClient(config).setAccessPolicy(input.acl === 'private' ? undefined : 'blob');
     return getBucketAccessInfo(config);
   }
@@ -549,10 +569,16 @@ export async function createDirectPartTarget(
       const cos = createCosClient(config);
       const url = await new Promise<string>((resolve, reject) => {
         cos.getObjectUrl({ Bucket: config.cosBucket!, Region: config.cosRegion!, Key: objectKey,
-          Sign: true, Method: 'PUT', Expires: expirySeconds, Query: query,
+          Sign: false, Method: 'PUT', Query: query,
         }, (err, data) => (err ? reject(err instanceof Error ? err : new Error(String(err))) : resolve(data.Url)));
       });
-      return { url, method: 'PUT', expiresAt };
+      const auth = cos.getAuth({
+        Bucket: config.cosBucket!, Region: config.cosRegion!, Key: objectKey,
+        Method: 'PUT', Expires: expirySeconds, Query: query,
+      });
+      const signedUrl = new URL(url);
+      for (const [key, value] of new URLSearchParams(auth)) signedUrl.searchParams.set(key, value);
+      return { url: signedUrl.toString(), method: 'PUT', expiresAt };
     }
     case 'obs': {
       const obs = createObsClient(config) as ObsClientType & { createSignedUrlSync(params: Record<string, unknown>): { SignedUrl: string } };

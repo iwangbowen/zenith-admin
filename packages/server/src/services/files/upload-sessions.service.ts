@@ -20,6 +20,8 @@ import { buildWhere } from '../../lib/where-helpers';
 
 /** 完成分片上传时归属模块可指定的属性 */
 export interface ChunkUploadCompleteOptions extends Pick<ManagedFileUploadOptions, 'visibility' | 'skipTypeCheck'> {
+  /** Internal handoff from direct-uploads.service after its owner check. */
+  allowBrowserDirect?: boolean;
   /**
    * 客户端预先声明的内容 SHA-256（hex）。提供时服务端按实际落地内容重新计算并比对：
    * 一致才写入 `managed_files.contentHash` 参与秒传 / 去重，不一致则中止会话；不提供则不记录哈希。
@@ -246,6 +248,7 @@ export async function initChunkUpload(input: InitChunkUploadInput) {
 
 export async function uploadChunk(uploadId: string, index: number, chunk: File, options: Pick<ManagedFileUploadOptions, 'skipTypeCheck'> = {}) {
   const session = await ensureSession(uploadId);
+  if (session.uploadMode === 'browser-direct') throw new HTTPException(404, { message: '上传会话不存在或已过期' });
   if (session.status !== 'uploading') {
     throw new HTTPException(400, { message: session.status === 'completing' ? '上传正在合并中，不能再上传分片' : '上传会话已结束' });
   }
@@ -292,6 +295,7 @@ export async function uploadChunk(uploadId: string, index: number, chunk: File, 
 
 export async function getUploadStatus(uploadId: string) {
   const session = await ensureSession(uploadId);
+  if (session.uploadMode === 'browser-direct') throw new HTTPException(404, { message: '上传会话不存在或已过期' });
   const received = await getReceivedIndices(session.id);
   return { uploadId, status: session.status, chunkSize: session.chunkSize, totalChunks: session.totalChunks, received };
 }
@@ -303,6 +307,7 @@ const COMPLETING_LEASE_MS = 30 * 60 * 1000;
 export async function completeChunkUpload(uploadId: string, options: ChunkUploadCompleteOptions = {}) {
   const user = currentUser();
   const session = await ensureSession(uploadId);
+  if (session.uploadMode === 'browser-direct' && !options.allowBrowserDirect) throw new HTTPException(404, { message: '上传会话不存在或已过期' });
   const leaseCutoff = new Date(Date.now() - COMPLETING_LEASE_MS);
   if (session.status === 'completed') throw new HTTPException(400, { message: '上传已完成' });
   if (session.status === 'completing' && session.updatedAt >= leaseCutoff) throw new HTTPException(409, { message: COMPLETING_MESSAGE });
@@ -482,8 +487,9 @@ async function mergeAndRegister(
   return mapManagedFile(created, config);
 }
 
-export async function abortChunkUpload(uploadId: string) {
+export async function abortChunkUpload(uploadId: string, options: { allowBrowserDirect?: boolean } = {}) {
   const session = await ensureSession(uploadId);
+  if (session.uploadMode === 'browser-direct' && !options.allowBrowserDirect) throw new HTTPException(404, { message: '上传会话不存在或已过期' });
   if (session.status === 'completed') throw new HTTPException(400, { message: '上传已完成，无法中止' });
   if (session.status === 'completing' && session.updatedAt >= new Date(Date.now() - COMPLETING_LEASE_MS)) {
     throw new HTTPException(409, { message: '上传正在合并中，无法中止' });

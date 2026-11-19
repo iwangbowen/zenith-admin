@@ -60,7 +60,7 @@ vi.mock('../../lib/file-storage', () => ({
 
 import { db } from '../../db';
 import { deleteObjectByConfig, getDirectMultipartDriver, getMultipartDriver, headStoredObject, readStoredFile, uploadObjectByConfig } from '../../lib/file-storage';
-import { abortChunkUpload, completeChunkUpload, initChunkUpload, uploadChunk } from './upload-sessions.service';
+import { abortChunkUpload, completeChunkUpload, getUploadStatus, initChunkUpload, uploadChunk } from './upload-sessions.service';
 
 const dbMock = vi.mocked(db);
 const storage = { getMultipartDriver: vi.mocked(getMultipartDriver), getDirectMultipartDriver: vi.mocked(getDirectMultipartDriver), headStoredObject: vi.mocked(headStoredObject), uploadObjectByConfig: vi.mocked(uploadObjectByConfig), readStoredFile: vi.mocked(readStoredFile), deleteObjectByConfig: vi.mocked(deleteObjectByConfig) };
@@ -156,6 +156,12 @@ describe('initChunkUpload', () => {
 });
 
 describe('uploadChunk', () => {
+  it('rejects proxy chunk requests against browser-direct sessions', async () => {
+    dbMock.select.mockReturnValueOnce(createChain([session({ uploadMode: 'browser-direct' })]));
+    await expectHttp(uploadChunk('u-1', 0, fileOf(UPLOAD_CHUNK_MIN_BYTES)), 404, '不存在');
+    expect(dbMock.insert).not.toHaveBeenCalled();
+  });
+
   it('分片字节数与期望不符时拒绝且不落盘不登记', async () => {
     dbMock.select.mockReturnValueOnce(createChain([session()]));
     await expectHttp(uploadChunk('u-1', 0, fileOf(UPLOAD_CHUNK_MIN_BYTES - 1)), 400, '大小不匹配');
@@ -181,6 +187,12 @@ describe('uploadChunk', () => {
 });
 
 describe('completeChunkUpload', () => {
+  it('rejects proxy completion against browser-direct sessions without internal authorization', async () => {
+    dbMock.select.mockReturnValueOnce(createChain([session({ uploadMode: 'browser-direct' })]));
+    await expectHttp(completeChunkUpload('u-1'), 404, '不存在');
+    expect(dbMock.update).not.toHaveBeenCalled();
+  });
+
   const rows = [{ index: 0, size: UPLOAD_CHUNK_MIN_BYTES, etag: null }, { index: 1, size: 10, etag: null }];
 
   it('分片不完整时 400，且不抢占合并权', async () => {
@@ -309,7 +321,7 @@ describe('completeChunkUpload', () => {
     const file = { id: 90, objectKey: 'uploads/demo.bin' };
     dbMock.insert.mockReturnValue(createChain([file]));
 
-    await expect(completeChunkUpload('u-direct', { skipTypeCheck: true })).resolves.toBe(file);
+    await expect(completeChunkUpload('u-direct', { skipTypeCheck: true, allowBrowserDirect: true })).resolves.toBe(file);
 
     expect(driver.complete).toHaveBeenCalledOnce();
     expect(storage.headStoredObject).toHaveBeenCalledOnce();
@@ -330,7 +342,7 @@ describe('completeChunkUpload', () => {
     const update = createChain([{ id: 11 }]);
     dbMock.update.mockReturnValue(update);
 
-    await expectHttp(completeChunkUpload('u-direct-bad-size', { skipTypeCheck: true }), 400, '云端对象大小校验失败');
+    await expectHttp(completeChunkUpload('u-direct-bad-size', { skipTypeCheck: true, allowBrowserDirect: true }), 400, '云端对象大小校验失败');
 
     expect(storage.deleteObjectByConfig).toHaveBeenCalledWith(expect.anything(), 'uploads/demo.bin', 'bkt');
     expect(dbMock.insert).not.toHaveBeenCalled();
@@ -338,6 +350,17 @@ describe('completeChunkUpload', () => {
 });
 
 describe('abortChunkUpload', () => {
+  it('rejects proxy abort against browser-direct sessions without internal authorization', async () => {
+    dbMock.select.mockReturnValueOnce(createChain([session({ uploadMode: 'browser-direct' })]));
+    await expectHttp(abortChunkUpload('u-1'), 404, '不存在');
+    expect(dbMock.update).not.toHaveBeenCalled();
+  });
+
+  it('hides browser-direct session status from the proxy status endpoint', async () => {
+    dbMock.select.mockReturnValueOnce(createChain([session({ uploadMode: 'browser-direct' })]));
+    await expectHttp(getUploadStatus('u-1'), 404, '不存在');
+  });
+
   it('已完成与租约内合并中的会话不可中止', async () => {
     dbMock.select.mockReturnValueOnce(createChain([session({ status: 'completed' })]));
     await expectHttp(abortChunkUpload('u-1'), 400, '已完成');
