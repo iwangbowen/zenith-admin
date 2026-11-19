@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { compileWorkflowTree, projectWorkflowGraph, workflowFlowDataSchema, type WorkflowNodeConfig } from '@zenith/shared/workflow';
 import { clearInactiveAssigneeProps, emptyAssigneeChoicePatch, resetAssigneePropsForType, resolveEmptyAssigneeChoice, sanitizeAssigneePropsForWrite } from './assignee-props';
+import type { FlowProcess } from './types';
+import { updateNode } from './utils';
 
 describe('empty assignee strategy choice', () => {
   it('shows the effective action when node-level exception handling takes priority', () => {
@@ -58,10 +60,12 @@ describe('approval rule persistence', () => {
     externalApproval: { enabled: true, url: 'https://example.com/approval', secret: 'test-secret', signMode: 'hmacSha256', timeoutMs: 15000, fallbackStrategy: 'manual' },
   };
 
-  function saveAndReopen(props: Record<string, unknown>) {
-    const graph = compileWorkflowTree({ initiator: { id: 'start', key: 'start', type: 'initiator', name: '发起', props: {}, children: {
-      id: 'approval', key: 'approval', type: 'approver', name: '审批', props: sanitizeAssigneePropsForWrite(props),
-    } } });
+  function saveAndReopen(props: Record<string, unknown>, previousProps: Record<string, unknown> = {}) {
+    const process: FlowProcess = { initiator: { id: 'start', key: 'start', type: 'initiator', name: '发起', props: {}, children: {
+      id: 'approval', key: 'approval', type: 'approver', name: '审批', props: previousProps,
+    } } };
+    const updated = updateNode(process, 'approval', { props });
+    const graph = compileWorkflowTree(updated);
     const saved = workflowFlowDataSchema.parse(JSON.parse(JSON.stringify(graph)));
     const reopened = projectWorkflowGraph(saved);
     if (reopened.kind !== 'tree') throw new Error('Expected editable workflow');
@@ -81,6 +85,51 @@ describe('approval rule persistence', () => {
       sameInitiatorStrategy: rules.sameInitiatorStrategy, deduplicateStrategy: rules.deduplicateStrategy, timeout: rules.timeout,
       externalApproval: rules.externalApproval, emptyAssignToIds: rules.emptyAssignToIds, catchNotifyUserIds: rules.catchNotifyUserIds,
     });
+  });
+
+  describe.each(['approverSelect', 'initiatorSelectScope'] as const)('%s scope persistence', assigneeType => {
+    it.each(['user', 'role', 'department', 'userGroup'] as const)('preserves a configured %s scope on save and reopen', selectScopeType => {
+      const scope = { assigneeType, selectScopeType, selectScopeIds: [2, 3] };
+      const reopened = saveAndReopen({ ...rules, ...scope });
+      expect(reopened).toMatchObject({ ...scope, emptyStrategy: rules.emptyStrategy, emptyAssignToIds: rules.emptyAssignToIds });
+      expect(reopened).not.toHaveProperty('assigneeIds');
+    });
+  });
+
+  it.each(['user', 'role', 'department', 'userGroup'] as const)('updates an existing approver-selected %s scope', selectScopeType => {
+    const previousProps = { ...rules, assigneeType: 'approverSelect', selectScopeType: 'user', selectScopeIds: [1] };
+    const scope = { selectScopeType, selectScopeIds: [2, 3] };
+    expect(saveAndReopen({ ...previousProps, ...scope }, previousProps)).toMatchObject({ assigneeType: 'approverSelect', ...scope });
+  });
+
+  it.each(['user', 'role', 'department', 'userGroup'] as const)('clears an existing approver-selected %s scope', selectScopeType => {
+    const previousProps = { ...rules, assigneeType: 'approverSelect', selectScopeType, selectScopeIds: [2, 3] };
+    expect(saveAndReopen({ ...previousProps, selectScopeIds: [] }, previousProps)).toMatchObject({
+      assigneeType: 'approverSelect', selectScopeType, selectScopeIds: [],
+    });
+  });
+
+  it('removes a previous scope when switching to a source without a scope', () => {
+    const previousProps = { ...rules, assigneeType: 'approverSelect', selectScopeType: 'role', selectScopeIds: [2] };
+    const reopened = saveAndReopen({ ...previousProps, assigneeType: 'user', assigneeIds: [3] }, previousProps);
+    expect(reopened).toMatchObject({ assigneeType: 'user', assigneeIds: [3], emptyAssignToIds: rules.emptyAssignToIds });
+    expect(reopened).not.toHaveProperty('selectScopeType');
+    expect(reopened).not.toHaveProperty('selectScopeIds');
+  });
+
+  it('does not restore inactive source fields while merging a partial node update', () => {
+    const previousProps = { ...rules, assigneeType: 'role', roleIds: [2], roleNames: ['财务'] };
+    const reopened = saveAndReopen({ assigneeType: 'user', assigneeIds: [3] }, previousProps);
+    expect(reopened).toMatchObject({ assigneeType: 'user', assigneeIds: [3], emptyAssignToIds: rules.emptyAssignToIds });
+    expect(reopened).not.toHaveProperty('roleIds');
+  });
+
+  it.each([['initiatorSelectScope', 'approverSelect'], ['approverSelect', 'initiatorSelectScope']] as const)('does not carry a %s scope into %s when the source is reset', (previousType, assigneeType) => {
+    const previousProps = { ...rules, assigneeType: previousType, selectScopeType: 'role', selectScopeIds: [2] };
+    const reopened = saveAndReopen(resetAssigneePropsForType(previousProps, assigneeType), previousProps);
+    expect(reopened).toMatchObject({ assigneeType, emptyAssignToIds: rules.emptyAssignToIds });
+    expect(reopened).not.toHaveProperty('selectScopeType');
+    expect(reopened).not.toHaveProperty('selectScopeIds');
   });
 });
 
