@@ -167,7 +167,7 @@ export const directUploadInitSchema = z.object({
   fileName: z.string().min(1).max(256),
   fileSize: z.int().nonnegative(),
   mimeType: z.string().max(128).optional(),
-  storageConfigId: z.int().positive().optional(),
+  storageConfigId: z.int().optional(),
 });
 
 export const directUploadSessionSchema = z.object({

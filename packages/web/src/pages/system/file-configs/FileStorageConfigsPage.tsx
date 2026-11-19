@@ -201,6 +201,7 @@ function getStorageSummary(config: FileStorageConfig) {
 
 export default function FileStorageConfigsPage() {
   const { hasPermission } = usePermission();
+  const canManageBucketAccess = hasPermission('system:file:config:bucket-access');
   const page = useListPage({
     contract: fileStorageConfigContract,
     useList: useFileStorageConfigList,
@@ -954,7 +955,7 @@ export default function FileStorageConfigsPage() {
               </Button>
               <Button
                 size="small"
-                disabled={probeBucketMutation.isPending || updateBucketMutation.isPending || bucketAccess?.bucketAcl === 'private'}
+                disabled={!canManageBucketAccess || probeBucketMutation.isPending || updateBucketMutation.isPending || bucketAccess?.bucketAcl === 'private'}
                 onClick={() => void handleMakePrivate()}
               >
                 设为私有
@@ -962,7 +963,7 @@ export default function FileStorageConfigsPage() {
               <Button
                 size="small"
                 type="danger"
-                disabled={probeBucketMutation.isPending || updateBucketMutation.isPending || bucketAccess?.bucketAcl === 'public-read'}
+                disabled={!canManageBucketAccess || probeBucketMutation.isPending || updateBucketMutation.isPending || bucketAccess?.bucketAcl === 'public-read'}
                 onClick={() => void handleMakePublicRead()}
               >
                 设为公共读
@@ -972,7 +973,7 @@ export default function FileStorageConfigsPage() {
                   size="small"
                   type={bucketAccess?.blockPublicAccess ? 'danger' : 'primary'}
                   loading={updateBucketMutation.isPending}
-                  disabled={probeBucketMutation.isPending}
+                  disabled={!canManageBucketAccess || probeBucketMutation.isPending}
                   onClick={() => void handleToggleBlockPublicAccess(!(bucketAccess?.blockPublicAccess ?? false))}
                 >
                   {bucketAccess?.blockPublicAccess ? '关闭阻止公共访问' : '开启阻止公共访问'}

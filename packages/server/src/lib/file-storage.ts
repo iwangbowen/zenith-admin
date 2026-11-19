@@ -154,7 +154,7 @@ export async function getBucketAccessInfo(config: FileStorageConfigRow): Promise
     const publicRead = grants.some((grant) => grant.Permission === 'READ' && String(grant.Grantee?.URI ?? '').includes('AllUsers'));
     const publicWrite = grants.some((grant) => grant.Permission === 'WRITE' && String(grant.Grantee?.URI ?? '').includes('AllUsers'));
     const acl: FileBucketAcl = publicWrite ? 'public-read-write' : publicRead ? 'public-read' : 'private';
-    let blockPublicAccess: boolean | null = null;
+    let blockPublicAccess: boolean | null;
     try {
       const pab = await client.send(new s3.GetPublicAccessBlockCommand({ Bucket: config.s3Bucket! }));
       const value = pab.PublicAccessBlockConfiguration;
