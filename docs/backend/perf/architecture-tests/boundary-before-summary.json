@@ -13,7 +13,7 @@
   "fsModuleCache": false,
   "dotenv": "disabled for benchmark",
   "pdfFontSha256": "faa6c9df652116dde789d351359f3d7e5d2285a2b2a1f04a2d7244df706d5ea9",
-  "target": "C:\\Users\\iwang\\workspace\\zenith-admin\\packages\\server",
+  "target": "packages/server",
   "label": "boundary-before",
   "startedAt": "2026-11-04T13:38:57.894Z",
   "samples": [
@@ -54,9 +54,9 @@
       "measuredProcesses": 24,
       "coordinatorAndTestWorkerCpuSeconds": 98.074,
       "largestMeasuredProcessPeakRssMiB": 461.8125,
-      "log": "C:\\Users\\iwang\\workspace\\zenith-admin\\docs\\backend\\perf\\architecture-tests\\boundary-before-identity-1.log",
-      "json": "C:\\Users\\iwang\\workspace\\zenith-admin\\docs\\backend\\perf\\architecture-tests\\boundary-before-identity-1.json",
-      "resources": "C:\\Users\\iwang\\workspace\\zenith-admin\\docs\\backend\\perf\\architecture-tests\\boundary-before-identity-1.resources.jsonl"
+      "log": "docs/backend/perf/architecture-tests/boundary-before-identity-1.log",
+      "json": "docs/backend/perf/architecture-tests/boundary-before-identity-1.json",
+      "resources": "docs/backend/perf/architecture-tests/boundary-before-identity-1.resources.jsonl"
     },
     {
       "suite": "identity",
@@ -95,9 +95,9 @@
       "measuredProcesses": 24,
       "coordinatorAndTestWorkerCpuSeconds": 90.809,
       "largestMeasuredProcessPeakRssMiB": 487.0625,
-      "log": "C:\\Users\\iwang\\workspace\\zenith-admin\\docs\\backend\\perf\\architecture-tests\\boundary-before-identity-2.log",
-      "json": "C:\\Users\\iwang\\workspace\\zenith-admin\\docs\\backend\\perf\\architecture-tests\\boundary-before-identity-2.json",
-      "resources": "C:\\Users\\iwang\\workspace\\zenith-admin\\docs\\backend\\perf\\architecture-tests\\boundary-before-identity-2.resources.jsonl"
+      "log": "docs/backend/perf/architecture-tests/boundary-before-identity-2.log",
+      "json": "docs/backend/perf/architecture-tests/boundary-before-identity-2.json",
+      "resources": "docs/backend/perf/architecture-tests/boundary-before-identity-2.resources.jsonl"
     },
     {
       "suite": "identity",
@@ -136,9 +136,9 @@
       "measuredProcesses": 24,
       "coordinatorAndTestWorkerCpuSeconds": 92.292,
       "largestMeasuredProcessPeakRssMiB": 458.91796875,
-      "log": "C:\\Users\\iwang\\workspace\\zenith-admin\\docs\\backend\\perf\\architecture-tests\\boundary-before-identity-3.log",
-      "json": "C:\\Users\\iwang\\workspace\\zenith-admin\\docs\\backend\\perf\\architecture-tests\\boundary-before-identity-3.json",
-      "resources": "C:\\Users\\iwang\\workspace\\zenith-admin\\docs\\backend\\perf\\architecture-tests\\boundary-before-identity-3.resources.jsonl"
+      "log": "docs/backend/perf/architecture-tests/boundary-before-identity-3.log",
+      "json": "docs/backend/perf/architecture-tests/boundary-before-identity-3.json",
+      "resources": "docs/backend/perf/architecture-tests/boundary-before-identity-3.resources.jsonl"
     }
   ]
 }

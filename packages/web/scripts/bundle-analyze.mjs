@@ -13,7 +13,7 @@
  * - 体积：raw = 产物字节；gz = zlib gzip level 6；br = brotli quality 11
  */
 import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { brotliCompressSync, constants as zc, gzipSync } from 'node:zlib';
 import { init, parse } from 'es-module-lexer';
@@ -22,6 +22,12 @@ import { TraceMap, decodedMappings } from '@jridgewell/trace-mapping';
 const args = parseArgs(process.argv.slice(2));
 const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const dist = resolve(args.dist ?? join(webRoot, 'dist'));
+// 报告会被提交，dist 只记录仓库相对路径；仓库外产物只保留目录名
+const repoRoot = resolve(webRoot, '../..');
+const distLabel = (() => {
+  const rel = relative(repoRoot, dist);
+  return rel && !rel.startsWith('..') ? rel.replaceAll('\\', '/') : basename(dist);
+})();
 // 默认分析全部入口：清单唯一来源 entries.json（与 vite.config.ts / build.mjs 一致）
 const defaultEntries = Object.values(JSON.parse(readFileSync(join(webRoot, 'entries.json'), 'utf8')).entries).map((e) => e.input).join(',');
 const entries = (args.entries ?? defaultEntries).split(',').filter((h) => existsSync(join(dist, h)));
@@ -178,7 +184,7 @@ function entryInfo(html) {
 const findChunk = (re, assetsDir) => [...chunks.entries()].filter(([, c]) => re.test(c.file) && (!assetsDir || c.assetsDir === assetsDir)).map(([k]) => k);
 const heavyRe = /(?:^|\/)vendor-(univerjs|monaco|xterm|visactor|maplibre|mermaid|embedpdf|wangeditor|rrweb|emoji|heic2any|exceljs|file-viewer|xyflow|lottie)/;
 
-const report = { generatedAt: new Date().toISOString(), dist, totals: {}, entries: {} };
+const report = { generatedAt: new Date().toISOString(), dist: distLabel, totals: {}, entries: {} };
 
 {
   const all = [...chunks.values()];

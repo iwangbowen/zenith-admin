@@ -3,7 +3,7 @@ import { spawnSync, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdirSync, openSync, closeSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { cpus, totalmem } from 'node:os';
-import { resolve, join } from 'node:path';
+import { resolve, join, relative } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { serverRoot, workspaceRoot, buildFileGraph, planDomainTests } from './test-graph.mjs';
 import { vitestBin, withTestPlan } from './test-runner.mjs';
@@ -23,6 +23,9 @@ const pdfFont = join(target, 'assets/fonts/NotoSansSC-Regular.otf');
 if (!existsSync(pdfFont)) throw new Error('Benchmark requires the repository full PDF font');
 const label = options.label ?? 'current';
 if (!/^[a-zA-Z0-9_-]+$/.test(label)) throw new Error('--label must contain only letters, numbers, underscores or hyphens');
+const toPosix = (value) => value.replaceAll('\\', '/');
+// 归档产物会被提交，路径必须与机器无关
+const workspacePath = (value) => toPosix(relative(workspaceRoot, value));
 mkdirSync(output, { recursive: true });
 const sha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: workspaceRoot, encoding: 'utf8' }).trim();
 const manifest = { node: process.version, platform: process.platform, arch: process.arch,
@@ -31,7 +34,7 @@ const manifest = { node: process.version, platform: process.platform, arch: proc
   runnerCommit: sha, sourceCommit: options['source-ref'] ?? (target === serverRoot ? sha : null),
   fsModuleCache: false, dotenv: 'disabled for benchmark',
   pdfFontSha256: createHash('sha256').update(readFileSync(pdfFont)).digest('hex'),
-  target, label, startedAt: new Date().toISOString(), samples: [] };
+  target: workspacePath(target), label, startedAt: new Date().toISOString(), samples: [] };
 for (const suite of suites) {
   if (!/^[a-z-]+$/.test(suite)) throw new Error(`Invalid suite: ${suite}`);
   for (let i = 0; i < repetitions; i++) {
@@ -54,6 +57,12 @@ for (const suite of suites) {
     const run = domain ? withTestPlan(planDomainTests([domain], buildFileGraph()), execute) : execute();
     closeSync(fd);
     const wallSeconds = (performance.now() - start) / 1000;
+    // Vitest 的 JSON 报告写入绝对测试文件路径；归档前统一改为仓库相对路径
+    if (existsSync(jsonFile)) {
+      const raw = readFileSync(jsonFile, 'utf8');
+      const sanitized = raw.replaceAll(`${toPosix(workspaceRoot)}/`, '').replaceAll(`${toPosix(target)}/`, '');
+      if (sanitized !== raw) writeFileSync(jsonFile, sanitized);
+    }
     const result = existsSync(jsonFile) ? JSON.parse(readFileSync(jsonFile, 'utf8')) : {};
     const records = existsSync(resourcesFile) ? readFileSync(resourcesFile, 'utf8').trim().split('\n').filter(Boolean).map((line) => JSON.parse(line)) : [];
     const processes = new Map();
@@ -68,7 +77,7 @@ for (const suite of suites) {
       measuredProcesses: processes.size,
       coordinatorAndTestWorkerCpuSeconds: [...processes.values()].reduce((sum, record) => sum + record.userCPUTime + record.systemCPUTime, 0) / 1_000_000,
       largestMeasuredProcessPeakRssMiB: Math.max(0, ...[...processes.values()].map((record) => record.maxRSS / 1024)),
-      log: `${stem}.log`, json: jsonFile, resources: resourcesFile,
+      log: workspacePath(`${stem}.log`), json: workspacePath(jsonFile), resources: workspacePath(resourcesFile),
     };
     manifest.samples.push(sample);
     writeFileSync(join(output, `${label}-summary.json`), `${JSON.stringify(manifest, null, 2)}\n`);

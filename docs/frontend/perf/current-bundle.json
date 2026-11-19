@@ -1,6 +1,6 @@
 {
   "generatedAt": "2026-09-05T21:13:58.118Z",
-  "dist": "C:\\Users\\iwang\\workspace\\zenith-admin\\packages\\web\\dist",
+  "dist": "packages/web/dist",
   "totals": {
     "jsChunks": 1542,
     "jsTotalMB": 75.8,
