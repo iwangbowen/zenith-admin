@@ -13,7 +13,7 @@ import { workflowTransaction } from '../../../lib/workflow-jobs/lease';
 import { eq, and, desc, or, inArray } from 'drizzle-orm';
 import { db } from '../../../db';
 import { workflowInstances, workflowTasks, users } from '../../../db/schema';
-import { findReturnPrevTarget } from '../../../lib/workflow-engine';
+import { runtimeRejectRoute } from '../runtime/reject-route';
 import type { WorkflowEventActor, WorkflowActionButtonKey, WorkflowActionButtonConfig, WorkflowNodeConfig, WorkflowTaskDecision } from '@zenith/shared/workflow';
 import { findNextApproverSelectNodes, resolveNodeFieldPermissions, sanitizeFormUpdatesByNodePerms, WORKFLOW_ACTION_BUTTON_DEFAULTS } from '@zenith/shared/workflow';
 import { HTTPException } from 'hono/http-exception';
@@ -403,43 +403,16 @@ async function resolveRejectRoute(
   inst: InstanceRow,
 ): Promise<{ strategy: RejectRouteStrategy; targetNodeKey: string | null; currentNodeCfg: WorkflowNodeConfig | undefined }> {
   const flowData = inst.definitionSnapshot?.flowData;
-  const currentNodeCfg = flowData?.nodes.find((n) => n.data.key === task.nodeKey)?.data;
-  const actionRejectJump = (currentNodeCfg?.actionButtons as { reject?: { jumpToNodeKey?: string } } | undefined)?.reject?.jumpToNodeKey;
-  let strategy: RejectRouteStrategy = currentNodeCfg?.rejectStrategy ?? 'terminate';
-  let rejectToNodeKey: string | undefined = currentNodeCfg?.rejectToNodeKey;
-  if (actionRejectJump) {
-    strategy = 'returnToNode';
-    rejectToNodeKey = actionRejectJump;
-  }
-
-  let targetNodeKey: string | null = null;
-  if (strategy !== 'terminate' && flowData) {
-    if (strategy === 'returnToNode') {
-      if (rejectToNodeKey && flowData.nodes.some((n) => n.data.key === rejectToNodeKey)) {
-        targetNodeKey = rejectToNodeKey;
-      }
-    } else if (strategy === 'returnPrev') {
-      // 找已 approved 的 approve/handler 任务节点，按审批时间倒序
-      const prevApproved = await db.select().from(workflowTasks)
-        .where(and(
-          eq(workflowTasks.instanceId, inst.id),
-          eq(workflowTasks.status, 'approved'),
-        ))
-        .orderBy(desc(workflowTasks.actionAt), desc(workflowTasks.id));
-      const approvedApproveKeys = prevApproved
-        .filter((t) => {
-          const cfg = flowData.nodes.find((n) => n.data.key === t.nodeKey)?.data;
-          return cfg && (cfg.type === 'approve' || cfg.type === 'handler');
-        })
-        .map((t) => t.nodeKey);
-      // 优先退回到当前节点的最近上游祖先，避免并行流程误选到另一分支上最近审批的节点
-      targetNodeKey = findReturnPrevTarget(flowData, task.nodeKey, approvedApproveKeys);
-    } else if (strategy === 'returnStart') {
-      // 从头重新走流程（重新生成首批任务）
-      targetNodeKey = '__start__';
-    }
-  }
-  return { strategy, targetNodeKey, currentNodeCfg };
+  const currentNodeCfg = flowData?.nodes.find(node => node.data.key === task.nodeKey)?.data;
+  const needsHistory = !currentNodeCfg?.actionButtons?.reject?.jumpToNodeKey && currentNodeCfg?.rejectStrategy === 'returnPrev';
+  const previous = needsHistory ? await db.select().from(workflowTasks)
+    .where(and(eq(workflowTasks.instanceId, inst.id), eq(workflowTasks.status, 'approved')))
+    .orderBy(desc(workflowTasks.actionAt), desc(workflowTasks.id)) : [];
+  const approvedKeys = previous.filter(row => {
+    const config = flowData?.nodes.find(node => node.data.key === row.nodeKey)?.data;
+    return config?.type === 'approve' || config?.type === 'handler';
+  }).map(row => row.nodeKey);
+  return runtimeRejectRoute(flowData, task.nodeKey, approvedKeys);
 }
 
 export async function rejectTaskCore(
