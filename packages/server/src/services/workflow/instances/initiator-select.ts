@@ -1,3 +1,4 @@
+import { runtimeStartForm } from '../runtime/start-form';
 // ─── 发起人自选审批人与表单起始权限（拆分自 workflow-instances.service.ts）───
 import { applyRuntimeInitiatorSelections } from '../runtime/initiator-selection';
 import { advanceTokens } from '../../../lib/workflow-token-engine';
@@ -10,12 +11,7 @@ import type { DbExecutor } from '../../../db/types';
 /** 发起前快速校验：流程是否存在可执行入口（token 引擎 seed dry-run，与实际物化同源） */
 /** 后端字段权限强校验：剔除 start 节点标记为 hidden/read 的字段，防止客户端写入隐藏/只读字段 */
 export function sanitizeFormByStartPerms(flowData: WorkflowFlowData, formData: Record<string, unknown>): Record<string, unknown> {
-  const start = flowData.nodes?.find((n) => n.data.type === 'start')?.data;
-  const perms = start?.fieldPermissions;
-  if (!perms) return formData;
-  const out: Record<string, unknown> = { ...formData };
-  for (const [k, p] of Object.entries(perms)) if ((p === 'hidden' || p === 'read') && k in out) delete out[k];
-  return out;
+  return runtimeStartForm(flowData, formData);
 }
 
 export function hasExecutableEntry(flowData: WorkflowFlowData, formData: Record<string, unknown>, starter?: WorkflowStarterContext): boolean {

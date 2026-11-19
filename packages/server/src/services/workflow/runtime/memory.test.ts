@@ -92,6 +92,14 @@ describe('same execution runtime with memory storage', () => {
     await runtime.command({nodeKey:'review',action:'approve',outcome:'failed'});
     expect((await runtime.snapshot()).tasks[0]).toMatchObject({nodeKey:'review',status:'waiting',waitReason:'external'});
   });
+  it('applies the same start-node hidden/read field filter before deriving initial form values',async()=>{
+    const graph=flow({assigneeIds:[1]});graph.nodes[0].data.fieldPermissions={secret:'hidden',locked:'read',amount:'edit'};
+    const input={secret:'hidden',locked:'readonly',amount:100};
+    const runtime=await new MemoryWorkflowRuntime(facts(),{now:0}).start({id:1,flowData:graph,fields:[]},input,99);
+    expect(runtime.executions[0].formData).toEqual({amount:100});expect(input.secret).toBe('hidden');
+    await runtime.command({nodeKey:'review',action:'approve'});await runtime.command({nodeKey:'after',action:'approve'});
+    expect(runtime.nodeStates().end.status).toBe('done');
+  });
   it('actually executes a child and waits before restoring its parent', async () => {
     const child = { id: 12, flowData: flow({ assigneeIds: [7] }, false), fields: [] };
     const runtime = await start(flow({ type: 'subProcess', subProcessId: 12, subProcessWaitChild: true }), {}, facts([child]));

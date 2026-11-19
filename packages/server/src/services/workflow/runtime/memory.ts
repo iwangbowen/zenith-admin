@@ -14,6 +14,7 @@ import { runtimeFailureDisposition, runtimeSubprocessOutcome, runtimeTimeoutActi
 import { resolveFailurePolicy } from '@zenith/shared/workflow';
 import { runtimeDelayWakeAt } from './clock';
 import { runtimeTriggerData } from './trigger-data';
+import { runtimeStartForm } from './start-form';
 
 export interface MemoryExecutionDefinition {
   id: number;
@@ -96,9 +97,9 @@ export class MemoryWorkflowRuntime {
     this.budget();
     const validation = validateFlowData(def.flowData);
     if (!validation.valid) throw new Error(validation.errors.join('；'));
-    if (path.split('/').length > 16) throw new Error('子流程嵌套超过16层');
+    if ((path.split('/').length - 1) / 2 > 16) throw new Error('子流程嵌套超过16层');
     const run: Execution = { id: this.nextId++, path, definitionId: def.id, flow: structuredClone(def.flowData), fields: structuredClone(def.fields),
-      formData: computeWorkflowDerivedValues(def.fields, structuredClone(form)), initiatorId, starter: await this.facts.starter(initiatorId),
+      formData: computeWorkflowDerivedValues(def.fields, runtimeStartForm(def.flowData, structuredClone(form))), initiatorId, starter: await this.facts.starter(initiatorId),
       status: 'running', tokens: [], activations: [], tasks: [], selected: structuredClone(selected), completed: [], roundStart: 0, parentTaskId, childIndex };
     const formErrors = collectWorkflowFormValidationErrors(run.fields, run.formData, run.flow.nodes.find(node => node.data.type === 'start')?.data.fieldPermissions);
     if (formErrors.length) throw new Error(formErrors[0].message);
@@ -122,7 +123,10 @@ export class MemoryWorkflowRuntime {
     this.budget();
     const result = await executeWorkflow(trigger, { flowData: run.flow, formData: run.formData, starter: run.starter, instanceId: run.id, now: this.now }, {
       loadTokens: async () => run.tokens,
-      completedKeys: async () => new Set(['start', ...run.activations.filter(a => a.status === 'approved').map(a => a.nodeKey)]),
+      completedKeys: async () => {
+        const latest = new Map(run.activations.map(activation => [activation.nodeKey, activation]));
+        return new Set(['start', ...[...latest.values()].filter(a => a.status === 'approved').map(a => a.nodeKey)]);
+      },
       completeToken: async id => { for (const activation of run.activations) if (activation.tokenId === id) activation.status = 'approved'; },
       consumeTokens: async ids => { run.tokens = run.tokens.filter(token => !ids.includes(token.id)); },
       createToken: async spec => { const id = this.nextId++; run.tokens.push({ id, nodeKey: spec.nodeKey, branchPath: spec.branchPath }); return id; },
@@ -493,7 +497,7 @@ export class MemoryWorkflowRuntime {
     for (const node of root.flow.nodes) {
       const active = root.tasks.some(task => task.nodeKey === node.data.key && (task.status === 'pending' || task.status === 'waiting'));
       const latest = root.activations.filter(a => a.nodeKey === node.data.key).at(-1);
-      states[node.data.key] = { status: active ? 'active' : latest?.status === 'rejected' ? 'error' : latest ? 'done' : node.data.type === 'start' ? 'done' : 'skipped' };
+      states[node.data.key] = { status: node.data.type === 'end' && root.status === 'finished' ? 'done' : active ? 'active' : latest?.status === 'rejected' ? 'error' : latest?.status === 'cancelled' ? 'skipped' : latest ? 'done' : node.data.type === 'start' ? 'done' : 'skipped' };
     }
     return states;
   }
