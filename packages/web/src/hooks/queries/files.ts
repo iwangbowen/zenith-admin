@@ -94,6 +94,15 @@ function putFileDirect(
   });
 }
 
+/** 秒传哈希上限：超过后跳过去重，避免一次性把大文件读入内存 */
+const QUICK_UPLOAD_HASH_LIMIT = 32 * 1024 * 1024;
+
+async function sha256Hex(file: File): Promise<string | undefined> {
+  if (file.size > QUICK_UPLOAD_HASH_LIMIT || !globalThis.crypto?.subtle) return undefined;
+  const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
 interface DirectUploadVariables {
   file: File;
   onProgress?: (percent: number) => void;
@@ -106,6 +115,16 @@ export function useDirectUploadFile() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ file, onProgress, signal, storageConfigId }: DirectUploadVariables) => {
+      const contentHash = await sha256Hex(file);
+      if (contentHash) {
+        const existing = await api(fileContract.quickUpload, {
+          body: { fileName: file.name, fileSize: file.size, mimeType: file.type || undefined, contentHash },
+        });
+        if (existing) {
+          onProgress?.(100);
+          return existing;
+        }
+      }
       const session = await api(fileContract.directUploadInit, {
         body: {
           fileName: file.name,
@@ -118,7 +137,7 @@ export function useDirectUploadFile() {
         await putFileDirect(session.uploadUrl, session.headers, file, onProgress, signal);
         return await api(fileContract.directUploadComplete, {
           params: { uploadId: session.uploadId },
-          body: { size: file.size },
+          body: { size: file.size, contentHash },
         });
       } catch (err) {
         await api(fileContract.directUploadAbort, { params: { uploadId: session.uploadId } }).catch(() => {});

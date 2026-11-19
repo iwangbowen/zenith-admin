@@ -15,6 +15,7 @@ import {
   browseStorageFiles,
   getFileStats,
   getFileAccessUrl,
+  findReusableFileByHash,
 } from '../../services/files/files.service';
 import { initChunkUpload, uploadChunk, completeChunkUpload, getUploadStatus, abortChunkUpload } from '../../services/files/upload-sessions.service';
 import { abortDirectUpload, completeDirectUpload, createDirectUpload } from '../../services/files/direct-uploads.service';
@@ -174,6 +175,10 @@ const directUploadAbortRoute = defineContractRoute(fileContract.directUploadAbor
   },
 });
 
+const quickUploadRoute = defineContractRoute(fileContract.quickUpload, {
+  handler: async (c) => c.json(okBody(await findReusableFileByHash(c.req.valid('json'))), 200),
+});
+
 // 批量下载打包为 zip 流式响应
 const batchDownloadRoute = defineContractRoute(fileContract.batchDownload, {
   handler: async (c) => {
@@ -207,6 +212,7 @@ mountCrud(filesRouter, fileContract,
     directUploadInitRoute,
     directUploadCompleteRoute,
     directUploadAbortRoute,
+    quickUploadRoute,
     uploadRoute,
     uploadOneRoute,
     batchDownloadRoute,

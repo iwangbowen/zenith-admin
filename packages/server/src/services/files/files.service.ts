@@ -7,7 +7,7 @@ import { requireRow } from '../../lib/db-assert';
 import { managedFiles, fileStorageConfigs } from '../../db/schema';
 import type { FileStorageConfigRow } from '../../db/schema';
 import type { FileVisibility } from '@zenith/shared/platform';
-import { buildManagedFileProxyUrl, buildPublicFileUrl, deleteStoredFile, readStoredFile, resolveFileAccessUrl, resolveObjectAcl, resolvePublicAccess, uploadFileByConfig } from '../../lib/file-storage';
+import { buildManagedFileProxyUrl, buildPublicFileUrl, deleteStoredFile, headStoredObject, readStoredFile, resolveFileAccessUrl, resolveObjectAcl, resolvePublicAccess, uploadFileByConfig } from '../../lib/file-storage';
 import { formatDateTime } from '../../lib/datetime';
 import { getSettings } from '../../lib/settings';
 import type { FilesSettings } from '@zenith/shared/settings';
@@ -188,6 +188,32 @@ function normalizeUploadFile(value: unknown): File {
 
 export async function uploadManagedFileFromBody(fileValue: unknown, options: ManagedFileUploadOptions = {}) {
   return uploadManagedFile(normalizeUploadFile(fileValue), options);
+}
+
+/** 秒传：同一默认存储下按内容哈希命中且对象仍存在时，直接复用文件记录 */
+export async function findReusableFileByHash(input: { fileName: string; fileSize: number; mimeType?: string; contentHash: string }) {
+  const user = currentUser();
+  const [config] = await db
+    .select()
+    .from(fileStorageConfigs)
+    .where(and(eq(fileStorageConfigs.isDefault, true), eq(fileStorageConfigs.status, 'enabled')))
+    .limit(1);
+  if (!config) return null;
+  const [file] = await db
+    .select()
+    .from(managedFiles)
+    .where(and(
+      eq(managedFiles.storageConfigId, config.id),
+      eq(managedFiles.contentHash, input.contentHash),
+      eq(managedFiles.gcState, 'live'),
+      tenantCondition(managedFiles, user),
+    ))
+    .orderBy(desc(managedFiles.createdAt))
+    .limit(1);
+  if (!file) return null;
+  const head = await headStoredObject(config, file.objectKey).catch(() => null);
+  if (!head || head.size !== input.fileSize) return null;
+  return mapManagedFile(file, config);
 }
 
 export async function uploadManagedFile(file: File, options: ManagedFileUploadOptions = {}) {

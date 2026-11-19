@@ -189,6 +189,14 @@ export const directUploadCompleteSchema = z.object({
   contentHash: z.string().max(64).optional(),
 });
 
+/** 秒传：按内容 SHA-256 复用同存储配置下仍存在的对象 */
+export const quickUploadSchema = z.object({
+  fileName: z.string().min(1).max(256),
+  fileSize: z.int().nonnegative(),
+  mimeType: z.string().max(128).optional(),
+  contentHash: z.string().length(64),
+});
+
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 
 export const fileContract = defineContract('/api/files', {
@@ -211,6 +219,7 @@ export const fileContract = defineContract('/api/files', {
   directUploadInit: op.post('/direct-uploads', { access: { permission: 'system:file:upload' }, body: directUploadInitSchema, response: directUploadSessionSchema, summary: '创建浏览器直传会话' }),
   directUploadComplete: op.post('/direct-uploads/{uploadId}/complete', { access: { permission: 'system:file:upload' }, audit: { description: '完成浏览器直传', recordBody: false }, params: uploadIdParam, body: directUploadCompleteSchema, response: managedFileSchema, summary: '完成浏览器直传' }),
   directUploadAbort: op.delete('/direct-uploads/{uploadId}', { access: { permission: 'system:file:upload' }, audit: { description: '中止浏览器直传', recordBody: false }, params: uploadIdParam, summary: '中止浏览器直传' }),
+  quickUpload: op.post('/quick-upload', { access: { permission: 'system:file:upload' }, audit: { description: '秒传文件', recordBody: false }, body: quickUploadSchema, response: managedFileSchema.nullable(), summary: '按内容哈希秒传' }),
   detail: op.get('/{id}', { access: { permission: 'system:file:list' }, params: fileIdParam, response: managedFileSchema, summary: '获取文件详情' }),
   upload: op.post('/upload', { access: { permission: 'system:file:upload' }, audit: { description: '上传文件', recordBody: false }, body: uploadBody, response: z.array(managedFileSchema), summary: '上传文件' }),
   uploadOne: op.post('/upload-one', { access: { permission: 'system:file:upload' }, audit: { description: '上传单个文件', recordBody: false }, body: uploadOneBody, response: managedFileSchema, summary: '上传单个文件' }),
