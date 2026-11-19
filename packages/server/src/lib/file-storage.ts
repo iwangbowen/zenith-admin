@@ -8,7 +8,7 @@ import { Readable, PassThrough } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
 import type { FileStorageConfigRow, ManagedFileRow } from '../db/schema';
-import { FILE_OBJECT_ACL_SUPPORT } from '@zenith/shared/platform';
+import { FILE_OBJECT_ACL_SUPPORT, type FileBucketAcl } from '@zenith/shared/platform';
 import { trimTrailingSlash } from '@zenith/shared/core';
 import { HTTPException } from 'hono/http-exception';
 import { formatDate } from './datetime';
@@ -110,6 +110,197 @@ function createOssClient(config: FileStorageConfigRow) {
     // 与 splitEndpoint 语义一致：仅显式 http:// 时才走 http
     secure: !config.ossEndpoint.startsWith('http://'),
   });
+}
+
+// ─── Bucket / Container 级权限探测与设置 ─────────────────────────────────────
+
+export interface FileBucketAccessInfo {
+  bucketAcl: FileBucketAcl | null;
+  blockPublicAccess: boolean | null;
+  effectivePublic: boolean;
+  checkedAt: Date;
+}
+
+function normalizeBucketAcl(value: unknown): FileBucketAcl | null {
+  return value === 'private' || value === 'public-read' || value === 'public-read-write' ? value : null;
+}
+
+function toBooleanOrNull(value: unknown): boolean | null {
+  if (value === true || value === 'true') return true;
+  if (value === false || value === 'false') return false;
+  return null;
+}
+
+/** 读取 Bucket / Container 的公共访问状态；不支持的 provider 抛业务错误。 */
+export async function getBucketAccessInfo(config: FileStorageConfigRow): Promise<FileBucketAccessInfo> {
+  if (config.provider === 'oss') {
+    const client = createOssClient(config);
+    const info = await client.getBucketInfo(config.ossBucket!);
+    const bucket = (info as { bucket?: Record<string, unknown> }).bucket ?? info as Record<string, unknown>;
+    const acl = normalizeBucketAcl((bucket.AccessControlList as { Grant?: unknown } | undefined)?.Grant);
+    const blockPublicAccess = toBooleanOrNull(bucket.BlockPublicAccess);
+    return {
+      bucketAcl: acl,
+      blockPublicAccess,
+      effectivePublic: (acl === 'public-read' || acl === 'public-read-write') && blockPublicAccess !== true,
+      checkedAt: new Date(),
+    };
+  }
+  if (config.provider === 's3') {
+    const client = createS3Client(config);
+    const s3 = loadS3();
+    const aclResult = await client.send(new s3.GetBucketAclCommand({ Bucket: config.s3Bucket! }));
+    const grants = aclResult.Grants ?? [];
+    const publicRead = grants.some((grant) => grant.Permission === 'READ' && String(grant.Grantee?.URI ?? '').includes('AllUsers'));
+    const publicWrite = grants.some((grant) => grant.Permission === 'WRITE' && String(grant.Grantee?.URI ?? '').includes('AllUsers'));
+    const acl: FileBucketAcl = publicWrite ? 'public-read-write' : publicRead ? 'public-read' : 'private';
+    let blockPublicAccess: boolean | null;
+    try {
+      const pab = await client.send(new s3.GetPublicAccessBlockCommand({ Bucket: config.s3Bucket! }));
+      const value = pab.PublicAccessBlockConfiguration;
+      blockPublicAccess = Boolean(value?.BlockPublicAcls || value?.IgnorePublicAcls || value?.BlockPublicPolicy || value?.RestrictPublicBuckets);
+    } catch (err) {
+      if ((err as { name?: string }).name === 'NoSuchPublicAccessBlockConfiguration') blockPublicAccess = false;
+      else blockPublicAccess = null;
+    }
+    return { bucketAcl: acl, blockPublicAccess, effectivePublic: (acl === 'public-read' || acl === 'public-read-write') && blockPublicAccess !== true, checkedAt: new Date() };
+  }
+  if (config.provider === 'cos') {
+    const cos = createCosClient(config);
+    const result = await new Promise<{ ACL?: string }>((resolve, reject) => {
+      cos.getBucketAcl({ Bucket: config.cosBucket!, Region: config.cosRegion! }, (err, data) => {
+        if (err) reject(err instanceof Error ? err : new Error(String(err)));
+        else resolve(data as { ACL?: string });
+      });
+    });
+    const acl = normalizeBucketAcl(result.ACL);
+    return { bucketAcl: acl, blockPublicAccess: null, effectivePublic: acl === 'public-read' || acl === 'public-read-write', checkedAt: new Date() };
+  }
+  if (config.provider === 'bos') {
+    const bos = createBosClient(config) as unknown as {
+      getBucketAcl(bucket: string): Promise<{ accessControlList?: Array<{ grantee?: Array<{ id?: string }>; permission?: string[] }> }>;
+    };
+    const result = await bos.getBucketAcl(config.bosBucket!);
+    const entries = result.accessControlList ?? [];
+    const publicRead = entries.some((entry) => entry.grantee?.some((g) => g.id === 'AllUsers') && entry.permission?.some((p) => p.includes('READ')));
+    const publicWrite = entries.some((entry) => entry.grantee?.some((g) => g.id === 'AllUsers') && entry.permission?.some((p) => p.includes('WRITE')));
+    const acl: FileBucketAcl = publicWrite ? 'public-read-write' : publicRead ? 'public-read' : 'private';
+    return { bucketAcl: acl, blockPublicAccess: null, effectivePublic: acl !== 'private', checkedAt: new Date() };
+  }
+  if (config.provider === 'kodo') {
+    const { mac, conf } = createKodoUploader(config);
+    const bucketManager = new (loadQiniu().rs.BucketManager)(mac, conf);
+    const result = await bucketManager.getBucketInfo(config.kodoBucket!);
+    const data = (result as unknown as { data?: { private?: number } }).data;
+    const acl: FileBucketAcl = Number(data?.private ?? 0) === 1 ? 'private' : 'public-read';
+    return { bucketAcl: acl, blockPublicAccess: null, effectivePublic: acl === 'public-read', checkedAt: new Date() };
+  }
+  if (config.provider === 'azure') {
+    const properties = await createAzureBlobClient(config).getProperties();
+    const access = (properties as unknown as { blobPublicAccess?: string }).blobPublicAccess;
+    const acl: FileBucketAcl = access === 'container' || access === 'blob' ? 'public-read' : 'private';
+    return { bucketAcl: acl, blockPublicAccess: null, effectivePublic: acl === 'public-read', checkedAt: new Date() };
+  }
+  if (config.provider === 'obs') {
+    const obs = createObsClient(config) as unknown as {
+      getBucketAcl(params: Record<string, unknown>, cb: (err: unknown, result: { InterfaceResult?: { AccessControlList?: { Grants?: Array<{ Grantee?: { Type?: string; URI?: string }; Permission?: string }> } } }) => void): void;
+    };
+    const result = await new Promise<{ AccessControlList?: { Grants?: Array<{ Grantee?: { Type?: string; URI?: string }; Permission?: string }> } }>((resolve, reject) => {
+      obs.getBucketAcl({ Bucket: config.obsBucket! }, (err, data) => {
+        if (err) reject(err instanceof Error ? err : new Error(String(err)));
+        else resolve(data.InterfaceResult ?? {});
+      });
+    });
+    const grants = result.AccessControlList?.Grants ?? [];
+    const publicRead = grants.some((grant) => grant.Permission === 'READ' && grant.Grantee?.URI?.includes('AllUsers'));
+    const publicWrite = grants.some((grant) => grant.Permission === 'WRITE' && grant.Grantee?.URI?.includes('AllUsers'));
+    const acl: FileBucketAcl = publicWrite ? 'public-read-write' : publicRead ? 'public-read' : 'private';
+    return { bucketAcl: acl, blockPublicAccess: null, effectivePublic: acl !== 'private', checkedAt: new Date() };
+  }
+  throw new HTTPException(400, { message: `当前存储类型不支持 Bucket 权限探测：${config.provider}` });
+}
+
+/** 修改 Bucket / Container 的 ACL 或阻止公共访问开关；调用方负责权限与审计。 */
+export async function setBucketAccessInfo(
+  config: FileStorageConfigRow,
+  input: { acl?: FileBucketAcl; blockPublicAccess?: boolean },
+): Promise<FileBucketAccessInfo> {
+  if (config.provider === 'oss') {
+    const client = createOssClient(config);
+    if (input.acl) await client.putBucketACL(config.ossBucket!, input.acl);
+    if (input.blockPublicAccess !== undefined) {
+      const xml = `<?xml version="1.0" encoding="UTF-8"?><PublicAccessBlockConfiguration><BlockPublicAccess>${input.blockPublicAccess}</BlockPublicAccess></PublicAccessBlockConfiguration>`;
+      await (client as unknown as { request(params: Record<string, unknown>): Promise<unknown> }).request({
+        method: 'PUT',
+        bucket: config.ossBucket!,
+        subres: 'publicAccessBlock',
+        headers: { 'Content-Type': 'application/xml' },
+        content: xml,
+        successStatuses: [200],
+      });
+    }
+    return getBucketAccessInfo(config);
+  }
+  if (config.provider === 's3') {
+    const client = createS3Client(config);
+    const s3 = loadS3();
+    if (input.acl) {
+      await client.send(new s3.PutBucketAclCommand({ Bucket: config.s3Bucket!, ACL: input.acl }));
+    }
+    if (input.blockPublicAccess !== undefined) {
+      await client.send(new s3.PutPublicAccessBlockCommand({
+        Bucket: config.s3Bucket!,
+        PublicAccessBlockConfiguration: {
+          BlockPublicAcls: input.blockPublicAccess,
+          IgnorePublicAcls: input.blockPublicAccess,
+          BlockPublicPolicy: input.blockPublicAccess,
+          RestrictPublicBuckets: input.blockPublicAccess,
+        },
+      }));
+    }
+    return getBucketAccessInfo(config);
+  }
+  if (config.provider === 'cos') {
+    if (!input.acl) throw new HTTPException(400, { message: 'COS 仅支持修改 Bucket ACL' });
+    const cos = createCosClient(config);
+    await new Promise<void>((resolve, reject) => {
+      cos.putBucketAcl({ Bucket: config.cosBucket!, Region: config.cosRegion!, ACL: input.acl as never }, (err) => {
+        if (err) reject(err instanceof Error ? err : new Error(String(err)));
+        else resolve();
+      });
+    });
+    return getBucketAccessInfo(config);
+  }
+  if (config.provider === 'bos') {
+    if (!input.acl) throw new HTTPException(400, { message: 'BOS 仅支持修改 Bucket ACL' });
+    const bos = createBosClient(config) as unknown as { putBucketAcl(bucket: string, acl: string): Promise<unknown> };
+    await bos.putBucketAcl(config.bosBucket!, input.acl);
+    return getBucketAccessInfo(config);
+  }
+  if (config.provider === 'kodo') {
+    if (!input.acl) throw new HTTPException(400, { message: '七牛云仅支持修改 Bucket 访问模式' });
+    const { mac, conf } = createKodoUploader(config);
+    const bucketManager = new (loadQiniu().rs.BucketManager)(mac, conf);
+    await bucketManager.putBucketAccessMode(config.kodoBucket!, { private: input.acl === 'private' ? 1 : 0 });
+    return getBucketAccessInfo(config);
+  }
+  if (config.provider === 'azure') {
+    if (!input.acl) throw new HTTPException(400, { message: 'Azure 仅支持修改 Container 访问级别' });
+    await createAzureBlobClient(config).setAccessPolicy(input.acl === 'private' ? undefined : 'container');
+    return getBucketAccessInfo(config);
+  }
+  if (config.provider === 'obs') {
+    if (!input.acl) throw new HTTPException(400, { message: 'OBS 仅支持修改 Bucket ACL' });
+    const obs = createObsClient(config) as unknown as { setBucketAcl(params: Record<string, unknown>, cb: (err: unknown) => void): void };
+    await new Promise<void>((resolve, reject) => {
+      obs.setBucketAcl({ Bucket: config.obsBucket!, ACL: input.acl }, (err) => {
+        if (err) reject(err instanceof Error ? err : new Error(String(err)));
+        else resolve();
+      });
+    });
+    return getBucketAccessInfo(config);
+  }
+  throw new HTTPException(400, { message: `当前存储类型不支持 Bucket 权限设置：${config.provider}` });
 }
 
 function createS3Client(config: FileStorageConfigRow) {
@@ -232,6 +423,8 @@ interface FileUrlSource {
   objectKey: string;
   bucketName?: string | null;
   objectAcl?: 'default' | 'private' | 'public-read' | 'public-read-write' | null;
+  /** 上传时快照：该对象当时是否可公共读取 */
+  publicAccess?: boolean | null;
 }
 
 function encodeObjectKey(objectKey: string) {
@@ -246,16 +439,249 @@ function splitEndpoint(endpoint: string): { scheme: string; host: string } {
 }
 
 /**
- * 公开性判定：有对象级 ACL 的云要求上传时快照为 public-read*；
- * 快照为 null（继承 Bucket / 旧数据）保守视为未知，不走公开直链。
- * 无对象级 ACL 概念的 provider（local/sftp/kodo/azure）信任管理员的策略配置。
+ * 公开直链可用性：按配置声明的公共性来源判断，而不是只看对象 ACL。
+ * - public-object：对象 ACL 为公共读；
+ * - public-bucket：上传时快照确认 Bucket 公共读；
+ * - public-domain：自定义域名 / CDN（或 Kodo/SFTP 自带的访问域名）。
  */
-function publicAclAllowed(file: FileUrlSource): boolean {
-  if (!FILE_OBJECT_ACL_SUPPORT[file.provider]) return true;
-  return file.objectAcl === 'public-read' || file.objectAcl === 'public-read-write';
+export function isPublicAccessAllowed(file: FileUrlSource, config: FileStorageConfigRow): boolean {
+  switch (config.accessStrategy) {
+    case 'public-object':
+      return file.objectAcl === 'public-read' || file.objectAcl === 'public-read-write';
+    case 'public-bucket':
+      return file.publicAccess === true;
+    case 'public-domain':
+      return Boolean(config.publicBaseUrl?.trim())
+        || (config.provider === 'kodo' && Boolean(config.kodoEndpoint))
+        || (config.provider === 'sftp' && Boolean(config.sftpBaseUrl));
+    default:
+      return false;
+  }
 }
 
-/** 按 provider 拼接永久公开直链；无法构造时返回 null。config 需已被 withFileBucket 处理。 */
+/**
+ * 上传 / 初始化会话时计算公共可读快照。
+ * public-bucket 依赖最近一次 Bucket 探测结果；未探测或探测结果不是公共读时返回 false。
+ */
+export function resolvePublicAccess(
+  config: FileStorageConfigRow,
+  objectAcl: 'default' | 'private' | 'public-read' | 'public-read-write' | null,
+): boolean {
+  switch (config.accessStrategy) {
+    case 'public-object':
+      return objectAcl === 'public-read' || objectAcl === 'public-read-write';
+    case 'public-bucket':
+      return (config.bucketAcl === 'public-read' || config.bucketAcl === 'public-read-write')
+        && config.bucketBlockPublicAccess !== true;
+    case 'public-domain':
+      return Boolean(config.publicBaseUrl?.trim())
+        || (config.provider === 'kodo' && Boolean(config.kodoEndpoint))
+        || (config.provider === 'sftp' && Boolean(config.sftpBaseUrl));
+    default:
+      return false;
+  }
+}
+
+/**
+ * 浏览器直传目标：预签名 PUT URL + 必要请求头。
+ * 公共对象 ACL 不放进签名头，完成上传后由服务端单独设置，避免不同 provider 的签名差异。
+ */
+export interface DirectUploadTarget {
+  url: string;
+  method: 'PUT';
+  headers?: Record<string, string>;
+  expiresAt: Date;
+}
+
+export async function createDirectUploadTarget(
+  config: FileStorageConfigRow,
+  objectKey: string,
+  mimeType: string | undefined,
+  expirySeconds: number,
+): Promise<DirectUploadTarget> {
+  const expiresAt = new Date(Date.now() + expirySeconds * 1000);
+  const contentType = mimeType || 'application/octet-stream';
+  switch (config.provider) {
+    case 'oss': {
+      const client = createOssClient(config);
+      const url = client.signatureUrl(objectKey, {
+        method: 'PUT',
+        expires: expirySeconds,
+        'Content-Type': contentType,
+      });
+      return { url, method: 'PUT', headers: { 'Content-Type': contentType }, expiresAt };
+    }
+    case 's3': {
+      const client = createS3Client(config);
+      const { PutObjectCommand } = loadS3();
+      const { getSignedUrl } = loadS3Presigner();
+      const url = await getSignedUrl(client, new PutObjectCommand({
+        Bucket: config.s3Bucket!,
+        Key: objectKey,
+        ContentType: contentType,
+      }), { expiresIn: expirySeconds });
+      return { url, method: 'PUT', headers: { 'Content-Type': contentType }, expiresAt };
+    }
+    case 'cos': {
+      const cos = createCosClient(config);
+      const url = await new Promise<string>((resolve, reject) => {
+        cos.getObjectUrl({
+          Bucket: config.cosBucket!,
+          Region: config.cosRegion!,
+          Key: objectKey,
+          Sign: true,
+          Method: 'PUT',
+          Expires: expirySeconds,
+        }, (err, data) => (err ? reject(err instanceof Error ? err : new Error(String(err))) : resolve(data.Url)));
+      });
+      return { url, method: 'PUT', headers: { 'Content-Type': contentType }, expiresAt };
+    }
+    case 'obs': {
+      const obs = createObsClient(config) as ObsClientType & {
+        createSignedUrlSync(params: Record<string, unknown>): { SignedUrl: string };
+      };
+      const url = obs.createSignedUrlSync({
+        Method: 'PUT',
+        Bucket: config.obsBucket!,
+        Key: objectKey,
+        Expires: expirySeconds,
+        Headers: { 'Content-Type': contentType },
+      }).SignedUrl;
+      return { url, method: 'PUT', headers: { 'Content-Type': contentType }, expiresAt };
+    }
+    case 'azure': {
+      const containerClient = createAzureBlobClient(config);
+      const blockBlobClient = containerClient.getBlockBlobClient(objectKey);
+      const url = await blockBlobClient.generateSasUrl({
+        permissions: loadAzureBlob().BlobSASPermissions.parse('cw'),
+        expiresOn: expiresAt,
+        contentType,
+      });
+      return { url, method: 'PUT', headers: { 'Content-Type': contentType }, expiresAt };
+    }
+    default:
+      throw new HTTPException(400, { message: `当前存储类型不支持浏览器直传：${config.provider}` });
+  }
+}
+
+export interface StoredObjectHead {
+  size: number;
+  mimeType: string | null;
+  etag: string | null;
+}
+
+/** HEAD 直传完成后的对象，用于服务端校验大小/类型/ETag。 */
+export async function headStoredObject(config: FileStorageConfigRow, objectKey: string): Promise<StoredObjectHead> {
+  switch (config.provider) {
+    case 'oss': {
+      const client = createOssClient(config);
+      const result = await client.head(objectKey);
+      const headers = result.res.headers as Record<string, string | undefined>;
+      return {
+        size: Number(headers['content-length'] ?? 0),
+        mimeType: headers['content-type'] ?? null,
+        etag: headers.etag ?? null,
+      };
+    }
+    case 's3': {
+      const client = createS3Client(config);
+      const { HeadObjectCommand } = loadS3();
+      const result = await client.send(new HeadObjectCommand({ Bucket: config.s3Bucket!, Key: objectKey }));
+      return {
+        size: Number(result.ContentLength ?? 0),
+        mimeType: result.ContentType ?? null,
+        etag: result.ETag ?? null,
+      };
+    }
+    case 'cos': {
+      const cos = createCosClient(config);
+      const result = await new Promise<{ headers?: Record<string, string> }>((resolve, reject) => {
+        cos.headObject({ Bucket: config.cosBucket!, Region: config.cosRegion!, Key: objectKey }, (err, data) => {
+          if (err) reject(err instanceof Error ? err : new Error(String(err)));
+          else resolve(data as { headers?: Record<string, string> });
+        });
+      });
+      const headers = result.headers ?? {};
+      return {
+        size: Number(headers['content-length'] ?? 0),
+        mimeType: headers['content-type'] ?? null,
+        etag: headers.etag ?? null,
+      };
+    }
+    case 'obs': {
+      const obs = createObsClient(config) as ObsClientType & {
+        getObjectMetadata(params: Record<string, unknown>, cb: (err: unknown, result: { InterfaceResult?: { ContentLength?: number; ContentType?: string; ETag?: string } }) => void): void;
+      };
+      const result = await new Promise<{ ContentLength?: number; ContentType?: string; ETag?: string }>((resolve, reject) => {
+        obs.getObjectMetadata({ Bucket: config.obsBucket!, Key: objectKey }, (err, data) => {
+          if (err) reject(err instanceof Error ? err : new Error(String(err)));
+          else resolve(data.InterfaceResult ?? {});
+        });
+      });
+      return {
+        size: Number(result.ContentLength ?? 0),
+        mimeType: result.ContentType ?? null,
+        etag: result.ETag ?? null,
+      };
+    }
+    case 'azure': {
+      const containerClient = createAzureBlobClient(config);
+      const properties = await containerClient.getBlockBlobClient(objectKey).getProperties();
+      return {
+        size: Number(properties.contentLength ?? 0),
+        mimeType: properties.contentType ?? null,
+        etag: properties.etag ?? null,
+      };
+    }
+    default:
+      throw new HTTPException(400, { message: `当前存储类型不支持浏览器直传：${config.provider}` });
+  }
+}
+
+/** 完成直传后按配置设置对象 ACL（仅对象 ACL 策略需要）。 */
+export async function applyObjectAcl(
+  config: FileStorageConfigRow,
+  objectKey: string,
+  acl: 'private' | 'public-read' | 'public-read-write',
+): Promise<void> {
+  switch (config.provider) {
+    case 'oss': {
+      const client = createOssClient(config);
+      await client.putACL(objectKey, acl as unknown as Parameters<typeof client.putACL>[1]);
+      return;
+    }
+    case 's3': {
+      const client = createS3Client(config);
+      const { PutObjectAclCommand } = loadS3();
+      await client.send(new PutObjectAclCommand({ Bucket: config.s3Bucket!, Key: objectKey, ACL: acl }));
+      return;
+    }
+    case 'cos': {
+      const cos = createCosClient(config);
+      await new Promise<void>((resolve, reject) => {
+        cos.putObjectAcl({ Bucket: config.cosBucket!, Region: config.cosRegion!, Key: objectKey, ACL: acl as never }, (err) => {
+          if (err) reject(err instanceof Error ? err : new Error(String(err)));
+          else resolve();
+        });
+      });
+      return;
+    }
+    case 'obs': {
+      const obs = createObsClient(config) as ObsClientType & {
+        setObjectAcl(params: Record<string, unknown>, cb: (err: unknown) => void): void;
+      };
+      await new Promise<void>((resolve, reject) => {
+        obs.setObjectAcl({ Bucket: config.obsBucket!, Key: objectKey, ACL: acl }, (err) => {
+          if (err) reject(err instanceof Error ? err : new Error(String(err)));
+          else resolve();
+        });
+      });
+      return;
+    }
+    default:
+      throw new HTTPException(400, { message: `当前存储类型不支持对象 ACL：${config.provider}` });
+  }
+}
 function buildPublicObjectUrl(config: FileStorageConfigRow, objectKey: string): string | null {
   const key = encodeObjectKey(objectKey);
   if (config.publicBaseUrl) return `${trimTrailingSlash(config.publicBaseUrl)}/${key}`;
@@ -377,16 +803,16 @@ async function presignObjectUrl(
 }
 
 /**
- * public 策略下的永久公开直链；策略不符 / ACL 不允许 / 无法拼接时返回 null。
+ * 公开直链；下载方式不是 public-* / 公共性来源不满足 / 无法拼接时返回 null。
  * 结果永久有效，可进入列表实体的 directUrl 字段（仅渲染用，禁止持久化）。
  */
 export function buildPublicFileUrl(file: FileUrlSource, config?: FileStorageConfigRow): string | null {
-  if (config?.urlStrategy !== 'public' || !publicAclAllowed(file)) return null;
+  if (!config || !isPublicAccessAllowed(file, config)) return null;
   return buildPublicObjectUrl(withFileBucket(file, config), file.objectKey);
 }
 
 /**
- * 按存储配置的 urlStrategy 解析文件访问地址，降级链：public → presigned → proxy。
+ * 按存储配置的 accessStrategy 解析文件访问地址，降级链：public → presigned → proxy。
  * presigned 结果含过期时间，禁止长期缓存；签名失败（配置不完整/SDK 异常）自动降级 proxy。
  */
 export async function resolveFileAccessUrl(
@@ -395,12 +821,12 @@ export async function resolveFileAccessUrl(
   options?: { contentDisposition?: string },
 ): Promise<FileAccessUrlResult> {
   const effective = withFileBucket(file, config);
-  const strategy = config.urlStrategy;
-  if (strategy === 'public' && publicAclAllowed(file)) {
+  const strategy = config.accessStrategy;
+  if (strategy.startsWith('public-') && isPublicAccessAllowed(file, config)) {
     const url = buildPublicObjectUrl(effective, file.objectKey);
     if (url) return { url, strategy: 'public', expiresAt: null };
   }
-  if (strategy === 'public' || strategy === 'presigned') {
+  if (strategy === 'presigned' || strategy.startsWith('public-')) {
     const expirySeconds = config.presignedExpirySeconds || 1800;
     try {
       const url = await presignObjectUrl(effective, file.objectKey, expirySeconds, options?.contentDisposition);

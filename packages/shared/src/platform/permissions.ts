@@ -31,6 +31,7 @@ export const PLATFORM_PERMISSIONS = definePermissions({
   'system:file:config': { label: '查询', menu: 'SystemFileConfigs' },
   'system:file:config:create': { label: '新增配置', menu: 'SystemFileConfigs' },
   'system:file:config:update': { label: '编辑配置', menu: 'SystemFileConfigs' },
+  'system:file:config:bucket-access': { label: '管理 Bucket 权限', menu: 'SystemFileConfigs' },
   'system:file:config:delete': { label: '删除配置', menu: 'SystemFileConfigs' },
   'system:file:config:default': { label: '设为默认', menu: 'SystemFileConfigs' },
   'system:file:upload': { label: '上传文件', menu: 'SystemFileList' },

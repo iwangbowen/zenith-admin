@@ -15,8 +15,10 @@ import {
   browseStorageFiles,
   getFileStats,
   getFileAccessUrl,
+  findReusableFileByHash,
 } from '../../services/files/files.service';
 import { initChunkUpload, uploadChunk, completeChunkUpload, getUploadStatus, abortChunkUpload } from '../../services/files/upload-sessions.service';
+import { abortDirectUpload, completeDirectUpload, createDirectUpload } from '../../services/files/direct-uploads.service';
 import { readStoredFile } from '../../lib/file-storage';
 import { parseRangeHeader, rangeNotSatisfiable, supportsRange, rangeContentHeaders } from '../../lib/http-range';
 import { attachmentDisposition, inlineOrAttachmentDisposition } from '../../lib/content-disposition';
@@ -154,6 +156,29 @@ const uploadAbortRoute = defineContractRoute(fileContract.uploadAbort, {
   },
 });
 
+const directUploadInitRoute = defineContractRoute(fileContract.directUploadInit, {
+  handler: async (c) => c.json(okBody(await createDirectUpload(c.req.valid('json'))), 200),
+});
+
+const directUploadCompleteRoute = defineContractRoute(fileContract.directUploadComplete, {
+  responses: { 400: { content: jsonContent(ErrorResponse), description: '对象校验失败或会话已结束' } },
+  handler: async (c) => c.json(okBody(await completeDirectUpload(c.req.valid('param').uploadId, c.req.valid('json')), '上传成功'), 200),
+});
+
+const directUploadAbortRoute = defineContractRoute(fileContract.directUploadAbort, {
+  handler: async (c) => {
+    const { uploadId } = c.req.valid('param');
+    setAuditBeforeData(c, { uploadId, status: 'uploading' });
+    await abortDirectUpload(uploadId);
+    setAuditAfterData(c, { uploadId, status: 'aborted' });
+    return c.json(okBody(null, '已中止'), 200);
+  },
+});
+
+const quickUploadRoute = defineContractRoute(fileContract.quickUpload, {
+  handler: async (c) => c.json(okBody(await findReusableFileByHash(c.req.valid('json'))), 200),
+});
+
 // 批量下载打包为 zip 流式响应
 const batchDownloadRoute = defineContractRoute(fileContract.batchDownload, {
   handler: async (c) => {
@@ -184,6 +209,10 @@ mountCrud(filesRouter, fileContract,
     uploadCompleteRoute,
     uploadStatusRoute,
     uploadAbortRoute,
+    directUploadInitRoute,
+    directUploadCompleteRoute,
+    directUploadAbortRoute,
+    quickUploadRoute,
     uploadRoute,
     uploadOneRoute,
     batchDownloadRoute,

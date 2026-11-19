@@ -2,8 +2,8 @@ import { FormPasswordInput } from '@/components/PasswordInput';
 import { useEffect, useState } from 'react';
 import { Button, Col, Form, Radio, Row, Select, Switch, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import { PlugZap } from 'lucide-react';
-import { fileStorageConfigContract, type CreateFileStorageConfigInput, type FileObjectAcl, type FileStorageConfig, type FileStorageProvider, type FileUrlStrategy, type UpdateFileStorageConfigInput } from '@zenith/shared/platform';
-import { FILE_OBJECT_ACL_LABELS, FILE_OBJECT_ACL_SUPPORT, FILE_STORAGE_PROVIDER_LABELS, FILE_STORAGE_PROVIDER_OPTIONS, FILE_URL_STRATEGY_LABELS, FILE_URL_STRATEGY_OPTIONS, PRESIGNED_EXPIRY_DEFAULT_SECONDS, PRESIGNED_EXPIRY_MAX_SECONDS, PRESIGNED_EXPIRY_MIN_SECONDS } from '@zenith/shared/platform';
+import { fileStorageConfigContract, type CreateFileStorageConfigInput, type FileAccessStrategy, type FileBucketAccessInfo, type FileBucketAcl, type FileObjectAcl, type FileStorageConfig, type FileStorageProvider, type UpdateFileStorageConfigInput } from '@zenith/shared/platform';
+import { FILE_ACCESS_STRATEGY_LABELS, FILE_ACCESS_STRATEGY_OPTIONS, FILE_BUCKET_ACCESS_SUPPORT, FILE_BUCKET_ACL_LABELS, FILE_DIRECT_UPLOAD_SUPPORT, FILE_OBJECT_ACL_LABELS, FILE_OBJECT_ACL_SUPPORT, FILE_STORAGE_PROVIDER_LABELS, FILE_STORAGE_PROVIDER_OPTIONS, FILE_UPLOAD_MODE_OPTIONS, PRESIGNED_EXPIRY_DEFAULT_SECONDS, PRESIGNED_EXPIRY_MAX_SECONDS, PRESIGNED_EXPIRY_MIN_SECONDS } from '@zenith/shared/platform';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -12,14 +12,17 @@ import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { ListSearchToolbar, useStatusToggle, useCrudOperationColumn } from '@/components/list-page';
 import { abortSubmit } from '@/lib/abort-submit';
+import { confirmDangerAsync } from '@/utils/confirm';
 import StorageFileBrowser from './StorageFileBrowser';
 import {
   useDeleteFileStorageConfigs,
   useFileStorageConfigDetail,
   useFileStorageConfigList,
+  useProbeFileStorageConfigBucketAccess,
   useSaveFileStorageConfig,
   useSetDefaultFileStorageConfig,
   useTestFileStorageConfig,
+  useUpdateFileStorageConfigBucketAccess,
 } from '@/hooks/queries/file-storage-configs';
 import { CreateButton } from '@/components/toolbar-controls';
 import { useListPage } from '@/hooks/useListPage';
@@ -34,6 +37,14 @@ type FileStorageConfigFormValues = UpdateFileStorageConfigInput;
 /** 支持对象级读写权限（canned ACL）的 provider */
 const OBJECT_ACL_PROVIDERS = Object.keys(FILE_OBJECT_ACL_SUPPORT) as FileStorageProvider[];
 
+const ACCESS_STRATEGY_HINTS: Record<FileAccessStrategy, string> = {
+  proxy: '所有下载都经过服务端，适合私有文件；上传始终经服务端或直传通道，本项只影响下载地址。',
+  presigned: '按需签发限时云直链，适合私有文件；本地磁盘 / SFTP 不支持。',
+  'public-object': '上传时给对象设置公共读 ACL；要求 Bucket 未开启「阻止公共访问」。',
+  'public-bucket': 'Bucket 本身为公共读，对象保持「继承 Bucket」；要求 Bucket 未开启「阻止公共访问」。',
+  'public-domain': '通过 CDN / 自定义域名提供永久直链，Bucket 可保持私有；需要在下方填写访问域名。',
+};
+
 function normalizeOptional(value?: string): string {
   return value?.trim() ?? '';
 }
@@ -45,7 +56,8 @@ function baseStorageFields(values: FileStorageConfigFormValues, isDefault: boole
     status: values.status ?? 'enabled',
     isDefault,
     basePath: normalizeOptional(values.basePath),
-    urlStrategy: values.urlStrategy ?? 'proxy',
+    accessStrategy: values.accessStrategy ?? 'proxy',
+    uploadMode: values.uploadMode ?? 'server-proxy',
     publicBaseUrl: normalizeOptional(values.publicBaseUrl),
     presignedExpirySeconds: values.presignedExpirySeconds ?? PRESIGNED_EXPIRY_DEFAULT_SECONDS,
   };
@@ -189,13 +201,16 @@ function getStorageSummary(config: FileStorageConfig) {
 
 export default function FileStorageConfigsPage() {
   const { hasPermission } = usePermission();
+  const canManageBucketAccess = hasPermission('system:file:config:bucket-access');
   const page = useListPage({
     contract: fileStorageConfigContract,
     useList: useFileStorageConfigList,
   });
   const { tableProps, filterQuery } = page;
   const [formProvider, setFormProvider] = useState<FileStorageProvider>('local');
+  const [formStrategy, setFormStrategy] = useState<FileAccessStrategy>('proxy');
   const [formIsDefault, setFormIsDefault] = useState(false);
+  const [bucketAccess, setBucketAccess] = useState<FileBucketAccessInfo | null>(null);
   const [browsingConfig, setBrowsingConfig] = useState<FileStorageConfig | null>(null);
   const saveMutation = useSaveFileStorageConfig();
   const statusMutation = useSaveFileStorageConfig();
@@ -210,7 +225,8 @@ export default function FileStorageConfigsPage() {
       isDefault: false,
       basePath: 'uploads',
       objectAcl: 'default',
-      urlStrategy: 'proxy',
+      accessStrategy: 'proxy',
+      uploadMode: 'server-proxy',
       publicBaseUrl: '',
       presignedExpirySeconds: PRESIGNED_EXPIRY_DEFAULT_SECONDS,
       localRootPath: 'storage/local',
@@ -221,7 +237,8 @@ export default function FileStorageConfigsPage() {
       ...config,
       basePath: config.basePath ?? '',
       objectAcl: config.objectAcl ?? 'default',
-      urlStrategy: config.urlStrategy ?? 'proxy',
+      accessStrategy: config.accessStrategy ?? 'proxy',
+      uploadMode: config.uploadMode ?? 'server-proxy',
       publicBaseUrl: config.publicBaseUrl ?? '',
       presignedExpirySeconds: config.presignedExpirySeconds ?? PRESIGNED_EXPIRY_DEFAULT_SECONDS,
       localRootPath: config.localRootPath ?? '',
@@ -273,23 +290,40 @@ export default function FileStorageConfigsPage() {
   const deleteMutation = useDeleteFileStorageConfigs();
   const setDefaultMutation = useSetDefaultFileStorageConfig();
   const testMutation = useTestFileStorageConfig();
+  const probeBucketMutation = useProbeFileStorageConfigBucketAccess();
+  const updateBucketMutation = useUpdateFileStorageConfigBucketAccess();
   const modalTestLoading = testMutation.isPending && !testMutation.variables?.id;
   const testingConfigId = testMutation.isPending ? (testMutation.variables?.id ?? null) : null;
 
   useEffect(() => {
-    if (!modal.editing) return;
+    if (!modal.editing) {
+      setBucketAccess(null);
+      return;
+    }
     setFormProvider(modal.editing.provider);
+    setFormStrategy(modal.editing.accessStrategy ?? 'proxy');
     setFormIsDefault(modal.editing.isDefault);
+    const acl = modal.editing.bucketAcl ?? null;
+    const blockPublicAccess = modal.editing.bucketBlockPublicAccess ?? null;
+    setBucketAccess({
+      bucketAcl: acl,
+      blockPublicAccess,
+      effectivePublic: (acl === 'public-read' || acl === 'public-read-write') && blockPublicAccess !== true,
+      checkedAt: modal.editing.bucketAccessCheckedAt ?? '',
+    });
   }, [modal.editing]);
 
   const openCreate = () => {
     setFormProvider('local');
+    setFormStrategy('proxy');
     setFormIsDefault(false);
+    setBucketAccess(null);
     modal.openCreate();
   };
 
   const openEdit = (config: FileStorageConfig) => {
     setFormProvider(config.provider);
+    setFormStrategy(config.accessStrategy ?? 'proxy');
     setFormIsDefault(config.isDefault);
     modal.openEdit(config);
   };
@@ -315,6 +349,42 @@ export default function FileStorageConfigsPage() {
   const handleTestSaved = async (config: FileStorageConfig) => {
     await testMutation.mutateAsync({ id: config.id, values: {} });
     Toast.success('存储连接测试通过');
+  };
+
+  const handleProbeBucketAccess = async () => {
+    if (!modal.editing) return;
+    const info = await probeBucketMutation.mutateAsync({ params: { id: modal.editing.id } });
+    setBucketAccess(info);
+    Toast.success('Bucket 权限探测完成');
+  };
+
+  const applyBucketAccess = async (input: { acl?: FileBucketAcl; blockPublicAccess?: boolean }) => {
+    if (!modal.editing) return;
+    const info = await updateBucketMutation.mutateAsync({ params: { id: modal.editing.id }, body: input });
+    setBucketAccess(info);
+    Toast.success('Bucket 权限已更新');
+  };
+
+  const handleMakePrivate = async () => {
+    await applyBucketAccess({ acl: 'private' });
+  };
+
+  const handleMakePublicRead = async () => {
+    if (!(await confirmDangerAsync({
+      title: '确认将 Bucket 设为公共读？',
+      content: '该操作会影响整个 Bucket，所有公共读对象都可被匿名访问；请确认没有其他敏感数据。',
+      okText: '确认设为公共读',
+    }))) return;
+    await applyBucketAccess({ acl: 'public-read' });
+  };
+
+  const handleToggleBlockPublicAccess = async (next: boolean) => {
+    if (!next && !(await confirmDangerAsync({
+      title: '确认关闭阻止公共访问？',
+      content: '关闭后，Bucket 内所有公共读对象都可能被匿名访问；如果 Bucket ACL 为公共读，将立即对外公开。',
+      okText: '确认关闭',
+    }))) return;
+    await applyBucketAccess({ blockPublicAccess: next });
   };
 
   const status = useStatusToggle<FileStorageConfig>({
@@ -449,17 +519,19 @@ export default function FileStorageConfigsPage() {
     },
     {
       title: '访问策略',
-      dataIndex: 'urlStrategy',
+      dataIndex: 'accessStrategy',
       width: 120,
       align: 'center',
-      render: (value: FileUrlStrategy | undefined) => {
+      render: (value: FileAccessStrategy | undefined) => {
         const strategy = value ?? 'proxy';
-        const colorMap: Record<FileUrlStrategy, 'grey' | 'green' | 'purple'> = {
+        const colorMap: Record<FileAccessStrategy, 'grey' | 'green' | 'purple' | 'orange' | 'cyan'> = {
           proxy: 'grey',
-          public: 'green',
           presigned: 'purple',
+          'public-object': 'green',
+          'public-bucket': 'orange',
+          'public-domain': 'cyan',
         };
-        return <Tag color={colorMap[strategy]} size="small">{FILE_URL_STRATEGY_LABELS[strategy]}</Tag>;
+        return <Tag color={colorMap[strategy]} size="small">{FILE_ACCESS_STRATEGY_LABELS[strategy]}</Tag>;
       },
     },
     dateTimeColumn('更新时间', 'updatedAt'),
@@ -506,6 +578,9 @@ export default function FileStorageConfigsPage() {
                   const currentAcl = modal.formApi.current?.getValue('objectAcl') as FileObjectAcl | undefined;
                   if (currentAcl && !(FILE_OBJECT_ACL_SUPPORT[next] ?? []).includes(currentAcl)) {
                     modal.formApi.current?.setValue('objectAcl', 'default');
+                  }
+                  if (!FILE_DIRECT_UPLOAD_SUPPORT[next]) {
+                    modal.formApi.current?.setValue('uploadMode', 'server-proxy');
                   }
                 }}
                 placeholder="请选择存储类型"
@@ -799,12 +874,31 @@ export default function FileStorageConfigsPage() {
           <Row gutter={16}>
             <Col span={24}>
               <Form.Select
-                field="urlStrategy"
-                label="访问策略"
+                field="uploadMode"
+                label="上传方式"
                 style={{ width: '100%' }}
-                extraText="代理：文件流量经过服务端（兜底）；公开直链：返回永久直连地址，要求对象可公开读；临时签名：按需签发限时直连地址，适合私有文件（本地磁盘 / SFTP 不支持）"
+                disabled={!FILE_DIRECT_UPLOAD_SUPPORT[formProvider]}
+                extraText={FILE_DIRECT_UPLOAD_SUPPORT[formProvider]
+                  ? '服务端中转：文件经服务端转发；浏览器直传：服务端只签发临时上传地址，文件直接从浏览器上传到云存储。'
+                  : '当前存储类型仅支持服务端中转。'}
               >
-                {FILE_URL_STRATEGY_OPTIONS.map((opt) => (
+                {FILE_UPLOAD_MODE_OPTIONS.map((opt) => (
+                  <Select.Option key={opt.value} value={opt.value}>{opt.label}</Select.Option>
+                ))}
+              </Form.Select>
+            </Col>
+          </Row>
+
+          <Row gutter={16}>
+            <Col span={24}>
+              <Form.Select
+                field="accessStrategy"
+                label="下载方式"
+                style={{ width: '100%' }}
+                extraText={ACCESS_STRATEGY_HINTS[formStrategy]}
+                onChange={(value) => setFormStrategy(value as FileAccessStrategy)}
+              >
+                {FILE_ACCESS_STRATEGY_OPTIONS.map((opt) => (
                   <Select.Option key={opt.value} value={opt.value}>{opt.label}</Select.Option>
                 ))}
               </Form.Select>
@@ -832,6 +926,65 @@ export default function FileStorageConfigsPage() {
             </Col>
           </Row>
         </Form.Section>
+
+        {modal.editing && FILE_BUCKET_ACCESS_SUPPORT[formProvider]?.probe && (
+          <Form.Section text="云端 Bucket 权限（实时）">
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <Text type="secondary">Bucket ACL：</Text>
+              <Tag size="small">{bucketAccess?.bucketAcl ? FILE_BUCKET_ACL_LABELS[bucketAccess.bucketAcl] : '未知'}</Tag>
+              <Text type="secondary">阻止公共访问：</Text>
+              <Tag size="small" color={bucketAccess?.blockPublicAccess ? 'red' : 'green'}>
+                {bucketAccess?.blockPublicAccess === null || bucketAccess?.blockPublicAccess === undefined
+                  ? '未知'
+                  : bucketAccess.blockPublicAccess ? '开启' : '关闭'}
+              </Tag>
+              <Text type="secondary">实际公共读：</Text>
+              <Tag size="small" color={bucketAccess?.effectivePublic ? 'green' : 'red'}>
+                {bucketAccess?.effectivePublic ? '是' : '否'}
+              </Tag>
+              {bucketAccess?.checkedAt && <Text type="tertiary">检测于 {bucketAccess.checkedAt}</Text>}
+            </div>
+            {modal.editing.bucketAccessError && (
+              <Text type="danger" style={{ display: 'block', marginBottom: 8 }}>
+                最近一次探测失败：{modal.editing.bucketAccessError}
+              </Text>
+            )}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              <Button size="small" loading={probeBucketMutation.isPending} onClick={() => void handleProbeBucketAccess()}>
+                重新探测
+              </Button>
+              <Button
+                size="small"
+                disabled={!canManageBucketAccess || probeBucketMutation.isPending || updateBucketMutation.isPending || bucketAccess?.bucketAcl === 'private'}
+                onClick={() => void handleMakePrivate()}
+              >
+                设为私有
+              </Button>
+              <Button
+                size="small"
+                type="danger"
+                disabled={!canManageBucketAccess || probeBucketMutation.isPending || updateBucketMutation.isPending || bucketAccess?.bucketAcl === 'public-read'}
+                onClick={() => void handleMakePublicRead()}
+              >
+                设为公共读
+              </Button>
+              {FILE_BUCKET_ACCESS_SUPPORT[formProvider]?.setBlockPublicAccess && (
+                <Button
+                  size="small"
+                  type={bucketAccess?.blockPublicAccess ? 'danger' : 'primary'}
+                  loading={updateBucketMutation.isPending}
+                  disabled={!canManageBucketAccess || probeBucketMutation.isPending}
+                  onClick={() => void handleToggleBlockPublicAccess(!(bucketAccess?.blockPublicAccess ?? false))}
+                >
+                  {bucketAccess?.blockPublicAccess ? '关闭阻止公共访问' : '开启阻止公共访问'}
+                </Button>
+              )}
+            </div>
+            <Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
+              以下操作会立即修改云上 Bucket，不受「保存」影响；Bucket 级权限可能影响同 Bucket 的其他应用。
+            </Text>
+          </Form.Section>
+        )}
       </EditFormSheet>
 
       <StorageFileBrowser config={browsingConfig} onClose={() => setBrowsingConfig(null)} />

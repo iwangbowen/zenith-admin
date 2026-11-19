@@ -9,8 +9,14 @@ export const fileStorageProviderEnum = pgEnum('file_storage_provider', ['local',
 /** 对象读写权限（canned ACL）；default = 继承 Bucket（上传时不发送 ACL 参数） */
 export const fileObjectAclEnum = pgEnum('file_object_acl', ['default', 'private', 'public-read', 'public-read-write']);
 
-/** 文件访问 URL 策略：proxy=服务端代理（兜底）；public=永久公开直链；presigned=临时签名直链 */
-export const fileUrlStrategyEnum = pgEnum('file_url_strategy', ['proxy', 'public', 'presigned']);
+/** 文件下载方式：公开直链的公共性来源在配置中显式声明 */
+export const fileAccessStrategyEnum = pgEnum('file_access_strategy', ['proxy', 'presigned', 'public-object', 'public-bucket', 'public-domain']);
+
+/** Bucket / Container 级读写权限探测结果 */
+export const fileBucketAclEnum = pgEnum('file_bucket_acl', ['private', 'public-read', 'public-read-write']);
+
+/** 文件上传方式：服务端中转 / 浏览器直传 */
+export const fileUploadModeEnum = pgEnum('file_upload_mode', ['server-proxy', 'browser-direct']);
 
 /**
  * 托管文件可见性：public=持有文件 ID 即可经 `fileContract.content` 读取（附件、头像等）；
@@ -29,7 +35,16 @@ export const fileStorageConfigs = pgTable('file_storage_configs', {
   basePath: varchar({ length: 256 }),
   // 上传对象的读写权限，仅 oss/s3/cos/obs/bos 生效
   objectAcl: fileObjectAclEnum().notNull().default('default'),
-  urlStrategy: fileUrlStrategyEnum().notNull().default('proxy'),
+  /** 文件下载方式；上传链路由 uploadMode 单独控制 */
+  accessStrategy: fileAccessStrategyEnum().notNull().default('proxy'),
+  /** 文件上传方式 */
+  uploadMode: fileUploadModeEnum().notNull().default('server-proxy'),
+  /** 最近一次探测的 Bucket / Container 级读写权限 */
+  bucketAcl: fileBucketAclEnum(),
+  /** 最近一次探测的阻止公共访问状态；null = provider 无此能力或尚未探测 */
+  bucketBlockPublicAccess: boolean(),
+  bucketAccessCheckedAt: timestamptz(),
+  bucketAccessError: text(),
   // 自定义访问域名（CDN/加速域名），public 策略优先使用
   publicBaseUrl: varchar({ length: 512 }),
   // 临时签名有效期（秒）
@@ -104,6 +119,10 @@ export const managedFiles = pgTable('managed_files', {
   extension: varchar({ length: 32 }),
   // 上传时实际发送的对象 ACL 快照；null = 继承 Bucket（公开性未知）
   objectAcl: fileObjectAclEnum(),
+  /** 上传时快照：该对象当时是否可公共读取（由 accessStrategy 与 Bucket 探测结果决定） */
+  publicAccess: boolean().notNull().default(false),
+  /** 上传时使用的下载方式快照，便于后续排查 */
+  accessStrategy: fileAccessStrategyEnum(),
   visibility: fileVisibilityEnum().notNull().default('public'),
   /** 内容 SHA-256（hex）；由归属模块按需写入，用于秒传 / 去重，null = 未计算 */
   contentHash: varchar({ length: 64 }),
@@ -151,6 +170,10 @@ export const uploadSessions = pgTable('upload_sessions', {
   multipartUploadId: varchar({ length: 512 }),
   // 初始化时实际发送的对象 ACL 快照，完成上传时拷贝到 managed_files
   objectAcl: fileObjectAclEnum(),
+  /** 初始化时快照的公共可读性，完成上传时拷贝到 managed_files */
+  publicAccess: boolean().notNull().default(false),
+  accessStrategy: fileAccessStrategyEnum(),
+  uploadMode: fileUploadModeEnum().notNull().default('server-proxy'),
   status: uploadSessionStatusEnum().notNull().default('uploading'),
   tenantId: tenantIdColumn(),
   ...auditColumns(),

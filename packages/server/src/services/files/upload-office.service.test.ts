@@ -17,7 +17,7 @@ vi.mock('../../lib/settings', () => ({ getSettings: vi.fn() }));
 vi.mock('../../lib/file-storage', () => ({
   buildUploadObjectKey: vi.fn(), uploadObjectByConfig: vi.fn(), uploadFileByConfig: vi.fn(),
   extractBucketName: vi.fn(), getMultipartDriver: vi.fn(), mapObjectAclError: (err: unknown) => err,
-  resolveObjectAcl: vi.fn(), readStoredFile: vi.fn(), deleteObjectByConfig: vi.fn(),
+  resolveObjectAcl: vi.fn(), resolvePublicAccess: vi.fn(() => false), readStoredFile: vi.fn(), deleteObjectByConfig: vi.fn(),
   buildManagedFileProxyUrl: (id: string) => `/files/${id}`, buildPublicFileUrl: () => null,
 }));
 

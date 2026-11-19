@@ -1,6 +1,6 @@
 import * as z from 'zod';
 import { partialForUpdate, validateTypedAlertDelivery, webhookUrlSchema } from '../core/validation';
-import { CRON_JOB_STATUSES, FILE_OBJECT_ACL_SUPPORT, MASK_TYPES, MONITOR_ALERT_HANDLE_STATUSES, MONITOR_ALERT_LEVELS, MONITOR_ALERT_OPERATORS, MONITOR_HISTORY_RANGES, MONITOR_METRICS, PRESIGNED_EXPIRY_DEFAULT_SECONDS, PRESIGNED_EXPIRY_MAX_SECONDS, PRESIGNED_EXPIRY_MIN_SECONDS, REGION_LEVELS, SQL_MONITOR_QUERY_SORTS, SQL_MONITOR_QUERY_SORT_OPTIONS, SQL_MONITOR_SESSION_ACTIONS, SYSTEM_SCHEDULER_ALERT_CHANNELS, UPLOAD_CHUNK_MAX_BYTES, UPLOAD_CHUNK_MIN_BYTES, USER_FEEDBACK_CATEGORIES, USER_FEEDBACK_STATUSES } from './constants';
+import { CRON_JOB_STATUSES, FILE_ACCESS_STRATEGIES, FILE_BUCKET_ACCESS_SUPPORT, FILE_DIRECT_UPLOAD_SUPPORT, FILE_OBJECT_ACL_SUPPORT, FILE_UPLOAD_MODES, MASK_TYPES, MONITOR_ALERT_HANDLE_STATUSES, MONITOR_ALERT_LEVELS, MONITOR_ALERT_OPERATORS, MONITOR_HISTORY_RANGES, MONITOR_METRICS, PRESIGNED_EXPIRY_DEFAULT_SECONDS, PRESIGNED_EXPIRY_MAX_SECONDS, PRESIGNED_EXPIRY_MIN_SECONDS, REGION_LEVELS, SQL_MONITOR_QUERY_SORTS, SQL_MONITOR_QUERY_SORT_OPTIONS, SQL_MONITOR_SESSION_ACTIONS, SYSTEM_SCHEDULER_ALERT_CHANNELS, UPLOAD_CHUNK_MAX_BYTES, UPLOAD_CHUNK_MIN_BYTES, USER_FEEDBACK_CATEGORIES, USER_FEEDBACK_STATUSES } from './constants';
 import { entityStatusSchema, keywordQuery, queryEnum } from '../core/api-schemas';
 
 // ─── 字典 Schema ──────────────────────────────────────────────────────────────
@@ -35,8 +35,10 @@ const baseFileStorageConfigSchema = z.object({
   basePath: z.string().max(256).optional(),
   // 对象读写权限（仅 oss/s3/cos/obs/bos 生效）；default = 继承 Bucket
   objectAcl: z.enum(['default', 'private', 'public-read', 'public-read-write']).default('default'),
-  // 文件访问 URL 策略
-  urlStrategy: z.enum(['proxy', 'public', 'presigned']).default('proxy'),
+  // 文件下载方式（上传始终经服务端或直传通道，与本字段无关）
+  accessStrategy: z.enum(FILE_ACCESS_STRATEGIES).default('proxy'),
+  // 上传方式：服务端中转 / 浏览器直传
+  uploadMode: z.enum(FILE_UPLOAD_MODES).default('server-proxy'),
   // 自定义访问域名（CDN/加速域名），public 策略优先使用
   publicBaseUrl: z.string().max(512).regex(/^https?:\/\/.+/, '访问域名必须以 http:// 或 https:// 开头').optional().or(z.literal('')),
   // 临时签名有效期（秒）
@@ -98,25 +100,38 @@ const baseFileStorageConfigSchema = z.object({
 
 type FileStorageConfigBase = z.infer<typeof baseFileStorageConfigSchema>;
 
-/** URL 策略与 provider/ACL 的矛盾校验；create 全量、update partial 双方共用（partial 时缺失字段跳过对应检查） */
-function addUrlStrategyIssues(data: Partial<FileStorageConfigBase>, ctx: z.RefinementCtx) {
-  if (!data.urlStrategy || !data.provider) return;
+/** 下载方式与 provider/ACL 的矛盾校验；create 全量、update partial 双方共用（partial 时缺失字段跳过对应检查） */
+function addAccessStrategyIssues(data: Partial<FileStorageConfigBase>, ctx: z.RefinementCtx) {
+  if (!data.accessStrategy || !data.provider) return;
   const supportedAcls = FILE_OBJECT_ACL_SUPPORT[data.provider];
-  if (data.urlStrategy === 'presigned' && (data.provider === 'local' || data.provider === 'sftp')) {
-    ctx.addIssue({ code: 'custom', message: '本地磁盘 / SFTP 不支持临时签名直链，请选择服务端代理或公开直链', path: ['urlStrategy'] });
+  const bucketCapability = FILE_BUCKET_ACCESS_SUPPORT[data.provider];
+  if (data.uploadMode === 'browser-direct' && !FILE_DIRECT_UPLOAD_SUPPORT[data.provider]) {
+    ctx.addIssue({ code: 'custom', message: '该存储类型不支持浏览器直传，请保持「服务端中转」', path: ['uploadMode'] });
   }
-  if (data.urlStrategy === 'public') {
-    if (supportedAcls && !['public-read', 'public-read-write'].includes(data.objectAcl ?? 'default')) {
-      ctx.addIssue({ code: 'custom', message: '公开直链要求对象读写权限为 public-read 或 public-read-write', path: ['objectAcl'] });
+  if (data.accessStrategy === 'presigned' && (data.provider === 'local' || data.provider === 'sftp')) {
+    ctx.addIssue({ code: 'custom', message: '本地磁盘 / SFTP 不支持临时签名直链，请选择服务端代理或公开直链', path: ['accessStrategy'] });
+  }
+  if (data.accessStrategy === 'public-object') {
+    if (!supportedAcls) {
+      ctx.addIssue({ code: 'custom', message: '该存储类型不支持对象 ACL，不能使用对象公共读直链', path: ['accessStrategy'] });
+    } else if (!['public-read', 'public-read-write'].includes(data.objectAcl ?? 'default')) {
+      ctx.addIssue({ code: 'custom', message: '对象公共读直链要求读写权限为 public-read 或 public-read-write', path: ['objectAcl'] });
     }
-    if (data.provider === 'local' && !data.publicBaseUrl) {
-      ctx.addIssue({ code: 'custom', message: '本地磁盘使用公开直链需要配置访问域名', path: ['publicBaseUrl'] });
+  }
+  if (data.accessStrategy === 'public-bucket') {
+    if (!bucketCapability?.probe) {
+      ctx.addIssue({ code: 'custom', message: '该存储类型不支持 Bucket 公共读直链', path: ['accessStrategy'] });
     }
-    if (data.provider === 'sftp' && !data.publicBaseUrl && !data.sftpBaseUrl) {
-      ctx.addIssue({ code: 'custom', message: 'SFTP 使用公开直链需要配置访问域名或 SFTP 访问地址', path: ['publicBaseUrl'] });
+    if ((data.objectAcl ?? 'default') !== 'default') {
+      ctx.addIssue({ code: 'custom', message: 'Bucket 公共读直链要求对象读写权限为「继承 Bucket」', path: ['objectAcl'] });
     }
-    if (data.provider === 'kodo' && !data.publicBaseUrl && !data.kodoEndpoint) {
-      ctx.addIssue({ code: 'custom', message: '七牛云 Kodo 使用公开直链需要配置访问域名或下载域名', path: ['publicBaseUrl'] });
+  }
+  if (data.accessStrategy === 'public-domain') {
+    const hasDomain = Boolean(data.publicBaseUrl?.trim())
+      || (data.provider === 'sftp' && Boolean(data.sftpBaseUrl?.trim()))
+      || (data.provider === 'kodo' && Boolean(data.kodoEndpoint?.trim()));
+    if (!hasDomain) {
+      ctx.addIssue({ code: 'custom', message: '自定义域名 / CDN 直链需要配置访问域名', path: ['publicBaseUrl'] });
     }
   }
 }
@@ -129,7 +144,7 @@ export const createFileStorageConfigSchema = baseFileStorageConfigSchema.superRe
       : '该存储类型不支持设置对象读写权限';
     ctx.addIssue({ code: 'custom', message, path: ['objectAcl'] });
   }
-  addUrlStrategyIssues(data, ctx);
+  addAccessStrategyIssues(data, ctx);
   if (data.provider === 'local' && !data.localRootPath) {
     ctx.addIssue({ code: 'custom', message: '本地磁盘配置需要填写存储目录', path: ['localRootPath'] });
   }
@@ -189,7 +204,7 @@ export const createFileStorageConfigSchema = baseFileStorageConfigSchema.superRe
   }
 });
 
-export const updateFileStorageConfigSchema = partialForUpdate(baseFileStorageConfigSchema).superRefine(addUrlStrategyIssues);
+export const updateFileStorageConfigSchema = partialForUpdate(baseFileStorageConfigSchema).superRefine(addAccessStrategyIssues);
 
 // ─── 分片上传 ─────────────────────────────────────────────────────────────────
 export const initChunkUploadSchema = z.object({

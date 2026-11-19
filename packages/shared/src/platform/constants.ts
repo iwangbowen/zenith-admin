@@ -66,8 +66,52 @@ export const FILE_OBJECT_ACL_SUPPORT: Partial<Record<(typeof FILE_STORAGE_PROVID
   bos: ['default', 'private', 'public-read'],
 };
 
-/** 文件访问 URL 策略：proxy=服务端代理（兜底）；public=永久公开直链；presigned=临时签名直链 */
-export const FILE_URL_STRATEGIES = ['proxy', 'public', 'presigned'] as const;
+/** 文件上传方式：server-proxy=服务端中转；browser-direct=浏览器直传云存储 */
+export const FILE_UPLOAD_MODES = ['server-proxy', 'browser-direct'] as const;
+export type FileUploadMode = (typeof FILE_UPLOAD_MODES)[number];
+
+/** 各 provider 支持的浏览器直传机制；未列出的 provider 只能走服务端中转 */
+export const FILE_DIRECT_UPLOAD_SUPPORT: Partial<Record<
+  (typeof FILE_STORAGE_PROVIDERS)[number],
+  'presigned-put' | 'sas' | 'upload-token'
+>> = {
+  oss: 'presigned-put',
+  s3: 'presigned-put',
+  cos: 'presigned-put',
+  obs: 'presigned-put',
+  azure: 'sas',
+};
+
+/**
+ * 文件下载方式。公开直链必须显式声明公共性来源：
+ * - public-object：对象 ACL 为公共读；
+ * - public-bucket：Bucket ACL 为公共读，对象继承；
+ * - public-domain：自定义域名 / CDN 公开，Bucket 可保持私有。
+ */
+export const FILE_ACCESS_STRATEGIES = ['proxy', 'presigned', 'public-object', 'public-bucket', 'public-domain'] as const;
+export type FileAccessStrategy = (typeof FILE_ACCESS_STRATEGIES)[number];
+
+/** 直链解析结果（对外 API 的 `strategy` 字段），与配置里的 accessStrategy 区分 */
+export const FILE_URL_RESULT_STRATEGIES = ['proxy', 'public', 'presigned'] as const;
+export type FileUrlResultStrategy = (typeof FILE_URL_RESULT_STRATEGIES)[number];
+
+/** Bucket / Container 级读写权限（云端实时状态，可由配置页探测和设置） */
+export const FILE_BUCKET_ACLS = ['private', 'public-read', 'public-read-write'] as const;
+export type FileBucketAcl = (typeof FILE_BUCKET_ACLS)[number];
+
+/** 各 provider 的 Bucket 权限探测 / 设置能力；未列出的 provider 不支持云端实时管理 */
+export const FILE_BUCKET_ACCESS_SUPPORT: Partial<Record<
+  (typeof FILE_STORAGE_PROVIDERS)[number],
+  { probe: boolean; setAcl: boolean; setBlockPublicAccess: boolean }
+>> = {
+  oss: { probe: true, setAcl: true, setBlockPublicAccess: true },
+  s3: { probe: true, setAcl: true, setBlockPublicAccess: true },
+  cos: { probe: true, setAcl: true, setBlockPublicAccess: false },
+  obs: { probe: true, setAcl: true, setBlockPublicAccess: false },
+  bos: { probe: true, setAcl: true, setBlockPublicAccess: false },
+  azure: { probe: true, setAcl: true, setBlockPublicAccess: false },
+  kodo: { probe: true, setAcl: true, setBlockPublicAccess: false },
+};
 
 /**
  * 托管文件可见性：public=持有文件 ID 即可经 `fileContract.content` 读取；
@@ -191,14 +235,33 @@ export const RATE_LIMIT_BAN_DURATION_OPTIONS: Array<{ value: number; label: stri
   { value: 7 * 24 * 3600, label: '7 天' },
 ];
 
-export const FILE_URL_STRATEGY_LABELS: Record<(typeof FILE_URL_STRATEGIES)[number], string> = {
+export const FILE_ACCESS_STRATEGY_LABELS: Record<FileAccessStrategy, string> = {
   proxy: '服务端代理',
-  public: '公开直链',
   presigned: '临时签名直链',
+  'public-object': '公开直链（对象 ACL）',
+  'public-bucket': '公开直链（Bucket 公共读）',
+  'public-domain': '公开直链（自定义域名 / CDN）',
 };
 
-export const FILE_URL_STRATEGY_OPTIONS: Array<{ value: (typeof FILE_URL_STRATEGIES)[number]; label: string }> =
-  createLabelOptions(FILE_URL_STRATEGIES, FILE_URL_STRATEGY_LABELS);
+export const FILE_ACCESS_STRATEGY_OPTIONS: Array<{ value: FileAccessStrategy; label: string }> =
+  createLabelOptions(FILE_ACCESS_STRATEGIES, FILE_ACCESS_STRATEGY_LABELS);
+
+export const FILE_UPLOAD_MODE_LABELS: Record<FileUploadMode, string> = {
+  'server-proxy': '服务端中转',
+  'browser-direct': '浏览器直传',
+};
+
+export const FILE_UPLOAD_MODE_OPTIONS: Array<{ value: FileUploadMode; label: string }> =
+  createLabelOptions(FILE_UPLOAD_MODES, FILE_UPLOAD_MODE_LABELS);
+
+export const FILE_BUCKET_ACL_LABELS: Record<FileBucketAcl, string> = {
+  private: '私有',
+  'public-read': '公共读',
+  'public-read-write': '公共读写',
+};
+
+export const FILE_BUCKET_ACL_OPTIONS: Array<{ value: FileBucketAcl; label: string }> =
+  createLabelOptions(FILE_BUCKET_ACLS, FILE_BUCKET_ACL_LABELS);
 
 /** 临时签名有效期（秒）：默认 30 分钟，限制在 1 分钟 ~ 7 天（S3 SigV4 上限） */
 export const PRESIGNED_EXPIRY_DEFAULT_SECONDS = 1800;

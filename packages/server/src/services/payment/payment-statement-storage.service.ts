@@ -33,7 +33,7 @@ export async function archiveStatement(
   if (existing) return existing;
   const [storage] = await db.select().from(fileStorageConfigs).where(and(eq(fileStorageConfigs.isDefault, true), eq(fileStorageConfigs.status, 'enabled'))).limit(1);
   requireRow(storage, '请先配置启用的私有文件存储', 409);
-  if (storage.objectAcl.startsWith('public') || storage.urlStrategy === 'public') {
+  if (storage.objectAcl.startsWith('public') || storage.accessStrategy.startsWith('public-')) {
     throw new HTTPException(409, { message: '财务账单必须使用私有存储，请修改默认存储访问策略' });
   }
   const files: Array<Omit<typeof paymentStatementFiles.$inferInsert, 'id' | 'statementId' | 'createdAt'>> = [];

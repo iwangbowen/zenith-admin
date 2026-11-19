@@ -25,7 +25,7 @@ import { usePagination } from '@/hooks/usePagination';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { useDefaultFileStorageConfig } from '@/hooks/queries/file-storage-configs';
-import { fileKeys, invalidateAfterFilesAdded, useChunkUploadThreshold, useDeleteFiles, useFileDetail, useFileList, useUploadFile } from '@/hooks/queries/files';
+import { fileKeys, invalidateAfterFilesAdded, useChunkUploadThreshold, useDeleteFiles, useDirectUploadFile, useFileDetail, useFileList, useUploadFile } from '@/hooks/queries/files';
 import { useListSearch } from '@/hooks/useListSearch';
 import { BatchDeleteButton } from '@/components/toolbar-controls';
 import { confirmAndDelete, ListSearchToolbar, listTableProps } from '@/components/list-page';
@@ -56,6 +56,8 @@ function uploadSingleFile(
   uid: string,
   signal: AbortSignal,
   chunkThreshold: number,
+  uploadMode: 'server-proxy' | 'browser-direct',
+  directUpload: (file: File, onProgress: (percent: number) => void, signal: AbortSignal) => Promise<unknown>,
   setItems: React.Dispatch<React.SetStateAction<UploadItem[]>>,
   uploadFile: (formData: FormData, onProgress: (percent: number) => void, signal: AbortSignal) => Promise<unknown>,
 ) {
@@ -66,6 +68,11 @@ function uploadSingleFile(
     ? { ...item, status: 'cancelled' }
     : { ...item, status: 'error', errorMsg: err instanceof Error ? err.message : '上传失败' });
   updateItem(item => ({ ...item, status: 'uploading' }));
+  if (uploadMode === 'browser-direct') {
+    void directUpload(file, (percent) => updateItem(item => ({ ...item, progress: percent })), signal)
+      .then(onDone).catch(onFail);
+    return;
+  }
   // 超过运行时设置的阈值走分片上传 + 断点续传
   if (file.size > chunkThreshold) {
     chunkedUpload(file, {
@@ -153,7 +160,9 @@ export default function FilesPage() {
   const data = listQuery.data ?? null;
   const preview = useFilePreview(() => data?.list ?? []);
   const uploadFileMutation = useUploadFile();
+  const directUploadMutation = useDirectUploadFile();
   const chunkThreshold = useChunkUploadThreshold();
+  const { data: defaultStorageConfig } = useDefaultFileStorageConfig();
   const deleteMutation = useDeleteFiles();
   const batchDeleteMutation = useDeleteFiles();
   const detailQuery = useFileDetail(detailFile?.id, !!detailFile);
@@ -256,6 +265,8 @@ export default function FilesPage() {
         items[i].uid,
         controller.signal,
         chunkThreshold,
+        defaultStorageConfig?.uploadMode ?? 'server-proxy',
+        (file, onProgress, signal) => directUploadMutation.mutateAsync({ file, onProgress, signal }),
         setUploadItems,
         (formData, onProgress, signal) => uploadFileMutation.mutateAsync({ formData, onProgress, signal }),
       );
