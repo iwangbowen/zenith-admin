@@ -3,6 +3,7 @@ import { dateRangeQuery, keywordQuery, paginated, paginationQuery, queryEnum } f
 import { defineContract, fileField, multipart, op } from '../../core/contract';
 import {
   FILE_ACCESS_PURPOSES,
+  FILE_ACCESS_STRATEGIES,
   FILE_STORAGE_PROVIDERS,
   FILE_TYPE_FILTERS,
   FILE_URL_RESULT_STRATEGIES,
@@ -161,6 +162,33 @@ export const uploadChunkBody = multipart(z.object({
   chunk: fileField('分片内容'),
 }));
 
+/** 浏览器直传：创建会话后由客户端直接 PUT 到 uploadUrl，完成时服务端 HEAD 校验并落库 */
+export const directUploadInitSchema = z.object({
+  fileName: z.string().min(1).max(256),
+  fileSize: z.int().nonnegative(),
+  mimeType: z.string().max(128).optional(),
+  storageConfigId: z.int().positive().optional(),
+});
+
+export const directUploadSessionSchema = z.object({
+  uploadId: z.string(),
+  provider: z.enum(FILE_STORAGE_PROVIDERS),
+  objectKey: z.string(),
+  bucketName: z.string().nullable().optional(),
+  uploadUrl: z.string(),
+  method: z.literal('PUT'),
+  headers: z.record(z.string(), z.string()).optional(),
+  expiresAt: z.string(),
+  publicAccess: z.boolean(),
+  accessStrategy: z.enum(FILE_ACCESS_STRATEGIES),
+}).meta({ id: 'DirectUploadSession' });
+
+export const directUploadCompleteSchema = z.object({
+  size: z.int().nonnegative().optional(),
+  etag: z.string().max(256).optional(),
+  contentHash: z.string().max(64).optional(),
+});
+
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 
 export const fileContract = defineContract('/api/files', {
@@ -180,6 +208,9 @@ export const fileContract = defineContract('/api/files', {
   uploadComplete: op.post('/upload/complete', { access: { permission: 'system:file:upload' }, audit: '完成分片上传', body: completeChunkUploadSchema, response: managedFileSchema, summary: '完成分片上传' }),
   uploadStatus: op.get('/upload/{uploadId}/status', { access: 'authenticated', params: uploadIdParam, response: uploadSessionStatusSchema, summary: '查询分片上传进度' }),
   uploadAbort: op.delete('/upload/{uploadId}', { access: { permission: 'system:file:upload' }, audit: '中止分片上传', params: uploadIdParam, summary: '中止分片上传' }),
+  directUploadInit: op.post('/direct-uploads', { access: { permission: 'system:file:upload' }, body: directUploadInitSchema, response: directUploadSessionSchema, summary: '创建浏览器直传会话' }),
+  directUploadComplete: op.post('/direct-uploads/{uploadId}/complete', { access: { permission: 'system:file:upload' }, audit: { description: '完成浏览器直传', recordBody: false }, params: uploadIdParam, body: directUploadCompleteSchema, response: managedFileSchema, summary: '完成浏览器直传' }),
+  directUploadAbort: op.delete('/direct-uploads/{uploadId}', { access: { permission: 'system:file:upload' }, audit: { description: '中止浏览器直传', recordBody: false }, params: uploadIdParam, summary: '中止浏览器直传' }),
   detail: op.get('/{id}', { access: { permission: 'system:file:list' }, params: fileIdParam, response: managedFileSchema, summary: '获取文件详情' }),
   upload: op.post('/upload', { access: { permission: 'system:file:upload' }, audit: { description: '上传文件', recordBody: false }, body: uploadBody, response: z.array(managedFileSchema), summary: '上传文件' }),
   uploadOne: op.post('/upload-one', { access: { permission: 'system:file:upload' }, audit: { description: '上传单个文件', recordBody: false }, body: uploadOneBody, response: managedFileSchema, summary: '上传单个文件' }),

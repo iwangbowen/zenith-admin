@@ -1,7 +1,7 @@
 import * as z from 'zod';
 import { auditFieldsSchema, dateRangeQuery, entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
-import { FILE_ACCESS_STRATEGIES, FILE_BUCKET_ACLS, FILE_OBJECT_ACLS, FILE_STORAGE_PROVIDERS } from '../constants';
+import { FILE_ACCESS_STRATEGIES, FILE_BUCKET_ACLS, FILE_OBJECT_ACLS, FILE_STORAGE_PROVIDERS, FILE_UPLOAD_MODES } from '../constants';
 import { createFileStorageConfigSchema, updateFileStorageConfigSchema } from '../validation';
 
 // ─── 实体 ────────────────────────────────────────────────────────────────────
@@ -19,6 +19,7 @@ export const fileStorageConfigSchema = z.object({
   basePath: z.string().nullable().optional(),
   objectAcl: z.enum(FILE_OBJECT_ACLS).meta({ description: '对象读写权限（仅 oss/s3/cos/obs/bos 生效）；default = 继承 Bucket' }),
   accessStrategy: z.enum(FILE_ACCESS_STRATEGIES).meta({ description: '文件下载方式' }),
+  uploadMode: z.enum(FILE_UPLOAD_MODES).meta({ description: '文件上传方式' }),
   /** 最近一次探测的 Bucket / Container 读写权限 */
   bucketAcl: z.enum(FILE_BUCKET_ACLS).nullable().optional(),
   /** 最近一次探测的阻止公共访问状态；null = 该 provider 无此能力或尚未探测 */

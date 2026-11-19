@@ -66,6 +66,22 @@ export const FILE_OBJECT_ACL_SUPPORT: Partial<Record<(typeof FILE_STORAGE_PROVID
   bos: ['default', 'private', 'public-read'],
 };
 
+/** 文件上传方式：server-proxy=服务端中转；browser-direct=浏览器直传云存储 */
+export const FILE_UPLOAD_MODES = ['server-proxy', 'browser-direct'] as const;
+export type FileUploadMode = (typeof FILE_UPLOAD_MODES)[number];
+
+/** 各 provider 支持的浏览器直传机制；未列出的 provider 只能走服务端中转 */
+export const FILE_DIRECT_UPLOAD_SUPPORT: Partial<Record<
+  (typeof FILE_STORAGE_PROVIDERS)[number],
+  'presigned-put' | 'sas' | 'upload-token'
+>> = {
+  oss: 'presigned-put',
+  s3: 'presigned-put',
+  cos: 'presigned-put',
+  obs: 'presigned-put',
+  azure: 'sas',
+};
+
 /**
  * 文件下载方式。公开直链必须显式声明公共性来源：
  * - public-object：对象 ACL 为公共读；
@@ -223,6 +239,14 @@ export const FILE_ACCESS_STRATEGY_LABELS: Record<FileAccessStrategy, string> = {
 
 export const FILE_ACCESS_STRATEGY_OPTIONS: Array<{ value: FileAccessStrategy; label: string }> =
   createLabelOptions(FILE_ACCESS_STRATEGIES, FILE_ACCESS_STRATEGY_LABELS);
+
+export const FILE_UPLOAD_MODE_LABELS: Record<FileUploadMode, string> = {
+  'server-proxy': '服务端中转',
+  'browser-direct': '浏览器直传',
+};
+
+export const FILE_UPLOAD_MODE_OPTIONS: Array<{ value: FileUploadMode; label: string }> =
+  createLabelOptions(FILE_UPLOAD_MODES, FILE_UPLOAD_MODE_LABELS);
 
 export const FILE_BUCKET_ACL_LABELS: Record<FileBucketAcl, string> = {
   private: '私有',

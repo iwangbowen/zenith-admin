@@ -15,6 +15,9 @@ export const fileAccessStrategyEnum = pgEnum('file_access_strategy', ['proxy', '
 /** Bucket / Container 级读写权限探测结果 */
 export const fileBucketAclEnum = pgEnum('file_bucket_acl', ['private', 'public-read', 'public-read-write']);
 
+/** 文件上传方式：服务端中转 / 浏览器直传 */
+export const fileUploadModeEnum = pgEnum('file_upload_mode', ['server-proxy', 'browser-direct']);
+
 /**
  * 托管文件可见性：public=持有文件 ID 即可经 `fileContract.content` 读取（附件、头像等）；
  * restricted=仅归属模块（如企业网盘）经自身鉴权接口读取，通用内容接口一律 404。
@@ -34,6 +37,8 @@ export const fileStorageConfigs = pgTable('file_storage_configs', {
   objectAcl: fileObjectAclEnum().notNull().default('default'),
   /** 文件下载方式；上传链路由 uploadMode 单独控制 */
   accessStrategy: fileAccessStrategyEnum().notNull().default('proxy'),
+  /** 文件上传方式 */
+  uploadMode: fileUploadModeEnum().notNull().default('server-proxy'),
   /** 最近一次探测的 Bucket / Container 级读写权限 */
   bucketAcl: fileBucketAclEnum(),
   /** 最近一次探测的阻止公共访问状态；null = provider 无此能力或尚未探测 */
@@ -168,6 +173,7 @@ export const uploadSessions = pgTable('upload_sessions', {
   /** 初始化时快照的公共可读性，完成上传时拷贝到 managed_files */
   publicAccess: boolean().notNull().default(false),
   accessStrategy: fileAccessStrategyEnum(),
+  uploadMode: fileUploadModeEnum().notNull().default('server-proxy'),
   status: uploadSessionStatusEnum().notNull().default('uploading'),
   tenantId: tenantIdColumn(),
   ...auditColumns(),
