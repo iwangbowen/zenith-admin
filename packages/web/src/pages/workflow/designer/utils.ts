@@ -2,8 +2,9 @@ import { compileWorkflowTree } from '@zenith/shared/workflow/designer-graph';
 /**
  * 钉钉/飞书风格流程设计器 — 工具函数
  */
-import type { FlowNode, FlowBranch, FlowProcess, FlowNodeType, BranchNodeType } from './types';
+import type { FlowNode, FlowBranch, FlowProcess, FlowNodeType, BranchNodeType, AssigneeType } from './types';
 import { DEFAULT_BRANCH_COUNT } from './constants';
+import { resetAssigneePropsForType, sanitizeAssigneePropsForWrite } from './assignee-props';
 
 let idCounter = 0;
 
@@ -228,7 +229,13 @@ export function updateNode(
   const node = findNodeById(cloned.initiator, nodeId);
   if (node) {
     if (updates.name !== undefined) node.name = updates.name;
-    if (updates.props !== undefined) node.props = { ...node.props, ...updates.props };
+    if (updates.props !== undefined) {
+      const assigneeType = updates.props.assigneeType as AssigneeType | undefined;
+      const previousProps = assigneeType && assigneeType !== node.props.assigneeType
+        ? resetAssigneePropsForType(node.props, assigneeType)
+        : node.props;
+      node.props = sanitizeAssigneePropsForWrite({ ...previousProps, ...updates.props });
+    }
     if (updates.key !== undefined) {
       const trimmed = updates.key.trim();
       node.key = trimmed === '' ? undefined : trimmed;

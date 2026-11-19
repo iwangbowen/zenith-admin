@@ -22,7 +22,7 @@ import {
   TRIGGER_TYPE_OPTIONS,
 } from '../constants';
 import ApproverSettingsTab from './tabs/ApproverSettingsTab';
-import { resetAssigneePropsForType, sanitizeAssigneePropsForWrite } from '../assignee-props';
+import { resetAssigneePropsForType } from '../assignee-props';
 import FormPermissionTab from './tabs/FormPermissionTab';
 import ApprovalRequirementsTab from './tabs/ApprovalRequirementsTab';
 import ActionButtonsTab from './tabs/ActionButtonsTab';
@@ -265,10 +265,9 @@ export default function NodeConfigDrawer({
       }
     }
     setNodeKeyError('');
-    const normalizedProps = typeof props.assigneeType === 'string' ? sanitizeAssigneePropsForWrite(props) : props;
     const nextProps = node.type === 'approver'
-      ? { ...normalizedProps, actionButtons: normalizeActionButtons(normalizedProps.actionButtons as ActionButtonsConfig | undefined) }
-      : normalizedProps;
+      ? { ...props, actionButtons: normalizeActionButtons(props.actionButtons as ActionButtonsConfig | undefined) }
+      : props;
     onSave(node.id, { name, key: trimmedKey, props: nextProps });
   };
 

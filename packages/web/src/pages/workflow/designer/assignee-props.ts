@@ -40,13 +40,18 @@ const SOURCE_FIELDS = [
 
 type SourceField = typeof SOURCE_FIELDS[number];
 
-const ACTIVE_FIELDS: Partial<Record<AssigneeType, readonly SourceField[]>> = {
+const ACTIVE_FIELDS: Record<AssigneeType, readonly SourceField[]> = {
   user: ['assigneeIds', 'assigneeNames'],
   role: ['roleIds', 'roleNames'],
+  department: [],
   post: ['postIds', 'postNames'],
   deptMember: ['deptMemberDeptIds', 'deptMemberDeptNames', 'deptMemberIncludeChildren'],
   userGroup: ['userGroupIds', 'userGroupNames'],
+  initiator: [],
+  startUserDeptResponsible: [],
+  initiatorSelect: [],
   initiatorSelectScope: ['selectScopeType', 'selectScopeIds'],
+  approverSelect: ['selectScopeType', 'selectScopeIds'],
   formUser: ['formUserField'],
   formDepartment: ['formDeptField', 'formDeptHeadLevel'],
   manager: ['managerLevel'],
@@ -58,7 +63,7 @@ const ACTIVE_FIELDS: Partial<Record<AssigneeType, readonly SourceField[]>> = {
 };
 
 function sourceFieldsFor(type: AssigneeType): readonly SourceField[] {
-  return ACTIVE_FIELDS[type] ?? [];
+  return ACTIVE_FIELDS[type];
 }
 
 /** 清掉切换来源后不再属于当前来源的配置，避免 UI 临时状态互相污染。 */
