@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fileContract } from '@zenith/shared/platform';
 import { api } from '@/lib/contract-query';
 import { scopedStorageKey } from '@/utils/storage';
-import { directMultipartUpload } from './direct-multipart-upload';
+import { directMultipartUpload, listDirectUploadResumeCandidates } from './direct-multipart-upload';
 
 vi.mock('@/lib/contract-query', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/lib/contract-query')>(),
@@ -120,6 +120,22 @@ describe('directMultipartUpload', () => {
       op === fileContract.directUploadAbort
       && (input as { params: { uploadId: string } }).params.uploadId === 'other-content-upload')).toBe(true);
     expect(apiMock.mock.calls.some(([op]) => op === fileContract.directUploadInit)).toBe(true);
+  });
+
+  it('lists resumable uploads from local checkpoints for the active storage config', async () => {
+    const key = scopedStorageKey('direct-multipart-upload:archive.zip:104:123:7');
+    localStorage.setItem(key, JSON.stringify({ uploadId: 'pending-upload', fileHash: 'f'.repeat(64) }));
+
+    const candidates = await listDirectUploadResumeCandidates(7);
+
+    expect(candidates).toEqual([{
+      fileName: 'archive.zip',
+      fileSize: 104,
+      lastModified: 123,
+      receivedParts: 1,
+      totalParts: 3,
+    }]);
+    expect(apiMock.mock.calls.at(-1)?.[0]).toBe(fileContract.directUploadStatus);
   });
 
   it('sends Content-MD5 on each Kodo v2 block upload', async () => {

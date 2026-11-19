@@ -6,7 +6,7 @@ import {
 } from '@zenith/shared/platform';
 import { api } from '@/lib/contract-query';
 import { ApiError } from '@/lib/query';
-import { scopedStorageKey } from '@/utils/storage';
+import { scopedStorageKey, storageNamespace } from '@/utils/storage';
 import { CHUNKED_UPLOAD_CANCELLED } from './chunked-upload';
 
 const PART_CONCURRENCY = 3;
@@ -26,9 +26,69 @@ interface DirectUploadCheckpoint {
   fileHash: string;
 }
 
+export interface DirectUploadResumeCandidate {
+  fileName: string;
+  fileSize: number;
+  lastModified: number;
+  receivedParts: number;
+  totalParts: number;
+}
+
 function resumeKey(file: File, storageConfigId?: number) {
   const fingerprint = `${file.name}:${file.size}:${file.lastModified}:${storageConfigId ?? 'default'}`;
   return scopedStorageKey(`${RESUME_KEY_PREFIX}${fingerprint}`);
+}
+
+export async function listDirectUploadResumeCandidates(storageConfigId?: number): Promise<DirectUploadResumeCandidate[]> {
+  const keys: string[] = [];
+  for (let index = 0; index < localStorage.length; index++) {
+    const key = localStorage.key(index);
+    if (!key) continue;
+    const logicalKey = key.startsWith(`${storageNamespace}:`) ? key.slice(storageNamespace.length + 1) : key;
+    if (logicalKey.startsWith(RESUME_KEY_PREFIX)) keys.push(key);
+  }
+
+  const candidates: DirectUploadResumeCandidate[] = [];
+  for (const listedKey of keys) {
+    const logicalKey = listedKey.startsWith(`${storageNamespace}:`)
+      ? listedKey.slice(storageNamespace.length + 1)
+      : listedKey;
+    const fingerprint = logicalKey.slice(RESUME_KEY_PREFIX.length);
+    const storageSeparator = fingerprint.lastIndexOf(':');
+    const lastModifiedSeparator = fingerprint.lastIndexOf(':', storageSeparator - 1);
+    const sizeSeparator = fingerprint.lastIndexOf(':', lastModifiedSeparator - 1);
+    if (storageSeparator < 0 || lastModifiedSeparator < 0 || sizeSeparator < 0) continue;
+
+    const fileName = fingerprint.slice(0, sizeSeparator);
+    const fileSize = Number(fingerprint.slice(sizeSeparator + 1, lastModifiedSeparator));
+    const lastModified = Number(fingerprint.slice(lastModifiedSeparator + 1, storageSeparator));
+    const savedStorageId = fingerprint.slice(storageSeparator + 1);
+    if (!fileName || !Number.isFinite(fileSize) || !Number.isFinite(lastModified)) continue;
+    if (storageConfigId !== undefined && savedStorageId !== String(storageConfigId)) continue;
+
+    const fullKey = scopedStorageKey(logicalKey);
+    try {
+      const checkpoint = JSON.parse(localStorage.getItem(fullKey) ?? 'null') as DirectUploadCheckpoint | null;
+      if (!checkpoint?.uploadId) continue;
+      const status = await api(fileContract.directUploadStatus, {
+        params: { uploadId: checkpoint.uploadId },
+      }, { silent: true });
+      if (status.status !== 'uploading') {
+        localStorage.removeItem(fullKey);
+        continue;
+      }
+      candidates.push({
+        fileName,
+        fileSize,
+        lastModified,
+        receivedParts: status.received.length,
+        totalParts: status.totalChunks,
+      });
+    } catch (error) {
+      if (error instanceof ApiError && error.code === 404) localStorage.removeItem(fullKey);
+    }
+  }
+  return candidates;
 }
 
 function expectedPartSize(fileSize: number, chunkSize: number, partNumber: number) {

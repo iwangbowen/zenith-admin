@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { FileDetailModal } from '@/components/FileDetailModal';
 import { UploadQueuePanel, type UploadQueueItem } from '@/components/UploadQueuePanel';
 import { Button, Checkbox, List, Pagination, Space, Tabs, TabPane, Toast, Typography } from '@douyinfe/semi-ui';
-import { Plus, FolderDown, LayoutGrid, List as ListIcon, X } from 'lucide-react';
+import { Plus, FolderDown, LayoutGrid, List as ListIcon, RefreshCw, X } from 'lucide-react';
 import type { ManagedFile } from '@zenith/shared/platform';
 import { FILE_STORAGE_PROVIDERS, FILE_STORAGE_PROVIDER_OPTIONS, FILE_TYPE_FILTERS, FILE_TYPE_FILTER_OPTIONS, fileContract } from '@zenith/shared/platform';
 import { enumValueOf } from '@zenith/shared/core';
@@ -39,6 +39,7 @@ import { request } from '@/utils/request';
 import { formatBytes } from '@zenith/shared/core';
 import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search-filters';
 import { useFilterQuery } from '@/hooks/useFilterQuery';
+import { listDirectUploadResumeCandidates, type DirectUploadResumeCandidate } from '@/utils/direct-multipart-upload';
 const { Text } = Typography;
 
 interface UploadItem { uid: string; name: string; size: number; progress: number; status: 'pending' | 'uploading' | 'success' | 'error' | 'cancelled'; errorMsg?: string }
@@ -127,6 +128,7 @@ export default function FilesPage() {
   /** 区分"页面内点击切换"与"偏好面板外部修改"，防止双重请求 */
   const isInternalToggleRef = useRef(false);
   const [uploadItems, setUploadItems] = useState<UploadItem[]>([]);
+  const [resumeCandidates, setResumeCandidates] = useState<DirectUploadResumeCandidate[]>([]);
   const uploadControllersRef = useRef(new Map<string, AbortController>());
   /** 本批上传的完成提示只发一次（面板常驻不再靠关闭弹窗去重） */
   const uploadNotifiedRef = useRef(false);
@@ -168,6 +170,18 @@ export default function FilesPage() {
   const detailQuery = useFileDetail(detailFile?.id, !!detailFile);
   const displayedDetailFile = detailQuery.data ?? detailFile;
   const detailFileLoading = detailQuery.isFetching;
+
+  useEffect(() => {
+    if (import.meta.env.VITE_DEMO_MODE === 'true' || defaultStorageConfig?.uploadMode !== 'browser-direct' || !defaultStorageConfig.id) {
+      setResumeCandidates([]);
+      return;
+    }
+    let active = true;
+    void listDirectUploadResumeCandidates(defaultStorageConfig.id)
+      .then((candidates) => { if (active) setResumeCandidates(candidates); })
+      .catch(() => { if (active) setResumeCandidates([]); });
+    return () => { active = false; };
+  }, [defaultStorageConfig?.id, defaultStorageConfig?.uploadMode]);
 
   const toggleViewMode = (mode: 'list' | 'grid') => {
     if (!canEditPreference('filesViewMode')) return;
@@ -253,6 +267,10 @@ export default function FilesPage() {
     const files = Array.from(event.target.files ?? []);
     event.target.value = '';
     if (files.length === 0) return;
+    setResumeCandidates((candidates) => candidates.filter((candidate) =>
+      !files.some((file) => file.name === candidate.fileName
+        && file.size === candidate.fileSize
+        && file.lastModified === candidate.lastModified)));
     const items: UploadItem[] = files.map((f, i) => ({ uid: `${f.name}-${Date.now()}-${i}`, name: f.name, size: f.size, progress: 0, status: 'pending' as const }));
     uploadControllersRef.current.clear();
     uploadNotifiedRef.current = false;
@@ -460,6 +478,20 @@ export default function FilesPage() {
           />
         </Space>}
       </div>
+
+      {resumeCandidates.length > 0 && (
+        <div className="files-resume-prompt" role="status">
+          <Text ellipsis={{ showTooltip: true }}>
+            待续传：
+            {resumeCandidates.slice(0, 2).map((candidate) =>
+              `${candidate.fileName}（${candidate.receivedParts}/${candidate.totalParts} 片）`).join('、')}
+            {resumeCandidates.length > 2 ? ` 等 ${resumeCandidates.length} 个文件` : ''}
+          </Text>
+          <Button size="small" type="tertiary" theme="light" icon={<RefreshCw size={14} />} onClick={handlePickFile}>
+            选择文件续传
+          </Button>
+        </div>
+      )}
 
       <UploadQueuePanel items={queueItems} onCancel={handleCancelUpload} onClear={() => setUploadItems([])} />
 

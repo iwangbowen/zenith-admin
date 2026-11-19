@@ -6,6 +6,28 @@
   justify-content: space-between;
 }
 
+.files-resume-prompt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-left: 3px solid var(--semi-color-primary);
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  background: var(--semi-color-fill-0);
+}
+
+.files-resume-prompt > .semi-typography {
+  min-width: 0;
+}
+
+@media (width <= 640px) {
+  .files-resume-prompt {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
 /* Grid view */
 .files-grid-select-bar {
   padding: 4px 2px 8px;
