@@ -199,6 +199,9 @@ export const workflowSimulationTimelineItemSchema = z.object({
   detail: z.string().optional(),
   nextNodeKeys: z.array(z.string()).optional(),
   estimatedMinutes: z.int().optional().meta({ description: '该步骤预估耗时（分钟），自动 / 瞬时节点为 0' }),
+  executionPath: z.string().optional(),
+  taskId: z.int().optional(),
+  virtualTime: z.number().optional(),
 }).meta({ id: 'WorkflowSimulationTimelineItem' });
 
 export type WorkflowSimulationTimelineItem = z.infer<typeof workflowSimulationTimelineItemSchema>;
@@ -259,6 +262,16 @@ export const workflowSimulationResultSchema = z.object({
   pathSignature: z.array(z.string()),
   estimatedDurationMinutes: z.int().meta({ description: '路径预估总耗时（分钟，各步骤累加）' }),
   blockingPoints: z.array(workflowSimulationBlockingPointSchema),
+  runtime: z.object({
+    now: z.number(),
+    tasks: z.array(z.object({
+      id: z.int(), executionPath: z.string(), nodeKey: z.string(), nodeName: z.string(),
+      nodeType: z.string(), assigneeId: z.int().nullable(), status: z.string(),
+      waitReason: z.string().nullable(), requirements: z.array(z.string()),
+      selectableNext: z.array(z.object({ nodeKey: z.string(), label: z.string(), users: z.array(approverRefSchema) })),
+    })),
+    executions: z.array(z.object({ path: z.string(), status: z.string(), formData: z.record(z.string(), z.unknown()) })),
+  }).optional(),
 }).meta({ id: 'WorkflowSimulationResult' });
 
 export type WorkflowSimulationResult = z.infer<typeof workflowSimulationResultSchema>;

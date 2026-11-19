@@ -1,3 +1,4 @@
+import { runtimeTimeoutAction } from '../../../services/workflow/runtime/effect-policy';
 import { eq } from 'drizzle-orm';
 import type { WorkflowTimeoutConfig } from '@zenith/shared/workflow';
 import { db } from '../../../db';
@@ -80,11 +81,12 @@ async function handle({ payload }: WorkflowJobContext): Promise<void> {
   const cfg = snapshotNodeConfig(inst, task.nodeKey)?.timeout;
   if (!cfg || !cfg.enabled) throw new WorkflowJobSkip('节点超时配置已移除');
 
-  if (cfg.action === 'autoApprove') {
+  const effectiveAction = runtimeTimeoutAction(cfg, remindCount);
+  if (effectiveAction === 'autoApprove' && cfg.action === 'autoApprove') {
     await approveTaskCore(task, inst, '系统超时自动通过', ACTOR);
     return;
   }
-  if (cfg.action === 'autoReject') {
+  if (effectiveAction === 'autoReject' && cfg.action === 'autoReject') {
     await rejectTaskCore(task, inst, '系统超时自动拒绝', ACTOR);
     return;
   }
@@ -92,7 +94,7 @@ async function handle({ payload }: WorkflowJobContext): Promise<void> {
   // action = 'remind'
   const nextCount = remindCount + 1;
   const maxRemind = cfg.remindCount ?? 3;
-  if (nextCount < maxRemind) {
+  if (effectiveAction === 'remind') {
     logger.info('workflow task timeout remind', { taskId, instanceId: inst.id, nextCount, maxRemind });
     // 复用催办事件链路，向处理人发送站内信与 WS 提醒。
     await runWorkflowJobStep('timeout-reminder', async (tx) => {

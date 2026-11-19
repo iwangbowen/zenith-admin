@@ -1,3 +1,4 @@
+import { runtimeFailureDisposition } from '../runtime/effect-policy';
 import { settleInstanceInTx } from './settlement';
 import { requireMonitorWorkflowInstance } from '../workflow-access';
 import { createStandaloneActivation } from './approval-state';
@@ -146,6 +147,7 @@ async function applyNodeFailurePolicy(input: {
 }): Promise<boolean> {
   const { policy, flowData } = input;
   const errorComment = `[节点异常] ${input.nodeName}：${input.errorMessage}`;
+  const disposition = runtimeFailureDisposition(policy, flowData.nodes.some(node => node.data.key === policy.fallbackNodeKey));
 
   await workflowTransaction(async (tx) => {
     const updated = await (async () => {
@@ -186,21 +188,21 @@ async function applyNodeFailurePolicy(input: {
         newTasks: materialized.createdTasks,
       });
 
-      if (policy.action === 'terminate') {
+      if (disposition === 'terminate') {
         await recordCompensation(tx, { instanceId: lockedInst.id, nodeKey: input.nodeKey, nodeName: input.nodeName, errorMessage: input.errorMessage, action: 'terminate', status: 'terminated', tenantId: lockedInst.tenantId });
         const row = await markInstanceRejected(tx, { instanceId: lockedInst.id, comment: errorComment, killTokens: true, actorId: input.actor.userId });
         return { row, affectedTasks, newTasks: [] as typeof workflowTasks.$inferSelect[], repairTask: null, finished: false, rejected: true };
       }
 
       // 继续：越过失败节点推进
-      if (policy.action === 'continue') {
+      if (disposition === 'continue' && policy.action === 'continue') {
         await recordCompensation(tx, { instanceId: lockedInst.id, nodeKey: input.nodeKey, nodeName: input.nodeName, errorMessage: input.errorMessage, action: 'continue', status: 'resolved', tenantId: lockedInst.tenantId });
         const materialized = await advanceAndMaterialize({ kind: 'advanceNode', nodeKey: input.nodeKey }, advanceCtx);
         const settled = await settleFromMaterialized(materialized);
         return { ...settled, affectedTasks, repairTask: null };
       }
 
-      if (policy.action === 'fallback' && policy.fallbackNodeKey) {
+      if (disposition === 'jump' && policy.fallbackNodeKey) {
         const target = flowData.nodes.find((n) => n.data.key === policy.fallbackNodeKey);
         if (target) {
           await recordCompensation(tx, { instanceId: lockedInst.id, nodeKey: input.nodeKey, nodeName: input.nodeName, errorMessage: input.errorMessage, action: 'fallback', status: 'resolved', tenantId: lockedInst.tenantId });

@@ -13,6 +13,7 @@ export const workflowSimulationCaseSchema = z.object({
   starterUserId: z.int().nullable(),
   formData: z.record(z.string(), z.unknown()),
   decisions: z.array(workflowSimulationDecisionSchema),
+  runtimeConfig: saveWorkflowSimulationCaseSchema.shape.runtimeConfig,
   tenantId: z.int().nullable(),
   ...auditFieldsSchema,
   createdAt: z.string(),

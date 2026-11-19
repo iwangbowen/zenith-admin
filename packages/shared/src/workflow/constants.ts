@@ -394,7 +394,7 @@ export const WORKFLOW_COMPENSATION_STATUSES = ['pending', 'resolved', 'terminate
 
 export const WORKFLOW_COMPENSATION_ACTION_STATUSES = ['none', 'pending', 'running', 'succeeded', 'failed'] as const;
 
-export const WORKFLOW_SIMULATION_RESULT_STATUSES = ['finished', 'rejected', 'waiting', 'blocked', 'invalid', 'stepLimit'] as const;
+export const WORKFLOW_SIMULATION_RESULT_STATUSES = ['finished', 'rejected', 'returned', 'waiting', 'blocked', 'invalid', 'stepLimit'] as const;
 
 export const WORKFLOW_SIMULATION_TIMELINE_STATUSES = ['entered', 'waiting', 'approved', 'rejected', 'autoApproved', 'skipped', 'blocked'] as const;
 

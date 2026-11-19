@@ -333,6 +333,7 @@ export const workflowSimulationCases = pgTable('workflow_simulation_cases', {
   starterUserId: integer().references(() => users.id, { onDelete: 'set null' }),
   formData: jsonb().notNull().default(sql`'{}'::jsonb`),
   /** 仿真决策序列（逐节点 approve/reject/skip/wait + reason + formPatch） */
+  runtimeConfig: jsonb().$type<{ now: number; seed: number; selectedInitiatorApprovers: Record<string, number[]> }>().notNull(),
   decisions: jsonb().notNull().default(sql`'[]'::jsonb`),
   tenantId: tenantIdColumn(),
   ...auditColumns(),

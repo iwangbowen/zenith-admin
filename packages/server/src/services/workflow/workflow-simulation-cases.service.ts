@@ -22,6 +22,7 @@ function mapCase(row: WorkflowSimulationCaseRow): WorkflowSimulationCase {
     starterUserId: row.starterUserId ?? null,
     formData: (row.formData ?? {}) as Record<string, unknown>,
     decisions: (row.decisions ?? []) as WorkflowSimulationDecision[],
+    runtimeConfig: row.runtimeConfig,
     tenantId: row.tenantId ?? null,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
@@ -57,6 +58,7 @@ export async function saveSimulationCase(input: SaveWorkflowSimulationCaseInput)
         starterUserId: input.starterUserId ?? null,
         formData,
         decisions,
+        runtimeConfig: input.runtimeConfig,
         tenantId: getCreateTenantId(user),
         createdBy: user.userId,
         updatedBy: user.userId,
@@ -64,7 +66,7 @@ export async function saveSimulationCase(input: SaveWorkflowSimulationCaseInput)
       // 同名（同一定义内）覆盖：更新场景内容而非新增
       .onConflictDoUpdate({
         target: [workflowSimulationCases.definitionId, workflowSimulationCases.name],
-        set: { starterUserId: input.starterUserId ?? null, formData, decisions, updatedBy: user.userId, updatedAt: new Date() },
+        set: { starterUserId: input.starterUserId ?? null, formData, decisions, runtimeConfig: input.runtimeConfig, updatedBy: user.userId, updatedAt: new Date() },
       })
       .returning();
     return mapCase(row);

@@ -2,13 +2,12 @@
 import { db } from '../../../db';
 import { eq } from 'drizzle-orm';
 import { workflowInstances, workflowTasks } from '../../../db/schema';
-import { type TaskAction } from '../../../lib/workflow-engine';
 import type { WorkflowFlowData } from '@zenith/shared/workflow';
 import type { DbExecutor } from '../../../db/types';
 import { enqueueJob } from '../../../lib/workflow-jobs/engine';
 import { computeTimeoutAt } from '../../../lib/workflow-timeout';
 import type { WorkflowTriggerNodeConfig } from '@zenith/shared/workflow';
-import dayjs from 'dayjs';
+import { runtimeDelayWakeAt } from '../runtime/clock';
 
 /**
  * 子实例结束后入队 subprocess_join 作业唤醒/汇聚父任务（不同步直接调用 resumeParentSubProcess）。
@@ -25,23 +24,6 @@ export async function enqueueSubprocessJoin(childInst: typeof workflowInstances.
     idempotencyKey: `subprocess_join:${childInst.parentTaskId}:${childInst.id}`,
     tenantId: childInst.tenantId ?? null,
   }, executor);
-}
-
-function computeDelayWakeAt(nodeConfig: TaskAction['nodeConfig'], formData: Record<string, unknown>): Date {
-  const delayType = nodeConfig.delayType ?? 'fixed';
-  if (delayType === 'toDate') {
-    const key = nodeConfig.targetDate;
-    const raw = key ? formData[key] : undefined;
-    if (raw) {
-      const d = dayjs(raw as string | number | Date);
-      if (d.isValid()) return d.toDate();
-    }
-    return new Date();
-  }
-  const value = Number(nodeConfig.delayValue ?? 0);
-  const unit = (nodeConfig.delayUnit ?? 'hour') as 'minute' | 'hour' | 'day';
-  if (!Number.isFinite(value) || value <= 0) return new Date();
-  return dayjs().add(value, unit).toDate();
 }
 
 /** 触发器最大尝试次数：continue=1，block=1+maxRetries（封顶 11） */
@@ -71,7 +53,7 @@ export async function armTaskAsyncJobs(
     return;
   }
   if (task.nodeType === 'delay' && task.status === 'waiting') {
-    await enqueueJob({ ...base, jobType: 'delay_wake', runAt: computeDelayWakeAt(cfg, (inst.formData ?? {}) as Record<string, unknown>), maxAttempts: 3, idempotencyKey: `delay_wake:${task.id}` }, executor);
+    await enqueueJob({ ...base, jobType: 'delay_wake', runAt: runtimeDelayWakeAt(cfg, (inst.formData ?? {}) as Record<string, unknown>), maxAttempts: 3, idempotencyKey: `delay_wake:${task.id}` }, executor);
     return;
   }
   if (task.nodeType === 'trigger') {

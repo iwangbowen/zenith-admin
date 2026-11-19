@@ -32,6 +32,8 @@ import { cachedRuleRuntime } from './rules-runtime-cache';
 export interface DecideOptions {
   /** 调用方标识（点分小写，如 workflow.gateway / member.coupon），用于执行留痕与消费方分析 */
   caller: string;
+  /** Disable execution history for an isolated simulation. */
+  record?: boolean;
   /** optional=资产不可用不阻断（默认）；required=资产不可用抛 400 */
   mode?: 'optional' | 'required';
   /** 执行留痕来源，默认 runtime */
@@ -106,7 +108,7 @@ async function decideTable(ref: RuleRef, facts: Record<string, unknown>, opts: D
   const snapshot = await resolveRuntimeDecisionTable(ref.key, { tenantId: opts.tenantId, version: pinned });
   if (!snapshot) return unavailable(ref, mode);
   const res = evaluateDecisionTable(snapshot, facts);
-  recordRuleExecution({
+  if (opts.record !== false) recordRuleExecution({
     refKind: 'table', refId: snapshot.tableId, ruleKey: ref.key, version: snapshot.version,
     caller: opts.caller, source: opts.source ?? 'runtime',
     bizRef: opts.bizRef ?? null,
@@ -135,7 +137,7 @@ async function decideFlow(ref: RuleRef, facts: Record<string, unknown>, opts: De
     (k) => resolveRuntimeDecisionTable(k, { tenantId: opts.tenantId }),
     (trace, index, scopeAtEval) => {
       if (trace.skipped) return;
-      recordRuleExecution({
+      if (opts.record !== false) recordRuleExecution({
         refKind: 'table', refId: null, ruleKey: trace.tableKey, version: null,
         caller: opts.caller, source: opts.source ?? 'runtime',
         bizRef: `${stepBase}#step${index + 1}`.slice(0, 128),
@@ -146,7 +148,7 @@ async function decideFlow(ref: RuleRef, facts: Record<string, unknown>, opts: De
     },
   );
   const matched = res.steps.some((s) => !s.skipped && s.matched);
-  recordRuleExecution({
+  if (opts.record !== false) recordRuleExecution({
     refKind: 'flow', refId: row.id, ruleKey: ref.key, version: row.version,
     caller: opts.caller, source: opts.source ?? 'runtime',
     bizRef: opts.bizRef ?? null,
@@ -163,7 +165,7 @@ async function decideScorecard(ref: RuleRef, facts: Record<string, unknown>, opt
   if (!row) return unavailable(ref, mode);
   const res = evaluateScorecard(row.publishedSnapshot as ScorecardLike, snapshotRuleScope(facts));
   const outputs = { totalScore: res.totalScore, baseScore: res.baseScore, grade: res.grade, decision: res.decision };
-  recordRuleExecution({
+  if (opts.record !== false) recordRuleExecution({
     refKind: 'scorecard', refId: row.id, ruleKey: ref.key, version: row.version,
     caller: opts.caller, source: opts.source ?? 'runtime',
     bizRef: opts.bizRef ?? null,
@@ -187,7 +189,7 @@ async function decideList(ref: RuleRef, opts: DecideOptions, mode: 'optional' | 
   };
   // 名单判定量大且未命中是常态，仅命中时留痕
   if (matched) {
-    recordRuleExecution({
+    if (opts.record !== false) recordRuleExecution({
       refKind: 'list', refId: list.id, ruleKey: ref.key, version: null,
       caller: opts.caller, source: opts.source ?? 'runtime',
       bizRef: opts.bizRef ?? null,

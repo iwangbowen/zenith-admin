@@ -78,6 +78,13 @@
       "when": 1795002825356,
       "tag": "0010_workflow_lifecycle_ledger",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1795059450379,
+      "tag": "0011_workflow_simulation_runtime_config",
+      "breakpoints": true
     }
   ]
 }

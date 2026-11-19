@@ -6,51 +6,16 @@ import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { users, workflowDefinitions } from '../../db/schema';
 import { currentUser } from '../../lib/context';
-import { edgeHasCondition, evaluateCondition, evaluateConditionGroups, validateFlowData, type AdvanceResult, type TaskAction } from '../../lib/workflow-engine';
-import { advanceTokens, type AdvanceTrigger, type BranchPath } from '../../lib/workflow-token-engine';
+import { edgeHasCondition, evaluateCondition, evaluateConditionGroups, validateFlowData } from '../../lib/workflow-engine';
+import { MemoryWorkflowRuntime } from './runtime/memory';
+import { createSimulationFacts } from './runtime/simulation-facts';
 import { analyzeWorkflowHealth } from '../../lib/workflow-health';
 import { tenantCondition } from '../../lib/tenant';
-import { buildStarterContext, resolveAdminUserId, resolveAssigneeIds } from './workflow-assignee-resolver.service';
-import { applyPreviewAssigneePolicy } from './workflow-path-prediction';
+import { buildStarterContext } from './workflow-assignee-resolver.service';
 import { resolveFormSnapshot } from './workflow-forms.service';
-import type { SimulateWorkflowInput, WorkflowConditionGroup, WorkflowEdge, WorkflowEdgeCondition, WorkflowFlowData, WorkflowHealthCheckInput, WorkflowDefinitionHealthReport, WorkflowNodeConfig, WorkflowSimulationEdgeResult, WorkflowSimulationHealthIssue, WorkflowSimulationBlockingPoint, WorkflowSimulationNodeState, WorkflowSimulationResult, WorkflowSimulationTimelineItem, WorkflowStarterContext } from '@zenith/shared/workflow';
+import type { SimulateWorkflowInput, WorkflowConditionGroup, WorkflowEdge, WorkflowEdgeCondition, WorkflowFlowData, WorkflowHealthCheckInput, WorkflowDefinitionHealthReport, WorkflowNodeConfig, WorkflowSimulationEdgeResult, WorkflowSimulationHealthIssue, WorkflowSimulationBlockingPoint, WorkflowSimulationResult, WorkflowSimulationTimelineItem, WorkflowStarterContext } from '@zenith/shared/workflow';
 import { requireRow } from '../../lib/db-assert';
-import { resolveUserNames } from '../../lib/user-nicknames';
 import { buildWhere } from '../../lib/where-helpers';
-
-type SimulatedRuntimeStatus = 'pending' | 'waiting' | 'approved' | 'rejected' | 'skipped';
-type SimulationDecision = NonNullable<SimulateWorkflowInput['decisions']>[number];
-
-interface SimulatedTask {
-  nodeKey: string;
-  nodeName: string;
-  nodeType: WorkflowNodeConfig['type'];
-  assigneeId: number | null;
-  status: SimulatedRuntimeStatus;
-  nodeConfig: WorkflowNodeConfig;
-  reason?: string;
-}
-
-interface SimulationContext {
-  flowData: WorkflowFlowData;
-  formData: Record<string, unknown>;
-  initiatorId: number;
-  starter: WorkflowStarterContext;
-  maxSteps: number;
-  timeline: WorkflowSimulationTimelineItem[];
-  nodeStates: Record<string, WorkflowSimulationNodeState>;
-  completedKeys: Set<string>;
-  pendingTasks: SimulatedTask[];
-  /** 内存执行 Token（与运行时同引擎，保证仿真 join/结束行为所见即所得） */
-  tokens: Array<{ id: number; nodeKey: string; branchPath: BranchPath }>;
-  tokenSeq: number;
-  warnings: string[];
-  visitedNodeKeys: Set<string>;
-  decisionsByNode: Map<string, SimulationDecision[]>;
-  terminalResult?: WorkflowSimulationResult['result'];
-}
-
-const BLOCKING_NODE_TYPES = new Set<WorkflowNodeConfig['type']>(['delay', 'trigger', 'subProcess']);
 
 function isWorkflowFlowData(value: unknown): value is WorkflowFlowData {
   if (!value || typeof value !== 'object') return false;
@@ -82,213 +47,6 @@ function findDefinition(definitionId: number) {
   return buildWhere(eq(workflowDefinitions.id, definitionId), tenantCondition(workflowDefinitions, currentUser()));
 }
 
-
-function appendTimeline(
-  ctx: SimulationContext,
-  item: Omit<WorkflowSimulationTimelineItem, 'step'>,
-): void {
-  ctx.timeline.push({ step: ctx.timeline.length + 1, ...item });
-}
-
-function markNode(
-  ctx: SimulationContext,
-  nodeKey: string,
-  state: WorkflowSimulationNodeState,
-): void {
-  ctx.nodeStates[nodeKey] = state;
-}
-
-async function expandTaskAction(
-  task: TaskAction,
-  ctx: SimulationContext,
-): Promise<SimulatedTask[]> {
-  if (task.autoStatus) {
-    return [{
-      nodeKey: task.nodeKey,
-      nodeName: task.nodeName,
-      nodeType: task.nodeType,
-      assigneeId: null,
-      status: task.autoStatus,
-      nodeConfig: task.nodeConfig,
-      reason: task.autoStatus === 'approved' ? '节点配置为自动通过' : '节点配置为自动拒绝',
-    }];
-  }
-
-  if (task.nodeType === 'delay') {
-    return [{
-      nodeKey: task.nodeKey,
-      nodeName: task.nodeName,
-      nodeType: task.nodeType,
-      assigneeId: null,
-      status: 'waiting',
-      nodeConfig: task.nodeConfig,
-      reason: '延迟器在仿真中按模拟等待处理',
-    }];
-  }
-
-  if (task.nodeType === 'trigger') {
-    const triggerType = task.nodeConfig.triggerConfig?.triggerType ?? 'webhook';
-    return [{
-      nodeKey: task.nodeKey,
-      nodeName: task.nodeName,
-      nodeType: task.nodeType,
-      assigneeId: null,
-      status: 'waiting',
-      nodeConfig: task.nodeConfig,
-      reason: `触发器(${triggerType})在仿真中不发起外呼`,
-    }];
-  }
-
-  if (task.nodeType === 'subProcess') {
-    return [{
-      nodeKey: task.nodeKey,
-      nodeName: task.nodeName,
-      nodeType: task.nodeType,
-      assigneeId: null,
-      status: 'waiting',
-      nodeConfig: task.nodeConfig,
-      reason: '子流程在仿真中不创建真实子实例',
-    }];
-  }
-
-  if (task.nodeType === 'ccNode') {
-    const assigneeIds = await resolveAssigneeIds(task.nodeConfig, {
-      initiatorId: ctx.initiatorId,
-      formData: ctx.formData,
-    });
-    return assigneeIds.map((id) => ({
-      nodeKey: task.nodeKey,
-      nodeName: task.nodeName,
-      nodeType: task.nodeType,
-      assigneeId: id,
-      status: 'skipped',
-      nodeConfig: task.nodeConfig,
-      reason: '抄送节点不阻塞流程',
-    }));
-  }
-
-  if (task.nodeType !== 'approve' && task.nodeType !== 'handler') {
-    return [{
-      nodeKey: task.nodeKey,
-      nodeName: task.nodeName,
-      nodeType: task.nodeType,
-      assigneeId: task.assigneeId,
-      status: 'approved',
-      nodeConfig: task.nodeConfig,
-    }];
-  }
-
-  const resolvedIds = await resolveAssigneeIds(task.nodeConfig, {
-    initiatorId: ctx.initiatorId,
-    formData: ctx.formData,
-  });
-  const policy = await applyPreviewAssigneePolicy(task.nodeConfig, resolvedIds, ctx.initiatorId, (config) =>
-    resolveAssigneeIds(config, { initiatorId: ctx.initiatorId, formData: ctx.formData }));
-  if (policy.policySkipped) {
-    return [{
-      nodeKey: task.nodeKey,
-      nodeName: task.nodeName,
-      nodeType: task.nodeType,
-      assigneeId: null,
-      status: 'approved',
-      nodeConfig: task.nodeConfig,
-      reason: policy.reason ?? '按规则自动跳过',
-    }];
-  }
-  const assigneeIds = policy.ids;
-  if (assigneeIds.length > 0) {
-    return assigneeIds.map((id) => ({
-      nodeKey: task.nodeKey,
-      nodeName: task.nodeName,
-      nodeType: task.nodeType,
-      assigneeId: id,
-      status: 'pending',
-      nodeConfig: task.nodeConfig,
-      ...(policy.reason ? { reason: policy.reason } : {}),
-    }));
-  }
-
-  const emptyStrategy = task.nodeConfig.emptyStrategy ?? 'autoApprove';
-  const emptyAssignToIds = task.nodeConfig.emptyAssignToIds ?? [];
-  if (emptyStrategy === 'assignTo' && emptyAssignToIds.length > 0) {
-    return emptyAssignToIds.map((id) => ({
-      nodeKey: task.nodeKey,
-      nodeName: task.nodeName,
-      nodeType: task.nodeType,
-      assigneeId: id,
-      status: 'pending',
-      nodeConfig: task.nodeConfig,
-      reason: '审批人为空，按配置转交指定人员',
-    }));
-  }
-  if (emptyStrategy === 'assignToAdmin') {
-    const adminId = await resolveAdminUserId();
-    if (adminId) {
-      return [{
-        nodeKey: task.nodeKey,
-        nodeName: task.nodeName,
-        nodeType: task.nodeType,
-        assigneeId: adminId,
-        status: 'pending',
-        nodeConfig: task.nodeConfig,
-        reason: '审批人为空，按配置转交管理员',
-      }];
-    }
-    return [{
-      nodeKey: task.nodeKey,
-      nodeName: task.nodeName,
-      nodeType: task.nodeType,
-      assigneeId: null,
-      status: 'rejected',
-      nodeConfig: task.nodeConfig,
-      reason: '审批人为空且未找到管理员，仿真按拒绝处理',
-    }];
-  }
-  if (emptyStrategy === 'reject') {
-    return [{
-      nodeKey: task.nodeKey,
-      nodeName: task.nodeName,
-      nodeType: task.nodeType,
-      assigneeId: null,
-      status: 'rejected',
-      nodeConfig: task.nodeConfig,
-      reason: '审批人为空，按配置自动拒绝',
-    }];
-  }
-  return [{
-    nodeKey: task.nodeKey,
-    nodeName: task.nodeName,
-    nodeType: task.nodeType,
-    assigneeId: null,
-    status: 'approved',
-    nodeConfig: task.nodeConfig,
-    reason: '审批人为空，按配置自动通过',
-  }];
-}
-
-async function materializeResult(result: AdvanceResult, ctx: SimulationContext): Promise<void> {
-  if (result.currentNodeKeys.length > 0) {
-    for (const key of result.currentNodeKeys) markNode(ctx, key, { status: 'active' });
-  }
-
-  for (const taskAction of result.tasksToCreate) {
-    const tasks = await expandTaskAction(taskAction, ctx);
-    ctx.pendingTasks.push(...tasks);
-    const hasRejected = tasks.some((task) => task.status === 'rejected');
-    const hasWaiting = tasks.some((task) => task.status === 'waiting' || task.status === 'pending');
-    if (hasRejected) {
-      markNode(ctx, taskAction.nodeKey, { status: 'error', message: tasks.find((task) => task.status === 'rejected')?.reason });
-    } else if (hasWaiting) {
-      markNode(ctx, taskAction.nodeKey, { status: 'active', message: tasks[0]?.reason });
-    } else {
-      markNode(ctx, taskAction.nodeKey, { status: 'done', message: tasks[0]?.reason });
-    }
-  }
-}
-
-function getNodeByKey(flowData: WorkflowFlowData, nodeKey: string): WorkflowNodeConfig | null {
-  return flowData.nodes.find((node) => node.data.key === nodeKey)?.data ?? null;
-}
 
 /** 网关类节点：其无条件出边才具有「默认兜底分支」语义 */
 const GATEWAY_NODE_TYPES = new Set(['exclusiveGateway', 'inclusiveGateway', 'parallelGateway', 'routeGateway']);
@@ -429,82 +187,6 @@ function buildEdgeResults(
     });
 }
 
-function buildDecisionMap(decisions: SimulateWorkflowInput['decisions']): Map<string, SimulationDecision[]> {
-  const map = new Map<string, SimulationDecision[]>();
-  for (const decision of decisions ?? []) {
-    const list = map.get(decision.nodeKey) ?? [];
-    list.push(decision);
-    map.set(decision.nodeKey, list);
-  }
-  return map;
-}
-
-function findDecision(task: SimulatedTask, ctx: SimulationContext): SimulationDecision | null {
-  const decisions = ctx.decisionsByNode.get(task.nodeKey) ?? [];
-  return decisions.find((decision) => !decision.assigneeId || decision.assigneeId === task.assigneeId) ?? null;
-}
-
-function attachNextNodeKeys(ctx: SimulationContext, result: AdvanceResult | null): void {
-  if (!result || ctx.timeline.length === 0) return;
-  const keys = [
-    ...result.currentNodeKeys,
-    ...result.tasksToCreate.map((task) => task.nodeKey),
-  ];
-  if (result.finished) {
-    const endKeys = ctx.flowData.nodes
-      .filter((node) => node.data.type === 'end')
-      .map((node) => node.data.key);
-    keys.push(...endKeys);
-  }
-  const nextNodeKeys = [...new Set(keys.filter(Boolean))];
-  if (nextNodeKeys.length === 0) return;
-  ctx.timeline[ctx.timeline.length - 1] = {
-    ...ctx.timeline[ctx.timeline.length - 1],
-    nextNodeKeys,
-  };
-}
-
-/** 仿真用 token 推进：维护内存 token 列表，复用运行时 token 引擎 → join/结束行为与真实运行态一致 */
-function simAdvance(ctx: SimulationContext, trigger: { kind: 'seed' } | { kind: 'advanceNode'; nodeKey: string }): AdvanceResult {
-  let engineTrigger: AdvanceTrigger;
-  if (trigger.kind === 'seed') {
-    engineTrigger = { type: 'seed' };
-  } else {
-    const tk = ctx.tokens.find((t) => t.nodeKey === trigger.nodeKey);
-    engineTrigger = tk
-      ? { type: 'advance', tokenId: tk.id, nodeKey: tk.nodeKey, branchPath: tk.branchPath }
-      : { type: 'continue', nodeKey: trigger.nodeKey, branchPath: [] };
-  }
-  const res = advanceTokens({
-    flowData: ctx.flowData,
-    formData: ctx.formData,
-    starter: ctx.starter,
-    liveTokens: ctx.tokens,
-    trigger: engineTrigger,
-    completedNodeKeys: ctx.completedKeys,
-  });
-  const consumed = new Set(res.ops.consume);
-  ctx.tokens = ctx.tokens.filter((t) => !consumed.has(t.id));
-  for (const spec of res.ops.create) {
-    ctx.tokens.push({ id: ctx.tokenSeq++, nodeKey: spec.nodeKey, branchPath: spec.branchPath });
-  }
-  for (const pending of res.pendingDecisions) {
-    ctx.warnings.push(`节点「${pending.nodeKey}」使用决策资产，仿真不执行真实规则，后续路径待定`);
-    ctx.nodeStates[pending.nodeKey] = { status: 'pending', message: '规则结果待定，仿真不执行真实决策' };
-  }
-  return { tasksToCreate: res.tasksToCreate, currentNodeKeys: res.activeNodeKeys, finished: res.finished, rejected: res.rejected };
-}
-
-/**
- * 节点完成后是否继续推进：token 存在 = 引擎在此停顿的 frontier（消费并推进）；
- * 无 token = 引擎已就地走过（auto / 抄送 / 非阻塞触发器），不可重复推进。
- */
-function continuePast(ctx: SimulationContext, task: SimulatedTask): AdvanceResult | null {
-  const hasToken = ctx.tokens.some((t) => t.nodeKey === task.nodeKey);
-  if (!hasToken) return null;
-  return simAdvance(ctx, { kind: 'advanceNode', nodeKey: task.nodeKey });
-}
-
 function appendFlowHealthIssue(
   issues: WorkflowSimulationHealthIssue[],
   issue: WorkflowSimulationHealthIssue,
@@ -601,130 +283,6 @@ function buildHealthIssues(flowData: WorkflowFlowData, validationErrors: string[
   }
 
   return issues;
-}
-
-async function completeTask(task: SimulatedTask, ctx: SimulationContext): Promise<AdvanceResult | null> {
-  const nameMap = task.assigneeId ? await resolveUserNames([task.assigneeId]) : new Map<number, string>();
-  const assignees = task.assigneeId
-    ? [{ id: task.assigneeId, name: nameMap.get(task.assigneeId) ?? `用户#${task.assigneeId}` }]
-    : [];
-  const decision = findDecision(task, ctx);
-  if (decision?.formPatch) Object.assign(ctx.formData, decision.formPatch);
-
-  ctx.visitedNodeKeys.add(task.nodeKey);
-
-  if (task.status === 'rejected') {
-    appendTimeline(ctx, {
-      nodeKey: task.nodeKey,
-      nodeName: task.nodeName,
-      nodeType: task.nodeType,
-      status: 'rejected',
-      assignees,
-      decision: 'auto',
-      reason: task.reason ?? '节点自动拒绝',
-      detail: '节点配置或空审批人策略触发了自动拒绝',
-    });
-    markNode(ctx, task.nodeKey, { status: 'error', message: task.reason });
-    ctx.terminalResult = 'rejected';
-    return null;
-  }
-
-  if (task.status === 'approved' || task.status === 'skipped') {
-    appendTimeline(ctx, {
-      nodeKey: task.nodeKey,
-      nodeName: task.nodeName,
-      nodeType: task.nodeType,
-      status: task.status === 'approved' ? 'autoApproved' : 'skipped',
-      assignees,
-      decision: 'auto',
-      reason: task.reason,
-      detail: task.status === 'approved' ? '无需人工操作，仿真自动继续推进' : '该节点不阻塞流程，仿真自动跳过',
-    });
-    ctx.completedKeys.add(task.nodeKey);
-    markNode(ctx, task.nodeKey, { status: 'done', message: task.reason });
-    return continuePast(ctx, task);
-  }
-
-  if (decision?.action === 'reject') {
-    const reason = decision.reason ?? '仿真手动拒绝';
-    appendTimeline(ctx, {
-      nodeKey: task.nodeKey,
-      nodeName: task.nodeName,
-      nodeType: task.nodeType,
-      status: 'rejected',
-      assignees,
-      decision: 'reject',
-      reason,
-      detail: '按当前仿真用例的预设动作终止流程',
-    });
-    markNode(ctx, task.nodeKey, { status: 'error', message: reason });
-    ctx.terminalResult = 'rejected';
-    return null;
-  }
-
-  if (decision?.action === 'wait') {
-    const reason = decision.reason ?? '仿真手动暂停在此节点';
-    appendTimeline(ctx, {
-      nodeKey: task.nodeKey,
-      nodeName: task.nodeName,
-      nodeType: task.nodeType,
-      status: 'waiting',
-      assignees,
-      decision: 'wait',
-      reason,
-      detail: '仿真按用户选择停在当前节点，便于观察待办状态',
-    });
-    markNode(ctx, task.nodeKey, { status: 'active', message: reason });
-    ctx.terminalResult = 'waiting';
-    return null;
-  }
-
-  if (decision?.action === 'skip') {
-    const reason = decision.reason ?? '仿真手动跳过';
-    appendTimeline(ctx, {
-      nodeKey: task.nodeKey,
-      nodeName: task.nodeName,
-      nodeType: task.nodeType,
-      status: 'skipped',
-      assignees,
-      decision: 'skip',
-      reason,
-      detail: '按当前仿真用例跳过该节点并继续推进',
-    });
-    ctx.completedKeys.add(task.nodeKey);
-    markNode(ctx, task.nodeKey, { status: 'skipped', message: reason });
-    return continuePast(ctx, task);
-  }
-
-  if (BLOCKING_NODE_TYPES.has(task.nodeType)) {
-    appendTimeline(ctx, {
-      nodeKey: task.nodeKey,
-      nodeName: task.nodeName,
-      nodeType: task.nodeType,
-      status: 'waiting',
-      assignees,
-      reason: `${task.reason}，仿真已模拟继续`,
-      detail: '当前仿真启用了模拟继续，不会真实等待、不触发外呼、也不会创建子流程',
-    });
-    ctx.completedKeys.add(task.nodeKey);
-    markNode(ctx, task.nodeKey, { status: 'done', message: '仿真模拟继续' });
-    return continuePast(ctx, task);
-  }
-
-  const manualApprove = decision?.action === 'approve';
-  appendTimeline(ctx, {
-    nodeKey: task.nodeKey,
-    nodeName: task.nodeName,
-    nodeType: task.nodeType,
-    status: 'approved',
-    assignees,
-    decision: 'approve',
-    reason: manualApprove ? (decision.reason ?? '仿真手动通过') : '仿真默认通过',
-    detail: manualApprove ? '按当前仿真用例的预设动作继续推进' : '未预设动作，仿真默认通过当前人工节点',
-  });
-  ctx.completedKeys.add(task.nodeKey);
-  markNode(ctx, task.nodeKey, { status: 'done' });
-  return continuePast(ctx, task);
 }
 
 /**
@@ -860,7 +418,6 @@ export async function simulateWorkflow(input: SimulateWorkflowInput): Promise<Wo
   const maxSteps = input.options?.maxSteps ?? 100;
   const formData = { ...(input.formData ?? {}) };
   const validation = validateFlowData(flowData);
-  const warnings: string[] = [];
   const healthIssues = buildHealthIssues(flowData, validation.errors);
   if (!validation.valid) {
     return {
@@ -877,91 +434,23 @@ export async function simulateWorkflow(input: SimulateWorkflowInput): Promise<Wo
     };
   }
 
-  const startNodeKey = flowData.nodes.find((node) => node.data.type === 'start')?.data.key ?? 'start';
-  const ctx: SimulationContext = {
-    flowData,
-    formData,
-    initiatorId,
-    starter,
-    maxSteps,
-    timeline: [],
-    nodeStates: {},
-    completedKeys: new Set(['start', startNodeKey]),
-    pendingTasks: [],
-    tokens: [],
-    tokenSeq: 1,
-    warnings,
-    visitedNodeKeys: new Set(['start', startNodeKey]),
-    decisionsByNode: buildDecisionMap(input.decisions),
-  };
-
-  const starterNameMap = await resolveUserNames([initiatorId]);
-  appendTimeline(ctx, {
-    nodeKey: startNodeKey,
-    nodeName: '发起',
-    nodeType: 'start',
-    status: 'entered',
-    assignees: [{ id: initiatorId, name: starterNameMap.get(initiatorId) ?? `用户#${initiatorId}` }],
-    reason: '仿真开始',
-  });
-  markNode(ctx, startNodeKey, { status: 'done' });
-
-  let result: WorkflowSimulationResult['result'] = 'waiting';
-  const advanceResults: AdvanceResult[] = [simAdvance(ctx, { kind: 'seed' })];
-
-  for (let step = 0; step < maxSteps; step++) {
-    if (advanceResults.length > 0) {
-      const next = advanceResults.shift();
-      if (!next) continue;
-      if (next.finished) {
-        result = 'finished';
-      }
-      await materializeResult(next, ctx);
-      attachNextNodeKeys(ctx, next);
-      if (next.rejected) result = 'rejected';
-      if ((next.finished || next.rejected) && ctx.pendingTasks.length === 0 && advanceResults.length === 0) break;
-      continue;
-    }
-
-    const task = ctx.pendingTasks.shift();
-    if (!task) {
-      if (result !== 'finished') result = 'blocked';
-      break;
-    }
-
-    const nodeConfig = getNodeByKey(flowData, task.nodeKey);
-    if (nodeConfig) ctx.visitedNodeKeys.add(nodeConfig.key);
-    const completion = await completeTask(task, ctx);
-    attachNextNodeKeys(ctx, completion);
-    if (ctx.terminalResult) {
-      result = ctx.terminalResult;
-      break;
-    }
-    if (completion) advanceResults.push(completion);
-  }
-
-  if (ctx.timeline.length >= maxSteps && result !== 'finished' && result !== 'rejected') {
-    result = 'stepLimit';
-    ctx.warnings.push(`仿真超过最大步数 ${maxSteps}，已停止`);
-  }
-
-  for (const node of flowData.nodes) {
-    if (!ctx.nodeStates[node.data.key]) {
-      ctx.nodeStates[node.data.key] = { status: 'skipped' };
-    }
-  }
-
-  const timings = annotateSimulationTimings(flowData, ctx.timeline);
+  const fields = input.formFields ?? (input.definitionId ? (await resolveFormSnapshot((await db.select({ formId: workflowDefinitions.formId }).from(workflowDefinitions).where(findDefinition(input.definitionId)).limit(1))[0]?.formId))?.fields : undefined) ?? [];
+  const runtime = new MemoryWorkflowRuntime(createSimulationFacts(), { maxSteps, seed: input.options?.seed, now: input.options?.now });
+  try {
+    await runtime.start({ id: input.definitionId ?? 0, flowData, fields }, formData, initiatorId, input.selectedInitiatorApprovers);
+    await runtime.replay(input.decisions ?? [], input.options?.autoApprove ?? false);
+  } catch (error) { runtime.warnings.push(error instanceof Error ? error.message : String(error)); }
+  if (!runtime.executions.length) throw new HTTPException(400, { message: runtime.warnings[0] ?? '无法启动仿真' });
+  const root = runtime.executions[0];
+  const snapshot = await runtime.snapshot();
+  const result: WorkflowSimulationResult['result'] = runtime.stepLimit ? 'stepLimit' : root.status === 'running'
+    ? snapshot.tasks.length ? 'waiting' : 'blocked' : root.status;
+  const timings = annotateSimulationTimings(flowData, runtime.timeline);
   return {
-    valid: true,
-    warnings: ctx.warnings,
-    result,
-    timeline: ctx.timeline,
-    edgeResults: buildEdgeResults(flowData, ctx.visitedNodeKeys, ctx.formData, ctx.starter),
-    nodeStates: ctx.nodeStates,
-    healthIssues,
-    pathSignature: ctx.timeline.map((item) => item.nodeKey),
-    estimatedDurationMinutes: timings.estimatedDurationMinutes,
-    blockingPoints: timings.blockingPoints,
+    valid: true, warnings: runtime.warnings, result, timeline: runtime.timeline,
+    edgeResults: buildEdgeResults(flowData, new Set(runtime.timeline.filter(item => item.executionPath === 'root').map(item => item.nodeKey)), root.formData, root.starter),
+    nodeStates: runtime.nodeStates(), healthIssues,
+    pathSignature: runtime.timeline.map(item => (item.executionPath === 'root' ? '' : item.executionPath + ':') + item.nodeKey),
+    estimatedDurationMinutes: timings.estimatedDurationMinutes, blockingPoints: timings.blockingPoints, runtime: snapshot,
   };
 }

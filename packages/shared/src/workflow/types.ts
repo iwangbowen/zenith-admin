@@ -895,17 +895,23 @@ export type WorkflowAutomationAction =
 /** 流程仿真中对指定节点预设的处理动作 */
 export interface WorkflowSimulationDecision {
   nodeKey: string;
-  action: 'approve' | 'reject' | 'skip' | 'wait';
+  action: 'approve' | 'reject' | 'skip' | 'wait' | 'advanceTime' | 'resubmit';
   assigneeId?: number;
+  taskId?: number;
+  executionPath?: string;
+  selectedNextApprovers?: Record<string, number[]>;
+  minutes?: number;
+  outcome?: 'approved' | 'rejected' | 'failed';
+  requirementsConfirmed?: boolean;
   reason?: string;
   formPatch?: Record<string, unknown>;
 }
 
 export interface WorkflowSimulationOptions {
   maxSteps?: number;
-  mockDelay?: boolean;
-  mockTrigger?: boolean;
-  expandSubProcess?: boolean;
+  autoApprove?: boolean;
+  seed?: number;
+  now?: number;
 }
 
 export type WorkflowSimulationResultStatus = (typeof WORKFLOW_SIMULATION_RESULT_STATUSES)[number];

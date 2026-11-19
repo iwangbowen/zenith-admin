@@ -34,6 +34,7 @@ export interface ResolveAssigneeContext {
   instanceId?: number;
   /** 上一节点审批人在审批时为本次创建的 approverSelect 节点选择的用户 ID 列表 */
   selectedNextApprovers?: number[];
+  recordRuleExecution?: boolean;
   /**
    * 可跨多次解析共享的惰性部门树。批量场景（一次实例化里逐节点解析审批人）
    * 应由调用方创建并传入，避免每个节点各拉一次部门表；未传入时按次创建，
@@ -688,7 +689,7 @@ export async function resolveAssigneeIds(
       const { outputs: out } = await decide(
         { kind: 'table', key: node.decisionRuleKey },
         { form: ctx.formData ?? {}, starter: { id: ctx.initiatorId } },
-        { caller: 'workflow.assignee', bizRef: ctx.instanceId ? `workflow:${ctx.instanceId}` : null },
+        { caller: 'workflow.assignee', record: ctx.recordRuleExecution, bizRef: ctx.instanceId ? `workflow:${ctx.instanceId}` : null },
       );
       const srcType = String(out.type ?? out.assigneeType ?? 'user') as WorkflowAssigneeType;
       const raw = out.ids ?? out.id ?? '';

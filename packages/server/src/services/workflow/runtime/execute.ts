@@ -17,6 +17,7 @@ export interface ExecutionPorts<T> {
   resolveDecisions(pending: PendingDecision[]): Promise<AdvanceTrigger[]>;
   reject(created: T[]): Promise<T[]>;
   genBranchId?: () => string;
+  checkpoint?(): void;
 }
 
 /** PostgreSQL and memory execution use this identical execution loop. */
@@ -42,6 +43,7 @@ export async function executeWorkflow<T>(trigger: RuntimeTrigger, ctx: {
     queue.push({ type: 'enter', nodeKey: trigger.nodeKey, branchPath: [] });
   }
   while (queue.length > 0 && !rejected) {
+    ports.checkpoint?.();
     const next = queue.shift()!;
     const result = advanceTokens({ ...ctx, liveTokens: await ports.loadTokens(), trigger: next,
       completedNodeKeys: await ports.completedKeys(), genBranchId: ports.genBranchId });

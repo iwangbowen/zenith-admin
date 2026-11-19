@@ -447,17 +447,23 @@ export type PreviewWorkflowInput = z.infer<typeof previewWorkflowSchema>;
 // ── 流程仿真 ──
 export const workflowSimulationDecisionSchema = z.object({
   nodeKey: z.string().min(1, '节点标识不能为空'),
-  action: z.enum(['approve', 'reject', 'skip', 'wait']),
+  action: z.enum(['approve', 'reject', 'skip', 'wait', 'advanceTime', 'resubmit']),
   assigneeId: z.number().int().positive().optional(),
+  taskId: z.number().int().positive().optional(),
+  executionPath: z.string().max(256).optional(),
+  selectedNextApprovers: z.record(z.string(), z.array(z.number().int().positive())).optional(),
+  minutes: z.number().min(0).max(525600).optional(),
+  outcome: z.enum(['approved', 'rejected', 'failed']).optional(),
+  requirementsConfirmed: z.boolean().optional(),
   reason: z.string().max(256).optional(),
   formPatch: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const workflowSimulationOptionsSchema = z.object({
   maxSteps: z.number().int().min(1).max(500).optional(),
-  mockDelay: z.boolean().optional(),
-  mockTrigger: z.boolean().optional(),
-  expandSubProcess: z.boolean().optional(),
+  autoApprove: z.boolean().optional(),
+  seed: z.number().int().optional(),
+  now: z.number().int().optional(),
 });
 
 export const simulateWorkflowSchema = z.object({
@@ -466,6 +472,8 @@ export const simulateWorkflowSchema = z.object({
   formData: z.record(z.string(), z.unknown()).nullable().optional(),
   starterUserId: z.number().int().positive().optional(),
   decisions: z.array(workflowSimulationDecisionSchema).max(200).optional(),
+  selectedInitiatorApprovers: z.record(z.string(), z.array(z.number().int().positive())).optional(),
+  formFields: z.array(workflowFormFieldSchema).optional(),
   options: workflowSimulationOptionsSchema.optional(),
 }).refine((v) => v.definitionId || v.flowData, {
   message: 'definitionId 和 flowData 至少需要提供一个',
@@ -480,6 +488,10 @@ export const saveWorkflowSimulationCaseSchema = z.object({
   starterUserId: z.number().int().positive().nullish(),
   formData: z.record(z.string(), z.unknown()).default({}),
   decisions: z.array(workflowSimulationDecisionSchema).max(200).default([]),
+  runtimeConfig: z.object({
+    now: z.number().int(), seed: z.number().int(),
+    selectedInitiatorApprovers: z.record(z.string(), z.array(z.number().int().positive())),
+  }),
 });
 
 export type SaveWorkflowSimulationCaseInput = z.input<typeof saveWorkflowSimulationCaseSchema>;

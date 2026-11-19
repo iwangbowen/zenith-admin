@@ -1,3 +1,4 @@
+import { runtimeSubprocessOutcome } from '../runtime/effect-policy';
 import { allocateWorkflowInstanceNumber } from '../workflow-numbering.service';
 import { normalizeInstanceFormData } from './form-derived';
 import { bindWorkflowFormAttachments } from '../workflow-attachments.service';
@@ -421,11 +422,9 @@ export async function reconcileMultiSubProcess(
       await tx.update(workflowInstances).set({ formData: await bindWorkflowFormAttachments(tx, pi, pi.formSnapshot, parentFormData, 0, settledChildren.map((child) => child.id)) }).where(eq(workflowInstances.id, pi.id));
     }
 
-    const ignoreReject = nodeCfg?.subProcessIgnoreReject === true;
-    const abortOnReject = (nodeCfg?.subProcessOnChildReject ?? 'abort') === 'abort';
-    const hasRejected = settledChildren.some((c) => c.status !== 'approved');
-    const wantReject = hasRejected && abortOnReject && !ignoreReject;
-    const wantApprove = !wantReject && settledCount >= pt.subTotal;
+    const outcome = runtimeSubprocessOutcome(nodeCfg, settledChildren.map(child => child.status), pt.subTotal);
+    const wantReject = outcome === 'reject';
+    const wantApprove = outcome === 'approve';
 
     if (wantReject || wantApprove) {
       // 抢占式 claim：将父任务移出 waiting，确保只有一个 settler 推进父流程

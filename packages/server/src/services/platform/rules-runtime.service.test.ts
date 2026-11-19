@@ -72,6 +72,12 @@ beforeEach(() => {
 });
 
 describe('decide · table', () => {
+  it('evaluates published snapshots without production execution history during simulation', async () => {
+    resolveTableMock.mockResolvedValue(tableSnapshot);
+    const result = await decide({ kind: 'table', key: 'member_level' }, { form: { amount: 200 } }, { caller: 'workflow.simulation', record: false });
+    expect(result.outputs).toEqual({ level: 'vip' });
+    expect(recordMock).not.toHaveBeenCalled();
+  });
   it('发布快照命中 → matched + outputs + version，留痕带 refKind/caller', async () => {
     resolveTableMock.mockResolvedValue(tableSnapshot);
     const res = await decide({ kind: 'table', key: 'member_level' }, { form: { amount: 200 } }, { caller: 'unit.test' });
