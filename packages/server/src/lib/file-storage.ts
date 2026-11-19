@@ -146,6 +146,77 @@ export async function getBucketAccessInfo(config: FileStorageConfigRow): Promise
       checkedAt: new Date(),
     };
   }
+  if (config.provider === 's3') {
+    const client = createS3Client(config);
+    const s3 = loadS3();
+    const aclResult = await client.send(new s3.GetBucketAclCommand({ Bucket: config.s3Bucket! }));
+    const grants = aclResult.Grants ?? [];
+    const publicRead = grants.some((grant) => grant.Permission === 'READ' && String(grant.Grantee?.URI ?? '').includes('AllUsers'));
+    const publicWrite = grants.some((grant) => grant.Permission === 'WRITE' && String(grant.Grantee?.URI ?? '').includes('AllUsers'));
+    const acl: FileBucketAcl = publicWrite ? 'public-read-write' : publicRead ? 'public-read' : 'private';
+    let blockPublicAccess: boolean | null = null;
+    try {
+      const pab = await client.send(new s3.GetPublicAccessBlockCommand({ Bucket: config.s3Bucket! }));
+      const value = pab.PublicAccessBlockConfiguration;
+      blockPublicAccess = Boolean(value?.BlockPublicAcls || value?.IgnorePublicAcls || value?.BlockPublicPolicy || value?.RestrictPublicBuckets);
+    } catch (err) {
+      if ((err as { name?: string }).name === 'NoSuchPublicAccessBlockConfiguration') blockPublicAccess = false;
+      else blockPublicAccess = null;
+    }
+    return { bucketAcl: acl, blockPublicAccess, effectivePublic: (acl === 'public-read' || acl === 'public-read-write') && blockPublicAccess !== true, checkedAt: new Date() };
+  }
+  if (config.provider === 'cos') {
+    const cos = createCosClient(config);
+    const result = await new Promise<{ ACL?: string }>((resolve, reject) => {
+      cos.getBucketAcl({ Bucket: config.cosBucket!, Region: config.cosRegion! }, (err, data) => {
+        if (err) reject(err instanceof Error ? err : new Error(String(err)));
+        else resolve(data as { ACL?: string });
+      });
+    });
+    const acl = normalizeBucketAcl(result.ACL);
+    return { bucketAcl: acl, blockPublicAccess: null, effectivePublic: acl === 'public-read' || acl === 'public-read-write', checkedAt: new Date() };
+  }
+  if (config.provider === 'bos') {
+    const bos = createBosClient(config) as unknown as {
+      getBucketAcl(bucket: string): Promise<{ accessControlList?: Array<{ grantee?: Array<{ id?: string }>; permission?: string[] }> }>;
+    };
+    const result = await bos.getBucketAcl(config.bosBucket!);
+    const entries = result.accessControlList ?? [];
+    const publicRead = entries.some((entry) => entry.grantee?.some((g) => g.id === 'AllUsers') && entry.permission?.some((p) => p.includes('READ')));
+    const publicWrite = entries.some((entry) => entry.grantee?.some((g) => g.id === 'AllUsers') && entry.permission?.some((p) => p.includes('WRITE')));
+    const acl: FileBucketAcl = publicWrite ? 'public-read-write' : publicRead ? 'public-read' : 'private';
+    return { bucketAcl: acl, blockPublicAccess: null, effectivePublic: acl !== 'private', checkedAt: new Date() };
+  }
+  if (config.provider === 'kodo') {
+    const { mac, conf } = createKodoUploader(config);
+    const bucketManager = new (loadQiniu().rs.BucketManager)(mac, conf);
+    const result = await bucketManager.getBucketInfo(config.kodoBucket!);
+    const data = (result as unknown as { data?: { private?: number } }).data;
+    const acl: FileBucketAcl = Number(data?.private ?? 0) === 1 ? 'private' : 'public-read';
+    return { bucketAcl: acl, blockPublicAccess: null, effectivePublic: acl === 'public-read', checkedAt: new Date() };
+  }
+  if (config.provider === 'azure') {
+    const properties = await createAzureBlobClient(config).getProperties();
+    const access = (properties as unknown as { blobPublicAccess?: string }).blobPublicAccess;
+    const acl: FileBucketAcl = access === 'container' || access === 'blob' ? 'public-read' : 'private';
+    return { bucketAcl: acl, blockPublicAccess: null, effectivePublic: acl === 'public-read', checkedAt: new Date() };
+  }
+  if (config.provider === 'obs') {
+    const obs = createObsClient(config) as unknown as {
+      getBucketAcl(params: Record<string, unknown>, cb: (err: unknown, result: { InterfaceResult?: { AccessControlList?: { Grants?: Array<{ Grantee?: { Type?: string; URI?: string }; Permission?: string }> } } }) => void): void;
+    };
+    const result = await new Promise<{ AccessControlList?: { Grants?: Array<{ Grantee?: { Type?: string; URI?: string }; Permission?: string }> } }>((resolve, reject) => {
+      obs.getBucketAcl({ Bucket: config.obsBucket! }, (err, data) => {
+        if (err) reject(err instanceof Error ? err : new Error(String(err)));
+        else resolve(data.InterfaceResult ?? {});
+      });
+    });
+    const grants = result.AccessControlList?.Grants ?? [];
+    const publicRead = grants.some((grant) => grant.Permission === 'READ' && grant.Grantee?.URI?.includes('AllUsers'));
+    const publicWrite = grants.some((grant) => grant.Permission === 'WRITE' && grant.Grantee?.URI?.includes('AllUsers'));
+    const acl: FileBucketAcl = publicWrite ? 'public-read-write' : publicRead ? 'public-read' : 'private';
+    return { bucketAcl: acl, blockPublicAccess: null, effectivePublic: acl !== 'private', checkedAt: new Date() };
+  }
   throw new HTTPException(400, { message: `当前存储类型不支持 Bucket 权限探测：${config.provider}` });
 }
 
@@ -156,9 +227,7 @@ export async function setBucketAccessInfo(
 ): Promise<FileBucketAccessInfo> {
   if (config.provider === 'oss') {
     const client = createOssClient(config);
-    if (input.acl) {
-      await client.putBucketACL(config.ossBucket!, input.acl);
-    }
+    if (input.acl) await client.putBucketACL(config.ossBucket!, input.acl);
     if (input.blockPublicAccess !== undefined) {
       const xml = `<?xml version="1.0" encoding="UTF-8"?><PublicAccessBlockConfiguration><BlockPublicAccess>${input.blockPublicAccess}</BlockPublicAccess></PublicAccessBlockConfiguration>`;
       await (client as unknown as { request(params: Record<string, unknown>): Promise<unknown> }).request({
@@ -170,6 +239,65 @@ export async function setBucketAccessInfo(
         successStatuses: [200],
       });
     }
+    return getBucketAccessInfo(config);
+  }
+  if (config.provider === 's3') {
+    const client = createS3Client(config);
+    const s3 = loadS3();
+    if (input.acl) {
+      await client.send(new s3.PutBucketAclCommand({ Bucket: config.s3Bucket!, ACL: input.acl }));
+    }
+    if (input.blockPublicAccess !== undefined) {
+      await client.send(new s3.PutPublicAccessBlockCommand({
+        Bucket: config.s3Bucket!,
+        PublicAccessBlockConfiguration: {
+          BlockPublicAcls: input.blockPublicAccess,
+          IgnorePublicAcls: input.blockPublicAccess,
+          BlockPublicPolicy: input.blockPublicAccess,
+          RestrictPublicBuckets: input.blockPublicAccess,
+        },
+      }));
+    }
+    return getBucketAccessInfo(config);
+  }
+  if (config.provider === 'cos') {
+    if (!input.acl) throw new HTTPException(400, { message: 'COS 仅支持修改 Bucket ACL' });
+    const cos = createCosClient(config);
+    await new Promise<void>((resolve, reject) => {
+      cos.putBucketAcl({ Bucket: config.cosBucket!, Region: config.cosRegion!, ACL: input.acl as never }, (err) => {
+        if (err) reject(err instanceof Error ? err : new Error(String(err)));
+        else resolve();
+      });
+    });
+    return getBucketAccessInfo(config);
+  }
+  if (config.provider === 'bos') {
+    if (!input.acl) throw new HTTPException(400, { message: 'BOS 仅支持修改 Bucket ACL' });
+    const bos = createBosClient(config) as unknown as { putBucketAcl(bucket: string, acl: string): Promise<unknown> };
+    await bos.putBucketAcl(config.bosBucket!, input.acl);
+    return getBucketAccessInfo(config);
+  }
+  if (config.provider === 'kodo') {
+    if (!input.acl) throw new HTTPException(400, { message: '七牛云仅支持修改 Bucket 访问模式' });
+    const { mac, conf } = createKodoUploader(config);
+    const bucketManager = new (loadQiniu().rs.BucketManager)(mac, conf);
+    await bucketManager.putBucketAccessMode(config.kodoBucket!, { private: input.acl === 'private' ? 1 : 0 });
+    return getBucketAccessInfo(config);
+  }
+  if (config.provider === 'azure') {
+    if (!input.acl) throw new HTTPException(400, { message: 'Azure 仅支持修改 Container 访问级别' });
+    await createAzureBlobClient(config).setAccessPolicy(input.acl === 'private' ? undefined : 'container');
+    return getBucketAccessInfo(config);
+  }
+  if (config.provider === 'obs') {
+    if (!input.acl) throw new HTTPException(400, { message: 'OBS 仅支持修改 Bucket ACL' });
+    const obs = createObsClient(config) as unknown as { setBucketAcl(params: Record<string, unknown>, cb: (err: unknown) => void): void };
+    await new Promise<void>((resolve, reject) => {
+      obs.setBucketAcl({ Bucket: config.obsBucket!, ACL: input.acl }, (err) => {
+        if (err) reject(err instanceof Error ? err : new Error(String(err)));
+        else resolve();
+      });
+    });
     return getBucketAccessInfo(config);
   }
   throw new HTTPException(400, { message: `当前存储类型不支持 Bucket 权限设置：${config.provider}` });
