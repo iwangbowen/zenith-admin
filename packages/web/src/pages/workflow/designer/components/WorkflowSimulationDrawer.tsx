@@ -2,7 +2,7 @@
  * 流程设计器仿真抽屉：收集测试表单数据，并在流程图中呈现 dry-run 运行态。
  */
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react';
-import { Banner, Button, Input, Select, SideSheet, Space, Switch, Tag, TextArea, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
+import { Banner, Button, Checkbox, Input, InputNumber, Select, SideSheet, Space, Switch, Tag, TextArea, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { AlertTriangle, Bookmark, Bug, CheckCircle2, ChevronLeft, ChevronRight, CircleDashed, Clock, FastForward, GitCompare, Keyboard, ListChecks, Minus, PanelRightClose, Pause, Play, Plus, RotateCcw, RotateCw, Save, Send, SlidersHorizontal, Trash2, Wand2, XCircle } from 'lucide-react';
 import type { WorkflowFlowData, WorkflowFormField, WorkflowSimulationCase, WorkflowSimulationDecision, WorkflowSimulationHealthIssue, WorkflowSimulationResult } from '@zenith/shared/workflow';
@@ -41,6 +41,7 @@ interface SelectedSimulationBranch {
 const RESULT_META: Record<WorkflowSimulationResult['result'], { label: string; color: 'green' | 'red' | 'orange' | 'grey' | 'blue' }> = {
   finished: { label: '已完成', color: 'green' },
   rejected: { label: '已拒绝', color: 'red' },
+  returned: { label: '已退回发起人', color: 'orange' },
   waiting: { label: '等待中', color: 'blue' },
   blocked: { label: '已阻塞', color: 'orange' },
   invalid: { label: '配置无效', color: 'red' },
@@ -377,6 +378,14 @@ export default function WorkflowSimulationDrawer({
   const [activeStep, setActiveStep] = useState(0);
   const [graphZoom, setGraphZoom] = useState(90);
   const [decisions, setDecisions] = useState<WorkflowSimulationDecision[]>([]);
+  const [selectedApprovers, setSelectedApprovers] = useState<Record<string, number[]>>({});
+  const [confirmRequirements, setConfirmRequirements] = useState(false);
+  const [advanceMinutes, setAdvanceMinutes] = useState(60);
+  const [initialTime, setInitialTime] = useState(() => Date.now());
+  const [collaborationUsers, setCollaborationUsers] = useState<number[]>([]);
+  const [taskFormPatch, setTaskFormPatch] = useState<Record<number, Record<string, unknown>>>({});
+  const [simulationInput, setSimulationInput] = useState<Record<string, unknown> | null>(null);
+  const [initialSelections, setInitialSelections] = useState<Record<string, number[]>>({});
   const [breakpoints, setBreakpoints] = useState<Set<string>>(new Set());
   const [selectedBranch, setSelectedBranch] = useState<SelectedSimulationBranch | null>(null);
   const [selectedCaseId, setSelectedCaseId] = useState<number | undefined>(undefined);
@@ -515,7 +524,7 @@ export default function WorkflowSimulationDrawer({
     overrideDecisions?: WorkflowSimulationDecision[],
     toastText = '仿真已启动',
   ) => {
-    const input = overrideValues ?? await effectiveFormData();
+    const input = overrideValues ?? simulationInput ?? await effectiveFormData();
     if (!input) return;
     const values = computeWorkflowDerivedValues(formFields, input);
     const nextDecisions = overrideDecisions ?? decisions;
@@ -525,20 +534,28 @@ export default function WorkflowSimulationDrawer({
         definitionId: definitionId ?? undefined,
         flowData,
         formData: values,
+        formFields,
+        selectedInitiatorApprovers: simulationInput ? initialSelections : selectedApprovers,
         starterUserId,
         decisions: nextDecisions,
         options: {
           maxSteps: 160,
-          mockDelay: true,
-          mockTrigger: true,
-          expandSubProcess: false,
+          autoApprove: false,
+          seed: 1,
+          now: initialTime,
         },
       }));
+      if (nextResult.runtime && nextResult.runtime.commandCount < nextDecisions.length) {
+        Toast.warning(nextResult.warnings.at(-1) ?? '仿真操作未通过校验');
+        return;
+      }
       if (result) setPreviousResult(result);
       setResult(nextResult);
+      setSimulationInput(values);
+      if (!simulationInput) setInitialSelections(structuredClone(selectedApprovers));
       setFormData(values);
       setDecisions(nextDecisions);
-      setActiveStep(nextResult.timeline.length > 0 ? 1 : 0);
+      setActiveStep(nextResult.timeline.length);
       setSelectedBranch(null);
       setInspectorOpen(true);
       Toast.success(toastText);
@@ -554,6 +571,8 @@ export default function WorkflowSimulationDrawer({
     setActiveStep(0);
     setJsonDraft('{}');
     setDecisions([]);
+    setSimulationInput(null);
+    setTaskFormPatch({});
     setBreakpoints(new Set());
     setSelectedBranch(null);
     setSelectedCaseId(undefined);
@@ -616,6 +635,8 @@ export default function WorkflowSimulationDrawer({
 
   const upsertDecision = (action: WorkflowSimulationDecision['action']) => {
     if (!currentItem) return;
+    const task = result?.runtime?.tasks.find(item => item.id === currentItem.taskId);
+    if (!task) { Toast.info('请在当前待办列表中选择可操作任务'); return; }
     const reason = action === 'approve'
       ? '调试器手动通过'
       : action === 'reject'
@@ -623,15 +644,15 @@ export default function WorkflowSimulationDrawer({
         : action === 'skip'
           ? '调试器手动跳过'
           : '调试器暂停等待';
-    const next = decisions.filter((item) => item.nodeKey !== currentItem.nodeKey);
-    next.push({ nodeKey: currentItem.nodeKey, action, reason });
+    const next = [...decisions, { nodeKey: task.nodeKey, executionPath: task.executionPath, taskId: task.id, assigneeId: task.assigneeId ?? undefined,
+      action, reason, selectedNextApprovers: selectedApprovers, requirementsConfirmed: confirmRequirements }];
     setDecisions(next);
     void runSimulation(undefined, next, `已按「${reason.replace('调试器手动', '').replace('调试器', '')}」重放仿真`);
   };
 
   const clearCurrentDecision = () => {
     if (!currentItem) return;
-    const next = decisions.filter((item) => item.nodeKey !== currentItem.nodeKey);
+    const next = decisions.slice(0, -1);
     setDecisions(next);
     void runSimulation(undefined, next, '已清除当前节点动作并重放');
   };
@@ -691,7 +712,8 @@ export default function WorkflowSimulationDrawer({
     if (!values) return;
     try {
       const saved = await saveCaseMutation.mutateAsync({
-        body: { definitionId, name, starterUserId: starterUserId ?? null, formData: values, decisions },
+        body: { definitionId, name, starterUserId: starterUserId ?? null, formData: values, decisions,
+          runtimeConfig: { now: initialTime, seed: 1, selectedInitiatorApprovers: simulationInput ? initialSelections : selectedApprovers } },
       });
       Toast.success('仿真用例已保存');
       setSaveCaseModalVisible(false);
@@ -708,7 +730,12 @@ export default function WorkflowSimulationDrawer({
     const item = savedCases.find((saved) => saved.id === id);
     if (!item) return;
     setStarterUserId(item.starterUserId ?? undefined);
+    setSimulationInput(item.formData);
+    setTaskFormPatch({});
     setDecisions(item.decisions);
+    setInitialTime(item.runtimeConfig.now);
+    setSelectedApprovers(item.runtimeConfig.selectedInitiatorApprovers);
+    setInitialSelections(item.runtimeConfig.selectedInitiatorApprovers);
     applyFormValues(item.formData);
     setResult(null);
     setPreviousResult(null);
@@ -730,7 +757,7 @@ export default function WorkflowSimulationDrawer({
 
   const simulationNodeRuntime = useMemo(() => {
     if (!result || currentStep <= 0) return undefined;
-    const visibleTimeline = result.timeline.slice(0, currentStep);
+    const visibleTimeline = result.timeline.slice(0, currentStep).filter(item => !item.executionPath || item.executionPath === 'root');
     const current = visibleTimeline[visibleTimeline.length - 1];
     const byNode = new Map<string, WorkflowSimulationResult['timeline']>();
     for (const item of visibleTimeline) {
@@ -775,8 +802,19 @@ export default function WorkflowSimulationDrawer({
           : [{ name: active ? '当前步骤' : last.nodeName || '仿真经过', status, actionAt: null, comment: nodeReason }],
       });
     });
+    if (currentStep === totalSteps) {
+      const pending = result.runtime?.tasks.filter(task => task.executionPath === 'root') ?? [];
+      for (const nodeKey of new Set(pending.map(task => task.nodeKey))) {
+        const tasks = pending.filter(task => task.nodeKey === nodeKey);
+        const previous = map.get(nodeKey);
+        map.set(nodeKey, { ...previous, status: tasks.some(task => task.status === 'pending') ? 'pending' : 'waiting', active: true,
+          statusLabel: tasks.some(task => task.status === 'pending') ? '待处理' : '等待中',
+          approvers: tasks.map(task => ({ name: task.assigneeId ? users.find(user => user.id === task.assigneeId)?.nickname ?? ('成员#' + task.assigneeId) : '系统任务',
+            status: task.status === 'pending' ? 'pending' : 'waiting', actionAt: null, comment: task.waitReason })) });
+      }
+    }
     return map;
-  }, [currentStep, flowData, result, totalSteps]);
+  }, [currentStep, flowData, result, totalSteps, users]);
 
   const simulationDimmedBranchIds = useMemo(() => {
     if (!result || currentStep <= 0) return undefined;
@@ -813,7 +851,7 @@ export default function WorkflowSimulationDrawer({
     : undefined;
 
   const resultMeta = result ? RESULT_META[result.result] : null;
-  const canDecide = nodeTypeCanDecide(currentItem);
+  const canDecide = nodeTypeCanDecide(currentItem) && !!result?.runtime?.tasks.some(task => task.id === currentItem?.taskId);
   const currentAssigneeText = currentItem?.assignees?.map((user) => user.name).join('、') || EMPTY_PLACEHOLDER;
   const currentNextText = currentItem?.nextNodeKeys?.map((key) => nodeLabel(flowData, key)).join('、') || EMPTY_PLACEHOLDER;
   const currentReasonText = currentItem ? currentItem.detail ?? currentItem.reason ?? '' : '';
@@ -857,7 +895,7 @@ export default function WorkflowSimulationDrawer({
     if (!result || totalSteps === 0) {
       return (
         <div className="fd-simulation-transport fd-simulation-transport--empty">
-          <Typography.Text size="small" type="tertiary">填好左侧输入后点左下角「启动仿真」。运行后点「下一步」逐步执行（无需断点）；断点仅用于自动播放时暂停。</Typography.Text>
+          <Typography.Text size="small" type="tertiary">启动后按当前待办逐人操作；延迟通过虚拟时间推进，外部调用仅提交模拟回调。时间线按钮用于查看执行记录。</Typography.Text>
         </div>
       );
     }
@@ -1026,6 +1064,7 @@ export default function WorkflowSimulationDrawer({
                 <WorkflowFormRenderer
                   key={formRenderKey}
                   fields={formFields}
+                  readOnly={!!result && result.result !== 'returned'}
                   initValues={formData}
                   getFormApi={(api) => { formApi.current = api; }}
                   onValueChange={setFormData}
@@ -1039,6 +1078,63 @@ export default function WorkflowSimulationDrawer({
               <Button block type="primary" size="large" icon={<Play size={15} />} loading={submitting} onClick={() => void runSimulation()} className="fd-simulation-run-cta">
                 启动仿真
               </Button>
+            )}
+            {flowData.nodes.filter(node => ['initiatorSelect', 'initiatorSelectScope'].includes(node.data.assigneeType ?? '')).map(node => (
+              <div key={node.data.key} style={{ marginTop: 12 }}>
+                <Typography.Text strong>{node.data.label} · 发起自选审批人</Typography.Text>
+                <Select multiple filter style={{ width: '100%' }} optionList={userOptions} value={selectedApprovers[node.data.key] ?? []}
+                  onChange={value => setSelectedApprovers(previous => ({ ...previous, [node.data.key]: value as number[] }))} />
+              </div>
+            ))}
+            {result?.runtime && (
+              <section style={{ marginTop: 16 }}>
+                <Typography.Title heading={6}>当前待办</Typography.Title>
+                {result.runtime.tasks.map(task => (
+                  <div key={task.id} style={{ padding: '12px 0', borderBottom: '1px solid var(--semi-color-border)' }}>
+                    <Typography.Text strong>{task.nodeName}</Typography.Text>
+                    <Typography.Paragraph type="tertiary" size="small" style={{ marginBottom: 8 }}>
+                      {task.executionPath === 'root' ? '主流程' : task.executionPath} · {task.assigneeId ? users.find(user => user.id === task.assigneeId)?.nickname ?? ('成员#' + task.assigneeId) : '系统任务'} · {task.waitReason ?? '待处理'}
+                    </Typography.Paragraph>
+                    {task.selectableNext.map(next => (
+                      <Select key={next.nodeKey} multiple filter style={{ width: '100%', marginBottom: 8 }} placeholder={next.label + '：选择下一审批人'}
+                        optionList={next.users.map(user => ({ value: user.id, label: user.name }))} value={selectedApprovers[next.nodeKey] ?? []}
+                        onChange={value => setSelectedApprovers(previous => ({ ...previous, [next.nodeKey]: value as number[] }))} />
+                    ))}
+                    {task.requirements.length > 0 && <Typography.Paragraph type="warning" size="small">需模拟满足：{task.requirements.join('、')}</Typography.Paragraph>}
+                    {task.editableFields.length > 0 && <WorkflowFormRenderer key={task.id} fields={task.editableFields}
+                      initValues={task.formData} onValueChange={values => setTaskFormPatch(previous => ({ ...previous, [task.id]: values }))}
+                      readOnlyAsText labelPosition="top" />}
+                    <Space spacing={8}>
+                      <Button size="small" type="primary" disabled={!task.actions.includes('approve') || ['sequence', 'subprocess', 'delay', 'beforeSign', 'afterSign'].includes(task.waitReason ?? '')} loading={submitting}
+                        onClick={() => void runSimulation(undefined, [...decisions, { nodeKey: task.nodeKey, taskId: task.id, executionPath: task.executionPath, action: 'approve',
+                          selectedNextApprovers: selectedApprovers, requirementsConfirmed: confirmRequirements, formPatch: taskFormPatch[task.id] }], '仿真任务已处理')}>
+                        {task.waitReason === 'external' || task.waitReason === 'trigger' ? '模拟成功回调' : '通过'}
+                      </Button>
+                      <Button size="small" type="danger" disabled={!task.actions.includes('reject') || ['sequence', 'subprocess', 'delay', 'beforeSign', 'afterSign'].includes(task.waitReason ?? '')} loading={submitting}
+                        onClick={() => void runSimulation(undefined, [...decisions, { nodeKey: task.nodeKey, taskId: task.id, executionPath: task.executionPath, action: 'reject', requirementsConfirmed: confirmRequirements }], '已模拟拒绝')}>拒绝</Button>
+                      {['external', 'trigger'].includes(task.waitReason ?? '') && <Button size="small" type="warning" loading={submitting}
+                        onClick={() => void runSimulation(undefined, [...decisions, { nodeKey: task.nodeKey, taskId: task.id, executionPath: task.executionPath, action: 'approve', outcome: 'failed' }], '已模拟执行失败')}>模拟失败</Button>}
+                    </Space>
+                    {task.actions.some(action => ['transfer', 'delegate', 'addSign'].includes(action)) && <Select multiple filter style={{ width: '100%', marginTop: 8 }}
+                      placeholder="选择协作成员" optionList={userOptions} value={collaborationUsers} onChange={value => setCollaborationUsers(value as number[])} />}
+                    <Space wrap spacing={6} style={{ marginTop: 8 }}>
+                      {(['transfer', 'delegate'] as const).filter(action => task.actions.includes(action)).map(action => <Button key={action} size="small" loading={submitting} disabled={task.status !== 'pending' || collaborationUsers.length !== 1}
+                        onClick={() => void runSimulation(undefined, [...decisions, { nodeKey: task.nodeKey, taskId: task.id, executionPath: task.executionPath, action, targetUserIds: collaborationUsers }], action === 'transfer' ? '已模拟转办' : '已模拟委派')}>{action === 'transfer' ? '转办' : '委派'}</Button>)}
+                      {task.actions.includes('addSign') && (['before', 'after', 'parallel'] as const).map(position => <Button key={position} size="small" loading={submitting} disabled={task.status !== 'pending' || !collaborationUsers.length || task.groupId != null}
+                        onClick={() => void runSimulation(undefined, [...decisions, { nodeKey: task.nodeKey, taskId: task.id, executionPath: task.executionPath, action: 'addSign', targetUserIds: collaborationUsers, position }], '已模拟加签')}>{position === 'before' ? '前加签' : position === 'after' ? '后加签' : '并行加签'}</Button>)}
+                      {task.actions.includes('reduceSign') && task.groupId != null && task.slotId != null && <Button size="small" loading={submitting}
+                        onClick={() => void runSimulation(undefined, [...decisions, { nodeKey: task.nodeKey, taskId: task.id, executionPath: task.executionPath, action: 'reduceSign', groupId: task.groupId!, targetSlotIds: [task.slotId!] }], '已模拟减签')}>取消此加签</Button>}
+                    </Space>
+                  </div>
+                ))}
+                <Checkbox checked={confirmRequirements} onChange={event => setConfirmRequirements(!!event.target.checked)} style={{ marginTop: 12 }}>模拟已满足意见、签名和附件要求</Checkbox>
+                <Space style={{ marginTop: 12 }}>
+                  <InputNumber min={0} max={525600} value={advanceMinutes} onChange={value => setAdvanceMinutes(Number(value) || 0)} style={{ width: 110 }} suffix="分钟" />
+                  <Button size="small" loading={submitting} onClick={() => void runSimulation(undefined, [...decisions, { nodeKey: 'clock', action: 'advanceTime', minutes: advanceMinutes }], '虚拟时间已推进')}>推进时间</Button>
+                </Space>
+                {result.result === 'returned' && <Button block style={{ marginTop: 12 }} loading={submitting}
+                  onClick={() => void runSimulation(undefined, [...decisions, { nodeKey: 'start', action: 'resubmit', formPatch: formData }], '已重新提交')}>修改表单后重新提交</Button>}
+              </section>
             )}
           </section>
 

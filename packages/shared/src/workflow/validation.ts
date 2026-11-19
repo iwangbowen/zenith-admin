@@ -447,7 +447,7 @@ export type PreviewWorkflowInput = z.infer<typeof previewWorkflowSchema>;
 // ── 流程仿真 ──
 export const workflowSimulationDecisionSchema = z.object({
   nodeKey: z.string().min(1, '节点标识不能为空'),
-  action: z.enum(['approve', 'reject', 'skip', 'wait', 'advanceTime', 'resubmit']),
+  action: z.enum(['approve', 'reject', 'skip', 'wait', 'advanceTime', 'resubmit', 'transfer', 'delegate', 'addSign', 'reduceSign']),
   assigneeId: z.number().int().positive().optional(),
   taskId: z.number().int().positive().optional(),
   executionPath: z.string().max(256).optional(),
@@ -455,6 +455,11 @@ export const workflowSimulationDecisionSchema = z.object({
   minutes: z.number().min(0).max(525600).optional(),
   outcome: z.enum(['approved', 'rejected', 'failed']).optional(),
   requirementsConfirmed: z.boolean().optional(),
+  targetUserIds: z.array(z.number().int().positive()).optional(),
+  targetSlotIds: z.array(z.number().int().positive()).optional(),
+  groupId: z.number().int().positive().optional(),
+  position: z.enum(['before', 'after', 'parallel']).optional(),
+  signMode: z.enum(['and', 'or']).optional(),
   reason: z.string().max(256).optional(),
   formPatch: z.record(z.string(), z.unknown()).optional(),
 });

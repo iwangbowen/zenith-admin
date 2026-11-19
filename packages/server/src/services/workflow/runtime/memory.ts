@@ -1,5 +1,6 @@
+import { applyRuntimeInitiatorSelections } from './initiator-selection';
 import type { WorkflowFlowData, WorkflowNodeConfig, WorkflowFormField, WorkflowStarterContext, WorkflowNodeActivation, WorkflowSimulationDecision, WorkflowSimulationTimelineItem, WorkflowSimulationNodeState } from '@zenith/shared/workflow';
-import { collectWorkflowFormValidationErrors, computeWorkflowDerivedValues, evaluateWorkflowApprovalActivation, findNextApproverSelectNodes, resolveNodeFieldPermissions, sanitizeFormUpdatesByNodePerms, workflowApprovalRequirements, resolveWorkflowActionButton } from '@zenith/shared/workflow';
+import { applyFieldPermissionsToFields, collectWorkflowFormValidationErrors, computeWorkflowDerivedValues, evaluateWorkflowApprovalActivation, findNextApproverSelectNodes, resolveNodeFieldPermissions, sanitizeFormUpdatesByNodePerms, workflowApprovalRequirements, resolveWorkflowActionButton } from '@zenith/shared/workflow';
 import type { RuleRef } from '@zenith/shared/rules';
 import type { TokenSnapshot, AdvanceTrigger } from '../../../lib/workflow-token-engine';
 import { validateFlowData } from '../../../lib/workflow-engine';
@@ -12,6 +13,7 @@ import { buildChildFormData, resolveMultiItems } from './subprocess-input';
 import { runtimeFailureDisposition, runtimeSubprocessOutcome, runtimeTimeoutAction } from './effect-policy';
 import { resolveFailurePolicy } from '@zenith/shared/workflow';
 import { runtimeDelayWakeAt } from './clock';
+import { runtimeTriggerData } from './trigger-data';
 
 export interface MemoryExecutionDefinition {
   id: number;
@@ -25,10 +27,11 @@ export interface MemoryRuntimeFacts {
   starter(userId: number): Promise<WorkflowStarterContext>;
   names(ids: number[]): Promise<Map<number, string>>;
   admin(): Promise<number | null>;
-  delegate(userId: number, definitionId: number): Promise<{ delegateId: number; mode: 'full' | 'suggest' } | null>;
+  delegate(userId: number, definitionId: number, now: number): Promise<{ delegateId: number; mode: 'full' | 'suggest' } | null>;
   decide(ref: RuleRef, form: Record<string, unknown>, starter: WorkflowStarterContext): Promise<Record<string, unknown>>;
   definition(id: number): Promise<MemoryExecutionDefinition | null>;
   timeoutTarget?(userId: number | null, level: number): Promise<number | null>;
+  validateUsers?(ids: number[]): Promise<void>;
 }
 type RunStatus = 'running' | 'finished' | 'rejected' | 'returned';
 export interface MemoryTask {
@@ -38,6 +41,8 @@ export interface MemoryTask {
   waitReason: string | null; taskKind: string; delegatedFromId: number | null;
   dueAt: number | null; timeoutAt: number | null; returnOrigin?: string;
   remindCount?: number;
+  pausedTimeoutMs?: number;
+  handledBy?: number[];
 }
 interface Execution {
   id: number; path: string; definitionId: number; flow: WorkflowFlowData; fields: WorkflowFormField[];
@@ -58,6 +63,7 @@ export class MemoryWorkflowRuntime {
   private readonly maxOperations: number;
   now: number;
   stepLimit = false;
+  commandCount = 0;
 
   constructor(private readonly facts: MemoryRuntimeFacts, private readonly options: { maxSteps?: number; seed?: number; now?: number } = {}) {
     this.randomState = options.seed ?? 1;
@@ -91,17 +97,12 @@ export class MemoryWorkflowRuntime {
     const validation = validateFlowData(def.flowData);
     if (!validation.valid) throw new Error(validation.errors.join('；'));
     if (path.split('/').length > 16) throw new Error('子流程嵌套超过16层');
-    const run: Execution = { id: this.nextId++, path, definitionId: def.id, flow: structuredClone(def.flowData), fields: def.fields,
+    const run: Execution = { id: this.nextId++, path, definitionId: def.id, flow: structuredClone(def.flowData), fields: structuredClone(def.fields),
       formData: computeWorkflowDerivedValues(def.fields, structuredClone(form)), initiatorId, starter: await this.facts.starter(initiatorId),
-      status: 'running', tokens: [], activations: [], tasks: [], selected, completed: [], roundStart: 0, parentTaskId, childIndex };
+      status: 'running', tokens: [], activations: [], tasks: [], selected: structuredClone(selected), completed: [], roundStart: 0, parentTaskId, childIndex };
     const formErrors = collectWorkflowFormValidationErrors(run.fields, run.formData, run.flow.nodes.find(node => node.data.type === 'start')?.data.fieldPermissions);
     if (formErrors.length) throw new Error(formErrors[0].message);
-    for (const node of run.flow.nodes) {
-      if (node.data.assigneeType !== 'initiatorSelect' && node.data.assigneeType !== 'initiatorSelectScope') continue;
-      const picked = await this.facts.filterSelected(node.data, selected[node.data.key] ?? []);
-      // Pending selections are explicit blocking requirements, never an empty-assignee fallback.
-      if (picked.length) { node.data.assigneeIds = picked; node.data.userIds = picked; }
-    }
+    run.flow = await applyRuntimeInitiatorSelections(run.flow, selected, { formData: run.formData, formFields: run.fields, starter: run.starter }, this.facts.filterSelected);
     this.executions.push(run);
     await this.emit(run, null, 'entered', parentTaskId ? '进入子流程 ' + path : '内存运行时已启动');
     await this.advance(run, { kind: 'seed' });
@@ -119,7 +120,7 @@ export class MemoryWorkflowRuntime {
   }
   private async advance(run: Execution, trigger: RuntimeTrigger) {
     this.budget();
-    const result = await executeWorkflow(trigger, { flowData: run.flow, formData: run.formData, starter: run.starter, instanceId: run.id }, {
+    const result = await executeWorkflow(trigger, { flowData: run.flow, formData: run.formData, starter: run.starter, instanceId: run.id, now: this.now }, {
       loadTokens: async () => run.tokens,
       completedKeys: async () => new Set(['start', ...run.activations.filter(a => a.status === 'approved').map(a => a.nodeKey)]),
       completeToken: async id => { for (const activation of run.activations) if (activation.tokenId === id) activation.status = 'approved'; },
@@ -135,7 +136,7 @@ export class MemoryWorkflowRuntime {
             } }),
           delegate: async ids => {
             const seen = new Set<number>(); const assigned = [];
-            for (const id of ids) { const delegate = await this.facts.delegate(id, run.definitionId); const assigneeId = delegate?.delegateId ?? id;
+            for (const id of ids) { const delegate = await this.facts.delegate(id, run.definitionId, this.now); const assigneeId = delegate?.delegateId ?? id;
               if (!seen.has(assigneeId)) assigned.push({ assigneeId, delegatedFromId: delegate ? id : null, delegationMode: delegate?.mode ?? null }); seen.add(assigneeId); }
             return assigned;
           },
@@ -157,6 +158,13 @@ export class MemoryWorkflowRuntime {
     if (result.rejected) run.status = 'rejected';
     else if (result.finished && run.tokens.length === 0) run.status = 'finished';
     for (const task of result.createdTasks.filter(task => task.nodeType === 'subProcess')) await this.spawnChildren(run, task);
+    for (const task of result.createdTasks.filter(task => task.nodeType === 'trigger' && task.status === 'waiting')) {
+      const config = this.config(run, task.nodeKey)!;
+      if (config.triggerConfig?.triggerType === 'updateData' || config.triggerConfig?.triggerType === 'deleteData') {
+        run.formData = runtimeTriggerData(config.triggerConfig, run.formData);
+        await this.finishTask(run, task, 'approved', '内存运行时已执行字段更新');
+      }
+    }
   }
   private async materialize(run: Execution, rows: ExpandedTaskRow[], tokens: Map<string, number>) {
     const groups = new Map<string, ExpandedTaskRow[]>();
@@ -171,6 +179,7 @@ export class MemoryWorkflowRuntime {
         baseApproved: 0, baseRejected: 0, baseSatisfied: false, slots: [], signGroups: [] };
       run.activations.push(activation);
       for (const row of members) {
+        this.budget();
         const identity = runtimeTaskIdentity(row, plan.method); const id = this.nextId++;
         const task: MemoryTask = { id, executionPath: run.path, activationId: activation.id, slotId: identity.kind === 'approval' ? this.nextId++ : null,
           nodeKey: row.nodeKey, nodeName: row.nodeName, nodeType: row.nodeType ?? 'approve', assigneeId: row.assigneeId ?? null,
@@ -194,12 +203,12 @@ export class MemoryWorkflowRuntime {
     for (const task of run.tasks) if (task.status === 'pending' || task.status === 'waiting') task.status = 'skipped';
     for (const child of this.executions.filter(item => item.parentTaskId != null && run.tasks.some(task => task.id === item.parentTaskId))) { if (child.status === 'running') { this.cancel(child); child.status = 'rejected'; } }
   }
-  private async reconcile(run: Execution, task: MemoryTask) {
+  private async reconcile(run: Execution, task: MemoryTask, recordOutcome = true) {
     const index = run.activations.findIndex(a => a.id === task.activationId);
     const activation = run.activations[index];
     if (task.slotId == null) return { completed: task.status === 'approved', failed: task.status === 'rejected' };
     const slot = activation.slots.find(item => item.id === task.slotId)!;
-    slot.status = task.status === 'rejected' ? 'rejected' : 'approved';
+    if (recordOutcome) slot.status = task.status === 'rejected' ? 'rejected' : 'approved';
     const result = evaluateWorkflowApprovalActivation(activation);
     // Successful activation is settled together with the token, as in persistent execution.
     run.activations[index] = { ...result.activation, status: result.failed ? 'rejected' : 'active' };
@@ -208,8 +217,11 @@ export class MemoryWorkflowRuntime {
       if (sibling.status !== 'pending' && sibling.status !== 'waiting') continue;
       if (member.status === 'cancelled') { sibling.status = 'skipped'; sibling.timeoutAt = null; }
       else if (sibling.waitReason !== 'external') {
+        const previousStatus = sibling.status;
         sibling.status = result.waitReasons[member.id] ? 'waiting' : 'pending'; sibling.waitReason = result.waitReasons[member.id] ?? null;
-        if (sibling.status === 'pending' && sibling.timeoutAt == null) sibling.timeoutAt = computeTimeoutAt(this.config(run, sibling.nodeKey)?.timeout, new Date(this.now))?.getTime() ?? null;
+        if (sibling.status === 'waiting' && previousStatus === 'pending' && sibling.timeoutAt != null) { sibling.pausedTimeoutMs = sibling.timeoutAt - this.now; sibling.timeoutAt = null; }
+        if (sibling.status === 'pending' && sibling.timeoutAt == null) { sibling.timeoutAt = sibling.pausedTimeoutMs != null ? this.now + sibling.pausedTimeoutMs
+          : computeTimeoutAt(this.config(run, sibling.nodeKey)?.timeout, new Date(this.now))?.getTime() ?? null; sibling.pausedTimeoutMs = undefined; }
       }
     }
     return result;
@@ -222,7 +234,7 @@ export class MemoryWorkflowRuntime {
   async command(command: WorkflowSimulationDecision) {
     const checkpoint = structuredClone({ executions: this.executions, timeline: this.timeline, warnings: this.warnings,
       nextId: this.nextId, randomState: this.randomState, now: this.now, operations: this.operations });
-    try { await this.applyCommand(command); }
+    try { await this.applyCommand(command); this.commandCount++; }
     catch (error) {
       this.executions.splice(0, this.executions.length, ...checkpoint.executions);
       this.timeline.splice(0, this.timeline.length, ...checkpoint.timeline);
@@ -248,6 +260,7 @@ export class MemoryWorkflowRuntime {
       && (command.assigneeId == null || item.assigneeId === command.assigneeId) && (item.status === 'pending' || item.status === 'waiting'));
     if (!task) throw new Error('当前节点没有可操作的仿真待办');
     if (command.action === 'wait') { await this.emit(run, task, 'waiting', command.reason ?? '保留当前待办，其他并行路径仍可继续'); return; }
+    if (['transfer', 'delegate', 'addSign', 'reduceSign'].includes(command.action)) { await this.collaborate(run, task, command); return; }
     if (['sequence', 'subprocess', 'delay', 'beforeSign', 'afterSign'].includes(task.waitReason ?? '')) throw new Error('当前任务尚未激活，请先完成前置任务或推进虚拟时间');
     const config = this.config(run, task.nodeKey)!;
     if ((command.action === 'approve' || command.action === 'reject') && (task.nodeType === 'approve' || task.nodeType === 'handler') && task.waitReason !== 'external') {
@@ -265,8 +278,16 @@ export class MemoryWorkflowRuntime {
     const patch = sanitizeFormUpdatesByNodePerms(resolveNodeFieldPermissions(run.flow, task.nodeKey), command.formPatch);
     run.formData = computeWorkflowDerivedValues(run.fields, { ...run.formData, ...patch });
     if (task.taskKind === 'suggestion') {
-      task.taskKind = 'approval'; task.assigneeId = task.delegatedFromId; task.status = 'pending';
-      await this.emit(run, task, 'waiting', '受托建议已提交，等待原审批人正式确认'); return;
+      if (run.tasks.some(item => item.id !== task.id && item.activationId === task.activationId && item.assigneeId === task.delegatedFromId && ['pending', 'waiting'].includes(item.status))) throw new Error('原审批人已有本轮活动任务');
+      task.status = command.action === 'reject' ? 'rejected' : 'approved';
+      task.timeoutAt = null;
+      const receipt: MemoryTask = { ...task, id: this.nextId++, taskKind: 'approval', assigneeId: task.delegatedFromId, delegatedFromId: null, status: 'pending', waitReason: null,
+        timeoutAt: computeTimeoutAt(config.timeout, new Date(this.now))?.getTime() ?? null };
+      run.tasks.push(receipt);
+      const slot = run.activations.find(item => item.id === task.activationId)?.slots.find(item => item.id === task.slotId);
+      if (slot) { slot.currentAssigneeId = receipt.assigneeId; slot.currentTaskId = receipt.id; }
+      await this.emit(run, task, task.status, '受托建议已提交');
+      await this.emit(run, receipt, 'entered', '等待原审批人正式确认'); return;
     }
     if (command.outcome === 'failed') { await this.failEffect(run, task, command.reason ?? '模拟外部执行失败'); await this.settleChildren(); return; }
     await this.finishTask(run, task, command.action === 'reject' || command.outcome === 'rejected' ? 'rejected' : 'approved', command.reason ?? (command.action === 'skip' ? '模拟运维跳过' : '模拟审批操作'));
@@ -289,6 +310,52 @@ export class MemoryWorkflowRuntime {
       await this.advance(run, task.returnOrigin ? { kind: 'enterNode', nodeKey: task.returnOrigin, consumeNodeKey: task.nodeKey } : { kind: 'advanceNode', nodeKey: task.nodeKey });
     }
     timeline.nextNodeKeys = run.tokens.map(token => token.nodeKey);
+  }
+  private async collaborate(run: Execution, task: MemoryTask, command: WorkflowSimulationDecision) {
+    const action = command.action as 'transfer' | 'delegate' | 'addSign' | 'reduceSign';
+    const config = this.config(run, task.nodeKey)!;
+    if (!resolveWorkflowActionButton(config.actionButtons, action).enabled) throw new Error('节点未启用该协作操作');
+    const activation = run.activations.find(item => item.id === task.activationId)!;
+    const slot = activation.slots.find(item => item.id === task.slotId);
+    if (!slot || task.taskKind !== 'approval') throw new Error('当前任务不是正式审批席位');
+    if (action !== 'reduceSign' && task.status !== 'pending') throw new Error('当前席位尚未激活');
+    if (action === 'reduceSign') {
+      const group = activation.signGroups.find(item => item.id === command.groupId);
+      if (!group || !['active', 'waiting'].includes(group.status)) throw new Error('加签组已结束或不存在');
+      const targets = activation.slots.filter(item => command.targetSlotIds?.includes(item.id) && item.groupId === group.id);
+      if (!targets.length || targets.length !== command.targetSlotIds?.length || targets.some(item => item.status !== 'pending')) throw new Error('只能减签尚未形成正式意见的席位');
+      for (const target of targets) { target.status = 'cancelled'; const member = run.tasks.find(item => item.id === target.currentTaskId)!; member.status = 'skipped'; member.timeoutAt = null; }
+      const result = await this.reconcile(run, task, false);
+      if (result.completed) await this.advance(run, { kind: 'advanceNode', nodeKey: task.nodeKey });
+      await this.emit(run, task, 'entered', '加签席位已取消'); return;
+    }
+    const ids = command.targetUserIds ?? [];
+    if (!ids.length || new Set(ids).size !== ids.length || ids.includes(task.assigneeId!)) throw new Error('请选择不重复且不同于当前处理人的成员');
+    await this.facts.validateUsers?.(ids);
+    if (run.tasks.some(item => item.activationId === task.activationId && item.id !== task.id && ['pending', 'waiting'].includes(item.status) && ids.includes(item.assigneeId!))) throw new Error('目标成员已持有本轮活动任务');
+    if (action === 'transfer' || action === 'delegate') {
+      if (ids.length !== 1 || task.handledBy?.includes(ids[0])) throw new Error('不能将任务转回曾经经手的处理人');
+      task.handledBy = [...(task.handledBy ?? []), task.assigneeId!];
+      if (action === 'delegate') { task.delegatedFromId ??= task.assigneeId; task.taskKind = 'suggestion'; }
+      task.assigneeId = ids[0]; slot.currentAssigneeId = ids[0];
+      await this.emit(run, task, 'entered', action === 'delegate' ? '已委派，受托意见将交原审批人确认' : '任务已转办'); return;
+    }
+    if (slot.origin !== 'base') throw new Error('加签席位不可嵌套加签');
+    const groupId = this.nextId++; const position = command.position ?? 'parallel';
+    const group: WorkflowNodeActivation['signGroups'][number] = { id: groupId, activationId: activation.id, anchorSlotId: slot.id,
+      position, signMode: command.signMode ?? 'and', status: position === 'after' ? 'waiting' : 'active', createdBy: task.assigneeId,
+      createdAt: String(this.now), canReduce: true, slots: [] };
+    activation.signGroups.push(group);
+    for (const id of ids) {
+      const taskId = this.nextId++; const slotId = this.nextId++;
+      const member: MemoryTask = { ...task, id: taskId, slotId, assigneeId: id, delegatedFromId: null, taskKind: 'approval',
+        status: position === 'after' ? 'waiting' : 'pending', waitReason: position === 'after' ? 'afterSign' : null,
+        timeoutAt: position === 'after' ? null : computeTimeoutAt(config.timeout, new Date(this.now))?.getTime() ?? null, handledBy: [] };
+      const seat: WorkflowNodeActivation['slots'][number] = { id: slotId, activationId: activation.id, origin: 'addSign', groupId,
+        originalAssigneeId: id, currentAssigneeId: id, assigneeName: null, status: 'pending', order: null, mandatory: false, currentTaskId: taskId };
+      activation.slots.push(seat); group.slots.push(seat); run.tasks.push(member); await this.emit(run, member, member.status === 'pending' ? 'entered' : 'waiting', '已创建独立加签席位');
+    }
+    await this.reconcile(run, task, false);
   }
   private async spawnChildren(run: Execution, task: MemoryTask) {
     const config = this.config(run, task.nodeKey)!;
@@ -368,7 +435,14 @@ export class MemoryWorkflowRuntime {
   }
   private async failEffect(run: Execution, task: MemoryTask, reason: string) {
     const config = this.config(run, task.nodeKey)!; const policy = resolveFailurePolicy(config);
-    if (!policy) { await this.finishTask(run, task, 'rejected', reason); return; }
+    if (!policy) {
+      if (config.externalApproval?.enabled) {
+        const fallback = config.externalApproval.fallbackStrategy ?? 'manual';
+        if (fallback === 'manual') { await this.emit(run, task, 'waiting', reason + '，等待外部结果或人工确认'); return; }
+        await this.finishTask(run, task, fallback === 'autoApprove' ? 'approved' : 'rejected', reason + '，按外部审批兜底策略处理'); return;
+      }
+      await this.finishTask(run, task, 'rejected', reason); return;
+    }
     const disposition = runtimeFailureDisposition(policy, run.flow.nodes.some(node => node.data.key === policy.fallbackNodeKey));
     await this.emit(run, task, 'blocked', reason);
     if (disposition === 'terminate') { task.status = 'rejected'; this.cancel(run); run.status = 'rejected'; }
@@ -403,10 +477,15 @@ export class MemoryWorkflowRuntime {
         const names = await this.facts.names(users);
         selectableNext.push({ nodeKey: next.data.key, label: next.data.label, users: users.map(id => ({ id, name: names.get(id) ?? '用户#' + id })) });
       }
+      const config = this.config(run, task.nodeKey);
+      const seat = run.activations.find(item => item.id === task.activationId)?.slots.find(item => item.id === task.slotId);
+      const actions = (['approve', 'reject', 'transfer', 'delegate', 'addSign', 'reduceSign'] as const).filter(action => resolveWorkflowActionButton(config?.actionButtons, action).enabled);
       tasks.push({ id: task.id, executionPath: task.executionPath, nodeKey: task.nodeKey, nodeName: task.nodeName, nodeType: task.nodeType,
-        assigneeId: task.assigneeId, status: task.status, waitReason: task.waitReason, requirements: this.requirements(run, task), selectableNext });
+        assigneeId: task.assigneeId, status: task.status, waitReason: task.waitReason, slotId: task.slotId, groupId: seat?.groupId ?? null,
+        formData: structuredClone(run.formData), editableFields: applyFieldPermissionsToFields(run.fields, config?.fieldPermissions ?? {}),
+        actions, requirements: this.requirements(run, task), selectableNext });
     }
-    return { now: this.now, tasks, executions: this.executions.map(run => ({ path: run.path, status: run.status, formData: run.formData })) };
+    return { now: this.now, commandCount: this.commandCount, tasks, executions: this.executions.map(run => ({ path: run.path, status: run.status, formData: run.formData })) };
   }
   nodeStates(): Record<string, WorkflowSimulationNodeState> {
     const states: Record<string, WorkflowSimulationNodeState> = {};

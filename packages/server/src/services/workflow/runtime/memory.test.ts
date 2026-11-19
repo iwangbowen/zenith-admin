@@ -87,6 +87,11 @@ describe('same execution runtime with memory storage', () => {
     await runtime.command({ nodeKey: 'review', action: 'approve' });
     expect((await runtime.snapshot()).tasks[0].nodeKey).toBe('after');
   });
+  it('external dispatch failure with manual fallback preserves the waiting task', async () => {
+    const runtime=await start(flow({externalApproval:{enabled:true,url:'https://example.invalid/approval',secret:'test',fallbackStrategy:'manual'}}));
+    await runtime.command({nodeKey:'review',action:'approve',outcome:'failed'});
+    expect((await runtime.snapshot()).tasks[0]).toMatchObject({nodeKey:'review',status:'waiting',waitReason:'external'});
+  });
   it('actually executes a child and waits before restoring its parent', async () => {
     const child = { id: 12, flowData: flow({ assigneeIds: [7] }, false), fields: [] };
     const runtime = await start(flow({ type: 'subProcess', subProcessId: 12, subProcessWaitChild: true }), {}, facts([child]));
@@ -135,6 +140,100 @@ describe('same execution runtime with memory storage', () => {
     await runtime.command({ nodeKey: 'review', action: 'approve', outcome: 'failed' });
     expect((await runtime.snapshot()).tasks[0]).toMatchObject({ status: 'pending', assigneeId: 88 });
     await runtime.command({ nodeKey: 'review', action: 'approve' });
+    expect((await runtime.snapshot()).tasks[0].nodeKey).toBe('after');
+  });
+  it('keeps a before-sign group mandatory even for OR approval', async () => {
+    const runtime = await start(flow({ approveMethod: 'or', actionButtons: { addSign: { enabled: true }, reduceSign: { enabled: true } } }));
+    await runtime.command({ nodeKey: 'review', assigneeId: 1, action: 'addSign', targetUserIds: [7], position: 'before' });
+    await runtime.command({ nodeKey: 'review', assigneeId: 2, action: 'approve' });
+    expect((await runtime.snapshot()).tasks.some(task => task.nodeKey === 'after')).toBe(false);
+    await runtime.command({ nodeKey: 'review', assigneeId: 7, action: 'approve' });
+    await runtime.command({ nodeKey: 'review', assigneeId: 1, action: 'approve' });
+    expect((await runtime.snapshot()).tasks[0].nodeKey).toBe('after');
+  });
+  it('delegated suggestions return to the principal without casting a formal vote', async () => {
+    const runtime = await start(flow({ assigneeIds: [1], actionButtons: { delegate: { enabled: true } } }));
+    await runtime.command({ nodeKey: 'review', action: 'delegate', targetUserIds: [7] });
+    await runtime.command({ nodeKey: 'review', assigneeId: 7, action: 'approve' });
+    expect((await runtime.snapshot()).tasks[0]).toMatchObject({ nodeKey: 'review', assigneeId: 1 });
+    await runtime.command({ nodeKey: 'review', assigneeId: 1, action: 'approve' });
+    expect((await runtime.snapshot()).tasks[0].nodeKey).toBe('after');
+  });
+  it('rejects transfer back to a previous holder', async () => {
+    const runtime = await start(flow({ assigneeIds: [1], actionButtons: { transfer: { enabled: true } } }));
+    await runtime.command({ nodeKey: 'review', action: 'transfer', targetUserIds: [7] });
+    await expect(runtime.command({ nodeKey: 'review', action: 'transfer', targetUserIds: [1] })).rejects.toThrow('经手');
+  });
+  it('reduces a pending supplemental group without changing frozen base votes', async () => {
+    const runtime = await start(flow({ assigneeIds: [1], actionButtons: { addSign: { enabled: true }, reduceSign: { enabled: true } } }));
+    await runtime.command({ nodeKey: 'review', action: 'addSign', targetUserIds: [7], position: 'after' });
+    const extra = (await runtime.snapshot()).tasks.find(task => task.assigneeId === 7)!;
+    await runtime.command({ nodeKey: 'review', taskId: extra.id, action: 'reduceSign', groupId: extra.groupId!, targetSlotIds: [extra.slotId!] });
+    await runtime.command({ nodeKey: 'review', assigneeId: 1, action: 'approve' });
+    expect((await runtime.snapshot()).tasks[0].nodeKey).toBe('after');
+  });
+  it('regresses procurement with conditional parallel OR/AND votes, child approval, output mapping and delay', async () => {
+    const configs: WorkflowNodeConfig[] = [
+      { key: 'start', type: 'start', label: '采购发起' },
+      { key: 'amount', type: 'exclusiveGateway', label: '金额分级' },
+      { key: 'fork', type: 'parallelGateway', label: '并行会审' },
+      { key: 'finance', type: 'approve', label: '财务会签', assigneeType: 'user', assigneeIds: [1,2], approveMethod: 'and', actionButtons: { addSign: { enabled: true } } },
+      { key: 'legal', type: 'approve', label: '法务或签', assigneeType: 'user', assigneeIds: [4,5], approveMethod: 'or' },
+      { key: 'join', type: 'parallelGateway', label: '会审汇聚' },
+      { key: 'contract', type: 'subProcess', label: '合同审批', subProcessId: 12, subProcessWaitChild: true, subProcessFieldMapping: { contractAmount: '{{form.amount}}' }, subProcessOutputMapping: { contractResult: 'result' } },
+      { key: 'delay', type: 'delay', label: '冷静期', delayValue: 1, delayUnit: 'hour' },
+      { key: 'director', type: 'approve', label: '总监审批', assigneeType: 'user', assigneeIds: [8] },
+      { key: 'small', type: 'approve', label: '小额审批', assigneeType: 'user', assigneeIds: [9] },
+      { key: 'end', type: 'end', label: '完成' },
+    ];
+    const graph: WorkflowFlowData = { nodes: configs.map(data => ({ id: data.key, position: { x: 0, y: 0 }, data })), settings: { approverDedupMode: 'none' },
+      edges: [['start','amount'],['amount','fork'],['amount','small'],['fork','finance'],['fork','legal'],['finance','join'],['legal','join'],['join','contract'],['contract','delay'],['delay','director'],['director','end'],['small','end']]
+        .map(([source,target], index) => ({ id: 'p' + index, source, target, ...(source === 'amount' && target === 'fork' ? { condition: { field: 'amount', operator: 'gt' as const, value: 10000 } } : source === 'amount' ? { isDefault: true } : {}) })) };
+    const child = flow({ assigneeIds: [7] }, false); child.nodes.splice(2,0,{id:'update',position:{x:0,y:0},data:{key:'update',type:'trigger',label:'合同结果',triggerConfig:{triggerType:'updateData',fieldKeys:['result'],fieldValues:{result:'confirmed'}}}});
+    child.edges[1].target = 'update'; child.edges.push({id:'child-result',source:'update',target:'end'});
+    const runtime = await new MemoryWorkflowRuntime(facts([{ id:12, flowData:child, fields:[] }]), {now:0}).start({id:1,flowData:graph,fields:[]},{amount:28000},99);
+    await runtime.command({nodeKey:'finance',assigneeId:1,action:'addSign',targetUserIds:[6],position:'before'});
+    await runtime.command({nodeKey:'legal',assigneeId:4,action:'approve'});
+    await runtime.command({nodeKey:'finance',assigneeId:6,action:'approve'});
+    await runtime.command({nodeKey:'finance',assigneeId:1,action:'approve'});
+    expect((await runtime.snapshot()).tasks.some(task=>task.nodeKey==='contract')).toBe(false);
+    await runtime.command({nodeKey:'finance',assigneeId:2,action:'approve'});
+    const childTask=(await runtime.snapshot()).tasks.find(task=>task.executionPath!=='root')!;
+    await runtime.command({nodeKey:childTask.nodeKey,taskId:childTask.id,executionPath:childTask.executionPath,action:'approve'});
+    expect(runtime.executions[0].formData.contractResult).toBe('confirmed');
+    await runtime.command({nodeKey:'clock',action:'advanceTime',minutes:60});
+    await runtime.command({nodeKey:'director',action:'approve'});
+    expect(runtime.executions[0].status).toBe('finished');
+    expect(runtime.timeline.some(item=>item.nodeKey==='small')).toBe(false);
+  });
+  it('evaluates relative-date conditions against the advanced virtual clock', async () => {
+    const graph = flow({ type: 'delay', delayValue: 3, delayUnit: 'day' });
+    graph.nodes.splice(2,0,{id:'date-check',position:{x:0,y:0},data:{key:'date-check',type:'exclusiveGateway',label:'日期判断'}});
+    graph.edges[1].target='date-check';
+    graph.edges.push({id:'recent',source:'date-check',target:'after',condition:{field:'submitted',operator:'withinDays',value:1}},{id:'expired',source:'date-check',target:'end',isDefault:true});
+    const now=new Date('2026-11-19T00:00:00Z').getTime();
+    const runtime=await new MemoryWorkflowRuntime(facts(),{now}).start({id:1,flowData:graph,fields:[]},{submitted:'2026-11-19T00:00:00Z'},99);
+    await runtime.command({nodeKey:'clock',action:'advanceTime',minutes:3*24*60});
+    expect(runtime.executions[0].status).toBe('finished');
+    expect(runtime.timeline.some(item=>item.nodeKey==='after')).toBe(false);
+  });
+  it('applies only editable form fields and recomputes derived amounts before routing', async () => {
+    const graph=flow({assigneeIds:[1],fieldPermissions:{amount:'edit'}});
+    const fields=[{key:'amount',label:'金额',type:'amount' as const},{key:'total',label:'合计',type:'formula' as const,formula:'{amount} * 2'}];
+    const runtime=await new MemoryWorkflowRuntime(facts(),{now:0}).start({id:1,flowData:graph,fields},{amount:100},99);
+    await runtime.command({nodeKey:'review',action:'approve',formPatch:{amount:200,total:1,unauthorized:'ignored'}});
+    expect(runtime.executions[0].formData).toMatchObject({amount:200,total:400});
+    expect(runtime.executions[0].formData).not.toHaveProperty('unauthorized');
+  });
+  it.each(['serial','parallel'] as const)('runs every %s child instance with ordered mapped output',async execution=>{
+    const child=flow({assigneeIds:[7],fieldPermissions:{result:'edit'}},false);
+    const parent=flow({type:'subProcess',subProcessId:12,subProcessMode:'multi',subProcessMultiSource:'items',subProcessMultiExecution:execution,subProcessFieldMapping:{result:'{{item}}'},subProcessOutputMapping:{results:'result'}});
+    const runtime=await new MemoryWorkflowRuntime(facts([{id:12,flowData:child,fields:[]}]),{now:0}).start({id:1,flowData:parent,fields:[]},{items:['A','B']},99);
+    const first=(await runtime.snapshot()).tasks.find(task=>task.executionPath!=='root')!;
+    await runtime.command({nodeKey:first.nodeKey,taskId:first.id,executionPath:first.executionPath,action:'approve'});
+    const second=(await runtime.snapshot()).tasks.find(task=>task.executionPath!=='root')!;
+    await runtime.command({nodeKey:second.nodeKey,taskId:second.id,executionPath:second.executionPath,action:'approve'});
+    expect(runtime.executions[0].formData.results).toEqual(['A','B']);
     expect((await runtime.snapshot()).tasks[0].nodeKey).toBe('after');
   });
 });

@@ -1,8 +1,8 @@
 // ─── 发起人自选审批人与表单起始权限（拆分自 workflow-instances.service.ts）───
-import { uniquePositiveInts } from '@zenith/shared/core';
+import { applyRuntimeInitiatorSelections } from '../runtime/initiator-selection';
 import { advanceTokens } from '../../../lib/workflow-token-engine';
 import type { WorkflowFlowData, WorkflowStarterContext, WorkflowPathPlanOptions } from '@zenith/shared/workflow';
-import { findNextApproverSelectNodes, planWorkflowPath } from '@zenith/shared/workflow';
+import { findNextApproverSelectNodes } from '@zenith/shared/workflow';
 import { HTTPException } from 'hono/http-exception';
 import { filterSelectedApproverIds } from '../workflow-assignee-resolver.service';
 import type { DbExecutor } from '../../../db/types';
@@ -25,58 +25,15 @@ export function hasExecutableEntry(flowData: WorkflowFlowData, formData: Record<
 
 export type SelectedApproverMap = Record<string, number[]>;
 
-const INITIATOR_SELECT_ASSIGNEE_TYPES = new Set(['initiatorSelect', 'initiatorSelectScope']);
-
-function normalizeSelectedApproverMap(input?: SelectedApproverMap | null): SelectedApproverMap {
-  const out: SelectedApproverMap = {};
-  for (const [nodeKey, ids] of Object.entries(input ?? {})) {
-    if (!nodeKey || !Array.isArray(ids)) continue;
-    const normalized = uniquePositiveInts(ids);
-    if (normalized.length > 0) out[nodeKey] = normalized;
-  }
-  return out;
-}
-
 export async function applyInitiatorSelectedApprovers(
   flowData: WorkflowFlowData,
   selected: SelectedApproverMap | null | undefined,
   context: Pick<WorkflowPathPlanOptions, 'formData' | 'formFields' | 'starter'> = {},
   executor?: DbExecutor,
 ): Promise<WorkflowFlowData> {
-  const normalized = normalizeSelectedApproverMap(selected);
-  const selectNodes = (flowData.nodes ?? []).filter((node) => INITIATOR_SELECT_ASSIGNEE_TYPES.has(node.data.assigneeType ?? ''));
-  if (selectNodes.length === 0) return flowData;
-
-  // 与发起预览同源：未命中的分支无需选人；未来可变分支仍需预选，避免抵达时无人可办。
-  const path = planWorkflowPath(flowData, { ...context, recomputeDerivedValues: true });
-  const statuses = new Map(path.nodes.map(node => [node.nodeKey, node.status]));
-  const selectedByNode = new Map<string, number[]>();
-  for (const node of selectNodes) {
-    if (statuses.get(node.data.key) === 'excluded') continue;
-    const picked = await filterSelectedApproverIds(node.data, normalized[node.data.key] ?? [], executor);
-    if (picked.length === 0) {
-      throw new HTTPException(400, { message: `请选择节点「${node.data.label || node.data.key}」的审批人` });
-    }
-    selectedByNode.set(node.data.key, picked);
-  }
-
-  return {
-    ...flowData,
-    nodes: flowData.nodes.map((node) => {
-      const picked = selectedByNode.get(node.data.key);
-      if (!picked) return node;
-      return {
-        ...node,
-        data: {
-          ...node.data,
-          userIds: picked,
-          assigneeIds: picked,
-          assigneeId: picked.length === 1 ? picked[0] : null,
-        },
-      };
-    }),
-  };
+  return applyRuntimeInitiatorSelections(flowData, selected, context, (config, ids) => filterSelectedApproverIds(config, ids, executor));
 }
+
 
 export async function assertSelectedNextApprovers(
   flowData: WorkflowFlowData,

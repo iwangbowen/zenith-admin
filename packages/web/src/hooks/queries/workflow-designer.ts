@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { BodyOf, InputOf } from '@zenith/shared/core';
 import { dictContract, numberingRuleContract } from '@zenith/shared/platform';
 import { decisionFlowContract, decisionTableContract, ruleScorecardContract } from '@zenith/shared/rules';
-import type { WorkflowFlowData, WorkflowSimulationDecision } from '@zenith/shared/workflow';
+import type { WorkflowFlowData, WorkflowFormField, WorkflowSimulationDecision } from '@zenith/shared/workflow';
 import {
   workflowConnectorContract,
   workflowDataSourceContract,
@@ -89,6 +89,8 @@ interface WorkflowSimulationPayload {
   starterUserId?: number;
   decisions: WorkflowSimulationDecision[];
   options: Record<string, unknown>;
+  formFields?: WorkflowFormField[];
+  selectedInitiatorApprovers?: Record<string, number[]>;
 }
 
 /** 触发器节点的连接器下拉（只取启用项） */

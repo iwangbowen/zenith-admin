@@ -47,6 +47,7 @@ export async function resolveActiveDelegate(
   exec: DbExecutor,
   principalId: number,
   definitionId: number,
+  now = new Date(),
 ): Promise<{ delegateId: number; mode: 'full' | 'suggest' } | null> {
   const rows = await exec
     .select({ delegateId: workflowDelegations.delegateId, definitionId: workflowDelegations.definitionId, mode: workflowDelegations.mode, enabled: workflowDelegations.enabled, startAt: workflowDelegations.startAt, endAt: workflowDelegations.endAt })
@@ -56,7 +57,7 @@ export async function resolveActiveDelegate(
       eq(workflowDelegations.enabled, true),
       or(isNull(workflowDelegations.definitionId), eq(workflowDelegations.definitionId, definitionId)),
     ));
-  const active = rows.filter((r) => isActive(r));
+  const active = rows.filter((r) => isActive(r, now));
   if (active.length === 0) return null;
   // 流程专属委托优先于全局委托
   active.sort((a, b) => (b.definitionId ?? -1) - (a.definitionId ?? -1));

@@ -264,10 +264,15 @@ export const workflowSimulationResultSchema = z.object({
   blockingPoints: z.array(workflowSimulationBlockingPointSchema),
   runtime: z.object({
     now: z.number(),
+    commandCount: z.int(),
     tasks: z.array(z.object({
       id: z.int(), executionPath: z.string(), nodeKey: z.string(), nodeName: z.string(),
       nodeType: z.string(), assigneeId: z.int().nullable(), status: z.string(),
       waitReason: z.string().nullable(), requirements: z.array(z.string()),
+      slotId: z.int().nullable(), groupId: z.int().nullable(),
+      actions: z.array(z.string()),
+      formData: z.record(z.string(), z.unknown()),
+      editableFields: z.array(workflowFormFieldSchema),
       selectableNext: z.array(z.object({ nodeKey: z.string(), label: z.string(), users: z.array(approverRefSchema) })),
     })),
     executions: z.array(z.object({ path: z.string(), status: z.string(), formData: z.record(z.string(), z.unknown()) })),

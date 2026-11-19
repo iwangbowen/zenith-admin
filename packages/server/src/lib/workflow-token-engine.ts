@@ -81,6 +81,7 @@ export interface PendingDecision {
 }
 
 export interface AdvanceTokensInput {
+  now?: number;
   flowData: WorkflowFlowData;
   formData?: Record<string, unknown>;
   starter?: WorkflowStarterContext;
@@ -275,7 +276,7 @@ export function advanceTokens(input: AdvanceTokensInput): AdvanceTokensResult {
         const tgt = nodeMap.get(target);
         if (!tgt) continue;
         if (edgeHasCondition(edge)) {
-          if (edgeMatchesCondition(edge, formData, starter)) { chosen = target; break; }
+          if (edgeMatchesCondition(edge, formData, starter, input.now)) { chosen = target; break; }
         } else if (isDefaultEdge(edge, tgt) && !fallback) {
           fallback = target;
         }
@@ -300,7 +301,7 @@ export function advanceTokens(input: AdvanceTokensInput): AdvanceTokensResult {
             const tgt = nodeMap.get(target);
             if (!tgt) continue;
             if (edgeHasCondition(edge)) {
-              if (edgeMatchesCondition(edge, formData, starter)) targets.push(target);
+              if (edgeMatchesCondition(edge, formData, starter, input.now)) targets.push(target);
             } else if (isDefaultEdge(edge, tgt) || !defaultTarget) {
               defaultTarget = target;
             }

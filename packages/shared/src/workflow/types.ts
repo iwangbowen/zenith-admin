@@ -895,7 +895,7 @@ export type WorkflowAutomationAction =
 /** 流程仿真中对指定节点预设的处理动作 */
 export interface WorkflowSimulationDecision {
   nodeKey: string;
-  action: 'approve' | 'reject' | 'skip' | 'wait' | 'advanceTime' | 'resubmit';
+  action: 'approve' | 'reject' | 'skip' | 'wait' | 'advanceTime' | 'resubmit' | 'transfer' | 'delegate' | 'addSign' | 'reduceSign';
   assigneeId?: number;
   taskId?: number;
   executionPath?: string;
@@ -903,6 +903,11 @@ export interface WorkflowSimulationDecision {
   minutes?: number;
   outcome?: 'approved' | 'rejected' | 'failed';
   requirementsConfirmed?: boolean;
+  targetUserIds?: number[];
+  targetSlotIds?: number[];
+  groupId?: number;
+  position?: 'before' | 'after' | 'parallel';
+  signMode?: 'and' | 'or';
   reason?: string;
   formPatch?: Record<string, unknown>;
 }

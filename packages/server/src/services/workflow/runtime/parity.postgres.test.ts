@@ -1,12 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { and, eq, inArray } from 'drizzle-orm';
 import { db, closeDb } from '../../../db';
-import { users, workflowDefinitions, workflowInstances, workflowTasks } from '../../../db/schema';
+import { users, workflowDefinitions, workflowInstances, workflowTasks, workflowTokens, ruleExecutions } from '../../../db/schema';
 import { runWithCurrentUser } from '../../../lib/context';
 import { advanceAndMaterialize, checkNodeCompletion } from '../instances/materialize';
 import { recordSlotOutcome } from '../instances/approval-state';
 import { MemoryWorkflowRuntime } from './memory';
 import { createSimulationFacts } from './simulation-facts';
+import { simulateWorkflow } from '../workflow-simulation.service';
 import { registerEventConsumer, sealEventConsumerRegistry } from '../../../lib/domain-events/registry';
 import type { WorkflowFlowData, WorkflowDefinitionSnapshot } from '@zenith/shared/workflow';
 
@@ -27,12 +28,12 @@ integration('PostgreSQL and memory execution parity', () => {
     if (ids?.length) await db.delete(users).where(inArray(users.id, ids));
     await closeDb();
   });
-  it.each(['and', 'or', 'sequential', 'ratio'] as const)('matches task states and next frontier after every %s vote', async method => runWithCurrentUser({ userId: ids[0], username: 'runtime-parity', roles: ['super_admin'], tenantId: null }, async () => {
+  it.each(['and', 'or', 'sequential', 'ratio', 'ratio-refusal'] as const)('matches task states and next frontier after every %s vote', async method => runWithCurrentUser({ userId: ids[0], username: 'runtime-parity', roles: ['super_admin'], tenantId: null }, async () => {
     const flow: WorkflowFlowData = {
       settings: { approverDedupMode: 'none' },
       nodes: [
         { id: 'start', position: { x: 0, y: 0 }, data: { key: 'start', type: 'start', label: '发起' } },
-        { id: 'review', position: { x: 0, y: 0 }, data: { key: 'review', type: 'approve', label: '财务会审', assigneeType: 'user', assigneeIds: [ids[1], ids[2]], approveMethod: method, approveRatio: 100 } },
+        { id: 'review', position: { x: 0, y: 0 }, data: { key: 'review', type: 'approve', label: '财务会审', assigneeType: 'user', assigneeIds: [ids[1], ids[2]], approveMethod: method === 'ratio-refusal' ? 'ratio' : method, approveRatio: method === 'ratio-refusal' ? 50 : 100 } },
         { id: 'next', position: { x: 0, y: 0 }, data: { key: 'next', type: 'approve', label: '总监审批', assigneeType: 'user', assigneeIds: [ids[3]] } },
         { id: 'end', position: { x: 0, y: 0 }, data: { key: 'end', type: 'end', label: '结束' } },
       ], edges: [{ id: 'a', source: 'start', target: 'review' }, { id: 'b', source: 'review', target: 'next' }, { id: 'c', source: 'next', target: 'end' }],
@@ -49,16 +50,34 @@ integration('PostgreSQL and memory execution parity', () => {
     };
     await compare();
     for (const id of method === 'or' ? [ids[1]] : [ids[1], ids[2]]) {
+      const outcome = method === 'ratio-refusal' && id === ids[1] ? 'rejected' : 'approved';
       const [task] = await db.select().from(workflowTasks).where(and(eq(workflowTasks.instanceId, instance.id), eq(workflowTasks.nodeKey, 'review'), eq(workflowTasks.assigneeId, id), eq(workflowTasks.status, 'pending')));
       expect(task).toBeDefined();
       await db.transaction(async tx => {
-        const [updated] = await tx.update(workflowTasks).set({ status: 'approved', actionAt: new Date() }).where(eq(workflowTasks.id, task.id)).returning();
-        await recordSlotOutcome(tx, updated, 'approved');
+        const [updated] = await tx.update(workflowTasks).set({ status: outcome, actionAt: new Date() }).where(eq(workflowTasks.id, task.id)).returning();
+        await recordSlotOutcome(tx, updated, outcome);
         const complete = await checkNodeCompletion(tx, instance, 'review', flow, task.activationId);
         if (complete.completed) await advanceAndMaterialize({ kind: 'advanceNode', nodeKey: 'review' }, { instanceId: instance.id, initiatorId: ids[0], executor: tx, flowData: flow, formData: {}, settings: flow.settings });
       });
-      await memory.command({ nodeKey: 'review', assigneeId: id, action: 'approve' });
+      await memory.command({ nodeKey: 'review', assigneeId: id, action: outcome === 'approved' ? 'approve' : 'reject' });
       await compare();
     }
+  }));
+  it('the simulation service executes real organization resolution without inserting runtime facts', async () => runWithCurrentUser({ userId: ids[0], username: 'runtime-parity', roles: ['super_admin'], tenantId: null }, async () => {
+    const flow: WorkflowFlowData = {
+      nodes: [
+        { id:'start',position:{x:0,y:0},data:{key:'start',type:'start',label:'发起'} },
+        { id:'review',position:{x:0,y:0},data:{key:'review',type:'approve',label:'审批',assigneeType:'user',assigneeIds:[ids[1]]} },
+        { id:'end',position:{x:0,y:0},data:{key:'end',type:'end',label:'结束'} },
+      ], edges:[{id:'a',source:'start',target:'review'},{id:'b',source:'review',target:'end'}],
+    };
+    const count = () => Promise.all([db.$count(workflowInstances), db.$count(workflowTasks), db.$count(workflowTokens), db.$count(ruleExecutions)]);
+    const before = await count();
+    const started = await simulateWorkflow({flowData:flow,options:{now:0,seed:1}});
+    expect(started.result).toBe('waiting');
+    const task=started.runtime!.tasks[0];
+    const finished=await simulateWorkflow({flowData:flow,options:{now:0,seed:1},decisions:[{nodeKey:'review',taskId:task.id,action:'approve'}]});
+    expect(finished.result).toBe('finished');expect(finished.runtime?.commandCount).toBe(1);
+    expect(await count()).toEqual(before);
   }));
 });

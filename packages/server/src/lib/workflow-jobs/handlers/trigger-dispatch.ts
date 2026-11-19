@@ -1,3 +1,4 @@
+import { runtimeTriggerData } from '../../../services/workflow/runtime/trigger-data';
 import { runWorkflowJobStep } from '../steps';
 import { throwIfWorkflowExternalEffectUncertain } from '../external-effects';
 import { eq } from 'drizzle-orm';
@@ -89,16 +90,7 @@ async function executeDataMutation(cfg: WorkflowTriggerNodeConfig, instanceId: n
       const [locked] = await tx.select({ formData: workflowInstances.formData }).from(workflowInstances)
         .where(eq(workflowInstances.id, instanceId)).for('update').limit(1);
       const base = (locked?.formData ?? formData ?? {}) as Record<string, unknown>;
-      const merged: Record<string, unknown> = { ...base };
-      if (cfg.triggerType === 'updateData') {
-        const values = cfg.fieldValues ?? {};
-        for (const key of fieldKeys) {
-          const template = values[key];
-          merged[key] = template === undefined ? null : renderTemplate(template, base);
-        }
-      } else if (cfg.triggerType === 'deleteData') {
-        for (const key of fieldKeys) delete merged[key];
-      }
+      const merged = runtimeTriggerData(cfg, base);
       await tx.update(workflowInstances).set({ formData: merged }).where(eq(workflowInstances.id, instanceId));
       return merged;
     });

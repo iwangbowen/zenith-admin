@@ -283,7 +283,7 @@ function buildMockSimulationResult(
   }
   return {
     valid: true,
-    warnings: ['Demo 模式使用轻量仿真，真实环境以后端流程引擎结果为准'],
+    warnings: ['静态 Demo 仅展示流程示意；待办执行、子流程与虚拟时钟需连接服务端运行时'],
     result,
     timeline,
     edgeResults: flowData.edges.map((edge) => {
@@ -1439,12 +1439,14 @@ export const workflowHandlers = [
       existing.starterUserId = body.starterUserId ?? null;
       existing.formData = body.formData;
       existing.decisions = body.decisions;
+      existing.runtimeConfig = body.runtimeConfig;
       existing.updatedAt = now;
       return ok(existing, '已保存');
     }
     const item: WorkflowSimulationCase = {
       id: simCaseSeq++, definitionId: body.definitionId, name,
       starterUserId: body.starterUserId ?? null, formData: body.formData, decisions: body.decisions,
+      runtimeConfig: body.runtimeConfig,
       tenantId: null, createdBy: 1, updatedBy: 1, createdAt: now, updatedAt: now,
     };
     mockSimulationCases.unshift(item);

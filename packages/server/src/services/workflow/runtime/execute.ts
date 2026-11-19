@@ -22,7 +22,7 @@ export interface ExecutionPorts<T> {
 
 /** PostgreSQL and memory execution use this identical execution loop. */
 export async function executeWorkflow<T>(trigger: RuntimeTrigger, ctx: {
-  flowData: WorkflowFlowData; formData: Record<string, unknown>; starter?: WorkflowStarterContext; instanceId: number;
+  flowData: WorkflowFlowData; formData: Record<string, unknown>; starter?: WorkflowStarterContext; instanceId: number; now?: number;
 }, ports: ExecutionPorts<T>): Promise<{ createdTasks: T[]; finished: boolean; rejected: boolean; currentNodeKeys: string[] }> {
   const queue: AdvanceTrigger[] = [];
   const createdTasks: T[] = [];

@@ -16,6 +16,7 @@ import { applyAssigneeRuntimeStrategies } from './assignees';
 import { armTaskAsyncJobs } from './async-jobs';
 import { workflowNodeActivations, workflowApprovalSlots } from '../../../db/schema';
 import { cancelApprovalActivations, reconcileApprovalActivation } from './approval-state';
+import { optionalExactTenantCondition } from '../../../lib/tenant';
 
 import { executeWorkflow, planRuntimeActivation, runtimeTaskIdentity, type RuntimeTrigger } from '../runtime/execute';
 import { expandRuntimeTasks, type ExpandedTaskRows, type ExpandedTaskRow } from '../runtime/expand-tasks';
@@ -202,7 +203,7 @@ export async function advanceAndMaterialize(
       await exec.update(workflowNodeActivations).set({ status: 'approved', settledAt: new Date() }).where(eq(workflowNodeActivations.tokenId, tokenId));
     },
     consumeTokens: async ids => {
-      await exec.update(workflowTokens).set({ status: 'consumed', consumedAt: new Date() }).where(and(eq(workflowTokens.instanceId, ctx.instanceId), inArray(workflowTokens.id, ids)));
+      await exec.update(workflowTokens).set({ status: 'consumed', consumedAt: new Date() }).where(and(eq(workflowTokens.instanceId, ctx.instanceId), inArray(workflowTokens.id, ids), optionalExactTenantCondition(workflowTokens.tenantId, ctx.tenantId)));
     },
     createToken: async spec => {
       const [token] = await exec.insert(workflowTokens).values({ instanceId: ctx.instanceId, nodeKey: spec.nodeKey, status: 'active', branchPath: spec.branchPath, parentTokenId: spec.parentTokenId, scopeKey: ctx.scopeKey ?? null, tenantId: ctx.tenantId ?? null }).returning();
