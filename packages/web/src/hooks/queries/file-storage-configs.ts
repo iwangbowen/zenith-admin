@@ -65,3 +65,22 @@ export function useTestFileStorageConfig() {
       : api(fileStorageConfigContract.testExisting, { params: { id: vars.id }, body: vars.values })),
   });
 }
+
+/** Bucket 权限探测 / 修改会同时改变详情中的云端状态字段，精确失效列表与当前详情 */
+export function useProbeFileStorageConfigBucketAccess() {
+  return useApiMutation(fileStorageConfigContract.probeBucketAccess, {
+    invalidate: (qc, _output, vars) => {
+      void qc.invalidateQueries({ queryKey: fileStorageConfigKeys.lists });
+      void qc.invalidateQueries({ queryKey: fileStorageConfigKeys.detail(vars.params.id) });
+    },
+  });
+}
+
+export function useUpdateFileStorageConfigBucketAccess() {
+  return useApiMutation(fileStorageConfigContract.updateBucketAccess, {
+    invalidate: (qc, _output, vars) => {
+      void qc.invalidateQueries({ queryKey: fileStorageConfigKeys.lists });
+      void qc.invalidateQueries({ queryKey: fileStorageConfigKeys.detail(vars.params.id) });
+    },
+  });
+}
