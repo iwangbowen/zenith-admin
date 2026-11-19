@@ -50,6 +50,7 @@ vi.mock('../../lib/file-storage', () => ({
   getMultipartDriver: vi.fn(() => null),
   mapObjectAclError: vi.fn((err: unknown) => err),
   resolveObjectAcl: vi.fn(() => null),
+  resolvePublicAccess: vi.fn(() => false),
   readStoredFile: vi.fn(),
   deleteObjectByConfig: vi.fn(async () => undefined),
 }));

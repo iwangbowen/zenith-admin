@@ -8,7 +8,7 @@ import { Readable, PassThrough } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
 import type { FileStorageConfigRow, ManagedFileRow } from '../db/schema';
-import { FILE_OBJECT_ACL_SUPPORT } from '@zenith/shared/platform';
+import { FILE_OBJECT_ACL_SUPPORT, type FileBucketAcl } from '@zenith/shared/platform';
 import { trimTrailingSlash } from '@zenith/shared/core';
 import { HTTPException } from 'hono/http-exception';
 import { formatDate } from './datetime';
@@ -110,6 +110,69 @@ function createOssClient(config: FileStorageConfigRow) {
     // 与 splitEndpoint 语义一致：仅显式 http:// 时才走 http
     secure: !config.ossEndpoint.startsWith('http://'),
   });
+}
+
+// ─── Bucket / Container 级权限探测与设置 ─────────────────────────────────────
+
+export interface FileBucketAccessInfo {
+  bucketAcl: FileBucketAcl | null;
+  blockPublicAccess: boolean | null;
+  effectivePublic: boolean;
+  checkedAt: Date;
+}
+
+function normalizeBucketAcl(value: unknown): FileBucketAcl | null {
+  return value === 'private' || value === 'public-read' || value === 'public-read-write' ? value : null;
+}
+
+function toBooleanOrNull(value: unknown): boolean | null {
+  if (value === true || value === 'true') return true;
+  if (value === false || value === 'false') return false;
+  return null;
+}
+
+/** 读取 Bucket / Container 的公共访问状态；不支持的 provider 抛业务错误。 */
+export async function getBucketAccessInfo(config: FileStorageConfigRow): Promise<FileBucketAccessInfo> {
+  if (config.provider === 'oss') {
+    const client = createOssClient(config);
+    const info = await client.getBucketInfo(config.ossBucket!);
+    const bucket = (info as { bucket?: Record<string, unknown> }).bucket ?? info as Record<string, unknown>;
+    const acl = normalizeBucketAcl((bucket.AccessControlList as { Grant?: unknown } | undefined)?.Grant);
+    const blockPublicAccess = toBooleanOrNull(bucket.BlockPublicAccess);
+    return {
+      bucketAcl: acl,
+      blockPublicAccess,
+      effectivePublic: (acl === 'public-read' || acl === 'public-read-write') && blockPublicAccess !== true,
+      checkedAt: new Date(),
+    };
+  }
+  throw new HTTPException(400, { message: `当前存储类型不支持 Bucket 权限探测：${config.provider}` });
+}
+
+/** 修改 Bucket / Container 的 ACL 或阻止公共访问开关；调用方负责权限与审计。 */
+export async function setBucketAccessInfo(
+  config: FileStorageConfigRow,
+  input: { acl?: FileBucketAcl; blockPublicAccess?: boolean },
+): Promise<FileBucketAccessInfo> {
+  if (config.provider === 'oss') {
+    const client = createOssClient(config);
+    if (input.acl) {
+      await client.putBucketACL(config.ossBucket!, input.acl);
+    }
+    if (input.blockPublicAccess !== undefined) {
+      const xml = `<?xml version="1.0" encoding="UTF-8"?><PublicAccessBlockConfiguration><BlockPublicAccess>${input.blockPublicAccess}</BlockPublicAccess></PublicAccessBlockConfiguration>`;
+      await (client as unknown as { request(params: Record<string, unknown>): Promise<unknown> }).request({
+        method: 'PUT',
+        bucket: config.ossBucket!,
+        subres: 'publicAccessBlock',
+        headers: { 'Content-Type': 'application/xml' },
+        content: xml,
+        successStatuses: [200],
+      });
+    }
+    return getBucketAccessInfo(config);
+  }
+  throw new HTTPException(400, { message: `当前存储类型不支持 Bucket 权限设置：${config.provider}` });
 }
 
 function createS3Client(config: FileStorageConfigRow) {
@@ -232,6 +295,8 @@ interface FileUrlSource {
   objectKey: string;
   bucketName?: string | null;
   objectAcl?: 'default' | 'private' | 'public-read' | 'public-read-write' | null;
+  /** 上传时快照：该对象当时是否可公共读取 */
+  publicAccess?: boolean | null;
 }
 
 function encodeObjectKey(objectKey: string) {
@@ -246,13 +311,47 @@ function splitEndpoint(endpoint: string): { scheme: string; host: string } {
 }
 
 /**
- * 公开性判定：有对象级 ACL 的云要求上传时快照为 public-read*；
- * 快照为 null（继承 Bucket / 旧数据）保守视为未知，不走公开直链。
- * 无对象级 ACL 概念的 provider（local/sftp/kodo/azure）信任管理员的策略配置。
+ * 公开直链可用性：按配置声明的公共性来源判断，而不是只看对象 ACL。
+ * - public-object：对象 ACL 为公共读；
+ * - public-bucket：上传时快照确认 Bucket 公共读；
+ * - public-domain：自定义域名 / CDN（或 Kodo/SFTP 自带的访问域名）。
  */
-function publicAclAllowed(file: FileUrlSource): boolean {
-  if (!FILE_OBJECT_ACL_SUPPORT[file.provider]) return true;
-  return file.objectAcl === 'public-read' || file.objectAcl === 'public-read-write';
+export function isPublicAccessAllowed(file: FileUrlSource, config: FileStorageConfigRow): boolean {
+  switch (config.accessStrategy) {
+    case 'public-object':
+      return file.objectAcl === 'public-read' || file.objectAcl === 'public-read-write';
+    case 'public-bucket':
+      return file.publicAccess === true;
+    case 'public-domain':
+      return Boolean(config.publicBaseUrl?.trim())
+        || (config.provider === 'kodo' && Boolean(config.kodoEndpoint))
+        || (config.provider === 'sftp' && Boolean(config.sftpBaseUrl));
+    default:
+      return false;
+  }
+}
+
+/**
+ * 上传 / 初始化会话时计算公共可读快照。
+ * public-bucket 依赖最近一次 Bucket 探测结果；未探测或探测结果不是公共读时返回 false。
+ */
+export function resolvePublicAccess(
+  config: FileStorageConfigRow,
+  objectAcl: 'default' | 'private' | 'public-read' | 'public-read-write' | null,
+): boolean {
+  switch (config.accessStrategy) {
+    case 'public-object':
+      return objectAcl === 'public-read' || objectAcl === 'public-read-write';
+    case 'public-bucket':
+      return (config.bucketAcl === 'public-read' || config.bucketAcl === 'public-read-write')
+        && config.bucketBlockPublicAccess !== true;
+    case 'public-domain':
+      return Boolean(config.publicBaseUrl?.trim())
+        || (config.provider === 'kodo' && Boolean(config.kodoEndpoint))
+        || (config.provider === 'sftp' && Boolean(config.sftpBaseUrl));
+    default:
+      return false;
+  }
 }
 
 /** 按 provider 拼接永久公开直链；无法构造时返回 null。config 需已被 withFileBucket 处理。 */
@@ -377,16 +476,16 @@ async function presignObjectUrl(
 }
 
 /**
- * public 策略下的永久公开直链；策略不符 / ACL 不允许 / 无法拼接时返回 null。
+ * 公开直链；下载方式不是 public-* / 公共性来源不满足 / 无法拼接时返回 null。
  * 结果永久有效，可进入列表实体的 directUrl 字段（仅渲染用，禁止持久化）。
  */
 export function buildPublicFileUrl(file: FileUrlSource, config?: FileStorageConfigRow): string | null {
-  if (config?.urlStrategy !== 'public' || !publicAclAllowed(file)) return null;
+  if (!config || !isPublicAccessAllowed(file, config)) return null;
   return buildPublicObjectUrl(withFileBucket(file, config), file.objectKey);
 }
 
 /**
- * 按存储配置的 urlStrategy 解析文件访问地址，降级链：public → presigned → proxy。
+ * 按存储配置的 accessStrategy 解析文件访问地址，降级链：public → presigned → proxy。
  * presigned 结果含过期时间，禁止长期缓存；签名失败（配置不完整/SDK 异常）自动降级 proxy。
  */
 export async function resolveFileAccessUrl(
@@ -395,12 +494,12 @@ export async function resolveFileAccessUrl(
   options?: { contentDisposition?: string },
 ): Promise<FileAccessUrlResult> {
   const effective = withFileBucket(file, config);
-  const strategy = config.urlStrategy;
-  if (strategy === 'public' && publicAclAllowed(file)) {
+  const strategy = config.accessStrategy;
+  if (strategy.startsWith('public-') && isPublicAccessAllowed(file, config)) {
     const url = buildPublicObjectUrl(effective, file.objectKey);
     if (url) return { url, strategy: 'public', expiresAt: null };
   }
-  if (strategy === 'public' || strategy === 'presigned') {
+  if (strategy === 'presigned' || strategy.startsWith('public-')) {
     const expirySeconds = config.presignedExpirySeconds || 1800;
     try {
       const url = await presignObjectUrl(effective, file.objectKey, expirySeconds, options?.contentDisposition);

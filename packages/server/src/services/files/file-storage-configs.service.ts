@@ -5,12 +5,12 @@ import { clearDefaultFlag as clearTableDefaultFlag } from '../../lib/default-fla
 import { fileStorageConfigs, managedFiles } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
 import type { createFileStorageConfigSchema } from '@zenith/shared/platform';
-import { FILE_OBJECT_ACL_SUPPORT, fileStorageConfigContract } from '@zenith/shared/platform';
+import { FILE_BUCKET_ACCESS_SUPPORT, FILE_OBJECT_ACL_SUPPORT, fileStorageConfigContract, type FileBucketAcl } from '@zenith/shared/platform';
 import type { z } from '@hono/zod-openapi';
-import { formatTimestamps } from '../../lib/datetime';
+import { formatDateTime, formatTimestamps } from '../../lib/datetime';
 import { randomUUID } from 'node:crypto';
 import { Readable } from 'node:stream';
-import { uploadObjectByConfig, deleteObjectByConfig } from '../../lib/file-storage';
+import { getBucketAccessInfo, setBucketAccessInfo, uploadObjectByConfig, deleteObjectByConfig } from '../../lib/file-storage';
 
 type StorageInput = z.infer<typeof createFileStorageConfigSchema>;
 
@@ -67,9 +67,12 @@ export function toStoragePayload(input: StorageInput) {
   // 对象 ACL 仅在 provider 支持时保留（更新接口为 partial schema，此处按支持矩阵兜底回落 default）
   const supportedAcls = FILE_OBJECT_ACL_SUPPORT[input.provider];
   const objectAcl = supportedAcls?.includes(input.objectAcl ?? 'default') ? (input.objectAcl ?? 'default') : 'default' as const;
-  // local/sftp 不支持临时签名，兜底回落 proxy
-  const rawStrategy = input.urlStrategy ?? 'proxy';
-  const urlStrategy = rawStrategy === 'presigned' && (input.provider === 'local' || input.provider === 'sftp') ? 'proxy' : rawStrategy;
+  // 本地磁盘 / SFTP 不支持临时签名与对象/Bucket 公共读，兜底回落 proxy
+  const rawStrategy = input.accessStrategy ?? 'proxy';
+  const accessStrategy = (input.provider === 'local' || input.provider === 'sftp')
+    && (rawStrategy === 'presigned' || rawStrategy === 'public-object' || rawStrategy === 'public-bucket')
+    ? 'proxy'
+    : rawStrategy;
   const base = {
     name: input.name,
     provider: input.provider,
@@ -77,7 +80,7 @@ export function toStoragePayload(input: StorageInput) {
     isDefault: input.isDefault,
     basePath: input.basePath ?? null,
     objectAcl,
-    urlStrategy,
+    accessStrategy,
     publicBaseUrl: input.publicBaseUrl?.trim() || null,
     presignedExpirySeconds: input.presignedExpirySeconds ?? 1800,
     remark: input.remark ?? null,
@@ -186,12 +189,49 @@ export async function getDefaultFileStorageConfig() {
   return row ? mapFileStorageConfig(row) : null;
 }
 
+type StoragePayload = ReturnType<typeof toStoragePayload>;
+
+/**
+ * 保存 public-* 配置前探测 Bucket 实际状态。探测失败（权限 / 网络）不阻断保存，
+ * 但写入 bucketAccessError，前端可提示“未验证”。
+ */
+async function probeBucketAccessForPayload(payload: StoragePayload): Promise<Partial<typeof fileStorageConfigs.$inferInsert>> {
+  if (!payload.accessStrategy.startsWith('public-') || payload.accessStrategy === 'public-domain') return {};
+  const capability = FILE_BUCKET_ACCESS_SUPPORT[payload.provider];
+  if (!capability?.probe) return {};
+  try {
+    const info = await getBucketAccessInfo(payload as unknown as FileStorageConfigRow);
+    if (payload.accessStrategy === 'public-bucket' && !info.effectivePublic) {
+      throw new HTTPException(400, { message: 'Bucket 当前不是公共读（或已开启阻止公共访问），无法保存 Bucket 公共读直链；请先在配置页调整 Bucket 权限，或改用其他下载方式' });
+    }
+    if (payload.accessStrategy === 'public-object' && info.blockPublicAccess === true) {
+      throw new HTTPException(400, { message: 'Bucket 已开启阻止公共访问，无法保存对象公共读直链；请关闭 Bucket 的阻止公共访问，或改用 Bucket 公共读 / 自定义域名 / 临时签名' });
+    }
+    return {
+      bucketAcl: info.bucketAcl,
+      bucketBlockPublicAccess: info.blockPublicAccess,
+      bucketAccessCheckedAt: info.checkedAt,
+      bucketAccessError: null,
+    };
+  } catch (err) {
+    if (err instanceof HTTPException) throw err;
+    return {
+      bucketAcl: null,
+      bucketBlockPublicAccess: null,
+      bucketAccessCheckedAt: new Date(),
+      bucketAccessError: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
 export async function createFileStorageConfig(data: StorageInput) {
+  const payload = toStoragePayload(data);
+  const probe = await probeBucketAccessForPayload(payload);
   const created = await db.transaction(async (tx) => {
     const existingDefault = await tx.select({ id: fileStorageConfigs.id }).from(fileStorageConfigs).where(eq(fileStorageConfigs.isDefault, true)).limit(1);
     const shouldBeDefault = data.isDefault || (existingDefault.length === 0 && data.status === 'enabled');
     if (shouldBeDefault) await clearDefaultFlag(tx);
-    const [row] = await tx.insert(fileStorageConfigs).values({ ...toStoragePayload({ ...data, isDefault: shouldBeDefault }) }).returning();
+    const [row] = await tx.insert(fileStorageConfigs).values({ ...payload, isDefault: shouldBeDefault, ...probe }).returning();
     return row;
   });
   return mapFileStorageConfig(created);
@@ -206,11 +246,13 @@ export async function updateFileStorageConfig(id: number, data: Partial<StorageI
   for (const field of STORAGE_SECRET_FIELDS) {
     if (!data[field]) merged[field] = current[field];
   }
+  const payload = toStoragePayload(merged as StorageInput);
+  const probe = await probeBucketAccessForPayload(payload);
   const updated = await db.transaction(async (tx) => {
     if (data.isDefault) await clearDefaultFlag(tx);
     const [row] = await tx
       .update(fileStorageConfigs)
-      .set({ ...toStoragePayload(merged as StorageInput) })
+      .set({ ...payload, ...probe })
       .where(eq(fileStorageConfigs.id, id))
       .returning();
     return row;
@@ -242,6 +284,60 @@ export async function deleteFileStorageConfig(id: number) {
 export async function getFileStorageConfig(id: number) {
   const [row] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.id, id)).limit(1);
   return mapFileStorageConfig(requireRow(row, '存储配置不存在'));
+}
+
+type BucketAccessInfo = Awaited<ReturnType<typeof getBucketAccessInfo>>;
+
+function mapBucketAccessInfo(info: BucketAccessInfo) {
+  return { ...info, checkedAt: formatDateTime(info.checkedAt) };
+}
+
+async function persistBucketAccess(id: number, info: BucketAccessInfo) {
+  await db.update(fileStorageConfigs).set({
+    bucketAcl: info.bucketAcl,
+    bucketBlockPublicAccess: info.blockPublicAccess,
+    bucketAccessCheckedAt: info.checkedAt,
+    bucketAccessError: null,
+  }).where(eq(fileStorageConfigs.id, id));
+}
+
+export async function probeFileStorageConfigBucketAccess(id: number) {
+  const [row] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.id, id)).limit(1);
+  const config = requireRow(row, '存储配置不存在');
+  if (!FILE_BUCKET_ACCESS_SUPPORT[config.provider]?.probe) {
+    throw new HTTPException(400, { message: `当前存储类型不支持 Bucket 权限探测：${config.provider}` });
+  }
+  try {
+    const info = await getBucketAccessInfo(config);
+    await persistBucketAccess(id, info);
+    return mapBucketAccessInfo(info);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    await db.update(fileStorageConfigs).set({ bucketAccessCheckedAt: new Date(), bucketAccessError: message }).where(eq(fileStorageConfigs.id, id));
+    throw new HTTPException(400, { message: `Bucket 权限探测失败：${message}` });
+  }
+}
+
+export async function updateFileStorageConfigBucketAccess(
+  id: number,
+  input: { acl?: FileBucketAcl; blockPublicAccess?: boolean },
+) {
+  const [row] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.id, id)).limit(1);
+  const config = requireRow(row, '存储配置不存在');
+  const capability = FILE_BUCKET_ACCESS_SUPPORT[config.provider];
+  if (!capability?.probe) throw new HTTPException(400, { message: `当前存储类型不支持 Bucket 权限设置：${config.provider}` });
+  if (input.acl && !capability.setAcl) throw new HTTPException(400, { message: '当前存储类型不支持修改 Bucket ACL' });
+  if (input.blockPublicAccess !== undefined && !capability.setBlockPublicAccess) {
+    throw new HTTPException(400, { message: '当前存储类型不支持修改阻止公共访问' });
+  }
+  try {
+    const info = await setBucketAccessInfo(config, input);
+    await persistBucketAccess(id, info);
+    return mapBucketAccessInfo(info);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new HTTPException(400, { message: `Bucket 权限修改失败：${message}` });
+  }
 }
 
 async function testStorageConfigRow(config: typeof fileStorageConfigs.$inferSelect) {

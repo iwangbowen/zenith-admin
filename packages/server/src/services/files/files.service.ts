@@ -7,7 +7,7 @@ import { requireRow } from '../../lib/db-assert';
 import { managedFiles, fileStorageConfigs } from '../../db/schema';
 import type { FileStorageConfigRow } from '../../db/schema';
 import type { FileVisibility } from '@zenith/shared/platform';
-import { buildManagedFileProxyUrl, buildPublicFileUrl, deleteStoredFile, readStoredFile, resolveFileAccessUrl, resolveObjectAcl, uploadFileByConfig } from '../../lib/file-storage';
+import { buildManagedFileProxyUrl, buildPublicFileUrl, deleteStoredFile, readStoredFile, resolveFileAccessUrl, resolveObjectAcl, resolvePublicAccess, uploadFileByConfig } from '../../lib/file-storage';
 import { formatDateTime } from '../../lib/datetime';
 import { getSettings } from '../../lib/settings';
 import type { FilesSettings } from '@zenith/shared/settings';
@@ -204,7 +204,9 @@ export async function uploadManagedFile(file: File, options: ManagedFileUploadOp
     .where(and(eq(fileStorageConfigs.isDefault, true), eq(fileStorageConfigs.status, 'enabled')))
     .limit(1);
   const defaultConfig = requireRow(maybeDefaultConfig, '当前没有可用的默认文件服务，请先在文件配置中启用并设置默认服务', 400);
-  const uploadConfig = options.visibility === 'restricted' ? { ...defaultConfig, objectAcl: 'private' as const, urlStrategy: 'proxy' as const } : defaultConfig;
+  const uploadConfig = options.visibility === 'restricted' ? { ...defaultConfig, objectAcl: 'private' as const, accessStrategy: 'proxy' as const } : defaultConfig;
+  const objectAcl = resolveObjectAcl(uploadConfig);
+  const publicAccess = resolvePublicAccess(uploadConfig, objectAcl);
   const uploaded = await uploadFileByConfig(uploadConfig, file);
   const [created] = await db
     .insert(managedFiles)
@@ -218,7 +220,9 @@ export async function uploadManagedFile(file: File, options: ManagedFileUploadOp
       size: uploaded.size,
       mimeType: uploaded.mimeType,
       extension: uploaded.extension,
-      objectAcl: resolveObjectAcl(uploadConfig),
+      objectAcl,
+      publicAccess,
+      accessStrategy: uploadConfig.accessStrategy,
       visibility: options.visibility ?? 'public',
       gcState: options.visibility === 'restricted' ? 'orphan' : 'live',
       orphanedAt: options.visibility === 'restricted' ? new Date() : null,
@@ -245,7 +249,9 @@ export async function saveGeneratedManagedFile(input: ({ buffer: Buffer | Uint8A
     .where(and(eq(fileStorageConfigs.isDefault, true), eq(fileStorageConfigs.status, 'enabled')))
     .limit(1);
   const defaultConfig = requireRow(maybeDefaultConfig, '当前没有可用的默认文件服务，请先在文件配置中启用并设置默认服务', 400);
-  const uploadConfig = input.visibility === 'restricted' ? { ...defaultConfig, objectAcl: 'private' as const, urlStrategy: 'proxy' as const } : defaultConfig;
+  const uploadConfig = input.visibility === 'restricted' ? { ...defaultConfig, objectAcl: 'private' as const, accessStrategy: 'proxy' as const } : defaultConfig;
+  const objectAcl = resolveObjectAcl(uploadConfig);
+  const publicAccess = resolvePublicAccess(uploadConfig, objectAcl);
   const uploaded = await uploadFileByConfig(uploadConfig, file);
   const [created] = await runAsUser(input.createdBy, () =>
     db
@@ -260,7 +266,9 @@ export async function saveGeneratedManagedFile(input: ({ buffer: Buffer | Uint8A
         size: uploaded.size,
         mimeType: uploaded.mimeType,
         extension: uploaded.extension,
-        objectAcl: resolveObjectAcl(uploadConfig),
+        objectAcl,
+        publicAccess,
+        accessStrategy: uploadConfig.accessStrategy,
         visibility: input.visibility ?? 'public',
         gcState: input.visibility === 'restricted' ? 'orphan' : 'live',
         orphanedAt: input.visibility === 'restricted' ? new Date() : null,

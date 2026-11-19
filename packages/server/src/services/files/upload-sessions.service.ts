@@ -9,7 +9,7 @@ import { HTTPException } from 'hono/http-exception';
 import { countUploadChunks, expectedUploadChunkSize, resolveUploadChunkSize, UPLOAD_CHUNK_MAX_BYTES, UPLOAD_MAX_CHUNKS, type InitChunkUploadInput } from '@zenith/shared/platform';
 import { db } from '../../db';
 import { uploadSessions, uploadChunks, managedFiles, fileStorageConfigs, type FileStorageConfigRow, type UploadSessionRow } from '../../db/schema';
-import { buildUploadObjectKey, uploadObjectByConfig, extractBucketName, getMultipartDriver, mapObjectAclError, resolveObjectAcl, readStoredFile, deleteObjectByConfig } from '../../lib/file-storage';
+import { buildUploadObjectKey, uploadObjectByConfig, extractBucketName, getMultipartDriver, mapObjectAclError, resolveObjectAcl, resolvePublicAccess, readStoredFile, deleteObjectByConfig } from '../../lib/file-storage';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { currentUser } from '../../lib/context';
 import { config } from '../../config';
@@ -235,6 +235,8 @@ export async function initChunkUpload(input: InitChunkUploadInput) {
     bucketName: extractBucketName(defaultConfig),
     multipartUploadId,
     objectAcl: resolveObjectAcl(defaultConfig),
+    publicAccess: resolvePublicAccess(defaultConfig, resolveObjectAcl(defaultConfig)),
+    accessStrategy: defaultConfig.accessStrategy,
     tenantId: getCreateTenantId(user),
   });
   if (!driver) await fs.mkdir(sessionTempDir(uploadId), { recursive: true });
@@ -440,6 +442,8 @@ async function mergeAndRegister(
       mimeType: session.mimeType,
       extension,
       objectAcl: session.objectAcl,
+      publicAccess: session.publicAccess,
+      accessStrategy: session.accessStrategy,
       visibility: options.visibility ?? 'public',
       gcState: options.visibility === 'restricted' ? 'orphan' : 'live',
       orphanedAt: options.visibility === 'restricted' ? new Date() : null,

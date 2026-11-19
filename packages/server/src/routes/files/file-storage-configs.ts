@@ -12,6 +12,8 @@ import {
   deleteFileStorageConfig,
   getFileStorageConfigBeforeAudit,
   getFileStorageConfig,
+  probeFileStorageConfigBucketAccess,
+  updateFileStorageConfigBucketAccess,
   testFileStorageConfig,
   testExistingFileStorageConfig,
 } from '../../services/files/file-storage-configs.service';
@@ -47,6 +49,20 @@ const setDefaultRoute = defineContractRoute(fileStorageConfigContract.setDefault
     return c.json(okBody(await setDefaultFileStorageConfig(id), '默认文件服务已更新'), 200);
   },
 });
+const probeBucketAccessRoute = defineContractRoute(fileStorageConfigContract.probeBucketAccess, {
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    return c.json(okBody(await probeFileStorageConfigBucketAccess(id)), 200);
+  },
+});
+const updateBucketAccessRoute = defineContractRoute(fileStorageConfigContract.updateBucketAccess, {
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const before = await getFileStorageConfigBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
+    return c.json(okBody(await updateFileStorageConfigBucketAccess(id, c.req.valid('json')), 'Bucket 权限已更新'), 200);
+  },
+});
 
 mountCrud(fileStorageConfigsRouter, fileStorageConfigContract,
   {
@@ -57,7 +73,7 @@ mountCrud(fileStorageConfigsRouter, fileStorageConfigContract,
     remove: deleteFileStorageConfig,
   },
   {},
-  [defaultRoute, testRoute, testExistingRoute, setDefaultRoute],
+  [defaultRoute, testRoute, testExistingRoute, setDefaultRoute, probeBucketAccessRoute, updateBucketAccessRoute],
 );
 
 export default fileStorageConfigsRouter;
