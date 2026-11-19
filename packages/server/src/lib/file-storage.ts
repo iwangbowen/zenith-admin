@@ -354,7 +354,206 @@ export function resolvePublicAccess(
   }
 }
 
-/** 按 provider 拼接永久公开直链；无法构造时返回 null。config 需已被 withFileBucket 处理。 */
+/**
+ * 浏览器直传目标：预签名 PUT URL + 必要请求头。
+ * 公共对象 ACL 不放进签名头，完成上传后由服务端单独设置，避免不同 provider 的签名差异。
+ */
+export interface DirectUploadTarget {
+  url: string;
+  method: 'PUT';
+  headers?: Record<string, string>;
+  expiresAt: Date;
+}
+
+export async function createDirectUploadTarget(
+  config: FileStorageConfigRow,
+  objectKey: string,
+  mimeType: string | undefined,
+  expirySeconds: number,
+): Promise<DirectUploadTarget> {
+  const expiresAt = new Date(Date.now() + expirySeconds * 1000);
+  const contentType = mimeType || 'application/octet-stream';
+  switch (config.provider) {
+    case 'oss': {
+      const client = createOssClient(config);
+      const url = client.signatureUrl(objectKey, {
+        method: 'PUT',
+        expires: expirySeconds,
+        'Content-Type': contentType,
+      });
+      return { url, method: 'PUT', headers: { 'Content-Type': contentType }, expiresAt };
+    }
+    case 's3': {
+      const client = createS3Client(config);
+      const { PutObjectCommand } = loadS3();
+      const { getSignedUrl } = loadS3Presigner();
+      const url = await getSignedUrl(client, new PutObjectCommand({
+        Bucket: config.s3Bucket!,
+        Key: objectKey,
+        ContentType: contentType,
+      }), { expiresIn: expirySeconds });
+      return { url, method: 'PUT', headers: { 'Content-Type': contentType }, expiresAt };
+    }
+    case 'cos': {
+      const cos = createCosClient(config);
+      const url = await new Promise<string>((resolve, reject) => {
+        cos.getObjectUrl({
+          Bucket: config.cosBucket!,
+          Region: config.cosRegion!,
+          Key: objectKey,
+          Sign: true,
+          Method: 'PUT',
+          Expires: expirySeconds,
+        }, (err, data) => (err ? reject(err instanceof Error ? err : new Error(String(err))) : resolve(data.Url)));
+      });
+      return { url, method: 'PUT', headers: { 'Content-Type': contentType }, expiresAt };
+    }
+    case 'obs': {
+      const obs = createObsClient(config) as ObsClientType & {
+        createSignedUrlSync(params: Record<string, unknown>): { SignedUrl: string };
+      };
+      const url = obs.createSignedUrlSync({
+        Method: 'PUT',
+        Bucket: config.obsBucket!,
+        Key: objectKey,
+        Expires: expirySeconds,
+        Headers: { 'Content-Type': contentType },
+      }).SignedUrl;
+      return { url, method: 'PUT', headers: { 'Content-Type': contentType }, expiresAt };
+    }
+    case 'azure': {
+      const containerClient = createAzureBlobClient(config);
+      const blockBlobClient = containerClient.getBlockBlobClient(objectKey);
+      const url = await blockBlobClient.generateSasUrl({
+        permissions: loadAzureBlob().BlobSASPermissions.parse('cw'),
+        expiresOn: expiresAt,
+        contentType,
+      });
+      return { url, method: 'PUT', headers: { 'Content-Type': contentType }, expiresAt };
+    }
+    default:
+      throw new HTTPException(400, { message: `当前存储类型不支持浏览器直传：${config.provider}` });
+  }
+}
+
+export interface StoredObjectHead {
+  size: number;
+  mimeType: string | null;
+  etag: string | null;
+}
+
+/** HEAD 直传完成后的对象，用于服务端校验大小/类型/ETag。 */
+export async function headStoredObject(config: FileStorageConfigRow, objectKey: string): Promise<StoredObjectHead> {
+  switch (config.provider) {
+    case 'oss': {
+      const client = createOssClient(config);
+      const result = await client.head(objectKey);
+      const headers = result.res.headers as Record<string, string | undefined>;
+      return {
+        size: Number(headers['content-length'] ?? 0),
+        mimeType: headers['content-type'] ?? null,
+        etag: headers.etag ?? null,
+      };
+    }
+    case 's3': {
+      const client = createS3Client(config);
+      const { HeadObjectCommand } = loadS3();
+      const result = await client.send(new HeadObjectCommand({ Bucket: config.s3Bucket!, Key: objectKey }));
+      return {
+        size: Number(result.ContentLength ?? 0),
+        mimeType: result.ContentType ?? null,
+        etag: result.ETag ?? null,
+      };
+    }
+    case 'cos': {
+      const cos = createCosClient(config);
+      const result = await new Promise<{ headers?: Record<string, string> }>((resolve, reject) => {
+        cos.headObject({ Bucket: config.cosBucket!, Region: config.cosRegion!, Key: objectKey }, (err, data) => {
+          if (err) reject(err instanceof Error ? err : new Error(String(err)));
+          else resolve(data as { headers?: Record<string, string> });
+        });
+      });
+      const headers = result.headers ?? {};
+      return {
+        size: Number(headers['content-length'] ?? 0),
+        mimeType: headers['content-type'] ?? null,
+        etag: headers.etag ?? null,
+      };
+    }
+    case 'obs': {
+      const obs = createObsClient(config) as ObsClientType & {
+        getObjectMetadata(params: Record<string, unknown>, cb: (err: unknown, result: { InterfaceResult?: { ContentLength?: number; ContentType?: string; ETag?: string } }) => void): void;
+      };
+      const result = await new Promise<{ ContentLength?: number; ContentType?: string; ETag?: string }>((resolve, reject) => {
+        obs.getObjectMetadata({ Bucket: config.obsBucket!, Key: objectKey }, (err, data) => {
+          if (err) reject(err instanceof Error ? err : new Error(String(err)));
+          else resolve(data.InterfaceResult ?? {});
+        });
+      });
+      return {
+        size: Number(result.ContentLength ?? 0),
+        mimeType: result.ContentType ?? null,
+        etag: result.ETag ?? null,
+      };
+    }
+    case 'azure': {
+      const containerClient = createAzureBlobClient(config);
+      const properties = await containerClient.getBlockBlobClient(objectKey).getProperties();
+      return {
+        size: Number(properties.contentLength ?? 0),
+        mimeType: properties.contentType ?? null,
+        etag: properties.etag ?? null,
+      };
+    }
+    default:
+      throw new HTTPException(400, { message: `当前存储类型不支持浏览器直传：${config.provider}` });
+  }
+}
+
+/** 完成直传后按配置设置对象 ACL（仅对象 ACL 策略需要）。 */
+export async function applyObjectAcl(
+  config: FileStorageConfigRow,
+  objectKey: string,
+  acl: 'private' | 'public-read' | 'public-read-write',
+): Promise<void> {
+  switch (config.provider) {
+    case 'oss': {
+      const client = createOssClient(config);
+      await client.putACL(objectKey, acl as unknown as Parameters<typeof client.putACL>[1]);
+      return;
+    }
+    case 's3': {
+      const client = createS3Client(config);
+      const { PutObjectAclCommand } = loadS3();
+      await client.send(new PutObjectAclCommand({ Bucket: config.s3Bucket!, Key: objectKey, ACL: acl }));
+      return;
+    }
+    case 'cos': {
+      const cos = createCosClient(config);
+      await new Promise<void>((resolve, reject) => {
+        cos.putObjectAcl({ Bucket: config.cosBucket!, Region: config.cosRegion!, Key: objectKey, ACL: acl as never }, (err) => {
+          if (err) reject(err instanceof Error ? err : new Error(String(err)));
+          else resolve();
+        });
+      });
+      return;
+    }
+    case 'obs': {
+      const obs = createObsClient(config) as ObsClientType & {
+        setObjectAcl(params: Record<string, unknown>, cb: (err: unknown) => void): void;
+      };
+      await new Promise<void>((resolve, reject) => {
+        obs.setObjectAcl({ Bucket: config.obsBucket!, Key: objectKey, ACL: acl }, (err) => {
+          if (err) reject(err instanceof Error ? err : new Error(String(err)));
+          else resolve();
+        });
+      });
+      return;
+    }
+    default:
+      throw new HTTPException(400, { message: `当前存储类型不支持对象 ACL：${config.provider}` });
+  }
+}
 function buildPublicObjectUrl(config: FileStorageConfigRow, objectKey: string): string | null {
   const key = encodeObjectKey(objectKey);
   if (config.publicBaseUrl) return `${trimTrailingSlash(config.publicBaseUrl)}/${key}`;

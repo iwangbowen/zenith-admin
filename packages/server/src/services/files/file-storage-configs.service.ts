@@ -82,6 +82,7 @@ export function toStoragePayload(input: StorageInput) {
     basePath: input.basePath ?? null,
     objectAcl,
     accessStrategy,
+    uploadMode: input.uploadMode ?? 'server-proxy',
     publicBaseUrl: input.publicBaseUrl?.trim() || null,
     presignedExpirySeconds: input.presignedExpirySeconds ?? 1800,
     remark: input.remark ?? null,
