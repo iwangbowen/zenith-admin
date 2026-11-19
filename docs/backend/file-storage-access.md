@@ -58,7 +58,7 @@
 服务端 → 合并、HEAD 校验真实对象大小、校验类型与 SHA-256、写入 managed_files
 ```
 
-上传状态复用 `upload_sessions` / `upload_chunks`，localStorage 保存会话 ID。网络中断或刷新后重新选择同一文件会续传；显式取消调用 `DELETE /api/files/direct-uploads/{uploadId}`，服务端中止 multipart 并关闭会话。过期会话由既有上传会话清理任务处理。
+上传状态复用 `upload_sessions` / `upload_chunks`，localStorage 保存会话 ID 与流式计算的整文件 SHA-256。网络中断或刷新后重新选择同一内容的文件会续传；仅元数据相同但内容不同的文件会中止旧会话并重新上传。显式取消调用 `DELETE /api/files/direct-uploads/{uploadId}`，服务端中止 multipart 并关闭会话。过期会话由既有上传会话清理任务处理。
 
 ### 4.2 Provider 能力
 

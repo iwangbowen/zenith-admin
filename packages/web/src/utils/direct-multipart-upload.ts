@@ -21,6 +21,11 @@ interface DirectMultipartOptions {
   onProgress?: (percent: number) => void;
 }
 
+interface DirectUploadCheckpoint {
+  uploadId: string;
+  fileHash: string;
+}
+
 function resumeKey(file: File, storageConfigId?: number) {
   const fingerprint = `${file.name}:${file.size}:${file.lastModified}:${storageConfigId ?? 'default'}`;
   return scopedStorageKey(`${RESUME_KEY_PREFIX}${fingerprint}`);
@@ -29,6 +34,19 @@ function resumeKey(file: File, storageConfigId?: number) {
 function expectedPartSize(fileSize: number, chunkSize: number, partNumber: number) {
   const offset = (partNumber - 1) * chunkSize;
   return Math.max(0, Math.min(chunkSize, fileSize - offset));
+}
+
+async function fingerprintFile(file: File, signal?: AbortSignal): Promise<string> {
+  const { createSHA256 } = await import('hash-wasm');
+  const hash = await createSHA256();
+  hash.init();
+  const bytesPerChunk = 4 * 1024 * 1024;
+  for (let offset = 0; offset < file.size; offset += bytesPerChunk) {
+    if (signal?.aborted) throw new DOMException('上传已取消', 'AbortError');
+    const end = Math.min(offset + bytesPerChunk, file.size);
+    hash.update(new Uint8Array(await file.slice(offset, end).arrayBuffer()));
+  }
+  return hash.digest('hex');
 }
 
 async function kodoPartMd5(blob: Blob): Promise<string> {
@@ -80,11 +98,22 @@ function putPart(
 }
 
 async function findSession(key: string, signal?: AbortSignal) {
-  const savedId = localStorage.getItem(key);
-  if (!savedId) return null;
+  const savedCheckpoint = localStorage.getItem(key);
+  if (!savedCheckpoint) return null;
+  let checkpoint: DirectUploadCheckpoint;
   try {
-    const status = await api(fileContract.directUploadStatus, { params: { uploadId: savedId } }, { silent: true, signal });
-    if (status.status === 'uploading') return { uploadId: savedId, status };
+    checkpoint = JSON.parse(savedCheckpoint) as DirectUploadCheckpoint;
+  } catch {
+    localStorage.removeItem(key);
+    return null;
+  }
+  if (typeof checkpoint.uploadId !== 'string' || typeof checkpoint.fileHash !== 'string') {
+    localStorage.removeItem(key);
+    return null;
+  }
+  try {
+    const status = await api(fileContract.directUploadStatus, { params: { uploadId: checkpoint.uploadId } }, { silent: true, signal });
+    if (status.status === 'uploading') return { checkpoint, status };
     if (status.status === 'completing') throw new Error('上一次直传正在合并，请稍后重试');
     localStorage.removeItem(key);
     if (status.status === 'completed') throw new Error('上一次直传已完成，请刷新文件列表确认');
@@ -98,15 +127,18 @@ async function findSession(key: string, signal?: AbortSignal) {
 export async function directMultipartUpload<TFile = unknown>(options: DirectMultipartOptions): Promise<TFile> {
   const { file, storageConfigId, contentHash, signal, onProgress } = options;
   const key = resumeKey(file, storageConfigId);
+  const fileHash = contentHash ?? await fingerprintFile(file, signal);
   let uploadId: string;
   let status: UploadSessionStatus;
+  let checkpoint: DirectUploadCheckpoint;
 
   let resumed: Awaited<ReturnType<typeof findSession>>;
   try {
     resumed = await findSession(key, signal);
   } catch (error) {
     if (signal?.aborted && signal.reason === CHUNKED_UPLOAD_CANCELLED) {
-      const savedId = localStorage.getItem(key);
+      let savedId: string | undefined;
+      try { savedId = (JSON.parse(localStorage.getItem(key) ?? 'null') as DirectUploadCheckpoint | null)?.uploadId; } catch { /* invalid checkpoint is discarded */ }
       if (savedId) {
         localStorage.removeItem(key);
         void api(fileContract.directUploadAbort, { params: { uploadId: savedId } }, { silent: true }).catch(() => {});
@@ -114,10 +146,15 @@ export async function directMultipartUpload<TFile = unknown>(options: DirectMult
     }
     throw error;
   }
-  if (resumed) {
-    uploadId = resumed.uploadId;
+  if (resumed && resumed.checkpoint.fileHash === fileHash) {
+    checkpoint = resumed.checkpoint;
+    uploadId = checkpoint.uploadId;
     status = resumed.status;
   } else {
+    if (resumed) {
+      await api(fileContract.directUploadAbort, { params: { uploadId: resumed.checkpoint.uploadId } }, { silent: true }).catch(() => {});
+      localStorage.removeItem(key);
+    }
     const session: DirectUploadSession = await api(fileContract.directUploadInit, {
       body: {
         fileName: file.name,
@@ -127,8 +164,9 @@ export async function directMultipartUpload<TFile = unknown>(options: DirectMult
       },
     }, { signal });
     uploadId = session.uploadId;
+    checkpoint = { uploadId, fileHash };
     status = { uploadId, status: 'uploading', chunkSize: session.chunkSize, totalChunks: session.totalChunks, received: session.received };
-    localStorage.setItem(key, uploadId);
+    localStorage.setItem(key, JSON.stringify(checkpoint));
   }
 
   if (status.totalChunks > UPLOAD_MAX_CHUNKS) throw new Error('分片数量超过上限');
@@ -177,6 +215,7 @@ export async function directMultipartUpload<TFile = unknown>(options: DirectMult
               params: { uploadId, partNumber },
               body: { etag: target.partTag ?? etag, size: blob.size },
             }, { signal });
+            localStorage.setItem(key, JSON.stringify(checkpoint));
             inFlight.delete(partNumber);
             completedBytes += blob.size;
             reportProgress();
@@ -198,7 +237,7 @@ export async function directMultipartUpload<TFile = unknown>(options: DirectMult
     if (failedWorker?.status === 'rejected') throw failedWorker.reason;
     const result = await api(fileContract.directUploadComplete, {
       params: { uploadId },
-      body: { contentHash },
+      body: { contentHash: fileHash },
     }, { signal }) as TFile;
     localStorage.removeItem(key);
     onProgress?.(100);

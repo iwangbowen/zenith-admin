@@ -93,16 +93,33 @@ describe('directMultipartUpload', () => {
   it('resumes only parts the server has not acknowledged', async () => {
     const file = new File([new Uint8Array([1, 2, 3, 4, 5])], 'file.bin', { lastModified: 123 });
     const key = scopedStorageKey('direct-multipart-upload:file.bin:5:123:7');
-    localStorage.setItem(key, 'existing-upload');
+    localStorage.setItem(key, JSON.stringify({
+      uploadId: 'existing-upload',
+      fileHash: '74f81fe167d99b4cb41d6d0ccda82278caee9f3e2f25d5e5a3936ff3dcec60d0',
+    }));
 
     await directMultipartUpload({ file, storageConfigId: 7 });
 
     const partNumbers = apiMock.mock.calls
       .filter(([op]) => op === fileContract.directUploadPartUrl)
-      .map(([, input]) => (input as { params: { partNumber: number } }).params.partNumber);
+      .map(([, input]) => (input as { params: { partNumber: number } }).params.partNumber)
+      .sort((a, b) => a - b);
     expect(partNumbers).toEqual([2, 3]);
     expect(apiMock.mock.calls[0]?.[0]).toBe(fileContract.directUploadStatus);
     expect(apiMock.mock.calls.some(([op]) => op === fileContract.directUploadInit)).toBe(false);
+  });
+
+  it('starts a fresh session when the selected file content differs from the checkpoint', async () => {
+    const file = new File([new Uint8Array([1, 2, 3, 4, 5])], 'file.bin', { lastModified: 123 });
+    const key = scopedStorageKey('direct-multipart-upload:file.bin:5:123:7');
+    localStorage.setItem(key, JSON.stringify({ uploadId: 'other-content-upload', fileHash: '0'.repeat(64) }));
+
+    await directMultipartUpload({ file, storageConfigId: 7 });
+
+    expect(apiMock.mock.calls.some(([op, input]) =>
+      op === fileContract.directUploadAbort
+      && (input as { params: { uploadId: string } }).params.uploadId === 'other-content-upload')).toBe(true);
+    expect(apiMock.mock.calls.some(([op]) => op === fileContract.directUploadInit)).toBe(true);
   });
 
   it('sends Content-MD5 on each Kodo v2 block upload', async () => {
