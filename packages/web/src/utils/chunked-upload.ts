@@ -29,6 +29,17 @@ export interface ChunkedUploadEndpoints {
   abort: (uploadId: string) => string;
 }
 
+/** 已创建会话后的分片通道；init 由业务统一上传负责 */
+export type ChunkedUploadChannel = Pick<ChunkedUploadEndpoints, 'chunk' | 'complete' | 'status' | 'abort'>;
+
+/** 已创建的分片会话；业务统一上传在 init 后把同一个会话交给分片通道 */
+export interface ChunkedUploadSession {
+  uploadId: string;
+  chunkSize: number;
+  totalChunks: number;
+  received: number[];
+}
+
 /** 通用文件服务的分片接口，由契约派生 */
 const FILE_UPLOAD_ENDPOINTS: ChunkedUploadEndpoints = {
   init: urlOf(fileContract.uploadInit),
@@ -61,7 +72,7 @@ function isUserCancelled(signal?: AbortSignal) {
 }
 
 /** 会话在服务端已不处于上传中（完成 / 中止 / 不存在）时清掉续传键，避免下次误续传 */
-async function forgetIfNotUploading(key: string, endpoints: ChunkedUploadEndpoints, uploadId: string) {
+async function forgetIfNotUploading(key: string, endpoints: Pick<ChunkedUploadEndpoints, 'status'>, uploadId: string) {
   const body = await request.get<UploadSessionStatus>(endpoints.status(uploadId), { silent: true });
   if (body.code !== 0 || body.data.status !== 'uploading') localStorage.removeItem(key);
 }
@@ -75,7 +86,7 @@ type SessionProbe = UploadSessionStatus | { status: 'missing' } | { status: 'com
  * 会话正在服务端合并（上一次 complete 仍在进行，或并发 complete 被 409 拒绝）时轮询等待，
  * 直到离开 completing 或超时（约 30s，超时仍返回 completing 由调用方提示稍后重试）。
  */
-async function waitWhileCompleting(endpoints: ChunkedUploadEndpoints, uploadId: string, signal?: AbortSignal): Promise<SessionProbe> {
+async function waitWhileCompleting(endpoints: Pick<ChunkedUploadEndpoints, 'status'>, uploadId: string, signal?: AbortSignal): Promise<SessionProbe> {
   for (let i = 0; i < COMPLETING_POLL_MAX; i++) {
     if (signal?.aborted) throw new Error('已取消');
     const body = await request.get<UploadSessionStatus>(endpoints.status(uploadId), { silent: true, signal });
@@ -136,8 +147,34 @@ export async function chunkedUpload<TFile = unknown>(file: File, opts: ChunkedUp
     localStorage.setItem(key, uploadId);
   }
 
+  return uploadChunksToSession(file, { uploadId, chunkSize, totalChunks, received: [...received] }, {
+    endpoints,
+    onProgress: opts.onProgress,
+    signal,
+    resumeKey: key,
+  });
+}
+
+export interface UploadChunksOptions {
+  endpoints: ChunkedUploadChannel;
+  onProgress?: (percent: number) => void;
+  signal?: AbortSignal;
+  /** 调用方已写入 localStorage 的续传键；成功 / 终态失败 / 显式取消时由本函数清理 */
+  resumeKey?: string;
+}
+
+/** 对已创建的会话上传缺失分片并完成合并；续传探测与 init 由调用方负责 */
+export async function uploadChunksToSession<TFile>(
+  file: File,
+  session: ChunkedUploadSession,
+  opts: UploadChunksOptions,
+): Promise<TFile> {
+  const { endpoints, signal, resumeKey: key } = opts;
+  const { uploadId, chunkSize, totalChunks } = session;
+  const received = new Set(session.received);
+
   try {
-    // 3) 并发上传缺失分片（失败重试）
+    // 并发上传缺失分片（失败重试）
     const missing: number[] = [];
     for (let i = 0; i < totalChunks; i++) if (!received.has(i)) missing.push(i);
 
@@ -177,27 +214,27 @@ export async function chunkedUpload<TFile = unknown>(file: File, opts: ChunkedUp
     const workerCount = Math.min(CHUNK_CONCURRENCY, Math.max(1, missing.length));
     await Promise.all(Array.from({ length: workerCount }, () => worker()));
 
-    // 4) 合并完成；撞上并发合并（409）时等待对方结束：回到 uploading 说明对方失败可重试，completed 说明已由对方完成
+    // 合并完成；撞上并发合并（409）时等待对方结束：回到 uploading 说明对方失败可重试，completed 说明已由对方完成
     let body = await request.post<TFile>(endpoints.complete, { uploadId }, { silent: true, signal });
     if (body.code === 409) {
       const probe = await waitWhileCompleting(endpoints, uploadId, signal);
-      if (probe.status === 'completed') { localStorage.removeItem(key); throw new Error(COMPLETED_ELSEWHERE); }
+      if (probe.status === 'completed') { if (key) localStorage.removeItem(key); throw new Error(COMPLETED_ELSEWHERE); }
       if (probe.status === 'completing') throw new Error(COMPLETING_RETRY_LATER);
-      if (probe.status !== 'uploading') { localStorage.removeItem(key); throw new Error('上传会话已失效，请重新上传'); }
+      if (probe.status !== 'uploading') { if (key) localStorage.removeItem(key); throw new Error('上传会话已失效，请重新上传'); }
       body = await request.post<TFile>(endpoints.complete, { uploadId }, { silent: true, signal });
     }
     if (body.code !== 0) {
       // 内容 / 大小 / 类型校验失败等终态错误会让服务端中止会话，此时不能再续传
-      if (!signal?.aborted) await forgetIfNotUploading(key, endpoints, uploadId).catch(() => { /* 探测失败保留续传键 */ });
+      if (!signal?.aborted && key) await forgetIfNotUploading(key, endpoints, uploadId).catch(() => { /* 探测失败保留续传键 */ });
       throw new Error(body.message || '合并失败');
     }
-    localStorage.removeItem(key);
+    if (key) localStorage.removeItem(key);
     opts.onProgress?.(100);
     return body.data;
   } catch (err) {
     if (isUserCancelled(signal)) {
       // 用户显式取消：释放服务端会话（云端 multipart / 临时分片），不保留续传
-      localStorage.removeItem(key);
+      if (key) localStorage.removeItem(key);
       void request.delete(endpoints.abort(uploadId), undefined, { silent: true }).catch(() => { /* 释放失败由保留策略兜底 */ });
     }
     throw err;

@@ -8,21 +8,12 @@
 // eslint-disable-next-line no-restricted-imports -- H5 保留：手写 useQuery / useMutation 的理由见本文件对应 hook 的注释；queryKey 仍由 contractKey 生成
 import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type { InputOf, OutputOf, QueryOf } from '@zenith/shared/core';
-import {
-  appArtifactContract,
-  appReleaseContract,
-  appReleaseStatsContract,
-  clientAppContract,
-  clientDeviceContract,
-  type AppArch,
-  type AppArtifact,
-  type AppFileArtifactKind,
-  type AppPlatform,
-} from '@zenith/shared/ops';
-import { contractKey, createResourceQueries, urlOf, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { appArtifactContract, appReleaseContract, appReleaseStatsContract, clientAppContract, clientDeviceContract, type AppArch, type AppArtifact, type AppFileArtifactKind, type AppPlatform, type InitAppArtifactUploadInput } from '@zenith/shared/ops';
+import { fileContract } from '@zenith/shared/platform';
+import { api, contractKey, createResourceQueries, urlOf, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { unwrap } from '@/lib/query';
 import { request } from '@/utils/request';
-import { chunkedUpload, type ChunkedUploadEndpoints } from '@/utils/chunked-upload';
+import { uploadBusinessFile, type BusinessUploadEndpoints } from '@/utils/business-upload';
 import { useChunkUploadThreshold } from './files';
 
 // ─── 应用 ────────────────────────────────────────────────────────────────────
@@ -90,15 +81,24 @@ function invalidateReleaseArtifacts(qc: QueryClient, releaseId: number) {
   void qc.invalidateQueries({ queryKey: appReleaseKeys.lists });
 }
 
-/** 制品分片上传接口（init / chunk / complete / status / abort），按所属版本由契约派生 */
-function artifactUploadEndpoints(releaseId: number): ChunkedUploadEndpoints {
+/** 制品上传通道：init / 服务端分片 / 浏览器直传都由所属版本的契约派生 */
+function artifactUploadEndpoints(releaseId: number): BusinessUploadEndpoints<AppArtifact> {
   const id = releaseId;
   return {
-    init: urlOf(appReleaseContract.uploadInit, { params: { id } }),
-    chunk: urlOf(appReleaseContract.uploadChunk, { params: { id } }),
-    complete: urlOf(appReleaseContract.uploadComplete, { params: { id } }),
-    status: (uploadId) => urlOf(appReleaseContract.uploadStatus, { params: { id, uploadId } }),
-    abort: (uploadId) => urlOf(appReleaseContract.uploadAbort, { params: { id, uploadId } }),
+    init: (body) => api(appReleaseContract.uploadInit, { params: { id }, body: body as InitAppArtifactUploadInput }),
+    proxy: {
+      chunk: urlOf(appReleaseContract.uploadChunk, { params: { id } }),
+      complete: urlOf(appReleaseContract.uploadComplete, { params: { id } }),
+      status: (uploadId) => urlOf(appReleaseContract.uploadStatus, { params: { id, uploadId } }),
+      abort: (uploadId) => urlOf(appReleaseContract.uploadAbort, { params: { id, uploadId } }),
+    },
+    direct: {
+      partUrl: (uploadId, partNumber) => api(fileContract.businessUploadPartUrl, { params: { uploadId, partNumber } }),
+      partAck: (uploadId, partNumber, body) => api(fileContract.businessUploadPartAck, { params: { uploadId, partNumber }, body }),
+      status: (uploadId) => api(fileContract.businessUploadStatus, { params: { uploadId } }),
+      complete: (uploadId) => api(appReleaseContract.uploadComplete, { params: { id }, body: { uploadId } }),
+      abort: (uploadId) => api(fileContract.businessUploadAbort, { params: { uploadId } }),
+    },
   };
 }
 
@@ -123,7 +123,8 @@ export function useUploadAppArtifact() {
   return useMutation({
     mutationFn: ({ releaseId, file, platform, arch, kind, onProgress, signal }: UploadAppArtifactVariables): Promise<AppArtifact> => {
       if (file.size > chunkThreshold) {
-        return chunkedUpload<AppArtifact>(file, {
+        return uploadBusinessFile<AppArtifact>({
+          file,
           endpoints: artifactUploadEndpoints(releaseId),
           initExtra: { platform, arch, kind },
           resumeScope: `app-release:${releaseId}`,
