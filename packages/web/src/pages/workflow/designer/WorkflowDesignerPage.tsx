@@ -368,7 +368,11 @@ export default function WorkflowDesignerPage({
       };
       const branchNode = findNode(cloned.initiator);
       const count = branchNode?.branches?.length ?? 0;
-      const newBranch = createBranch(branchNode?.type as BranchNodeType ?? 'conditionBranch', count + 1);
+      const newBranch = createBranch(
+        branchNode?.type as BranchNodeType ?? 'conditionBranch',
+        count + 1,
+        (branchNode?.branches ?? []).map((b) => b.name),
+      );
       return addBranchToProcess(prev, branchNodeId, newBranch);
     });
   }, [setProcess]);

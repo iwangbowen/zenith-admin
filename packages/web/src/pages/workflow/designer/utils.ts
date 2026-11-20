@@ -2,7 +2,7 @@ import { compileWorkflowTree } from '@zenith/shared/workflow/designer-graph';
 /**
  * 钉钉/飞书风格流程设计器 — 工具函数
  */
-import type { FlowNode, FlowBranch, FlowProcess, FlowNodeType, BranchNodeType, AssigneeType } from './types';
+import type { FlowNode, FlowBranch, FlowProcess, FlowNodeType, BranchNodeType, AssigneeType, ConditionGroup } from './types';
 import { DEFAULT_BRANCH_COUNT } from './constants';
 import { resetAssigneePropsForType, sanitizeAssigneePropsForWrite } from './assignee-props';
 
@@ -67,15 +67,16 @@ export function createNode(type: FlowNode['type'], name?: string): FlowNode {
   return node;
 }
 
-export function createBranch(parentType: BranchNodeType, index: number): FlowBranch {
-  let name: string;
-  if (parentType === 'conditionBranch') name = `条件${index}`;
-  else if (parentType === 'parallelBranch') name = `并行${index}`;
-  else name = `分支${index}`;
+export function createBranch(parentType: BranchNodeType, index: number, existingNames: readonly string[] = []): FlowBranch {
+  const prefix = parentType === 'conditionBranch' ? '条件' : parentType === 'parallelBranch' ? '并行' : '分支';
+  // 名称按序号生成，但删除分支后序号会被复用；跳过已占用的名称，避免同一条流程出现多个「条件2」。
+  const taken = new Set(existingNames);
+  let sequence = index;
+  while (taken.has(`${prefix}${sequence}`)) sequence += 1;
   return {
     id: genId('branch'),
-    name,
-    priority: parentType === 'parallelBranch' ? undefined : index,
+    name: `${prefix}${sequence}`,
+    priority: parentType === 'parallelBranch' ? undefined : sequence,
   };
 }
 
@@ -330,6 +331,10 @@ export function removeBranch(process: FlowProcess, branchNodeId: string, branchI
   const node = findNodeById(cloned.initiator, branchNodeId);
   if (node?.branches) {
     node.branches = node.branches.filter(b => b.id !== branchId);
+    // 删除后重排 priority，避免与后续新增分支的序号 / 展示顺序错位
+    node.branches.forEach((b, i) => {
+      if (node.type !== 'parallelBranch') b.priority = i + 1;
+    });
     // 如果剩余不到2个分支，移除整个分支节点并拼接
     if (node.branches.length < 2) {
       // 保留唯一分支的 children 拼接到分支节点之后
@@ -355,12 +360,14 @@ export function duplicateNode(process: FlowProcess, nodeId: string): FlowProcess
     name: source.name ? `${source.name} 副本` : '',
     children: undefined,
   };
-  // 分支节点的分支也要重新生成 id
+  // 分支节点的分支也要重新生成 id；同时剥离 graphEdge —— 否则复制出的分支会沿用原边 id，
+  // 回编译时与原分支边 id 冲突，复制出的分支被去重丢弃。
   if (copy.branches) {
     copy.branches = copy.branches.map(b => ({
       ...b,
       id: genId('branch'),
       children: undefined,
+      graphEdge: undefined,
     }));
   }
   copy.children = source.children;
@@ -497,13 +504,15 @@ export function validateRouteBranches(process: FlowProcess): string[] {
 
 /**
  * 校验条件 / 包容分支：每个非默认分支必须配置至少一个条件，
- * 否则该分支会被当成默认分支抢先命中（静默坑）。
+ * 否则该分支会被当成默认分支抢先命中（静默坑）；
+ * 同时拦截跨分支完全相同的条件（互斥网关按顺序短路，重复条件只会走靠前那条）。
  */
 export function validateConditionBranches(process: FlowProcess): string[] {
   const errors: string[] = [];
   traverseAll(process.initiator, (node) => {
     if ((node.type !== 'conditionBranch' && node.type !== 'inclusiveBranch') || !node.branches) return;
     const label = node.name || (node.type === 'conditionBranch' ? '条件分支' : '包容分支');
+    const seen = new Map<string, string>();
     for (const b of node.branches) {
       if (b.isDefault) continue;
       const ruleCount = (b.conditions ?? []).reduce(
@@ -512,10 +521,30 @@ export function validateConditionBranches(process: FlowProcess): string[] {
       );
       if (ruleCount === 0) {
         errors.push(`「${label} / ${b.name}」未配置任何条件`);
+        continue;
       }
+      const signature = conditionSignature(b.conditions);
+      if (!signature) continue;
+      const duplicate = seen.get(signature);
+      if (duplicate) errors.push(`「${label} / ${b.name}」的条件与「${duplicate}」完全相同，命中时只会走靠前的分支`);
+      else seen.set(signature, b.name);
     }
   });
   return errors;
+}
+
+/** 条件组的稳定签名：忽略空规则，只比较真正参与求值的字段 / 运算符 / 值 */
+function conditionSignature(groups: ConditionGroup[] | undefined): string | null {
+  if (!groups?.length) return null;
+  const normalized = groups
+    .map((g) => ({
+      type: g.type,
+      rules: g.rules
+        .filter((r) => r.field !== '')
+        .map((r) => [r.field, r.operator, String(r.value ?? ''), r.source ?? 'form', r.aggregate ?? '', r.aggregateField ?? '']),
+    }))
+    .filter((g) => g.rules.length > 0);
+  return normalized.length > 0 ? JSON.stringify(normalized) : null;
 }
 
 /**

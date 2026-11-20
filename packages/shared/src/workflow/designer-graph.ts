@@ -306,11 +306,20 @@ export function compileWorkflowTree(process: WorkflowDesignerProcess): WorkflowF
     }
     return emitted;
   };
+  const nextEdgeId = (source: string, target: string, branch?: WorkflowDesignerBranch): string => {
+    const base = `e-${source}-${target}${branch ? `-${branch.id}` : ''}`;
+    let id = base;
+    for (let suffix = 2; edges.some((edge) => edge.id === id); suffix++) id = `${base}-${suffix}`;
+    return id;
+  };
   const connect = (source: string, target: string, branch?: WorkflowDesignerBranch, parent?: WorkflowDesignerNode): void => {
-    const previous = branch?.graphEdge ?? originalEdges.find((edge) => edge.source === source && edge.target === target);
+    // 只有原始边（branch.graphEdge）才代表同一条逻辑边。新分支没有 graphEdge，不能按 (source,target)
+    // 回退复用其它分支的边 id —— 空分支与默认分支的 source/target 相同，复用会让后写入的分支被去重丢弃，
+    // 保存后重开就表现为「默认分支 / 某个分支消失」。
+    const previous = branch ? branch.graphEdge : originalEdges.find((edge) => edge.source === source && edge.target === target);
     // 共享节点会被两条路径再次收尾连接（如共享节点回归结束点）；同 id 边只发一次。
     if (previous && edges.some((edge) => edge.id === previous.id)) return;
-    const edge: WorkflowEdge = previous ? { ...structuredClone(previous), source, target } : { id: `e-${source}-${target}${branch ? `-${branch.id}` : ''}`, source, target };
+    const edge: WorkflowEdge = previous ? { ...structuredClone(previous), source, target } : { id: nextEdgeId(source, target, branch), source, target };
     if (branch) {
       if (previous?.label !== undefined || branch.name !== branch.graphDisplayName) edge.label = branch.name;
       if (branch.isDefault || previous?.isDefault !== undefined) edge.isDefault = !!branch.isDefault;
