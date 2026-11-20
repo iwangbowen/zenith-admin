@@ -12,7 +12,8 @@ import {
 import { request } from '@/utils/request';
 import { api, urlOf } from '@/lib/contract-query';
 import { unwrap } from '@/lib/query';
-import { chunkedUpload, CHUNKED_UPLOAD_CANCELLED } from '@/utils/chunked-upload';
+import { CHUNKED_UPLOAD_CANCELLED } from '@/utils/chunked-upload';
+import { uploadBusinessFile } from '@/utils/business-upload';
 import { DRIVE_UPLOAD_ENDPOINTS, driveKeys, invalidateDir } from '@/hooks/queries/drive';
 import { useChunkUploadThreshold } from '@/hooks/queries/files';
 import type { DirectoryUploadFile } from '@/utils/directory-upload';
@@ -177,7 +178,8 @@ export function useDriveUploader() {
           onProgress: (p) => patch(item.id, { percent: Math.min(99, p) }),
         }).then(unwrap);
       } else {
-        node = await chunkedUpload<DriveNode>(item.file, {
+        node = await uploadBusinessFile<DriveNode>({
+          file: item.file,
           endpoints: DRIVE_UPLOAD_ENDPOINTS,
           initExtra: { spaceId: item.spaceId, parentId: item.parentId, conflictPolicy: policy, contentHash },
           resumeScope: `drive:${item.spaceId}:${item.parentId ?? 0}`,

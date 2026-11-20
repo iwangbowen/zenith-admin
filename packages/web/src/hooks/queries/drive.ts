@@ -12,23 +12,34 @@ import {
   driveSpaceContract,
   driveTagContract,
   type DriveNode,
+  type DriveUploadInitInput,
 } from '@zenith/shared/drive';
+import { fileContract } from '@zenith/shared/platform';
 import { api, contractKey, createResourceQueries, urlOf, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { LOOKUP_STALE_TIME, unwrap } from '@/lib/query';
 import { invalidateEntityRelations } from '@/lib/entity-relation-cache';
 import { request } from '@/utils/request';
-import { chunkedUpload, type ChunkedUploadEndpoints } from '@/utils/chunked-upload';
+import { uploadBusinessFile, type BusinessUploadEndpoints } from '@/utils/business-upload';
 import { formatDate } from '@/utils/date';
 import { useSaveSettings, useSettings } from './settings';
 import { useMySettings } from './settings-projections';
 
-/** 网盘自有的分片上传接口（init / chunk / complete / status / abort），由契约派生；目录上传队列与新版本面板共用 */
-export const DRIVE_UPLOAD_ENDPOINTS: ChunkedUploadEndpoints = {
-  init: urlOf(driveNodeContract.uploadInit),
-  chunk: urlOf(driveNodeContract.uploadChunk),
-  complete: urlOf(driveNodeContract.uploadComplete),
-  status: (uploadId) => urlOf(driveNodeContract.uploadStatus, { params: { uploadId } }),
-  abort: (uploadId) => urlOf(driveNodeContract.uploadAbort, { params: { uploadId } }),
+/** 网盘上传通道：init / 服务端分片 / 浏览器直传都由网盘契约派生；目录队列与新版本面板共用 */
+export const DRIVE_UPLOAD_ENDPOINTS: BusinessUploadEndpoints<DriveNode> = {
+  init: (body) => api(driveNodeContract.uploadInit, { body: body as DriveUploadInitInput }),
+  proxy: {
+    chunk: urlOf(driveNodeContract.uploadChunk),
+    complete: urlOf(driveNodeContract.uploadComplete),
+    status: (uploadId) => urlOf(driveNodeContract.uploadStatus, { params: { uploadId } }),
+    abort: (uploadId) => urlOf(driveNodeContract.uploadAbort, { params: { uploadId } }),
+  },
+  direct: {
+    partUrl: (uploadId, partNumber) => api(fileContract.businessUploadPartUrl, { params: { uploadId, partNumber } }),
+    partAck: (uploadId, partNumber, body) => api(fileContract.businessUploadPartAck, { params: { uploadId, partNumber }, body }),
+    status: (uploadId) => api(fileContract.businessUploadStatus, { params: { uploadId } }),
+    complete: (uploadId) => api(driveNodeContract.uploadComplete, { body: { uploadId } }),
+    abort: (uploadId) => api(fileContract.businessUploadAbort, { params: { uploadId } }),
+  },
 };
 
 /**
@@ -471,7 +482,8 @@ interface UploadVersionChunkedVariables {
 export function useUploadDriveNodeVersionChunked() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ node, file, contentHash, signal, onProgress }: UploadVersionChunkedVariables) => chunkedUpload<DriveNode>(file, {
+    mutationFn: ({ node, file, contentHash, signal, onProgress }: UploadVersionChunkedVariables) => uploadBusinessFile<DriveNode>({
+      file,
       endpoints: DRIVE_UPLOAD_ENDPOINTS,
       initExtra: { spaceId: node.spaceId, nodeId: node.id, contentHash },
       resumeScope: `drive-version:${node.id}`,

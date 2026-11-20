@@ -212,6 +212,8 @@ export async function directMultipartUpload<TFile = ManagedFile>(options: Direct
   const endpoints = options.endpoints ?? (FILE_DIRECT_ENDPOINTS as unknown as DirectUploadEndpoints<TFile>);
   const key = options.resumeKey ?? resumeKey(file, options.resumeScope ?? options.storageConfigId);
   const fileHash = contentHash ?? await hashFileSha256(file, signal);
+  // 业务统一上传自己维护 { uploadId, mode } 检查点；仅文件中心的独立直传写本地检查点
+  const manageCheckpoint = !options.session;
   let uploadId: string;
   let status: UploadSessionStatus;
   let checkpoint: DirectUploadCheckpoint;
@@ -260,7 +262,7 @@ export async function directMultipartUpload<TFile = ManagedFile>(options: Direct
       uploadId = session.uploadId;
       checkpoint = { uploadId, fileHash };
       status = { uploadId, status: 'uploading', chunkSize: session.chunkSize, totalChunks: session.totalChunks, received: session.received };
-      localStorage.setItem(key, JSON.stringify(checkpoint));
+      if (manageCheckpoint) localStorage.setItem(key, JSON.stringify(checkpoint));
     }
   }
 
@@ -305,7 +307,7 @@ export async function directMultipartUpload<TFile = ManagedFile>(options: Direct
             const etag = target.partTag ?? transfer.etag;
             if (!etag) throw new Error('分片响应未返回 ETag，请检查 Bucket CORS 暴露头配置');
             await endpoints.partAck(uploadId, partNumber, { etag: target.partTag ?? etag, size: blob.size });
-            localStorage.setItem(key, JSON.stringify(checkpoint));
+            if (manageCheckpoint) localStorage.setItem(key, JSON.stringify(checkpoint));
             inFlight.delete(partNumber);
             completedBytes += blob.size;
             reportProgress();
