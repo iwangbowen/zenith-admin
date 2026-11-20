@@ -26,24 +26,24 @@
 | `public-bucket` | Bucket ACL | Bucket 为公共读，对象必须「继承 Bucket」；Bucket 未开启阻止公共访问 |
 | `public-domain` | CDN / 自定义域名 | 配置 `publicBaseUrl`（Kodo 可用下载域名，SFTP 可用 Base URL） |
 
-解析失败时按 `public → presigned → proxy` 降级。
+解析失败时按 `public → presigned → proxy` 降级。`visibility=restricted` 的文件不生成任何公开直链，仍只经归属模块鉴权接口读取。
 
 ## 3. Bucket 权限探测与设置
 
-新建或编辑云存储配置时，「云端 Bucket 权限（实时）」支持先探测，再修改：
+新建或编辑云存储配置时，「云端 Bucket 权限（实时）」支持先探测，再修改。探测结果包含 Bucket ACL、Bucket 级阻止公共访问、Bucket Policy 公共状态，以及 provider 提供的综合公共状态；「实际公共读」是这些状态的综合结果，并落库到 `bucket_acl`、`bucket_block_public_access`、`bucket_policy_public`、`bucket_public_status`。
 
 | Provider | ACL 探测/设置 | 阻止公共访问探测/设置 |
 | --- | --- | --- |
 | OSS | ✅ | ✅ |
 | S3 | ✅（桶启用 ACL 时） | ✅（Bucket 级） |
 | COS | ✅ | ❌ |
-| OBS | ✅ | ❌ |
+| OBS | ✅ | ✅（Bucket 级 BPA + `GetBucketPublicStatus`） |
 | BOS | ✅ | ❌ |
 | Azure Blob | ✅（Container 访问级别） | ❌ |
 | Kodo | ✅（私有/公开） | ❌ |
 | local / SFTP | ❌ | ❌ |
 
-写操作使用独立权限 `system:file:config:bucket-access`，并记审计。当前面板探测和修改的是 Bucket / Container 级状态。OSS 账号级阻止公共访问尚未接入探测或展示，不能从 Bucket 状态推断账号级开关。
+写操作使用独立权限 `system:file:config:bucket-access`，并记审计。当前面板探测和修改的是 Bucket / Container 级状态；OSS / S3 账号级阻止公共访问、Azure 账号级「允许 Blob 公共访问」尚未接入探测或展示，不能从 Bucket 状态推断账号级开关。OSS / S3 会读取 Bucket Policy 的公共访问状态，OBS 会读取 BPA 与 `GetBucketPublicStatus`；其他 provider 的 Bucket Policy / 防盗链仍可能影响实际匿名访问，面板显示的是 ACL/BPA/Policy 综合结果，不覆盖 CDN 自身鉴权。
 
 创建配置时，探测和设置直接使用尚未保存的表单凭据。云端权限修改会立即生效，不依赖点击「保存」创建配置行；修改表单中的 Provider 或凭据后会要求重新探测。
 
@@ -88,7 +88,7 @@
 - 命中同一默认存储、同一租户下仍存在的对象 → 直接复用文件记录，不再上传。
 - 未命中或对象已被删除 → 正常直传。
 
-大文件暂不计算哈希，避免一次性读入内存。
+秒传只对 ≤ 32MB 文件做一次性哈希；更大的文件不参与秒传。浏览器直传仍会流式计算整文件 SHA-256 用于续传校验与完成校验，不会一次性读入内存。
 
 ## 5. 排障
 
@@ -103,5 +103,5 @@
 ## 6. 环境变量与配置
 
 - 直传有效期来自存储配置的 `presignedExpirySeconds`（默认 1800 秒）。
-- 「上传方式」为 `browser-direct` 时，文件列表使用直传；其他入口仍可走服务端中转。
+- 「上传方式」为 `browser-direct` 时，文件列表使用直传；直传失败会自动释放直传会话并回退服务端中转。其他入口仍可走服务端中转。
 - 服务端中转保留给 local / SFTP、后端生成文件和不支持直传的 provider。

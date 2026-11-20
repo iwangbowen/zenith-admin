@@ -2,6 +2,8 @@
 
 本页描述 Zenith Admin 当前文件与存储实现：统一文件记录、上传下载、预览、分片上传、业务附件、存储后端与访问 URL 策略。事实来源以 `packages\server\src\routes\files`、`packages\server\src\services\files`、`packages\server\src\lib\file-storage.ts`、`packages\shared\src\platform` 为准。
 
+Bucket 权限探测、下载方式与浏览器直传的专题说明见[文件存储访问策略与浏览器直传](../backend/file-storage-access.md)。
+
 本页对应独立的 `files` 路由领域，专题地址沿用 `/storage/`。文件契约虽放在共享层 `platform` 下，但不由 `platform` 路由领域挂载；平台能力见[平台基础能力](../platform/index.md)，空间与协作权限见[企业网盘](../drive/index.md)。
 
 ## 模块边界
@@ -19,14 +21,14 @@
 
 | 表 | 说明 |
 | --- | --- |
-| `file_storage_configs` | 存储配置；provider、状态、默认标识、basePath、objectAcl、urlStrategy、publicBaseUrl、presignedExpirySeconds 与各 provider 专属字段 |
-| `managed_files` | 统一文件记录；UUID 主键、storageConfigId、storageName、provider、originalName、objectKey、bucketName、size（bigint）、mimeType、extension、objectAcl、visibility、contentHash、tenantId、审计字段 |
-| `upload_sessions` | 分片上传会话；uploadId、文件名/大小/MIME、chunkSize、totalChunks、存储配置快照、multipartUploadId、状态、租户、审计字段 |
+| `file_storage_configs` | 存储配置；provider、状态、默认标识、basePath、objectAcl、accessStrategy、uploadMode、publicBaseUrl、presignedExpirySeconds、Bucket 权限探测快照与各 provider 专属字段 |
+| `managed_files` | 统一文件记录；UUID 主键、storageConfigId、storageName、provider、originalName、objectKey、bucketName、size（bigint）、mimeType、extension、objectAcl、publicAccess、accessStrategy、visibility、contentHash、tenantId、审计字段 |
+| `upload_sessions` | 分片上传会话；uploadId、文件名/大小/MIME、chunkSize、totalChunks、存储配置快照、multipartUploadId、uploadMode、objectAcl/publicAccess/accessStrategy 快照、状态、租户、审计字段 |
 | `upload_chunks` | 已上传分片；uploadSessionId、index、size、etag；`uploadSessionId + index` 唯一保证重传幂等 |
 | `upload_session_bindings` | 分片会话与归属模块业务上下文的通用绑定；uploadId（级联会话）、module、payload jsonb、租户、审计字段 |
 | `business_files` | 业务附件关联；`businessType + businessId + fileId` 唯一，当前枚举为 `announcement`、`wiki_doc` |
 
-`managed_files.bucketName` 与 `objectAcl` 是上传时快照，用于在存储配置后续切换 bucket 或 ACL 时继续读取旧文件并正确判断公开直链能力。
+`managed_files.bucketName`、`objectAcl`、`publicAccess` 与 `accessStrategy` 是上传时快照，用于在存储配置后续切换 bucket / ACL / 下载方式时继续读取旧文件并正确判断公开直链能力。
 
 `managed_files.visibility` 区分 `public`（默认，可经无需登录的 `/api/files/{id}/content` 读取）与 `restricted`（业务域自管访问控制，通用内容接口返回 404，只能经业务域自己的内容接口读取，如企业网盘的 `/api/drive/nodes/{id}/content`）。文件管理列表默认只展示 `public` 文件。`contentHash` 为可选的 SHA-256，供业务域按内容去重 / 秒传。
 
@@ -41,7 +43,7 @@
 | `s3` | S3 兼容存储 | `s3Region`、`s3Bucket`、`s3AccessKeyId`、`s3SecretAccessKey`；可选 `s3Endpoint`、`s3ForcePathStyle` | AWS SDK v3，兼容 AWS S3 / MinIO / R2，代理读取支持 Range，支持签名 URL 与原生 multipart |
 | `cos` | 腾讯云 COS | `cosRegion`、`cosBucket`、`cosSecretId`、`cosSecretKey` | `cos-nodejs-sdk-v5`，支持签名 URL 与原生 multipart；对象 ACL 不支持 `public-read-write` |
 | `obs` | 华为云 OBS | `obsEndpoint`、`obsBucket`、`obsAccessKeyId`、`obsSecretAccessKey` | `esdk-obs-nodejs`，支持签名 URL 与原生 multipart |
-| `kodo` | 七牛云 Kodo | `kodoAccessKey`、`kodoSecretKey`、`kodoBucket`；可选 `kodoRegion`、`kodoEndpoint` | 七牛 SDK 表单上传；签名下载依赖 `publicBaseUrl` 或 `kodoEndpoint`；分片走本地暂存合并 |
+| `kodo` | 七牛云 Kodo | `kodoAccessKey`、`kodoSecretKey`、`kodoBucket`；可选 `kodoRegion`、`kodoEndpoint` | 七牛 SDK 表单上传；签名下载依赖 `publicBaseUrl` 或 `kodoEndpoint`；服务端中转走本地暂存合并，`uploadMode=browser-direct` 走分片上传 v2 |
 | `bos` | 百度云 BOS | `bosEndpoint`、`bosBucket`、`bosAccessKeyId`、`bosSecretAccessKey` | `@baiducloud/sdk`，支持签名 URL 与原生 multipart |
 | `azure` | Azure Blob | `azureAccountName`、`azureAccountKey`、`azureContainerName`；可选 `azureEndpoint` | `@azure/storage-blob`，支持 SAS URL 与 block list multipart；Azure staged blocks 无显式 abort，未提交块由云端过期 |
 | `sftp` | SFTP | `sftpHost`、`sftpUsername`；可选 `sftpPort`、`sftpPassword`、`sftpPrivateKey`、`sftpRootPath`、`sftpBaseUrl` | `ssh2-sftp-client`，上传前递归建目录；分片走本地暂存合并 |
@@ -50,13 +52,17 @@
 
 ## 访问 URL 策略与 ACL
 
-`FILE_URL_STRATEGIES`：
+`FILE_ACCESS_STRATEGIES`：
 
-| 策略 | 行为 |
-| --- | --- |
-| `proxy` | 返回稳定代理地址 `/api/files/{id}/content`，由服务端读取对象并响应 |
-| `public` | 优先使用 `publicBaseUrl`，否则按 provider 拼接公开直链；若 ACL/配置无法证明公开可读，则降级签名或代理 |
-| `presigned` | 使用 provider SDK 生成临时签名 URL，过期时间为 `presignedExpirySeconds`，默认 1800 秒，允许范围 60 到 604800 秒 |
+| 策略 | 公共性来源 | 行为 |
+| --- | --- | --- |
+| `proxy` | 无 | 返回稳定代理地址 `/api/files/{id}/content`，由服务端读取对象并响应 |
+| `presigned` | 临时签名 | 使用 provider SDK 生成临时签名 URL，过期时间为 `presignedExpirySeconds`，默认 1800 秒，允许范围 60 到 604800 秒 |
+| `public-object` | 对象 ACL | 对象 ACL 为 `public-read` / `public-read-write`，且 Bucket 未阻止公共访问 |
+| `public-bucket` | Bucket ACL | Bucket 为公共读，对象保持「继承 Bucket」，且 Bucket 未阻止公共访问 |
+| `public-domain` | CDN / 自定义域名 | 配置 `publicBaseUrl`；Kodo 可用 `kodoEndpoint`，SFTP 可用 `sftpBaseUrl` |
+
+解析失败时按 `public → presigned → proxy` 降级。`accessStrategy` 只决定下载地址，不是访问控制；`proxy` 不会自动把公共 Bucket 变成私有。
 
 对象 ACL 枚举为 `default`、`private`、`public-read`、`public-read-write`。支持矩阵：
 
@@ -64,9 +70,9 @@
 | --- | --- |
 | `oss`、`s3`、`obs` | `default`、`private`、`public-read`、`public-read-write` |
 | `cos`、`bos` | `default`、`private`、`public-read` |
-| `local`、`kodo`、`azure`、`sftp` | 不支持对象级 ACL，上传时不发送 ACL 参数 |
+| `local`、`kodo`、`azure`、`sftp` | 不支持对象级 ACL，上传时不发送 ACL 参数；受控文件要求 Bucket / Container 为私有 |
 
-`public` 策略下，支持对象级 ACL 的云存储必须在文件快照中记录为 `public-read` 或 `public-read-write` 才返回公开直链；`local`、`kodo`、`azure`、`sftp` 信任管理员配置的公开访问域名/下载域名。
+`public-object` / `public-bucket` 保存时会探测 Bucket ACL、BPA 与 Bucket Policy 公共状态；`public-domain` 信任域名/CDN 配置。Kodo 使用 `public-bucket` 时还必须配置 `kodoEndpoint` 或 `publicBaseUrl`。公开直链只在文件快照和当前 Bucket 状态都允许时生成。`restricted` 文件一律不走公开直链。
 
 ## 上传、下载与预览
 
@@ -83,7 +89,7 @@
 
 默认白名单已包含 `application/msword`、`application/vnd.ms-excel`、`application/vnd.ms-powerpoint`。识别完成后仍以当前生效的 `files.uploadAllowedTypes` 为准；自定义配置移除某类 Office MIME 后，对应文件仍会被拒绝。未知、损坏或仅伪造扩展名的 CFB 容器不会回退信任上传方声明的 Office MIME。
 
-通用 `files` API 没有独立的秒传接口；分片接口使用 `uploadId + index` 保证同一分片重传幂等，但不按内容 hash 跳过整文件上传。`managed_files.contentHash` 已支持持久化，网盘在此底座上实现自己的预检查与秒传，详见[企业网盘：存储集成](../drive/index.md#存储集成)。
+通用 `files` API 提供 `POST /api/files/quick-upload`：文件 ≤ 32 MB 时浏览器计算 SHA-256，服务端按同存储、同租户、同内容且对象仍存在时复用文件记录；未命中走正常上传。分片接口使用 `uploadId + index` 保证同一分片重传幂等。`managed_files.contentHash` 持久化内容摘要，网盘也可在此底座上实现自己的预检查与秒传，详见[企业网盘：存储集成](../drive/index.md#存储集成)。
 
 ### 分片上传
 
@@ -97,8 +103,8 @@
 | GET | `/api/files/upload/{uploadId}/status` | 查询已接收分片与会话状态 |
 | DELETE | `/api/files/upload/{uploadId}` | 中止上传并清理临时目录或云端 multipart；合并中（`completing`）与已完成的会话不可中止 |
 
-`oss`、`s3`、`cos`、`obs`、`azure`、`bos` 使用原生 multipart；`local`、`kodo`、`sftp` 使用本地暂存（`UPLOAD_TEMP_DIR`，默认
-`storage/tmp/uploads`）后流式合并——多实例部署时该目录必须是共享卷，见 [部署：多实例与本地存储](../guide/deployment.md#5-多实例与本地存储)。
+服务端中转模式下，`oss`、`s3`、`cos`、`obs`、`azure`、`bos` 使用原生 multipart；`local`、`kodo`、`sftp` 使用本地暂存（`UPLOAD_TEMP_DIR`，默认
+`storage/tmp/uploads`）后流式合并——多实例部署时该目录必须是共享卷，见 [部署：多实例与本地存储](../guide/deployment.md#5-多实例与本地存储)。`uploadMode=browser-direct` 时 Kodo 走分片上传 v2，不落本地暂存。
 `upload_chunks` 的唯一约束允许客户端安全重传同一分片。
 
 会话状态：`uploading` → `completing`（某次 complete 已抢占合并权，正在合并）→ `completed`；任意阶段可进入 `aborted`。
