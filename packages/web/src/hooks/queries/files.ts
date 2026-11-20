@@ -87,13 +87,15 @@ interface DirectUploadVariables {
   onProgress?: (percent: number) => void;
   signal?: AbortSignal;
   storageConfigId?: number;
+  /** 失败后释放直传会话；文件列表会回退服务端中转 */
+  abortOnFailure?: boolean;
 }
 
 /** 浏览器直传：申请 multipart 会话 → 并行上传分片 → 服务端合并、校验并落库。 */
 export function useDirectUploadFile() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ file, onProgress, signal, storageConfigId }: DirectUploadVariables) => {
+    mutationFn: async ({ file, onProgress, signal, storageConfigId, abortOnFailure }: DirectUploadVariables) => {
       if (import.meta.env.VITE_DEMO_MODE === 'true') {
         const formData = new FormData();
         formData.append('file', file);
@@ -112,7 +114,7 @@ export function useDirectUploadFile() {
           return existing;
         }
       }
-      return directMultipartUpload({ file, storageConfigId, contentHash, onProgress, signal });
+      return directMultipartUpload({ file, storageConfigId, contentHash, onProgress, signal, abortOnFailure });
     },
     onSuccess: () => invalidateAfterFilesAdded(qc),
   });

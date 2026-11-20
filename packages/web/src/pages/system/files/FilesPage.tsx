@@ -69,23 +69,35 @@ function uploadSingleFile(
     ? { ...item, status: 'cancelled' }
     : { ...item, status: 'error', errorMsg: err instanceof Error ? err.message : '上传失败' });
   updateItem(item => ({ ...item, status: 'uploading' }));
+  const startProxyUpload = () => {
+    // 超过运行时设置的阈值走分片上传 + 断点续传
+    if (file.size > chunkThreshold) {
+      chunkedUpload(file, {
+        signal,
+        onProgress: (percent) => updateItem(item => ({ ...item, progress: percent })),
+      }).then(onDone).catch(onFail);
+      return;
+    }
+    const formData = new FormData();
+    formData.append('file', file);
+    void uploadFile(formData, (percent) => updateItem(item => ({ ...item, progress: percent })), signal)
+      .then(onDone).catch(onFail);
+  };
   if (uploadMode === 'browser-direct') {
     void directUpload(file, (percent) => updateItem(item => ({ ...item, progress: percent })), signal)
-      .then(onDone).catch(onFail);
+      .then(onDone)
+      .catch((error) => {
+        if (signal.aborted) {
+          onFail(error);
+          return;
+        }
+        // 直传失败（CORS、签名、企业代理等）回退服务端中转，避免用户完全无法上传
+        updateItem(item => ({ ...item, progress: 0, status: 'uploading', errorMsg: undefined }));
+        startProxyUpload();
+      });
     return;
   }
-  // 超过运行时设置的阈值走分片上传 + 断点续传
-  if (file.size > chunkThreshold) {
-    chunkedUpload(file, {
-      signal,
-      onProgress: (percent) => updateItem(item => ({ ...item, progress: percent })),
-    }).then(onDone).catch(onFail);
-    return;
-  }
-  const formData = new FormData();
-  formData.append('file', file);
-  void uploadFile(formData, (percent) => updateItem(item => ({ ...item, progress: percent })), signal)
-    .then(onDone).catch(onFail);
+  startProxyUpload();
 }
 
 /** 加载图片并返回其分辨率，失败时返回 null；优先用 directUrl 直挂（免 blob fetch/CORS） */
@@ -284,7 +296,7 @@ export default function FilesPage() {
         controller.signal,
         chunkThreshold,
         defaultStorageConfig?.uploadMode ?? 'server-proxy',
-        (file, onProgress, signal) => directUploadMutation.mutateAsync({ file, onProgress, signal, storageConfigId: defaultStorageConfig?.id }),
+        (file, onProgress, signal) => directUploadMutation.mutateAsync({ file, onProgress, signal, storageConfigId: defaultStorageConfig?.id, abortOnFailure: true }),
         setUploadItems,
         (formData, onProgress, signal) => uploadFileMutation.mutateAsync({ formData, onProgress, signal }),
       );

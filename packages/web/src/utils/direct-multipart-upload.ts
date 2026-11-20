@@ -19,6 +19,8 @@ interface DirectMultipartOptions {
   contentHash?: string;
   signal?: AbortSignal;
   onProgress?: (percent: number) => void;
+  /** 失败后不再保留续传会话（调用方准备回退服务端中转时使用） */
+  abortOnFailure?: boolean;
 }
 
 interface DirectUploadCheckpoint {
@@ -303,7 +305,8 @@ export async function directMultipartUpload<TFile = unknown>(options: DirectMult
     onProgress?.(100);
     return result;
   } catch (error) {
-    if (signal?.aborted && signal.reason === CHUNKED_UPLOAD_CANCELLED) {
+    if ((signal?.aborted && signal.reason === CHUNKED_UPLOAD_CANCELLED)
+      || options.abortOnFailure === true) {
       localStorage.removeItem(key);
       void api(fileContract.directUploadAbort, { params: { uploadId } }, { silent: true }).catch(() => {});
     }

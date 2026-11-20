@@ -122,6 +122,29 @@ describe('directMultipartUpload', () => {
     expect(apiMock.mock.calls.some(([op]) => op === fileContract.directUploadInit)).toBe(true);
   });
 
+  it('aborts the direct session when the caller is falling back to proxy upload', async () => {
+    apiMock.mockImplementation((async (op: unknown, input?: { params?: Record<string, unknown> }) => {
+      if (op === fileContract.directUploadInit) return responseSession('fallback-upload');
+      if (op === fileContract.directUploadStatus) {
+        return { uploadId: input?.params?.uploadId, status: 'uploading', chunkSize: 2, totalChunks: 3, received: [] };
+      }
+      if (op === fileContract.directUploadPartUrl) {
+        return { partNumber: input?.params?.partNumber, url: 'https://upload.test/' + input?.params?.partNumber, method: 'PUT', expiresAt: '2026-01-01 00:00:00' };
+      }
+      if (op === fileContract.directUploadPartAck) return { index: Number(input?.params?.partNumber) - 1, receivedCount: 1 };
+      if (op === fileContract.directUploadComplete) throw new Error('complete failed');
+      if (op === fileContract.directUploadAbort) return null;
+      throw new Error('Unexpected API operation');
+    }) as typeof api);
+
+    const file = new File([new Uint8Array([1, 2, 3, 4, 5])], 'file.bin', { lastModified: 123 });
+    await expect(directMultipartUpload({ file, storageConfigId: 7, contentHash: 'abc', abortOnFailure: true })).rejects.toThrow('complete failed');
+    expect(apiMock.mock.calls.some(([op, input]) =>
+      op === fileContract.directUploadAbort
+      && (input as { params: { uploadId: string } }).params.uploadId === 'fallback-upload')).toBe(true);
+    expect(localStorage.getItem(scopedStorageKey('direct-multipart-upload:file.bin:5:123:7'))).toBeNull();
+  });
+
   it('lists resumable uploads from local checkpoints for the active storage config', async () => {
     const key = scopedStorageKey('direct-multipart-upload:archive.zip:104:123:7');
     localStorage.setItem(key, JSON.stringify({ uploadId: 'pending-upload', fileHash: 'f'.repeat(64) }));
