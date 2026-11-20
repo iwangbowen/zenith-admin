@@ -135,7 +135,6 @@ flowchart LR
 | `drive_share_access_logs` | 外链访问 / 下载 / 上传 / 密码错误留痕，按 UTC 月分区 |
 | `drive_activities` | 节点动态与审计，按 UTC 月分区 |
 | `drive_node_stars` / `drive_recent_access` | 收藏与最近访问 |
-| `drive_upload_bindings` | 分片上传会话与目标目录 / 节点的绑定 |
 | `drive_tags` / `drive_node_tags` | 空间级标签及节点关联 |
 | `drive_node_comments` | 节点评论 |
 | `drive_node_texts` | 正文全文索引（`tsvector`） |

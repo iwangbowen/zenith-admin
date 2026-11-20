@@ -23,7 +23,7 @@ Bucket 权限探测、下载方式与浏览器直传的专题说明见[文件存
 | --- | --- |
 | `file_storage_configs` | 存储配置；provider、状态、默认标识、basePath、objectAcl、accessStrategy、uploadMode、publicBaseUrl、presignedExpirySeconds、Bucket 权限探测快照与各 provider 专属字段 |
 | `managed_files` | 统一文件记录；UUID 主键、storageConfigId、storageName、provider、originalName、objectKey、bucketName、size（bigint）、mimeType、extension、objectAcl、publicAccess、accessStrategy、visibility、contentHash、tenantId、审计字段 |
-| `upload_sessions` | 分片上传会话；uploadId、文件名/大小/MIME、chunkSize、totalChunks、存储配置快照、multipartUploadId、uploadMode、objectAcl/publicAccess/accessStrategy 快照、状态、租户、审计字段 |
+| `upload_sessions` | 分片上传会话；uploadId、文件名/大小/MIME、chunkSize、totalChunks、存储配置快照、multipartUploadId、uploadMode、objectAcl/publicAccess/accessStrategy 快照、业务模块 `module`、会话可见性 `visibility`、声明哈希 `expectedHash`、`computeHash` / `skipTypeCheck`、状态、租户、审计字段 |
 | `upload_chunks` | 已上传分片；uploadSessionId、index、size、etag；`uploadSessionId + index` 唯一保证重传幂等 |
 | `upload_session_bindings` | 分片会话与归属模块业务上下文的通用绑定；uploadId（级联会话）、module、payload jsonb、租户、审计字段 |
 | `business_files` | 业务附件关联；`businessType + businessId + fileId` 唯一，当前枚举为 `announcement`、`wiki_doc` |
@@ -140,17 +140,29 @@ Bucket 权限探测、下载方式与浏览器直传的专题说明见[文件存
 
 ### 归属模块接入分片上传
 
-归属模块不直接暴露通用 `files` 分片接口，而是在自己的契约上声明同形的五个操作（init 带业务字段、complete 返回业务实体），
-服务端复用 `upload-sessions.service` 的 init / chunk / status / abort / complete，并用 `upload_session_bindings`
-（`uploadId → module + payload jsonb`，随会话级联删除）记住业务上下文：init 时 `bindUploadSession()`，
-后续每个操作用 `requireUploadBinding(uploadId, module, payloadSchema)` 校验「同一模块 + 同一发起人」并取回上下文。
-前端用 `chunkedUpload(file, { endpoints, initExtra, resumeScope })` 传入由契约派生的五个地址即可，取消 / 续传 / 进度自动获得。
+归属模块不直接暴露通用 `files` 分片接口，而是在自己的契约上声明 init / complete（chunk / status / abort 复用业务直传通道），
+服务端统一经 `business-uploads.service`：
 
-| 模块 | 契约 | 说明 |
-| --- | --- | --- |
-| 企业网盘 | `driveNodeContract.upload*` | 自带 `drive_upload_bindings`（需级联到空间 / 节点），预检 / 秒传 / 冲突策略 |
-| App 发布制品 | `appReleaseContract.upload*`（`/{id}/artifacts/upload/…`） | payload：平台 / 架构 / 类型 / 文件名；complete 以 `computeHash` 取得 sha256 写入 `app_artifacts` |
-| IoT 固件 | `iotFirmwareContract.upload*`（`/upload/…`） | payload：产品 / 版本 / 发布说明 / 文件名；init 先查版本唯一，避免传完才撞约束 |
+- `initBusinessUpload({ module, payload, visibility, fileName, fileSize, allowDirect, computeHash, skipTypeCheck })`
+  先按存储配置的 `uploadMode` 与 provider 能力裁定 `server-proxy` / `browser-direct`，再写 `upload_session_bindings`
+  （`uploadId → module + payload jsonb`，随会话级联删除）。
+- `completeBusinessUpload({ uploadId, module, schema, onComplete })` 校验「同一模块 + 同一发起人」，
+  按会话上的 `visibility` / `expectedHash` / `computeHash` / `skipTypeCheck` 完成合并，再执行模块自己的落库；
+  落库失败自动回收本次生成的文件。
+
+`visibility` 在 init 时写入会话，complete 不再依赖调用点重复传参。`restricted` 会话强制对象 ACL 为 `private`、
+下载策略为 `proxy`，并由业务模块自己的内容接口读取。
+
+前端用 `uploadBusinessFile({ file, endpoints, initExtra, resumeScope })`：init 返回 `mode` 后自动选择
+服务端分片（`uploadChunksToSession`）或浏览器直传（`directMultipartUpload`），两种模式共享同一份
+`{ uploadId, mode }` 续传检查点。直传分片地址、确认、进度与中止统一走
+`fileContract.businessUpload*`（`/api/files/business-uploads/…`，只要求登录并校验会话归属）。
+
+| 模块 | 契约 | 模式 | 说明 |
+| --- | --- | --- | --- |
+| 企业网盘 | `driveNodeContract.upload*` | 直传优先 | 预检 / 配额 / 节点与版本落地仍在业务侧；直传 complete 后读对象头 4KB 复核可执行文件策略 |
+| App 发布制品 | `appReleaseContract.upload*`（`/{id}/artifacts/upload/…`） | 直传优先 | payload：平台 / 架构 / 类型 / 文件名；`restricted`，complete 以 `computeHash` 取得 sha256 写入 `app_artifacts` |
+| IoT 固件 | `iotFirmwareContract.upload*`（`/upload/…`） | 直传优先 | payload：产品 / 版本 / 发布说明 / 文件名；保持 `public`，设备 OTA 仍按原 302 直链下载 |
 
 CMS 图片、公众号素材、回放片段、主机 / 终端文件等入口性质不同（小文件或写往第三方 / 远端主机），保持单请求。
 

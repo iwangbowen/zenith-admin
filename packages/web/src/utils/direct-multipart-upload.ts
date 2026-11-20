@@ -180,7 +180,7 @@ function putPart(
   });
 }
 
-async function findSession<TFile>(key: string, endpoints: DirectUploadEndpoints<TFile>, signal?: AbortSignal) {
+async function findSession<TFile>(key: string, endpoints: DirectUploadEndpoints<TFile>) {
   const savedCheckpoint = localStorage.getItem(key);
   if (!savedCheckpoint) return null;
   let checkpoint: DirectUploadCheckpoint;
@@ -231,7 +231,7 @@ export async function directMultipartUpload<TFile = ManagedFile>(options: Direct
   } else {
     let resumed: Awaited<ReturnType<typeof findSession<TFile>>>;
     try {
-      resumed = await findSession(key, endpoints, signal);
+      resumed = await findSession(key, endpoints);
     } catch (error) {
       if (signal?.aborted && signal.reason === CHUNKED_UPLOAD_CANCELLED) {
         let savedId: string | undefined;

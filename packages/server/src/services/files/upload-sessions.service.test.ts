@@ -39,6 +39,7 @@ vi.mock('../../lib/settings', () => ({
   getSettings: vi.fn(async () => ({ uploadValidateType: true, uploadAllowedTypes: ['*'], uploadMaxSizeMb: 0, chunkThresholdMb: 5, chunkSizeMb: 5 })),
 }));
 vi.mock('./files.service', () => ({
+  assertRestrictedStorageSafe: vi.fn(),
   assertUploadSizeAllowed: vi.fn(async () => undefined),
   assertUploadTypeAllowed: vi.fn(async () => undefined),
   mapManagedFile: vi.fn((row: unknown) => row),
@@ -96,6 +97,14 @@ function session(overrides: Record<string, unknown> = {}) {
     bucketName: null,
     multipartUploadId: null,
     objectAcl: null,
+    publicAccess: false,
+    accessStrategy: 'proxy',
+    uploadMode: 'server-proxy',
+    module: null,
+    visibility: 'public',
+    expectedHash: null,
+    computeHash: false,
+    skipTypeCheck: false,
     status: 'uploading',
     tenantId: null,
     createdAt: new Date(),
@@ -231,6 +240,23 @@ describe('completeChunkUpload', () => {
     const statuses = claim.set.mock.calls.map((c: unknown[]) => (c[0] as { status: string }).status);
     expect(statuses).toEqual(['completing', 'completed']);
     await expect(fs.stat(path.join(TEMP_ROOT, 'u-3'))).rejects.toThrow();
+  });
+
+  it('业务会话以 init 时写入的 visibility 为准，不依赖 complete 调用点重复传参', async () => {
+    const parts = [Buffer.alloc(UPLOAD_CHUNK_MIN_BYTES, 1), Buffer.from('0123456789')];
+    const hash = await writeChunks('u-module', parts);
+    const business = session({ uploadId: 'u-module', module: 'drive-upload', visibility: 'restricted' });
+    dbMock.select
+      .mockReturnValueOnce(createChain([business]))
+      .mockReturnValueOnce(createChain(rows))
+      .mockReturnValueOnce(createChain([CONFIG]));
+    dbMock.update.mockReturnValue(createChain([{ id: business.id }]));
+    const insert = createChain([{ id: 'file-module', contentHash: hash }]);
+    dbMock.insert.mockReturnValueOnce(insert);
+
+    await completeChunkUpload('u-module', { skipTypeCheck: true });
+
+    expect(insert.values.mock.calls[0][0][0]).toMatchObject({ visibility: 'restricted', gcState: 'orphan' });
   });
 
   it('分片总大小与声明不一致：会话置 aborted、临时目录清除、不上传对象', async () => {

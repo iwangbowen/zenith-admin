@@ -37,6 +37,7 @@ class SuccessfulXhr {
 function responseSession(uploadId: string, provider = 's3') {
   return {
     uploadId,
+    mode: 'browser-direct',
     provider,
     objectKey: 'uploads/file.bin',
     bucketName: 'bucket',

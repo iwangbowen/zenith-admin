@@ -62,6 +62,23 @@
 
 上传状态复用 `upload_sessions` / `upload_chunks`，localStorage 保存会话 ID 与流式计算的整文件 SHA-256。网络中断或刷新后重新选择同一内容的文件会续传；仅元数据相同但内容不同的文件会中止旧会话并重新上传。显式取消调用 `DELETE /api/files/direct-uploads/{uploadId}`，服务端中止 multipart 并关闭会话。过期会话由既有上传会话清理任务处理。
 
+### 4.1.1 业务绑定直传
+
+业务模块（企业网盘、App 制品、IoT 固件）的 `init` 返回 `mode`；当默认存储为 `browser-direct` 且 provider 支持时，会话直接以直传模式创建，否则自动退回服务端中转。前端 `uploadBusinessFile` 按 `mode` 分流，续传检查点记录 `{ uploadId, mode }`。
+
+直传分片通道是通用的，不需要每个业务域重复声明：
+
+```text
+POST   /api/files/business-uploads/{uploadId}/parts/{partNumber}/url
+POST   /api/files/business-uploads/{uploadId}/parts/{partNumber}/complete
+GET    /api/files/business-uploads/{uploadId}
+DELETE /api/files/business-uploads/{uploadId}
+```
+
+这些接口只要求登录并校验「当前用户 + 业务会话」，业务权限在 init 时已经校验；完成落库仍必须回到业务域自己的 `complete`。通用 `POST /api/files/direct-uploads/{uploadId}/complete` 会拒绝带业务模块的会话。
+
+`visibility` 在 init 时写入会话：`restricted` 强制对象 ACL 为 `private`、下载策略为 `proxy`，完成时写入 `managed_files` 并由业务域内容接口读取；`public` 保持原有直链 / 代理策略。IoT 固件保持 `public`，因为设备 OTA 下载依赖 302 直链；App 制品为 `restricted`，公开下载由 `/api/public/app-releases/...` 校验发布状态后流式返回。
+
 ### 4.2 Provider 能力
 
 | Provider | 直传机制 | 状态 |
