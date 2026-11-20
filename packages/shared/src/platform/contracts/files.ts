@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeQuery, keywordQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { dateRangeQuery, keywordQuery, paginated, paginationQuery, queryEnum, requiredIdQuery } from '../../core/api-schemas';
 import { defineContract, fileField, multipart, op } from '../../core/contract';
 import {
   FILE_ACCESS_PURPOSES,
@@ -176,7 +176,7 @@ export const storageObjectBrowseQuery = storageBrowseQuery.extend({
 });
 
 export const storageObjectAccessQuery = z.object({
-  storageConfigId: z.coerce.number().int().positive(),
+  storageConfigId: requiredIdQuery('存储配置 ID'),
   key: z.string().min(1).max(1024),
   purpose: queryEnum(FILE_ACCESS_PURPOSES),
 });
@@ -186,8 +186,11 @@ export const storageObjectContentQuery = z.object({
   token: z.string().min(1).max(4096),
 });
 
+/** 存储浏览请求体中的存储配置 ID */
+const storageConfigIdBody = z.coerce.number().int().positive().meta({ description: '存储配置 ID', example: 1 });
+
 export const registerStorageObjectSchema = z.object({
-  storageConfigId: z.coerce.number().int().positive(),
+  storageConfigId: storageConfigIdBody,
   key: z.string().min(1).max(1024),
   visibility: z.enum(FILE_VISIBILITIES).default('public'),
   computeHash: z.boolean().default(false),
@@ -195,19 +198,19 @@ export const registerStorageObjectSchema = z.object({
 });
 
 export const registerStorageObjectsSchema = z.object({
-  storageConfigId: z.coerce.number().int().positive(),
+  storageConfigId: storageConfigIdBody,
   keys: z.array(z.string().min(1).max(1024)).min(1).max(100),
   visibility: z.enum(FILE_VISIBILITIES).default('public'),
   computeHash: z.boolean().default(false),
 });
 
 export const removeStorageObjectSchema = z.object({
-  storageConfigId: z.coerce.number().int().positive(),
+  storageConfigId: storageConfigIdBody,
   key: z.string().min(1).max(1024),
 });
 
 export const removeStorageObjectsSchema = z.object({
-  storageConfigId: z.coerce.number().int().positive(),
+  storageConfigId: storageConfigIdBody,
   keys: z.array(z.string().min(1).max(1024)).min(1).max(100),
 });
 
