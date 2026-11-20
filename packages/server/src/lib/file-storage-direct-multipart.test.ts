@@ -1,7 +1,7 @@
 import { createRequire } from 'node:module';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FileStorageConfigRow } from '../db/schema';
-import { createDirectPartTarget, getBucketAccessInfo } from './file-storage';
+import { createDirectPartTarget, getBucketAccessInfo, setBucketAccessInfo } from './file-storage';
 
 const accountKey = Buffer.alloc(32, 7).toString('base64');
 const require = createRequire(import.meta.url);
@@ -97,6 +97,50 @@ describe('OSS bucket public access probing', () => {
       accountBlockPublicAccess: false,
       effectivePublic: false,
     });
+  });
+});
+
+describe('OSS public Bucket ACL guard', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function mockOssAccess(accountBlockPublicAccess: boolean, bucketBlockPublicAccess: boolean) {
+    vi.spyOn(OssConstructor.prototype, 'getBucketInfo').mockResolvedValue({
+      bucket: { AccessControlList: { Grant: 'private' } },
+    } as never);
+    const requestPrototype = OssConstructor.prototype as unknown as {
+      request: (params: Record<string, unknown>) => Promise<{ data?: Buffer }>;
+    };
+    return vi.spyOn(requestPrototype, 'request').mockImplementation(async (params) => {
+      if (!params.bucket) {
+        return { data: Buffer.from(`<PublicAccessBlockConfiguration><BlockPublicAccess>${accountBlockPublicAccess}</BlockPublicAccess></PublicAccessBlockConfiguration>`) };
+      }
+      if (params.subres === 'policyStatus') {
+        return { data: Buffer.from('<PolicyStatus><IsPublic>false</IsPublic></PolicyStatus>') };
+      }
+      expect(params.subres).toBe('publicAccessBlock');
+      return { data: Buffer.from(`<PublicAccessBlockConfiguration><BlockPublicAccess>${bucketBlockPublicAccess}</BlockPublicAccess></PublicAccessBlockConfiguration>`) };
+    });
+  }
+
+  it('rejects a public ACL before OSS when Bucket-level BPA is enabled', async () => {
+    const request = mockOssAccess(false, true);
+    const putBucketACL = vi.spyOn(OssConstructor.prototype, 'putBucketACL').mockResolvedValue(undefined as never);
+
+    await expect(setBucketAccessInfo(config('oss', {}), { acl: 'public-read' }))
+      .rejects.toThrow('请先关闭阿里云 OSS Bucket 的阻止公共访问，再设置公共 ACL');
+    expect(request).toHaveBeenCalled();
+    expect(putBucketACL).not.toHaveBeenCalled();
+  });
+
+  it('rejects a public ACL when account-level BPA is enabled', async () => {
+    mockOssAccess(true, false);
+    const putBucketACL = vi.spyOn(OssConstructor.prototype, 'putBucketACL').mockResolvedValue(undefined as never);
+
+    await expect(setBucketAccessInfo(config('oss', {}), { acl: 'public-read' }))
+      .rejects.toThrow('账号级阻止公共访问已开启，无法设置公共 ACL');
+    expect(putBucketACL).not.toHaveBeenCalled();
   });
 });
 

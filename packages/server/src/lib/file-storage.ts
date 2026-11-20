@@ -502,6 +502,17 @@ export async function setBucketAccessInfo(
 ): Promise<FileBucketAccessInfo> {
   if (config.provider === 'oss') {
     const client = createOssClient(config);
+    const wantsPublicAcl = input.acl === 'public-read' || input.acl === 'public-read-write';
+    // OSS 在开启阻止公共访问时会直接拒绝公共 ACL；先给出明确提示，避免把 SDK 原始错误抛给用户。
+    if (wantsPublicAcl) {
+      const current = await getBucketAccessInfo(config);
+      if (current.accountBlockPublicAccess === true) {
+        throw new HTTPException(400, { message: '账号级阻止公共访问已开启，无法设置公共 ACL；请在阿里云控制台关闭账号级阻止公共访问' });
+      }
+      if (input.blockPublicAccess !== false && current.blockPublicAccess === true) {
+        throw new HTTPException(400, { message: '请先关闭阿里云 OSS Bucket 的阻止公共访问，再设置公共 ACL' });
+      }
+    }
     const setBlockPublicAccess = async (enabled: boolean) => {
       const xml = `<?xml version="1.0" encoding="UTF-8"?><PublicAccessBlockConfiguration><BlockPublicAccess>${enabled}</BlockPublicAccess></PublicAccessBlockConfiguration>`;
       await (client as unknown as { request(params: Record<string, unknown>): Promise<unknown> }).request({

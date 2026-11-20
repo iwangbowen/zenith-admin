@@ -174,6 +174,11 @@ export function BucketAccessPanel({
     : !known
       ? '请先成功探测当前权限'
       : null;
+  const publicAclBlocked = info?.accountBlockPublicAccess === true || info?.blockPublicAccess === true;
+  const showPublicAclBlocked = publicAclBlocked && info?.bucketAcl !== 'public-read';
+  const publicAclBlockedReason = info?.accountBlockPublicAccess === true
+    ? '账号级阻止公共访问已开启，需在云控制台关闭后才能设置公共读 ACL。'
+    : '请先关闭 Bucket 级阻止公共访问，再设置公共读 ACL。';
 
   return (
     <SideSheet
@@ -259,12 +264,12 @@ export function BucketAccessPanel({
               />
               <ActionRow
                 title="将 Bucket ACL 设为公共读"
-                description="允许匿名读取 Bucket 内的公共读对象，可能暴露敏感数据。"
+                description={showPublicAclBlocked ? publicAclBlockedReason : '允许匿名读取 Bucket 内的公共读对象，可能暴露敏感数据。'}
                 action={(
                   <Button
                     size="small"
                     type="danger"
-                    disabled={Boolean(reason) || busy || info?.bucketAcl === 'public-read'}
+                    disabled={Boolean(reason) || busy || info?.bucketAcl === 'public-read' || publicAclBlocked}
                     loading={updateLoading}
                     onClick={onMakePublicRead}
                   >
