@@ -221,10 +221,12 @@ describe('认证契约：声明与运行时行为必须一致', () => {
     // 无表单内容与参与人、无脚本、noindex；全局路径限流可按 /api/workflows/print-verify/* 配置。
     // 会话并发拒绝模式 1 个匿名端点（POST /api/auth/session-conflict/resolve）：与 MFA 验证同构——凭据已通过后签发的
     // 5 分钟一次性票据（GETDEL），受 authRateLimit 约束，不接受任何身份声明。
+    // 存储浏览代理下载 1 个匿名端点（GET /api/files/browse-storage/content）：仅接受服务端签发的
+    // 10 分钟 HMAC 令牌，令牌绑定 storageConfigId + objectKey + 下载/预览语义。
     const publicOps = operations.filter((op) => op.isDeclaredPublic);
     // CMS telemetry validates a signed published-page context and stable event IDs before anonymous ingest.
     // Observability v2 adds the public live/startup/readiness probes.
-    expect(publicOps.length).toBeLessThanOrEqual(72);
+    expect(publicOps.length).toBeLessThanOrEqual(73);
   });
 });
 

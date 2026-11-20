@@ -86,6 +86,24 @@ export function useFilePreview(getImageFiles: () => PreviewableFile[]) {
     const clickedIndex = imageFiles.findIndex((f) => f.id === file.id);
 
     setPreviewLoadingId(file.id);
+    // 未收录图片不在当前已收录图集中：按单图预览处理，避免负索引
+    if (clickedIndex < 0) {
+      try {
+        cleanupPreviewBlobs();
+        const blob = await fetchManagedFileBlob(file.url);
+        const url = await createDisplayableImageUrl(blob, file.mimeType, file.originalName);
+        previewBlobUrlsRef.current = [url];
+        setPreviewSrcList([url]);
+        setPreviewCurrentIndex(0);
+        setPreviewVisible(true);
+      } catch (error) {
+        Toast.error(error instanceof Error ? error.message : '预览文件失败');
+      } finally {
+        setPreviewLoadingId(null);
+      }
+      return;
+    }
+
     // 开启新预览会话
     previewSessionRef.current += 1;
     const mySession = previewSessionRef.current;

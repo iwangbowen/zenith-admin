@@ -52,7 +52,7 @@ beforeEach(() => {
     .on('PUT', /\/api\/data-mask\/fields\//, { key: 'User.phone', entity: 'User', field: 'phone', label: '手机号', kind: 'phone', maskType: 'phone', customRule: null, exemptPermissions: [], enabled: true, remark: null, overridden: true, policyId: 1, preview: '138****1234', updatedAt: null })
     .on('GET', '/api/file-storage-configs', { list: [], total: 0, page: 1, pageSize: 10 })
     .on('POST', '/api/file-storage-configs', { id: 1 })
-    .on('GET', /\/api\/files\/browse/, { entries: [] })
+    .on('GET', /\/api\/files\/browse/, { mode: 'all', folders: [], files: [], currentPath: '', basePath: '', nextCursor: null, hasMore: false })
     .on('GET', '/api/identity-providers', { list: [], total: 0, page: 1, pageSize: 10 })
     .on('GET', '/api/tenants/all', [{ id: 1, name: '租户 A' }])
     .on('POST', '/api/identity-providers', { id: 1 })
@@ -100,7 +100,7 @@ describe('file-storage-configs：保存配置不触发文件浏览', () => {
     const { result } = renderHook(
       () => ({
         list: useFileStorageConfigList(LIST_PARAMS),
-        browse: useStorageBrowse(1, '/'),
+        browse: useStorageBrowse(1, '/', 'all'),
         save: useSaveFileStorageConfig(),
       }),
       { wrapper: createWrapper(qc) },
@@ -116,7 +116,7 @@ describe('file-storage-configs：保存配置不触发文件浏览', () => {
 
     // 浏览一个目录可能很贵，且与配置增删改无关
     expect(fetches.countOf(fileStorageConfigKeys.browseRoot)).toBe(0);
-    expect(isFresh(qc, fileStorageConfigKeys.browse(1, '/'))).toBe(true);
+    expect(isFresh(qc, fileStorageConfigKeys.browse(1, '/', 'all'))).toBe(true);
 
     fetches.stop();
   });

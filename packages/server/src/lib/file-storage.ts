@@ -1013,8 +1013,21 @@ export async function headStoredObject(config: FileStorageConfigRow, objectKey: 
         etag: headers.etag ?? null,
       };
     }
+    case 'local': {
+      const filePath = path.join(resolveLocalRoot(config), ...objectKey.split('/'));
+      const stat = await fs.stat(filePath).catch((error: NodeJS.ErrnoException) => {
+        if (error.code === 'ENOENT') throw new HTTPException(404, { message: '对象不存在' });
+        throw error;
+      });
+      return { size: stat.size, mimeType: null, etag: null };
+    }
+    case 'sftp': {
+      const remotePath = [config.sftpRootPath?.replace(/\/+$/, ''), ...objectKey.split('/')].filter(Boolean).join('/');
+      const stat = await sftpOperation(config, (client) => client.stat(remotePath)) as { size?: number };
+      return { size: Number(stat.size ?? 0), mimeType: null, etag: null };
+    }
     default:
-      throw new HTTPException(400, { message: `当前存储类型不支持浏览器直传：${config.provider}` });
+      throw new HTTPException(400, { message: `当前存储类型不支持对象读取：${config.provider}` });
   }
 }
 
@@ -2011,4 +2024,349 @@ export async function deleteObjectByConfig(config: FileStorageConfigRow, objectK
 
 export async function deleteStoredFile(file: ManagedFileRow, config: FileStorageConfigRow) {
   await deleteObjectByConfig(config, file.objectKey, file.bucketName);
+}
+
+// ─── 存储对象浏览（真实对象列表，非 managed_files 视图）────────────────────────
+
+/** 不透明游标：对象存储使用 marker / continuation token，本地与 SFTP 使用 offset */
+export interface StorageListCursor {
+  marker?: string;
+  token?: string;
+  offset?: number;
+}
+
+export interface StorageListObject {
+  key: string;
+  size: number | null;
+  lastModified: Date | null;
+  etag: string | null;
+}
+
+export interface StorageListPage {
+  prefixes: string[];
+  objects: StorageListObject[];
+  nextCursor: StorageListCursor | null;
+}
+
+export interface StorageListInput {
+  /** 完整对象 key 前缀，目录场景以 / 结尾 */
+  prefix: string;
+  cursor?: StorageListCursor;
+  limit: number;
+}
+
+function dateOrNull(value: string | Date | null | undefined): Date | null {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+async function listLocalObjects(config: FileStorageConfigRow, input: StorageListInput): Promise<StorageListPage> {
+  const root = resolveLocalRoot(config);
+  const directory = path.join(root, ...input.prefix.split('/').filter(Boolean));
+  const entries = await fs.readdir(directory, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') throw new HTTPException(404, { message: '目录不存在' });
+    throw error;
+  });
+  const sorted = entries.sort((a, b) => a.name.localeCompare(b.name));
+  const offset = input.cursor?.offset ?? 0;
+  const prefixes: string[] = [];
+  const objects: StorageListObject[] = [];
+  let consumed = 0;
+  for (const entry of sorted.slice(offset)) {
+    if (prefixes.length + objects.length >= input.limit) break;
+    const key = `${input.prefix}${entry.name}`;
+    if (entry.isDirectory()) {
+      prefixes.push(`${key}/`);
+    } else {
+      const stat = await fs.stat(path.join(directory, entry.name));
+      objects.push({ key, size: stat.size, lastModified: stat.mtime, etag: null });
+    }
+    consumed++;
+  }
+  const nextOffset = offset + consumed;
+  return { prefixes, objects, nextCursor: nextOffset < sorted.length ? { offset: nextOffset } : null };
+}
+
+async function listSftpObjects(config: FileStorageConfigRow, input: StorageListInput): Promise<StorageListPage> {
+  const root = config.sftpRootPath?.replace(/\/+$/, '') ?? '';
+  const remoteDirectory = [root, ...input.prefix.split('/').filter(Boolean)].filter(Boolean).join('/') || '.';
+  const entries = await sftpOperation(config, (client) => client.list(remoteDirectory)) as unknown as Array<{
+    name: string;
+    type?: string;
+    size?: number;
+    modifyTime?: number;
+  }>;
+  const sorted = entries.sort((a, b) => a.name.localeCompare(b.name));
+  const offset = input.cursor?.offset ?? 0;
+  const prefixes: string[] = [];
+  const objects: StorageListObject[] = [];
+  let consumed = 0;
+  for (const entry of sorted.slice(offset)) {
+    if (prefixes.length + objects.length >= input.limit) break;
+    const key = `${input.prefix}${entry.name}`;
+    if (entry.type === 'd' || entry.type === 'directory') {
+      prefixes.push(`${key}/`);
+    } else {
+      objects.push({
+        key,
+        size: entry.size ?? null,
+        lastModified: entry.modifyTime ? new Date(entry.modifyTime) : null,
+        etag: null,
+      });
+    }
+    consumed++;
+  }
+  const nextOffset = offset + consumed;
+  return { prefixes, objects, nextCursor: nextOffset < sorted.length ? { offset: nextOffset } : null };
+}
+
+/** 列出当前目录层级的真实对象；目录分隔符统一为 / */
+export async function listStorageObjects(config: FileStorageConfigRow, input: StorageListInput): Promise<StorageListPage> {
+  switch (config.provider) {
+    case 'local':
+      return listLocalObjects(config, input);
+    case 'sftp':
+      return listSftpObjects(config, input);
+    case 's3': {
+      const client = createS3Client(config);
+      const { ListObjectsV2Command } = loadS3();
+      const result = await client.send(new ListObjectsV2Command({
+        Bucket: config.s3Bucket!,
+        Prefix: input.prefix,
+        Delimiter: '/',
+        MaxKeys: input.limit,
+        ...(input.cursor?.token ? { ContinuationToken: input.cursor.token } : {}),
+      }));
+      return {
+        prefixes: (result.CommonPrefixes ?? []).map((item) => item.Prefix).filter(Boolean) as string[],
+        objects: (result.Contents ?? []).map((item) => ({
+          key: item.Key!,
+          size: item.Size ?? null,
+          lastModified: item.LastModified ?? null,
+          etag: item.ETag ?? null,
+        })),
+        nextCursor: result.IsTruncated && result.NextContinuationToken ? { token: result.NextContinuationToken } : null,
+      };
+    }
+    case 'oss': {
+      const client = createOssClient(config) as unknown as {
+        list(query: Record<string, unknown>): Promise<{
+          objects?: Array<{ name: string; size: number; lastModified: string | Date; etag?: string }>;
+          prefixes?: string[];
+          nextMarker?: string;
+        }>;
+      };
+      const result = await client.list({
+        prefix: input.prefix,
+        delimiter: '/',
+        'max-keys': input.limit,
+        ...(input.cursor?.marker ? { marker: input.cursor.marker } : {}),
+      }) as unknown as {
+        objects?: Array<{ name: string; size: number; lastModified: string | Date; etag?: string }>;
+        prefixes?: string[];
+        nextMarker?: string;
+      };
+      return {
+        prefixes: result.prefixes ?? [],
+        objects: (result.objects ?? []).map((item) => ({
+          key: item.name,
+          size: item.size ?? null,
+          lastModified: dateOrNull(item.lastModified),
+          etag: item.etag ?? null,
+        })),
+        nextCursor: result.nextMarker ? { marker: result.nextMarker } : null,
+      };
+    }
+    case 'cos': {
+      const cos = createCosClient(config);
+      const result = await cos.getBucket({
+        Bucket: config.cosBucket!,
+        Region: config.cosRegion!,
+        Prefix: input.prefix,
+        Delimiter: '/',
+        MaxKeys: input.limit,
+        ...(input.cursor?.marker ? { Marker: input.cursor.marker } : {}),
+      }) as unknown as {
+        Contents?: Array<{ Key: string; Size: string | number; LastModified: string; ETag?: string }>;
+        CommonPrefixes?: Array<{ Prefix: string }>;
+        IsTruncated?: boolean | string;
+        NextMarker?: string;
+      };
+      return {
+        prefixes: (result.CommonPrefixes ?? []).map((item) => item.Prefix),
+        objects: (result.Contents ?? []).map((item) => ({
+          key: item.Key,
+          size: Number(item.Size) || null,
+          lastModified: dateOrNull(item.LastModified),
+          etag: item.ETag ?? null,
+        })),
+        nextCursor: (result.IsTruncated === true || result.IsTruncated === 'true') && result.NextMarker
+          ? { marker: result.NextMarker }
+          : null,
+      };
+    }
+    case 'obs': {
+      const obs = createObsClient(config) as ObsClientType & {
+        listObjects(params: Record<string, unknown>, cb: (err: unknown, result: {
+          InterfaceResult?: {
+            Contents?: Array<{ Key: string; Size: number; LastModified: string; ETag?: string }>;
+            CommonPrefixes?: Array<{ Prefix: string }>;
+            IsTruncated?: boolean;
+            NextMarker?: string;
+          };
+        }) => void): void;
+      };
+      const result = await new Promise<{
+        Contents?: Array<{ Key: string; Size: number; LastModified: string; ETag?: string }>;
+        CommonPrefixes?: Array<{ Prefix: string }>;
+        IsTruncated?: boolean;
+        NextMarker?: string;
+      }>((resolve, reject) => {
+        obs.listObjects({
+          Bucket: config.obsBucket!,
+          Prefix: input.prefix,
+          Delimiter: '/',
+          MaxKeys: input.limit,
+          ...(input.cursor?.marker ? { Marker: input.cursor.marker } : {}),
+        }, (err, data) => {
+          if (err) reject(err instanceof Error ? err : new Error(String(err)));
+          else resolve(data.InterfaceResult ?? {});
+        });
+      });
+      return {
+        prefixes: (result.CommonPrefixes ?? []).map((item) => item.Prefix),
+        objects: (result.Contents ?? []).map((item) => ({
+          key: item.Key,
+          size: item.Size ?? null,
+          lastModified: dateOrNull(item.LastModified),
+          etag: item.ETag ?? null,
+        })),
+        nextCursor: result.IsTruncated && result.NextMarker ? { marker: result.NextMarker } : null,
+      };
+    }
+    case 'kodo': {
+      const { mac, conf } = createKodoUploader(config);
+      const manager = new (loadQiniu().rs.BucketManager)(mac, conf);
+      const response = await manager.listPrefix(config.kodoBucket!, {
+        prefix: input.prefix,
+        delimiter: '/',
+        limit: input.limit,
+        ...(input.cursor?.marker ? { marker: input.cursor.marker } : {}),
+      });
+      const result = response.data;
+      return {
+        prefixes: result.commonPrefixes ?? [],
+        objects: (result.items ?? []).map((item) => ({
+          key: item.key,
+          size: item.fsize ?? null,
+          lastModified: item.putTime ? new Date(item.putTime / 10_000) : null,
+          etag: item.hash ?? null,
+        })),
+        nextCursor: result.marker ? { marker: result.marker } : null,
+      };
+    }
+    case 'bos': {
+      const client = createBosClient(config) as unknown as {
+        listObjects(bucket: string, options: Record<string, unknown>): Promise<{
+          body?: {
+            contents?: Array<{ key: string; size: number; lastModified: string; eTag?: string }>;
+            commonPrefixes?: Array<{ prefix: string }>;
+            isTruncated?: boolean;
+            nextMarker?: string;
+          };
+        }>;
+      };
+      const response = await client.listObjects(config.bosBucket!, {
+        prefix: input.prefix,
+        delimiter: '/',
+        maxKeys: input.limit,
+        ...(input.cursor?.marker ? { marker: input.cursor.marker } : {}),
+      });
+      const result = response.body ?? {};
+      return {
+        prefixes: (result.commonPrefixes ?? []).map((item) => item.prefix),
+        objects: (result.contents ?? []).map((item) => ({
+          key: item.key,
+          size: item.size ?? null,
+          lastModified: dateOrNull(item.lastModified),
+          etag: item.eTag ?? null,
+        })),
+        nextCursor: result.isTruncated && result.nextMarker ? { marker: result.nextMarker } : null,
+      };
+    }
+    case 'azure': {
+      const container = createAzureBlobClient(config);
+      const page = await container
+        .listBlobsByHierarchy('/', {
+          prefix: input.prefix,
+          ...(input.cursor?.token ? { continuationToken: input.cursor.token } : {}),
+        })
+        .byPage({ maxPageSize: input.limit, ...(input.cursor?.token ? { continuationToken: input.cursor.token } : {}) })
+        .next();
+      const value = page.value as unknown as {
+        segment?: {
+          blobPrefixes?: Array<{ name: string }>;
+          blobItems?: Array<{
+            name: string;
+            properties?: { contentLength?: number; lastModified?: Date; etag?: string };
+          }>;
+        };
+        continuationToken?: string;
+      };
+      return {
+        prefixes: (value?.segment?.blobPrefixes ?? []).map((item) => item.name),
+        objects: (value?.segment?.blobItems ?? []).map((item) => ({
+          key: item.name,
+          size: item.properties?.contentLength ?? null,
+          lastModified: item.properties?.lastModified ?? null,
+          etag: item.properties?.etag ?? null,
+        })),
+        nextCursor: value?.continuationToken ? { token: value.continuationToken } : null,
+      };
+    }
+    default:
+      throw new HTTPException(400, { message: `当前存储类型不支持对象浏览：${config.provider}` });
+  }
+}
+
+/**
+ * 未登记对象的直链：公开策略 / 临时签名；proxy 由调用方签发短时令牌地址。
+ * 不依赖 managed_files 快照，按当前配置状态判断。
+ */
+export async function resolveStorageObjectDirectUrl(
+  config: FileStorageConfigRow,
+  objectKey: string,
+  contentDisposition?: string,
+): Promise<FileAccessUrlResult | null> {
+  const objectAcl = resolveObjectAcl(config);
+  const publicAccess = resolvePublicAccess(config, objectAcl);
+  if (config.accessStrategy.startsWith('public-') && publicAccess) {
+    const url = buildPublicObjectUrl(config, objectKey);
+    if (url) return { url, strategy: 'public', expiresAt: null };
+  }
+  if (config.accessStrategy === 'presigned' || config.accessStrategy.startsWith('public-')) {
+    const expirySeconds = config.presignedExpirySeconds || 1800;
+    try {
+      const url = await presignObjectUrl(config, objectKey, expirySeconds, contentDisposition);
+      if (url) return { url, strategy: 'presigned', expiresAt: new Date(Date.now() + expirySeconds * 1000) };
+    } catch (error) {
+      logger.warn(`[storage-browse] 对象签名失败 config=${config.id} key=${objectKey}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  return null;
+}
+
+/** 流式计算存储对象 SHA-256；登记时的可选步骤 */
+export async function sha256OfStorageObject(config: FileStorageConfigRow, objectKey: string): Promise<string> {
+  const { stream } = await readStoredFile({
+    objectKey,
+    bucketName: extractBucketName(config),
+    provider: config.provider,
+    mimeType: null,
+    originalName: path.basename(objectKey),
+  }, config);
+  const hash = createHash('sha256');
+  for await (const part of Readable.fromWeb(stream as Parameters<typeof Readable.fromWeb>[0])) hash.update(part as Buffer);
+  return hash.digest('hex');
 }

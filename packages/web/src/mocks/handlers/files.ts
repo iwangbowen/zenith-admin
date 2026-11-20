@@ -170,7 +170,24 @@ function buildBrowseResult(storageConfigId: number, path: string): StorageBrowse
     path: currentPath ? `${currentPath}/${name}` : name,
   }));
 
-  return { folders, files: levelFiles, currentPath, basePath };
+  return {
+    mode: 'registered' as const,
+    folders,
+    files: levelFiles.map((file) => ({
+      key: file.objectKey,
+      name: file.originalName,
+      size: file.size,
+      lastModified: file.createdAt,
+      etag: null,
+      registered: true,
+      canDelete: false,
+      file,
+    })),
+    currentPath,
+    basePath,
+    nextCursor: null,
+    hasMore: false,
+  };
 }
 
 /** 模拟后端：列表/详情一律不返回密钥字段 */
@@ -190,6 +207,8 @@ export const filesHandlers = [
 
   // 按存储配置浏览文件目录（必须放在 detail 之前）
   mock(fileContract.browse, ({ query, ok }) => ok(buildBrowseResult(query.storageConfigId, query.path ?? ''))),
+  // Demo 模式没有真实 provider，真实对象浏览直接复用已登记文件
+  mock(fileContract.browseStorage, ({ query, ok }) => ok(buildBrowseResult(query.storageConfigId, query.path ?? ''))),
 
   // 上传文件（demo 模式支持多文件）
   mock(fileContract.upload, ({ body, ok }) => {

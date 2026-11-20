@@ -9,6 +9,7 @@ import {
   FILE_UPLOAD_MODES,
   FILE_URL_RESULT_STRATEGIES,
   FILE_VISIBILITIES,
+  STORAGE_BROWSE_MODES,
   UPLOAD_SESSION_STATUSES,
 } from '../constants';
 import { completeChunkUploadSchema, initChunkUploadSchema } from '../validation';
@@ -52,11 +53,28 @@ export const folderEntrySchema = z.object({
 
 export type FolderEntry = z.infer<typeof folderEntrySchema>;
 
+/** 存储浏览行：真实对象与托管文件解耦，registered=false 时 file 为 null */
+export const storageBrowseFileSchema = z.object({
+  key: z.string().meta({ description: '对象存储完整 key（相对存储桶）' }),
+  name: z.string().meta({ description: '当前层级显示名' }),
+  size: z.int().nonnegative().nullable().meta({ description: '对象大小；provider 未返回时为 null' }),
+  lastModified: z.string().nullable().meta({ description: '对象最后修改时间' }),
+  etag: z.string().nullable(),
+  registered: z.boolean().meta({ description: '该文件是否已收录到文件列表（managed_files）' }),
+  canDelete: z.boolean().meta({ description: '是否可在存储浏览中直接删除（仅从存储浏览收录的记录）' }),
+  file: managedFileSchema.nullable().meta({ description: '已收录时返回文件列表实体；未收录为 null' }),
+}).meta({ id: 'StorageBrowseFile' });
+
+export type StorageBrowseFile = z.infer<typeof storageBrowseFileSchema>;
+
 export const storageBrowseResultSchema = z.object({
+  mode: z.enum(STORAGE_BROWSE_MODES),
   folders: z.array(folderEntrySchema),
-  files: z.array(managedFileSchema),
+  files: z.array(storageBrowseFileSchema),
   currentPath: z.string(),
   basePath: z.string(),
+  nextCursor: z.string().nullable().meta({ description: '下一页游标；null 表示已到末页' }),
+  hasMore: z.boolean(),
 }).meta({ id: 'StorageBrowseResult' });
 
 export type StorageBrowseResult = z.infer<typeof storageBrowseResultSchema>;
@@ -147,8 +165,63 @@ export const fileAccessUrlQuery = z.object({
 
 export const storageBrowseQuery = z.object({
   storageConfigId: z.coerce.number().int().positive().meta({ description: '存储配置 ID', example: 1 }),
-  path: z.string().optional().meta({ description: '相对存储根路径的目录，空表示根目录' }),
+  path: z.string().max(1024).optional().meta({ description: '相对存储根路径的目录，空表示根目录' }),
+  cursor: z.string().max(2048).optional().meta({ description: '上一页返回的游标；空表示第一页' }),
+  limit: z.coerce.number().int().min(1).max(500).optional().meta({ description: '每页条数，默认 100，最大 500' }),
 });
+
+/** 真实存储文件浏览：mode=all 默认显示全部文件，registered 仅显示文件列表已收录的文件 */
+export const storageObjectBrowseQuery = storageBrowseQuery.extend({
+  mode: z.enum(STORAGE_BROWSE_MODES).default('all'),
+});
+
+export const storageObjectAccessQuery = z.object({
+  storageConfigId: z.coerce.number().int().positive(),
+  key: z.string().min(1).max(1024),
+  purpose: queryEnum(FILE_ACCESS_PURPOSES),
+});
+
+/** 代理下载令牌：content 路由为公开接口，只接受服务端签发的短时令牌 */
+export const storageObjectContentQuery = z.object({
+  token: z.string().min(1).max(4096),
+});
+
+export const registerStorageObjectSchema = z.object({
+  storageConfigId: z.coerce.number().int().positive(),
+  key: z.string().min(1).max(1024),
+  visibility: z.enum(FILE_VISIBILITIES).default('public'),
+  computeHash: z.boolean().default(false),
+  name: z.string().max(256).optional(),
+});
+
+export const registerStorageObjectsSchema = z.object({
+  storageConfigId: z.coerce.number().int().positive(),
+  keys: z.array(z.string().min(1).max(1024)).min(1).max(100),
+  visibility: z.enum(FILE_VISIBILITIES).default('public'),
+  computeHash: z.boolean().default(false),
+});
+
+export const removeStorageObjectSchema = z.object({
+  storageConfigId: z.coerce.number().int().positive(),
+  key: z.string().min(1).max(1024),
+});
+
+export const removeStorageObjectsSchema = z.object({
+  storageConfigId: z.coerce.number().int().positive(),
+  keys: z.array(z.string().min(1).max(1024)).min(1).max(100),
+});
+
+export const storageObjectRegisterBatchResultSchema = z.object({
+  registered: z.array(managedFileSchema),
+  skipped: z.array(z.object({ key: z.string(), reason: z.string() })),
+  failed: z.array(z.object({ key: z.string(), message: z.string() })),
+}).meta({ id: 'StorageObjectRegisterBatchResult' });
+
+export const storageObjectRemoveBatchResultSchema = z.object({
+  deleted: z.array(z.string()),
+  skipped: z.array(z.object({ key: z.string(), reason: z.string() })),
+  failed: z.array(z.object({ key: z.string(), message: z.string() })),
+}).meta({ id: 'StorageObjectRemoveBatchResult' });
 
 export const fileIdsBody = z.object({
   ids: z.array(z.uuid()).min(1),
@@ -241,6 +314,13 @@ export const fileContract = defineContract('/api/files', {
   stats: op.get('/stats', { access: { permission: 'system:file:list' }, response: fileStatsSchema, summary: '文件统计分析' }),
   list: op.get('/', { access: { permission: 'system:file:list' }, query: fileListQuery, response: paginated(managedFileSchema), summary: '文件分页列表' }),
   browse: op.get('/browse', { access: { permission: 'system:file:list' }, query: storageBrowseQuery, response: storageBrowseResultSchema, summary: '按存储配置浏览文件目录' }),
+  browseStorage: op.get('/browse-storage', { access: { permission: 'system:file:list', platformOnly: true }, query: storageObjectBrowseQuery, response: storageBrowseResultSchema, summary: '浏览真实存储文件（含未收录文件）' }),
+  storageObjectAccessUrl: op.get('/browse-storage/access-url', { access: { permission: 'system:file:list', platformOnly: true }, query: storageObjectAccessQuery, response: fileAccessUrlSchema, summary: '解析存储文件访问地址' }),
+  storageObjectContent: op.get('/browse-storage/content', { public: true, query: storageObjectContentQuery, kind: 'file', summary: '读取存储文件（短时令牌授权）' }),
+  registerStorageObject: op.post('/browse-storage/register', { access: { permission: 'system:file:upload', platformOnly: true }, audit: { description: '收录存储文件', recordBody: false }, body: registerStorageObjectSchema, response: managedFileSchema, summary: '将存储文件收录到文件列表' }),
+  registerStorageObjects: op.post('/browse-storage/register-batch', { access: { permission: 'system:file:upload', platformOnly: true }, audit: { description: '批量收录存储文件', recordBody: false }, body: registerStorageObjectsSchema, response: storageObjectRegisterBatchResultSchema, summary: '批量收录存储文件' }),
+  removeStorageObject: op.delete('/browse-storage/object', { access: { permission: 'system:file:delete', platformOnly: true }, audit: { description: '删除存储文件', recordBody: false }, body: removeStorageObjectSchema, summary: '删除存储文件' }),
+  removeStorageObjects: op.delete('/browse-storage/batch', { access: { permission: 'system:file:delete', platformOnly: true }, audit: { description: '批量删除存储文件', recordBody: false }, body: removeStorageObjectsSchema, response: storageObjectRemoveBatchResultSchema, summary: '批量删除存储文件' }),
   uploadInit: op.post('/upload/init', { access: { permission: 'system:file:upload' }, audit: '初始化分片上传', body: initChunkUploadSchema, response: uploadSessionInitSchema, summary: '初始化分片上传' }),
   uploadChunk: op.post('/upload/chunk', { access: { permission: 'system:file:upload' }, body: uploadChunkBody, response: uploadChunkResultSchema, summary: '上传单个分片' }),
   uploadComplete: op.post('/upload/complete', { access: { permission: 'system:file:upload' }, audit: '完成分片上传', body: completeChunkUploadSchema, response: managedFileSchema, summary: '完成分片上传' }),

@@ -129,6 +129,19 @@ export const FILE_VISIBILITY_LABELS: Record<(typeof FILE_VISIBILITIES)[number], 
 export const FILE_VISIBILITY_OPTIONS: Array<{ value: (typeof FILE_VISIBILITIES)[number]; label: string }> =
   createLabelOptions(FILE_VISIBILITIES, FILE_VISIBILITY_LABELS);
 
+/** 存储浏览数据源：all=真实存储文件；registered=文件列表已收录；unregistered=仅未收录文件 */
+export const STORAGE_BROWSE_MODES = ['all', 'registered', 'unregistered'] as const;
+export type StorageBrowseMode = (typeof STORAGE_BROWSE_MODES)[number];
+
+export const STORAGE_BROWSE_MODE_LABELS: Record<StorageBrowseMode, string> = {
+  all: '全部文件',
+  registered: '仅已收录',
+  unregistered: '仅未收录',
+};
+
+export const STORAGE_BROWSE_MODE_OPTIONS: Array<{ value: StorageBrowseMode; label: string }> =
+  createLabelOptions(STORAGE_BROWSE_MODES, STORAGE_BROWSE_MODE_LABELS);
+
 /** 文件列表按 MIME 大类筛选 */
 export const FILE_TYPE_FILTERS = ['image', 'video', 'audio', 'document'] as const;
 export type FileTypeFilter = (typeof FILE_TYPE_FILTERS)[number];

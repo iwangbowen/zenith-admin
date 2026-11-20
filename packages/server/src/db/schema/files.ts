@@ -24,6 +24,8 @@ export const fileUploadModeEnum = pgEnum('file_upload_mode', ['server-proxy', 'b
  */
 export const fileVisibilityEnum = pgEnum('file_visibility', ['public', 'restricted']);
 export const fileGcStateEnum = pgEnum('file_gc_state', ['live', 'orphan', 'deleting']);
+/** 文件来源：普通上传 / 从存储浏览登记；仅登记来源允许在存储浏览中直接删除 */
+export const managedFileOriginEnum = pgEnum('managed_file_origin', ['upload', 'storage-register']);
 export const azureCloudEnum = pgEnum('azure_cloud', ['public', 'china', 'us-government']);
 
 // ─── 文件存储配置表 ──────────────────────────────────────────────────────────
@@ -140,6 +142,8 @@ export const managedFiles = pgTable('managed_files', {
   /** 上传时使用的下载方式快照，便于后续排查 */
   accessStrategy: fileAccessStrategyEnum(),
   visibility: fileVisibilityEnum().notNull().default('public'),
+  /** 文件来源；存储浏览登记的记录可在该入口删除，普通上传/业务文件仍走各自归属 */
+  origin: managedFileOriginEnum().notNull().default('upload'),
   /** 内容 SHA-256（hex）；由归属模块按需写入，用于秒传 / 去重，null = 未计算 */
   contentHash: varchar({ length: 64 }),
   /**

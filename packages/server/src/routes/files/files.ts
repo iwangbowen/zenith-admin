@@ -19,7 +19,8 @@ import {
 } from '../../services/files/files.service';
 import { initChunkUpload, uploadChunk, completeChunkUpload, getUploadStatus, abortChunkUpload } from '../../services/files/upload-sessions.service';
 import { abortDirectUpload, acknowledgeBusinessUploadPart, acknowledgeDirectUploadPart, abortBusinessUpload, completeDirectUpload, createDirectUpload, getBusinessUploadPartUrl, getBusinessUploadStatus, getDirectUploadPartUrl, getDirectUploadStatus } from '../../services/files/direct-uploads.service';
-import { readStoredFile } from '../../lib/file-storage';
+import { browseStorageObjects, getStorageObjectAccessUrl, readStorageObject, registerStorageObject, registerStorageObjects, removeStorageObject, removeStorageObjects } from '../../services/files/storage-browse.service';
+import { extractBucketName, readStoredFile } from '../../lib/file-storage';
 import { parseRangeHeader, rangeNotSatisfiable, supportsRange, rangeContentHeaders } from '../../lib/http-range';
 import { attachmentDisposition, inlineOrAttachmentDisposition } from '../../lib/content-disposition';
 import { mountCrud } from '../_crud';
@@ -85,6 +86,83 @@ const accessUrlRoute = defineContractRoute(fileContract.accessUrl, {
 const browseRoute = defineContractRoute(fileContract.browse, {
   handler: async (c) => c.json(okBody(await browseStorageFiles(c.req.valid('query'))), 200),
 });
+
+const browseStorageRoute = defineContractRoute(fileContract.browseStorage, {
+  responses: { 400: { content: jsonContent(ErrorResponse), description: '路径或游标不合法' } },
+  handler: async (c) => c.json(okBody(await browseStorageObjects(c.req.valid('query'))), 200),
+});
+
+const storageObjectAccessUrlRoute = defineContractRoute(fileContract.storageObjectAccessUrl, {
+  responses: { 403: { content: jsonContent(ErrorResponse), description: '对象不在浏览范围内' }, 404: { content: jsonContent(ErrorResponse), description: '对象不存在' } },
+  handler: async (c) => c.json(okBody(await getStorageObjectAccessUrl(c.req.valid('query'))), 200),
+});
+
+const storageObjectContentRoute = defineContractRoute(fileContract.storageObjectContent, {
+  middleware: [],
+  responses: {
+    206: { content: { 'application/octet-stream': { schema: z.string() } }, description: '对象内容分片' },
+    404: { content: jsonContent(ErrorResponse), description: '对象不存在' },
+    416: { content: jsonContent(ErrorResponse), description: 'Range 不合法' },
+  },
+  handler: async (c) => {
+    const { token } = c.req.valid('query');
+    const object = await readStorageObject(token);
+    const etag = `"obj-${object.key}-${object.size}"`;
+    const cacheHeaders: Record<string, string> = {
+      ETag: etag,
+      'Cache-Control': 'private, no-store',
+      'Accept-Ranges': supportsRange(object.config.provider) ? 'bytes' : 'none',
+      'X-Content-Type-Options': 'nosniff',
+    };
+    const range = supportsRange(object.config.provider) ? parseRangeHeader(c.req.header('range'), object.size) : null;
+    if (range === 'invalid') return rangeNotSatisfiable(object.size, cacheHeaders);
+    const storedFile = await readStoredFile({
+      objectKey: object.key,
+      bucketName: extractBucketName(object.config),
+      provider: object.config.provider,
+      mimeType: object.mimeType,
+      originalName: object.originalName,
+    }, object.config, range ?? undefined);
+    return new Response(storedFile.stream, {
+      status: range ? 206 : 200,
+      headers: {
+        'Content-Type': storedFile.contentType,
+        'Content-Disposition': object.download
+          ? attachmentDisposition(object.originalName)
+          : inlineOrAttachmentDisposition(storedFile.contentType, storedFile.fileName),
+        ...rangeContentHeaders(range, object.size),
+        ...cacheHeaders,
+      },
+    });
+  },
+});
+
+const registerStorageObjectRoute = defineContractRoute(fileContract.registerStorageObject, {
+  responses: { 400: { content: jsonContent(ErrorResponse), description: '对象不合法或存储不支持' }, 409: { content: jsonContent(ErrorResponse), description: '对象已收录' } },
+  handler: async (c) => c.json(okBody(await registerStorageObject(c.req.valid('json')), '收录成功'), 200),
+});
+
+const registerStorageObjectsRoute = defineContractRoute(fileContract.registerStorageObjects, {
+  handler: async (c) => c.json(okBody(await registerStorageObjects(c.req.valid('json')), '批量收录完成'), 200),
+});
+
+const removeStorageObjectRoute = defineContractRoute(fileContract.removeStorageObject, {
+  handler: async (c) => {
+    const body = c.req.valid('json');
+    setAuditBeforeData(c, body);
+    await removeStorageObject(body);
+    return c.json(okBody(null, '已删除'), 200);
+  },
+});
+
+const removeStorageObjectsRoute = defineContractRoute(fileContract.removeStorageObjects, {
+  handler: async (c) => {
+    const body = c.req.valid('json');
+    setAuditBeforeData(c, { storageConfigId: body.storageConfigId, keys: body.keys });
+    return c.json(okBody(await removeStorageObjects(body), '批量删除完成'), 200);
+  },
+});
+
 const statsRoute = defineContractRoute(fileContract.stats, {
   handler: async (c) => c.json(okBody(await getFileStats()), 200),
 });
@@ -250,6 +328,13 @@ mountCrud(filesRouter, fileContract,
     accessUrlRoute,
     statsRoute,
     browseRoute,
+    browseStorageRoute,
+    storageObjectAccessUrlRoute,
+    storageObjectContentRoute,
+    registerStorageObjectRoute,
+    registerStorageObjectsRoute,
+    removeStorageObjectRoute,
+    removeStorageObjectsRoute,
     uploadInitRoute,
     uploadChunkRoute,
     uploadCompleteRoute,

@@ -526,13 +526,28 @@ export async function browseStorageFiles(query: { storageConfigId: number; path?
   }));
 
   return {
+    mode: 'registered' as const,
     folders,
-    files: levelFileRows.map((f) => ({
-      ...mapManagedFile(f, storageConfig),
-      uploaderName: f.createdBy ? (uploaderMap.get(f.createdBy) ?? null) : null,
-    })),
+    files: levelFileRows.map((f) => {
+      const file = mapManagedFile(f, storageConfig);
+      return {
+        key: f.objectKey,
+        name: f.originalName,
+        size: f.size,
+        lastModified: formatDateTime(f.createdAt),
+        etag: null,
+        registered: true,
+        canDelete: f.origin === 'storage-register',
+        file: {
+          ...file,
+          uploaderName: f.createdBy ? (uploaderMap.get(f.createdBy) ?? null) : null,
+        },
+      };
+    }),
     currentPath: rawPath,
     basePath,
+    nextCursor: null,
+    hasMore: false,
   };
 }
 
