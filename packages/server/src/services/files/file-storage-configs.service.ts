@@ -279,7 +279,10 @@ export async function updateFileStorageConfig(id: number, data: Partial<StorageI
     }
   }
   // partial schema 会跳过缺失字段的跨字段校验，合并后必须按完整 schema 再校验一次
-  const validation = createFileStorageConfigSchema.safeParse(merged);
+  // 数据库行把未使用的 provider 字段存为 null，而 schema 的 provider 字段是 optional string；
+  // 先丢弃 null（前端清空字段用 undefined），避免「设置本地磁盘为默认」时被 ossRegion 等旧字段误伤
+  const normalized = Object.fromEntries(Object.entries(merged).filter(([, value]) => value !== null));
+  const validation = createFileStorageConfigSchema.safeParse(normalized);
   if (!validation.success) {
     const issue = validation.error.issues[0];
     throw new HTTPException(400, {
