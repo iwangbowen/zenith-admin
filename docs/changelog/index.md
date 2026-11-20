@@ -4,6 +4,43 @@
 
 ---
 
+## v3.34.0 - 2026-11-20
+
+### Added
+
+#### 文件存储与浏览器直传
+
+- 存储配置新增 `accessStrategy`（代理 / 临时签名 / 公开对象 / 公开 Bucket / 自定义域名）与 `uploadMode`（服务端中转 / 浏览器直传），上传链路与下载方式解耦。
+- 新增浏览器分片直传：服务端初始化 provider multipart 会话，浏览器直传云存储，支持断点续传、分片确认、取消、超时清理、并发上限与 Prometheus 指标。
+- 文件列表接入统一直传入口：32MB 内按 SHA-256 秒传，列表展示可续传会话，直传失败自动回退服务端中转。
+- 完成 OSS、S3、COS、OBS、Kodo、BOS、Azure Blob、SFTP 与 local 的直传 / 签名 / 读取覆盖；Kodo 使用分片上传 v2，Azure 使用 SAS + staged block，BOS 使用分片签名。
+- Bucket 权限支持实时探测与修改：Bucket ACL、Bucket 级阻止公共访问、Bucket Policy、账号级阻止公共访问（OSS / S3 / Azure）、BOS Bucket Policy、Kodo 访问模式。
+- 业务绑定上传统一为 `business-uploads`：`upload_sessions` 增加 `module`、`visibility`、`expectedHash`、`computeHash`、`skipTypeCheck`，init 写入业务绑定，complete 统一校验并落库。
+- App 制品、IoT 固件、企业网盘目录上传与文件新版本接入直传；新增通用业务直传分片通道 `/api/files/business-uploads/...`。
+- 文件配置页新增云端权限独立面板：顶部摘要展示匿名可读结论，探测与修改分离，危险操作带影响确认，探测失败直接展示原因。
+- Azure 存储配置新增管理面 Tenant / Client / Secret / Subscription / Resource Group / Cloud 字段，用于账号级 `allowBlobPublicAccess` 探测。
+
+### Changed
+
+- 业务上传绑定统一到 `upload_session_bindings`，删除网盘专用的 `drive_upload_bindings`；`restricted` 会话强制私有对象 ACL 与代理下载策略。
+- App 制品改为 `restricted` 并纳入引用计数；公开下载仍由发布接口校验版本状态后流式返回，不再暴露通用文件内容接口。
+- IoT 固件保持 `public`，设备 OTA 继续使用 302 直链下载；固件上传仍复用统一业务会话。
+- 公开直链只在文件快照与当前 Bucket 探测结果都允许时生成；`restricted` 文件不生成公开直链。
+- 文件配置表单加宽至 960px，云端权限从表单底部移出，表单内只保留可保存的配置项。
+
+### Fixed
+
+- 修复直传失败后未回退服务端中转、续传文件指纹不一致、Kodo 分片签名与 Azure / BOS multipart 边界问题。
+- 修复公共读判定过于宽松、公开对象 URL 未受 Bucket 状态约束，以及账号级阻止公共访问未参与综合判断的问题。
+- 修复 OTA 固件改为受限文件后设备无法通过 302 下载的问题。
+- 修复业务上传落库失败后文件未回收、探测失败仍显示为「匿名可读：否」的问题。
+
+### 升级说明
+
+- 从 v3.33.0 升级时，启动新版服务前执行 `npm run db:migrate`，应用 `0012_file_access_strategy` 至 `0019_backfill_app_artifact_file_refs`；`0019` 会回填历史 App 制品文件的引用计数。
+- `drive_upload_bindings` 已删除，升级前请完成或取消进行中的网盘分片上传。
+- 修改云端 Bucket 权限需要 `system:file:config:bucket-access` 权限；直传需要在存储配置中启用 `browser-direct` 并配置 Bucket CORS（允许 PUT / GET / HEAD 并暴露 `ETag`）。
+
 ## v3.33.0 - 2026-11-19
 
 ### Added
