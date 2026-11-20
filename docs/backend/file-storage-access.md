@@ -43,7 +43,7 @@
 | Kodo | ✅（私有/公开） | ❌ |
 | local / SFTP | ❌ | ❌ |
 
-写操作使用独立权限 `system:file:config:bucket-access`，并记审计。当前面板探测和修改的是 Bucket / Container 级状态；OSS 会额外探测账号级阻止公共访问并展示（不提供修改），S3 在配置了 12 位 `s3AccountId` 时通过 S3 Control 探测账号级 BPA（不提供修改）。Azure 账号级「允许 Blob 公共访问」需要管理面凭据，尚未接入，不能从 Container 状态推断账号级开关。OSS / S3 会读取 Bucket Policy 的公共访问状态，OBS 会读取 BPA 与 `GetBucketPublicStatus`，COS 读取 Bucket Policy，Kodo 读取访问模式与防盗链；其他 provider 的 Bucket Policy / 防盗链仍可能影响实际匿名访问，面板显示的是 ACL/BPA/Policy 综合结果，不覆盖 CDN 自身鉴权。
+写操作使用独立权限 `system:file:config:bucket-access`，并记审计。当前面板探测和修改的是 Bucket / Container 级状态；OSS 会额外探测账号级阻止公共访问并展示（不提供修改），S3 在配置了 12 位 `s3AccountId` 时通过 S3 Control 探测账号级 BPA（不提供修改）。Azure 账号级「允许 Blob 公共访问」需要管理面凭据，尚未接入，不能从 Container 状态推断账号级开关。OSS / S3 会读取 Bucket Policy 的公共访问状态，OBS 会读取 BPA 与 `GetBucketPublicStatus`，COS / BOS 读取 Bucket Policy，Kodo 读取访问模式与防盗链；其他 provider 的 Bucket Policy / 防盗链仍可能影响实际匿名访问，面板显示的是 ACL/BPA/Policy 综合结果，不覆盖 CDN 自身鉴权。
 
 创建配置时，探测和设置直接使用尚未保存的表单凭据。云端权限修改会立即生效，不依赖点击「保存」创建配置行；修改表单中的 Provider 或凭据后会要求重新探测。
 

@@ -155,7 +155,7 @@ function jsonPolicyAllowsPublic(policy: unknown): boolean | null {
     const actions = Array.isArray(value.Action) ? value.Action : [value.Action];
     const canRead = actions.some((action) => {
       const text = String(action ?? '').toLowerCase();
-      return text === '*' || text === 'cos:*' || text.endsWith(':getobject') || text === 'cos:getobject';
+      return text === '*' || text === 'cos:*' || text === 'getobject' || text.endsWith(':getobject');
     });
     if (!canRead) continue;
     // 任何 Condition 都可能限制匿名访问范围；无法仅凭策略断言完全公开。
@@ -350,13 +350,26 @@ export async function getBucketAccessInfo(config: FileStorageConfigRow): Promise
     const publicRead = publicGrants.some((entry) => entry.permission?.some((permission) => permission === 'READ' || permission === 'FULL_CONTROL'));
     const publicWrite = publicGrants.some((entry) => entry.permission?.some((permission) => permission === 'WRITE' || permission === 'FULL_CONTROL'));
     const acl: FileBucketAcl | null = publicRead && publicWrite ? 'public-read-write' : publicRead ? 'public-read' : publicGrants.length > 0 ? null : 'private';
+    let policyPublic: boolean | null;
+    try {
+      const client = createBosClient(config) as unknown as {
+        sendRequest(method: string, params: { bucketName: string; params: Record<string, string> }): Promise<{ body?: unknown }>;
+      };
+      const result = await client.sendRequest('GET', { bucketName: config.bosBucket!, params: { policy: '' } });
+      const raw = result.body;
+      const policy = typeof raw === 'string' ? JSON.parse(raw) : (raw as { policy?: unknown } | undefined)?.policy ?? raw;
+      policyPublic = jsonPolicyAllowsPublic(policy);
+    } catch (error) {
+      const code = String((error as { code?: unknown }).code ?? '');
+      policyPublic = code.includes('NoSuch') ? false : null;
+    }
     return {
       bucketAcl: acl,
       blockPublicAccess: null,
-      policyPublic: null,
+      policyPublic,
       publicStatus: null,
       accountBlockPublicAccess: null,
-      effectivePublic: publicRead,
+      effectivePublic: publicRead || policyPublic === true,
       checkedAt: new Date(),
     };
   }
