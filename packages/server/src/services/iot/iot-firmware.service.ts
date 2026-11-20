@@ -21,11 +21,10 @@ import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { currentUser } from '../../lib/context';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import logger from '../../lib/logger';
-import { deleteGeneratedManagedFile, saveGeneratedManagedFile } from '../files/files.service';
+import { deleteManagedFile, saveGeneratedManagedFile } from '../files/files.service';
 import { requireUploadBinding } from '../files/upload-bindings.service';
 import { abortChunkUpload, getUploadStatus, uploadChunk } from '../files/upload-sessions.service';
 import { completeBusinessUpload, initBusinessUpload } from '../files/business-uploads.service';
-import { releaseManagedFiles, retainManagedFiles } from '../files/file-gc.service';
 import { ensureIotProductExists } from './iot-devices.service';
 import { pickEntity } from '../../lib/entity-map';
 
@@ -105,28 +104,26 @@ export async function createIotFirmware(meta: CreateFirmwareMeta, file: File) {
     mimeType: file.type || 'application/octet-stream',
     tenantId: getCreateTenantId(currentUser()) ?? null,
     createdBy: currentUser().userId,
-    visibility: 'restricted',
   });
   try {
-    return await db.transaction(async (tx) => {
-      await retainManagedFiles(tx, [uploaded.id]);
-      const [row] = await tx.insert(iotFirmwares).values({
-        productId: meta.productId,
-        version: meta.version,
-        fileId: uploaded.id,
-        fileName: file.name,
-        size: file.size,
-        sha256,
-        releaseNotes: meta.releaseNotes,
-        tenantId: getCreateTenantId(currentUser()),
-      }).returning();
-      return mapIotFirmware(row);
-    });
+    const [row] = await db.insert(iotFirmwares).values({
+      productId: meta.productId,
+      version: meta.version,
+      fileId: uploaded.id,
+      fileName: file.name,
+      size: file.size,
+      sha256,
+      releaseNotes: meta.releaseNotes,
+      tenantId: getCreateTenantId(currentUser()),
+    }).returning();
+    return mapIotFirmware(row);
   } catch (err) {
-    // 事务已回滚，引用计数仍为 0；回收刚上传的文件，避免存储残留
-    await deleteGeneratedManagedFile(uploaded.id, uploaded.tenantId).catch(() => {
+    // 固件行写入失败时回收刚上传的文件，避免存储残留
+    try {
+      await deleteManagedFile(uploaded.id);
+    } catch {
       logger.warn(`[iot-firmware] 回收上传文件失败 fileId=${uploaded.id}`);
-    });
+    }
     rethrowPgUniqueViolation(err, `产品下已存在版本 ${meta.version}`);
     throw err;
   }
@@ -152,7 +149,7 @@ export async function initIotFirmwareUpload(input: InitIotFirmwareUploadInput) {
   return initBusinessUpload({
     module: FIRMWARE_UPLOAD_MODULE,
     payload: { productId: input.productId, version: input.version, releaseNotes: input.releaseNotes ?? null, fileName: input.fileName },
-    visibility: 'restricted',
+    visibility: 'public',
     fileName: input.fileName,
     fileSize: input.fileSize,
     mimeType: input.mimeType,
@@ -189,20 +186,17 @@ export async function completeIotFirmwareUpload(uploadId: string) {
       const sha256 = file.contentHash;
       if (!sha256) throw new HTTPException(500, { message: '固件摘要计算失败，请重新上传' });
       try {
-        return await db.transaction(async (tx) => {
-          await retainManagedFiles(tx, [file.id]);
-          const [row] = await tx.insert(iotFirmwares).values({
-            productId: meta.productId,
-            version: meta.version,
-            fileId: file.id,
-            fileName: meta.fileName,
-            size: file.size,
-            sha256,
-            releaseNotes: meta.releaseNotes,
-            tenantId: getCreateTenantId(currentUser()),
-          }).returning();
-          return mapIotFirmware(row);
-        });
+        const [row] = await db.insert(iotFirmwares).values({
+          productId: meta.productId,
+          version: meta.version,
+          fileId: file.id,
+          fileName: meta.fileName,
+          size: file.size,
+          sha256,
+          releaseNotes: meta.releaseNotes,
+          tenantId: getCreateTenantId(currentUser()),
+        }).returning();
+        return mapIotFirmware(row);
       } catch (err) {
         rethrowPgUniqueViolation(err, `产品下已存在版本 ${meta.version}`);
         throw err;
@@ -224,10 +218,14 @@ export async function deleteIotFirmware(id: number): Promise<void> {
   const row = await ensureIotFirmwareExists(id);
   const taskCount = await db.$count(iotOtaTasks, eq(iotOtaTasks.firmwareId, id));
   if (taskCount > 0) throw new HTTPException(400, { message: `该固件存在 ${taskCount} 个升级任务，不可删除` });
-  await db.transaction(async (tx) => {
-    await tx.delete(iotFirmwares).where(buildFirmwareWhere({ id }));
-    await releaseManagedFiles(tx, [row.fileId]);
-  });
+  await db.delete(iotFirmwares).where(buildFirmwareWhere({ id }));
+  if (row.fileId) {
+    try {
+      await deleteManagedFile(row.fileId);
+    } catch {
+      logger.warn(`[iot-firmware] 删除固件文件失败 fileId=${row.fileId}`);
+    }
+  }
 }
 
 /** Detail is independent of the current list page. */

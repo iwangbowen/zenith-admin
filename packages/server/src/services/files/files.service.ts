@@ -100,15 +100,6 @@ export async function getFileAccessUrl(id: string, purpose?: 'preview' | 'downlo
   return resolveAccessUrl(file, storageConfig, purpose);
 }
 
-/**
- * restricted 文件的访问直链。只允许在调用方已按业务权限完成授权后使用
- * （设备 OTA 下载、业务附件预览等）；通用 content 接口仍由 getStoredFileForRead 拒绝。
- */
-export async function getRestrictedFileAccessUrl(id: string, purpose?: 'preview' | 'download') {
-  const { file, storageConfig } = await getRestrictedFileForRead(id);
-  return resolveAccessUrl(file, storageConfig, purpose);
-}
-
 async function resolveAccessUrl(
   file: typeof managedFiles.$inferSelect,
   storageConfig: typeof fileStorageConfigs.$inferSelect,

@@ -68,7 +68,7 @@ async function probeCheckpoint<TFile>(
   } catch (error) {
     if (error instanceof ApiError && error.code === 404) return null;
     if (error instanceof DOMException && error.name === 'AbortError') throw error;
-    return null;
+    throw error;
   }
 }
 
