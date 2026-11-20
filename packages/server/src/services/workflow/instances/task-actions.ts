@@ -92,6 +92,19 @@ export interface ApproveResult {
   message: string;
 }
 
+/** 解析前端传来的「审批表单待提交值」查询参数；非法 JSON 视为未传 */
+function parsePendingFormData(raw: string | undefined): Record<string, unknown> | undefined {
+  if (!raw) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * 列出「我作为当前审批人」时，紧邻的下一审批节点中需要我为其选人的 approverSelect 节点及候选人。
  * 候选人已按各节点 selectScope（成员/角色/部门/用户组）在服务端解析收窄；每组最多 `limit` 人，
@@ -121,8 +134,20 @@ export async function listTaskSelectableNextApprovers(
   requireRow(inst, '流程实例不存在');
   const flowData = inst.definitionSnapshot?.flowData;
   if (!flowData) return [];
+  // 表单里尚未提交的可编辑值参与选边：否则审批人把分支从「无 approverSelect」改成「有」时，
+  // 前端拿不到该节点的选人控件，提交又会被服务端要求选人。
+  const pendingUpdates = sanitizeFormUpdatesByNodePerms(
+    resolveNodeFieldPermissions(flowData, task.nodeKey),
+    parsePendingFormData(query.formData),
+  );
+  const effectiveFormData = Object.keys(pendingUpdates).length > 0
+    ? normalizeInstanceFormData(inst.formSnapshot, {
+      ...((inst.formData ?? {}) as Record<string, unknown>),
+      ...pendingUpdates,
+    })
+    : (inst.formData ?? {}) as Record<string, unknown>;
   const nodes = findNextApproverSelectNodes(flowData, task.nodeKey, {
-    formData: (inst.formData ?? {}) as Record<string, unknown>,
+    formData: effectiveFormData,
   })
     .filter((node) => !query.nodeKey || node.data.key === query.nodeKey);
   return Promise.all(nodes.map(async (node) => {

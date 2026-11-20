@@ -31,8 +31,8 @@ export const approvalKeys = {
   counts: ['approval', 'counts'] as const,
   phrases: ['approval', 'quick-phrases'] as const,
   chainPreview: (definitionId: number | null, reloadKey: number) => ['approval', 'chain-preview', definitionId, reloadKey] as const,
-  nextApprovers: (taskId: number | null, search?: { nodeKey: string; keyword: string }) =>
-    ['approval', 'next-approvers', taskId, search ?? null] as const,
+  nextApprovers: (taskId: number | null, search?: { nodeKey: string; keyword: string }, pendingFormData?: Record<string, unknown>) =>
+    ['approval', 'next-approvers', taskId, search ?? null, pendingFormData ?? null] as const,
   users: ['approval', 'users'] as const,
   notifications: contractKey(inAppMessageContract.list, { query: { eventGroup: 'workflow' } }),
   notificationUnread: contractKey(inAppMessageContract.unreadCount, { query: { eventGroup: 'workflow' } }),
@@ -333,13 +333,22 @@ export function useApprovalChainPreview(
 /**
  * 审批时下游「自选下一审批人」节点分组（无则为空数组）。不传 `search` 取全部分组（每组限量）；
  * 传 `search` 只取该节点按关键词过滤后的候选，供 `truncated` 的组远程搜索。
+ * `pendingFormData` 传入表单里尚未提交、参与分支条件求值的字段值，切换到有 approverSelect 的分支时能及时出控件。
  */
-export function useSelectableNextApprovers(taskId: number | null, enabled: boolean, search?: { nodeKey: string; keyword: string }) {
+export function useSelectableNextApprovers(
+  taskId: number | null,
+  enabled: boolean,
+  search?: { nodeKey: string; keyword: string },
+  pendingFormData?: Record<string, unknown>,
+) {
   return useQuery({
-    queryKey: approvalKeys.nextApprovers(taskId, search),
+    queryKey: approvalKeys.nextApprovers(taskId, search, pendingFormData),
     queryFn: () => api(workflowTaskContract.selectableNextApprovers, {
       params: { taskId: taskId as number },
-      query: search ? { nodeKey: search.nodeKey, keyword: search.keyword } : {},
+      query: {
+        ...(search ? { nodeKey: search.nodeKey, keyword: search.keyword } : {}),
+        ...(pendingFormData && Object.keys(pendingFormData).length > 0 ? { formData: JSON.stringify(pendingFormData) } : {}),
+      },
     }, silentClient),
     enabled: enabled && taskId != null,
     placeholderData: search ? keepPreviousData : undefined,

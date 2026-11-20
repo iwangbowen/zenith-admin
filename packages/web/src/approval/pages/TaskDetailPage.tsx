@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
+import { useDebouncedValue } from '@tanstack/react-pacer';
 import {
   Avatar, Banner, Button, Dropdown, Empty, Form, Popconfirm, Select, SideSheet, Skeleton, Spin, Tag, TextArea, Toast, Typography,
 } from '@douyinfe/semi-ui';
@@ -22,6 +23,7 @@ import BusinessFormHost, { type WorkflowBusinessFormApi } from '@/components/wor
 import WorkflowPriorityTag from '@/components/workflow/WorkflowPriorityTag';
 import { linearizeApprovalNodes } from '@/components/workflow/workflow-runtime';
 import {
+  pickPendingConditionValues,
   resolveWorkflowCustomForm,
   resolveWorkflowDetailDefinition,
   resolveWorkflowFlowData,
@@ -143,6 +145,9 @@ function TaskDetailContent() {
   // 下一节点自选审批人：nodeKey -> userIds；转办接收人（单选）
   const [selectedNext, setSelectedNext] = useState<Record<string, number[]>>({});
   const [highlightNextMissing, setHighlightNextMissing] = useState(false);
+  // 审批表单里尚未提交、参与分支条件求值的值：切换分支时及时换出对应的选人控件
+  const [pendingFormValues, setPendingFormValues] = useState<Record<string, unknown>>({});
+  const [debouncedPendingFormValues] = useDebouncedValue(pendingFormValues, { wait: 300 });
   const [transferTarget, setTransferTarget] = useState<number[]>([]);
   const [delegateTarget, setDelegateTarget] = useState<number[]>([]);
   const [addSignTargets, setAddSignTargets] = useState<number[]>([]);
@@ -174,6 +179,7 @@ function TaskDetailContent() {
     setCommentAttachments([]);
     setSelectedNext({});
     setHighlightNextMissing(false);
+    setPendingFormValues({});
     setTransferTarget([]);
     setDelegateTarget([]);
     setAddSignTargets([]);
@@ -201,11 +207,15 @@ function TaskDetailContent() {
   const initiatorActionable = !actionable && isInitiator && detail?.status === 'running';
 
   // 下游「自选下一审批人」节点（有则同意时必选）；转办候选用户
-  const nextApproversQuery = useSelectableNextApprovers(taskId, actionable);
+  const pendingConditionValues = useMemo(
+    () => pickPendingConditionValues(flowData, debouncedPendingFormValues),
+    [flowData, debouncedPendingFormValues],
+  );
+  const nextApproversQuery = useSelectableNextApprovers(taskId, actionable, undefined, pendingConditionValues);
   const nextGroups = useMemo(() => nextApproversQuery.data ?? [], [nextApproversQuery.data]);
   // 候选被服务端限量截断的组：抽屉里的搜索词按组远程检索，不把整个组织拉到手机上
   const [nextSearch, setNextSearch] = useState<{ nodeKey: string; keyword: string } | null>(null);
-  const nextSearchQuery = useSelectableNextApprovers(taskId, actionable && !!nextSearch, nextSearch ?? undefined);
+  const nextSearchQuery = useSelectableNextApprovers(taskId, actionable && !!nextSearch, nextSearch ?? undefined, pendingConditionValues);
   const searchedCandidates = (nodeKey: string) => (nextSearch?.nodeKey === nodeKey
     ? nextSearchQuery.data?.find((g) => g.nodeKey === nodeKey)?.selectableApprovers ?? []
     : null);
@@ -486,6 +496,7 @@ function TaskDetailContent() {
         filePreviewPresentation="fullscreen"
         fileCapture="environment"
         getFormApi={(api) => { detailFormApi.current = api; }}
+        onValueChange={formEditable ? setPendingFormValues : undefined}
       />
     );
   };

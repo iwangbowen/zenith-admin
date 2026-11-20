@@ -53,6 +53,12 @@ export const workflowSelectableNextApproversQuery = z.object({
   nodeKey: z.string().max(100).optional().meta({ description: '只取该下游节点的候选' }),
   keyword: z.string().trim().max(50).optional().meta({ description: '按姓名 / 用户名模糊匹配' }),
   limit: z.coerce.number().int().min(1).max(200).default(50).meta({ description: '每组候选上限' }),
+  /**
+   * 审批表单中尚未提交的可编辑字段值（JSON 字符串）。
+   * 用编辑后的值求值分支条件，避免切换分支后缺少对应节点的选人控件；
+   * 服务端仅采纳当前节点字段权限为 edit 的键。
+   */
+  formData: z.string().max(8000).optional().meta({ description: '审批表单待提交字段值（JSON），仅当前节点可编辑字段生效' }),
 });
 
 export const workflowBatchActionResultSchema = z.object({

@@ -11,6 +11,19 @@ export interface WorkflowNextApproverSearch {
   keyword: string;
 }
 
+/** 审批表单里尚未提交、但参与分支条件求值的字段值 */
+export type WorkflowPendingFormData = Record<string, unknown>;
+
+const nextApproversQuery = (
+  search: WorkflowNextApproverSearch | undefined,
+  pendingFormData: WorkflowPendingFormData | undefined,
+) => ({
+  ...(search ? { nodeKey: search.nodeKey, keyword: search.keyword } : {}),
+  ...(pendingFormData && Object.keys(pendingFormData).length > 0
+    ? { formData: JSON.stringify(pendingFormData) }
+    : {}),
+});
+
 export const workflowSharedKeys = {
   approvalPreviews: contractKey(workflowDefinitionContract.preview),
   /** 预览是 POST 查询：请求体在取数时刻惰性求值，不进 key；主操作前缀 + 定义 id + reloadKey 区分段驱动重算 */
@@ -20,10 +33,14 @@ export const workflowSharedKeys = {
   /** 「实例 + 定义」组合查询：挂在实例详情 key 之下，失效 detail(id) 时一并回源 */
   instanceDetail: (instanceId: number | null | undefined) =>
     [...workflowInstanceKeys.detail(instanceId ?? 0), 'with-definition'] as const,
-  selectableNextApprovers: (taskId: number | null | undefined, search?: WorkflowNextApproverSearch) =>
+  selectableNextApprovers: (
+    taskId: number | null | undefined,
+    search?: WorkflowNextApproverSearch,
+    pendingFormData?: WorkflowPendingFormData,
+  ) =>
     contractKey(workflowTaskContract.selectableNextApprovers, {
       params: { taskId: taskId ?? 0 },
-      query: search ? { nodeKey: search.nodeKey, keyword: search.keyword } : {},
+      query: nextApproversQuery(search, pendingFormData),
     }),
   selectableUsers: contractKey(workflowInstanceContract.selectableUsers),
   selectableDepartments: contractKey(workflowInstanceContract.selectableDepartments),
@@ -91,10 +108,11 @@ export function useWorkflowSelectableNextApprovers(
   taskId: number | null | undefined,
   enabled = true,
   search?: WorkflowNextApproverSearch,
+  pendingFormData?: WorkflowPendingFormData,
 ) {
   return useApiQuery(
     workflowTaskContract.selectableNextApprovers,
-    { params: { taskId: taskId ?? 0 }, query: search ? { nodeKey: search.nodeKey, keyword: search.keyword } : {} },
+    { params: { taskId: taskId ?? 0 }, query: nextApproversQuery(search, pendingFormData) },
     { enabled: enabled && taskId != null, placeholderData: keepPreviousData },
   );
 }
