@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { Button, Col, Form, Radio, Row, Select, Switch, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import { PlugZap } from 'lucide-react';
 import { fileStorageConfigContract, type CreateFileStorageConfigInput, type FileAccessStrategy, type FileBucketAccessInfo, type FileBucketAcl, type FileObjectAcl, type FileStorageConfig, type FileStorageProvider, type UpdateFileStorageConfigInput } from '@zenith/shared/platform';
-import { FILE_ACCESS_STRATEGY_LABELS, FILE_ACCESS_STRATEGY_OPTIONS, FILE_BUCKET_ACCESS_SUPPORT, FILE_BUCKET_ACL_LABELS, FILE_DIRECT_UPLOAD_SUPPORT, FILE_OBJECT_ACL_LABELS, FILE_OBJECT_ACL_SUPPORT, FILE_STORAGE_PROVIDER_LABELS, FILE_STORAGE_PROVIDER_OPTIONS, FILE_UPLOAD_MODE_OPTIONS, PRESIGNED_EXPIRY_DEFAULT_SECONDS, PRESIGNED_EXPIRY_MAX_SECONDS, PRESIGNED_EXPIRY_MIN_SECONDS } from '@zenith/shared/platform';
+import { FILE_ACCESS_STRATEGY_LABELS, FILE_ACCESS_STRATEGY_OPTIONS, FILE_BUCKET_ACCESS_SUPPORT, FILE_DIRECT_UPLOAD_SUPPORT, FILE_OBJECT_ACL_LABELS, FILE_OBJECT_ACL_SUPPORT, FILE_STORAGE_PROVIDER_LABELS, FILE_STORAGE_PROVIDER_OPTIONS, FILE_UPLOAD_MODE_OPTIONS, PRESIGNED_EXPIRY_DEFAULT_SECONDS, PRESIGNED_EXPIRY_MAX_SECONDS, PRESIGNED_EXPIRY_MIN_SECONDS } from '@zenith/shared/platform';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -29,6 +29,7 @@ import {
 import { CreateButton } from '@/components/toolbar-controls';
 import { useListPage } from '@/hooks/useListPage';
 import { EditFormSheet } from '@/components/EditFormModal';
+import { BucketAccessPanel, BucketAccessSummary } from './BucketAccessPanel';
 
 import './FileStorageConfigsPage.css';
 
@@ -249,6 +250,8 @@ export default function FileStorageConfigsPage() {
   const [formStrategy, setFormStrategy] = useState<FileAccessStrategy>('proxy');
   const [formIsDefault, setFormIsDefault] = useState(false);
   const [bucketAccess, setBucketAccess] = useState<FileBucketAccessInfo | null>(null);
+  const [bucketAccessError, setBucketAccessError] = useState<string | null>(null);
+  const [bucketPanelVisible, setBucketPanelVisible] = useState(false);
   const [browsingConfig, setBrowsingConfig] = useState<FileStorageConfig | null>(null);
   const saveMutation = useSaveFileStorageConfig();
   const statusMutation = useSaveFileStorageConfig();
@@ -346,8 +349,10 @@ export default function FileStorageConfigsPage() {
   useEffect(() => {
     if (!modal.editing) {
       setBucketAccess(null);
+      setBucketAccessError(null);
       return;
     }
+    setBucketAccessError(modal.editing.bucketAccessError ?? null);
     setFormProvider(modal.editing.provider);
     setFormStrategy(modal.editing.accessStrategy ?? 'proxy');
     setFormIsDefault(modal.editing.isDefault);
@@ -367,11 +372,20 @@ export default function FileStorageConfigsPage() {
     });
   }, [modal.editing]);
 
+  // 表单关闭或切换到另一条记录时收起独立权限面板
+  useEffect(() => {
+    if (!modal.modalProps.visible) setBucketPanelVisible(false);
+  }, [modal.modalProps.visible]);
+  useEffect(() => {
+    setBucketPanelVisible(false);
+  }, [modal.editing?.id]);
+
   const openCreate = () => {
     setFormProvider('local');
     setFormStrategy('proxy');
     setFormIsDefault(false);
     setBucketAccess(null);
+    setBucketAccessError(null);
     modal.openCreate();
   };
 
@@ -416,34 +430,51 @@ export default function FileStorageConfigsPage() {
   };
 
   const handleProbeBucketAccess = async () => {
-    if (modal.editing) {
-      const info = await probeBucketMutation.mutateAsync({ params: { id: modal.editing.id } });
+    try {
+      if (modal.editing) {
+        const info = await probeBucketMutation.mutateAsync({ params: { id: modal.editing.id } });
+        setBucketAccess(info);
+        setBucketAccessError(null);
+        Toast.success('Bucket 权限探测完成');
+        return;
+      }
+      const values = await getCurrentFormPayload();
+      if (!values) return;
+      const info = await probeDraftBucketMutation.mutateAsync({ body: values });
       setBucketAccess(info);
+      setBucketAccessError(null);
       Toast.success('Bucket 权限探测完成');
-      return;
+    } catch (err) {
+      setBucketAccessError(err instanceof Error ? err.message : 'Bucket 权限探测失败');
     }
-    const values = await getCurrentFormPayload();
-    if (!values) return;
-    const info = await probeDraftBucketMutation.mutateAsync({ body: values });
-    setBucketAccess(info);
-    Toast.success('Bucket 权限探测完成');
   };
 
   const applyBucketAccess = async (input: { acl?: FileBucketAcl; blockPublicAccess?: boolean }) => {
-    if (modal.editing) {
-      const info = await updateBucketMutation.mutateAsync({ params: { id: modal.editing.id }, body: input });
+    try {
+      if (modal.editing) {
+        const info = await updateBucketMutation.mutateAsync({ params: { id: modal.editing.id }, body: input });
+        setBucketAccess(info);
+        setBucketAccessError(null);
+        Toast.success('Bucket 权限已更新');
+        return;
+      }
+      const values = await getCurrentFormPayload();
+      if (!values) return;
+      const info = await updateDraftBucketMutation.mutateAsync({ body: { config: values, changes: input } });
       setBucketAccess(info);
+      setBucketAccessError(null);
       Toast.success('Bucket 权限已更新');
-      return;
+    } catch (err) {
+      setBucketAccessError(err instanceof Error ? err.message : 'Bucket 权限更新失败');
     }
-    const values = await getCurrentFormPayload();
-    if (!values) return;
-    const info = await updateDraftBucketMutation.mutateAsync({ body: { config: values, changes: input } });
-    setBucketAccess(info);
-    Toast.success('Bucket 权限已更新');
   };
 
   const handleMakePrivate = async () => {
+    if (!(await confirmDangerAsync({
+      title: '确认将 Bucket 设为私有？',
+      content: '该操作会影响整个 Bucket；使用同一 Bucket 的其他应用可能立即失去公共读访问。',
+      okText: '确认设为私有',
+    }))) return;
     await applyBucketAccess({ acl: 'private' });
   };
 
@@ -617,6 +648,9 @@ export default function FileStorageConfigsPage() {
     operationColumn,
   ];
 
+  const bucketAccessSupport = FILE_BUCKET_ACCESS_SUPPORT[formProvider];
+  const showBucketAccess = Boolean((modal.editing || canCreateConfig) && bucketAccessSupport?.probe);
+
   return (
     <div className="page-container">
       <ListSearchToolbar
@@ -638,7 +672,42 @@ export default function FileStorageConfigsPage() {
         {...tableProps}
       />
 
-      <EditFormSheet modal={modal} width={780} formProps={{ onValueChange: () => { if (!modal.editing) setBucketAccess(null); } }} footer={( <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}> <Button icon={<PlugZap size={14} />} loading={modalTestLoading} disabled={modal.detailLoading} onClick={() => void handleModalTest()}> 测试连接 </Button> <div style={{ display: 'flex', gap: 8 }}> <Button type="tertiary" onClick={modal.close}>取消</Button> <Button type="primary" theme="solid" loading={modal.modalProps.okButtonProps.loading} disabled={modal.modalProps.okButtonProps.disabled} onClick={() => void modal.modalProps.onOk()} > 保存 </Button> </div> </div> )}>
+      <EditFormSheet
+        modal={modal}
+        width={960}
+        formProps={{ onValueChange: () => { if (!modal.editing) { setBucketAccess(null); setBucketAccessError(null); } } }}
+        header={showBucketAccess ? (
+          <BucketAccessSummary
+            info={bucketAccess}
+            canManage={canManageBucketAccess}
+            probeLoading={probeBucketMutation.isPending || probeDraftBucketMutation.isPending}
+            updateLoading={updateBucketMutation.isPending || updateDraftBucketMutation.isPending}
+            error={bucketAccessError}
+            support={bucketAccessSupport}
+            onProbe={() => void handleProbeBucketAccess()}
+            onManage={() => setBucketPanelVisible(true)}
+          />
+        ) : undefined}
+        footer={(
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+            <Button icon={<PlugZap size={14} />} loading={modalTestLoading} disabled={modal.detailLoading} onClick={() => void handleModalTest()}>
+              测试连接
+            </Button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Button type="tertiary" onClick={modal.close}>取消</Button>
+              <Button
+                type="primary"
+                theme="solid"
+                loading={modal.modalProps.okButtonProps.loading}
+                disabled={modal.modalProps.okButtonProps.disabled}
+                onClick={() => void modal.modalProps.onOk()}
+              >
+                保存
+              </Button>
+            </div>
+          </div>
+        )}
+      >
         <Form.Section text="基础信息">
           <Row gutter={16}>
             <Col span={12}>
@@ -1043,98 +1112,24 @@ export default function FileStorageConfigsPage() {
             </Col>
           </Row>
         </Form.Section>
-
-        {(modal.editing || canCreateConfig) && FILE_BUCKET_ACCESS_SUPPORT[formProvider]?.probe && (
-          <Form.Section text="云端 Bucket 权限（实时）">
-            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-              <Text type="secondary">Bucket ACL：</Text>
-              <Tag size="small">{bucketAccess?.bucketAcl ? FILE_BUCKET_ACL_LABELS[bucketAccess.bucketAcl] : '未知'}</Tag>
-              <Text type="secondary">Bucket 级阻止公共访问：</Text>
-              <Tag
-                size="small"
-                color={bucketAccess?.blockPublicAccess === null || bucketAccess?.blockPublicAccess === undefined
-                  ? 'grey'
-                  : bucketAccess.blockPublicAccess ? 'red' : 'green'}
-              >
-                {bucketAccess?.blockPublicAccess === null || bucketAccess?.blockPublicAccess === undefined
-                  ? '未知'
-                  : bucketAccess.blockPublicAccess ? '开启' : '关闭'}
-              </Tag>
-              {bucketAccess?.accountBlockPublicAccess !== null && bucketAccess?.accountBlockPublicAccess !== undefined && (
-                <>
-                  <Text type="secondary">账号级阻止公共访问：</Text>
-                  <Tag size="small" color={bucketAccess.accountBlockPublicAccess ? 'red' : 'green'}>
-                    {bucketAccess.accountBlockPublicAccess ? '开启' : '关闭'}
-                  </Tag>
-                </>
-              )}
-              <Text type="secondary">Bucket Policy 公共访问：</Text>
-              <Tag
-                size="small"
-                color={bucketAccess?.policyPublic === null || bucketAccess?.policyPublic === undefined
-                  ? 'grey'
-                  : bucketAccess.policyPublic ? 'red' : 'green'}
-              >
-                {bucketAccess?.policyPublic === null || bucketAccess?.policyPublic === undefined
-                  ? '未知'
-                  : bucketAccess.policyPublic ? '是' : '否'}
-              </Tag>
-              {bucketAccess?.publicStatus !== null && bucketAccess?.publicStatus !== undefined && (
-                <>
-                  <Text type="secondary">云端公共状态：</Text>
-                  <Tag size="small" color={bucketAccess.publicStatus ? 'red' : 'green'}>
-                    {bucketAccess.publicStatus ? '公共' : '私有'}
-                  </Tag>
-                </>
-              )}
-              <Text type="secondary">实际公共读：</Text>
-              <Tag size="small" color={bucketAccess?.checkedAt ? (bucketAccess.effectivePublic ? 'green' : 'red') : 'grey'}>
-                {bucketAccess?.checkedAt ? (bucketAccess.effectivePublic ? '是' : '否') : '未知'}
-              </Tag>
-              {bucketAccess?.checkedAt && <Text type="tertiary">检测于 {bucketAccess.checkedAt}</Text>}
-            </div>
-            {modal.editing?.bucketAccessError && (
-              <Text type="danger" style={{ display: 'block', marginBottom: 8 }}>
-                最近一次探测失败：{modal.editing.bucketAccessError}
-              </Text>
-            )}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              <Button size="small" loading={probeBucketMutation.isPending || probeDraftBucketMutation.isPending} onClick={() => void handleProbeBucketAccess()}>
-                {bucketAccess?.checkedAt ? '重新探测' : '探测权限'}
-              </Button>
-              <Button
-                size="small"
-                disabled={!canManageBucketAccess || !bucketAccess || probeBucketMutation.isPending || probeDraftBucketMutation.isPending || updateBucketMutation.isPending || updateDraftBucketMutation.isPending || bucketAccess.bucketAcl === 'private'}
-                onClick={() => void handleMakePrivate()}
-              >
-                设为私有
-              </Button>
-              <Button
-                size="small"
-                type="danger"
-                disabled={!canManageBucketAccess || !bucketAccess || probeBucketMutation.isPending || probeDraftBucketMutation.isPending || updateBucketMutation.isPending || updateDraftBucketMutation.isPending || bucketAccess.bucketAcl === 'public-read'}
-                onClick={() => void handleMakePublicRead()}
-              >
-                设为公共读
-              </Button>
-              {FILE_BUCKET_ACCESS_SUPPORT[formProvider]?.setBlockPublicAccess && (
-                <Button
-                  size="small"
-                  type={bucketAccess?.blockPublicAccess ? 'danger' : 'primary'}
-                  loading={updateBucketMutation.isPending || updateDraftBucketMutation.isPending}
-                  disabled={!canManageBucketAccess || !bucketAccess || probeBucketMutation.isPending || probeDraftBucketMutation.isPending || updateBucketMutation.isPending || updateDraftBucketMutation.isPending}
-                  onClick={() => void handleToggleBlockPublicAccess(!(bucketAccess?.blockPublicAccess ?? false))}
-                >
-                  {bucketAccess?.blockPublicAccess ? '关闭阻止公共访问' : '开启阻止公共访问'}
-                </Button>
-              )}
-            </div>
-            <Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
-              以下操作会立即修改云端 Bucket，不受「保存」影响；新增配置使用当前表单凭据，权限变更会影响同 Bucket 的其他应用。
-            </Text>
-          </Form.Section>
-        )}
       </EditFormSheet>
+
+      {showBucketAccess && (
+        <BucketAccessPanel
+          visible={bucketPanelVisible}
+          onClose={() => setBucketPanelVisible(false)}
+          info={bucketAccess}
+          canManage={canManageBucketAccess}
+          probeLoading={probeBucketMutation.isPending || probeDraftBucketMutation.isPending}
+          updateLoading={updateBucketMutation.isPending || updateDraftBucketMutation.isPending}
+          error={bucketAccessError}
+          support={bucketAccessSupport}
+          onProbe={() => void handleProbeBucketAccess()}
+          onMakePrivate={() => void handleMakePrivate()}
+          onMakePublicRead={() => void handleMakePublicRead()}
+          onToggleBlockPublicAccess={(next) => void handleToggleBlockPublicAccess(next)}
+        />
+      )}
 
       <StorageFileBrowser config={browsingConfig} onClose={() => setBrowsingConfig(null)} />
     </div>

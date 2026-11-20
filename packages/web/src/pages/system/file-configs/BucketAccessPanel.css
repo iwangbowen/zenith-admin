@@ -1,0 +1,227 @@
+.bucket-access-summary {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.bucket-access-summary__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  margin-top: 2px;
+  color: var(--semi-color-warning);
+}
+
+.bucket-access-summary[data-tone='public'] .bucket-access-summary__icon {
+  color: var(--semi-color-danger);
+}
+
+.bucket-access-summary[data-tone='private'] .bucket-access-summary__icon {
+  color: var(--semi-color-success);
+}
+
+.bucket-access-summary__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.bucket-access-summary__title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.bucket-access-summary__meta,
+.bucket-access-summary__error {
+  display: block;
+  margin-top: 2px;
+}
+
+.bucket-access-summary__actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.bucket-access-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.bucket-access-warning {
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: var(--semi-border-radius-medium);
+  background: var(--semi-color-warning-light-default);
+}
+
+.bucket-access-warning > svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--semi-color-warning);
+}
+
+.bucket-access-warning .semi-typography {
+  display: block;
+}
+
+.bucket-access-warning .semi-typography + .semi-typography {
+  margin-top: 2px;
+}
+
+.bucket-access-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 18px;
+  border-top: 1px solid var(--semi-color-border);
+}
+
+.bucket-access-section:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+
+.bucket-access-section__head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.bucket-access-section__desc {
+  margin-top: -4px;
+}
+
+.bucket-access-section > .semi-button {
+  align-self: flex-start;
+}
+
+.bucket-access-verdict {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.bucket-access-verdict__icon {
+  display: flex;
+  flex: none;
+  margin-top: 1px;
+  color: var(--semi-color-warning);
+}
+
+.bucket-access-verdict[data-tone='public'] .bucket-access-verdict__icon {
+  color: var(--semi-color-danger);
+}
+
+.bucket-access-verdict[data-tone='private'] .bucket-access-verdict__icon {
+  color: var(--semi-color-success);
+}
+
+.bucket-access-verdict__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.bucket-access-verdict__title {
+  font-size: 16px;
+  line-height: 24px;
+}
+
+.bucket-access-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px 16px;
+  margin: 0;
+}
+
+.bucket-access-fact {
+  display: contents;
+}
+
+.bucket-access-fact dt {
+  color: var(--semi-color-text-2);
+}
+
+.bucket-access-fact dd {
+  margin: 0;
+  color: var(--semi-color-text-0);
+}
+
+.bucket-access-error {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: var(--semi-border-radius-small);
+  background: var(--semi-color-danger-light-default);
+}
+
+.bucket-access-disabled-reason {
+  display: block;
+}
+
+.bucket-access-action {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--semi-color-border);
+}
+
+.bucket-access-action:first-of-type {
+  padding-top: 0;
+  border-top: none;
+}
+
+.bucket-access-action__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.bucket-access-action > .semi-button {
+  flex: none;
+}
+
+.bucket-access-lock {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  color: var(--semi-color-text-2);
+}
+
+.bucket-access-lock > svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+@media (max-width: 640px) {
+  .bucket-access-summary {
+    flex-wrap: wrap;
+  }
+
+  .bucket-access-summary__actions {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .bucket-access-action {
+    flex-direction: column;
+  }
+
+  .bucket-access-action > .semi-button {
+    align-self: flex-start;
+  }
+}
