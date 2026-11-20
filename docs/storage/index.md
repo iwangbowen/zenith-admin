@@ -89,7 +89,7 @@ Bucket 权限探测、下载方式与浏览器直传的专题说明见[文件存
 
 默认白名单已包含 `application/msword`、`application/vnd.ms-excel`、`application/vnd.ms-powerpoint`。识别完成后仍以当前生效的 `files.uploadAllowedTypes` 为准；自定义配置移除某类 Office MIME 后，对应文件仍会被拒绝。未知、损坏或仅伪造扩展名的 CFB 容器不会回退信任上传方声明的 Office MIME。
 
-通用 `files` API 提供 `POST /api/files/quick-upload`：文件 ≤ 32 MB 时浏览器计算 SHA-256，服务端按同存储、同租户、同内容且对象仍存在时复用文件记录；未命中走正常上传。分片接口使用 `uploadId + index` 保证同一分片重传幂等。`managed_files.contentHash` 持久化内容摘要，网盘也可在此底座上实现自己的预检查与秒传，详见[企业网盘：存储集成](../drive/index.md#存储集成)。
+通用 `files` API 提供 `POST /api/files/quick-upload`：文件 ≤ 32 MB 时浏览器计算 SHA-256，服务端按同存储、同租户、同内容且对象仍存在时复用文件记录（文件名 / MIME 以本次上传为准回填）；未命中走正常上传。分片接口使用 `uploadId + index` 保证同一分片重传幂等。`managed_files.contentHash` 持久化内容摘要，网盘也可在此底座上实现自己的预检查与秒传，详见[企业网盘：存储集成](../drive/index.md#存储集成)。
 
 ### 分片上传
 
@@ -135,7 +135,7 @@ Bucket 权限探测、下载方式与浏览器直传的专题说明见[文件存
 过期分片由 `cleanupStaleUploadSessions(ttlHours)` 清理：以「会话创建或最后一片到达」中较晚者判定过期（持续上传中的大文件不会被误清），
 删除过期会话及其分片，尝试中止云端 multipart，并清理无活跃会话的孤儿临时目录。该清理能力接入统一数据保留策略。
 
-分片单片接口（`*/upload/chunk`）绑定限流规则 `chunk_upload`（按用户 3000 次 / 分钟，分片 ≥ 5 MB 时正常上传远达不到，只拦异常刷片）。
+分片单片接口（`*/upload/chunk`）绑定限流规则 `chunk_upload`（按用户 3000 次 / 分钟，分片 ≥ 5 MB 时正常上传远达不到，只拦异常刷片）；浏览器直传会话与分片签发接口绑定 `direct_upload`（按用户 1000 次 / 分钟）。
 该规则同时存在于代码内置默认（`middleware/rate-limit.ts` 的 `DEFAULTS`，任何环境部署后即生效）与种子数据（新库建 DB 行，供「接口限流」页调参覆盖）。
 
 ### 归属模块接入分片上传
@@ -194,7 +194,7 @@ CMS 图片、公众号素材、回放片段、主机 / 终端文件等入口性�
 | PUT | `/api/file-storage-configs/{id}/default` | 设为默认 | `system:file:config:default` |
 | DELETE | `/api/file-storage-configs/{id}` | 删除配置 | `system:file:config:delete` |
 
-密钥字段为 write-only：`ossAccessKeySecret`、`s3SecretAccessKey`、`cosSecretKey`、`obsSecretAccessKey`、`kodoSecretKey`、`bosSecretAccessKey`、`azureAccountKey`、`sftpPassword`、`sftpPrivateKey`。列表/详情不回显密钥原文；更新时未传密钥保留原值，传空值表示清空。删除存储配置前会检查 `managed_files.storageConfigId`，有文件使用时不允许删除。
+密钥字段为 write-only：`ossAccessKeySecret`、`s3SecretAccessKey`、`cosSecretKey`、`obsSecretAccessKey`、`kodoSecretKey`、`bosSecretAccessKey`、`azureAccountKey`、`sftpPassword`、`sftpPrivateKey`。列表/详情不回显密钥原文；更新时未传密钥保留原值，传空值表示清空。删除存储配置前会检查 `managed_files.storageConfigId` 与进行中的 `upload_sessions`，有文件或未完成上传时不允许删除。
 
 ## 业务附件
 

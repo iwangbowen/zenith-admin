@@ -28,6 +28,7 @@ export const DEFAULT_RATE_LIMIT_RULES: Record<string, BuiltinRateLimitPolicy> = 
   drive_public_share: { ...RULE_BASE, name: 'drive_public_share', description: '网盘外链公开访问限流（无需登录，防密码爆破 / 防滥用）', windowMs: 60 * 1000, limit: 120, keyType: 'ip', enabled: true, blockedMessage: '访问过于频繁，请稍后再试', pathPatterns: ['/api/drive/public/*'] },
   // 与 shared seed 的 SEED_RATE_LIMIT_RULES 同步：代码默认保证既有环境部署后即生效，DB 行供管理员调参覆盖
   chunk_upload: { ...RULE_BASE, name: 'chunk_upload', description: '分片上传单片接口限流（按用户）：分片不小于 5MB，正常上传远达不到该速率，只拦异常刷片', windowMs: 60 * 1000, limit: 3000, keyType: 'user', enabled: true, blockedMessage: '分片上传过于频繁，请稍后再试', pathPatterns: ['/api/files/upload/chunk', '/api/drive/nodes/upload/chunk', '/api/app-releases/releases/*/artifacts/upload/chunk', '/api/iot/firmwares/upload/chunk'] },
+  direct_upload: { ...RULE_BASE, name: 'direct_upload', description: '浏览器直传会话与分片签发接口限流（按用户），防止刷会话/刷签名', windowMs: 60 * 1000, limit: 1000, keyType: 'user', enabled: true, blockedMessage: '浏览器直传请求过于频繁，请稍后再试', pathPatterns: ['/api/files/direct-uploads', '/api/files/direct-uploads/*/parts/*/url', '/api/files/direct-uploads/*/parts/*/complete'] },
 } as const;
 
 

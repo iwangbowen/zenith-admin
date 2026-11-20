@@ -34,7 +34,7 @@
 | `auth` 登录与注册 | `/auth` | platform | — | `system:setting:view` / `system:setting:update` | 登录验证码及复杂度、开放注册、忘记密码（全部 `public`） | 通用设置页 |
 | `identitySecurity` 身份安全 | `/identity-security` | **tenant** | — | `system:identity-security:manage` | 密码策略（`public`）、登录失败防护、MFA、登录风险 | `/system/identity-security` |
 | `ui` 界面与体验 | `/ui` | platform | — | `system:setting:view` / `system:setting:update` | 水印、快捷聊天按钮、意见反馈入口、[偏好策略](../frontend/preferences.md)（全部 `authenticated`） | 通用设置页内的偏好策略编辑器 |
-| `files` 文件上传 | `/files` | platform | — | `system:setting:view` / `system:setting:update` | 真实类型校验、允许的 MIME 类型、单文件大小上限 | 通用设置页 |
+| `files` 文件上传 | `/files` | platform | — | `system:setting:view` / `system:setting:update` | 真实类型校验、允许的 MIME 类型、单文件大小上限、分片策略、每用户直传在途会话上限 | 通用设置页 |
 | `terminal` Web 终端 | `/terminal` | platform | `ops` | `system:setting:view` / `system:setting:update` | 录屏开关（`authenticated`）、保留天数、容量上限、文件上传上限 | 通用设置页 |
 | `member` 会员权益 | `/member` | platform | `member` | `system:setting:view` / `system:setting:update` | 积分过期天数、生日礼积分 / 优惠券、邀请奖励 | 通用设置页 |
 | `ai` AI 助手 | `/ai` | platform | `ai` | `system:setting:view` / `system:setting:update` | 每日 Token 配额、敏感词过滤、向量模型、图片模型 | 通用设置页 |

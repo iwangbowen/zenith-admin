@@ -1,4 +1,4 @@
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { HTTPException } from 'hono/http-exception';
 import type { z } from '@hono/zod-openapi';
@@ -55,6 +55,18 @@ export async function createDirectUpload(input: DirectUploadInit) {
   const user = currentUser();
   const settings = await getSettings('files');
   await assertUploadSizeAllowed(input.fileSize, settings);
+  if (settings.directUploadMaxActiveSessions > 0) {
+    const activeSessions = await db.$count(uploadSessions, and(
+      eq(uploadSessions.createdBy, user.userId),
+      eq(uploadSessions.uploadMode, 'browser-direct'),
+      inArray(uploadSessions.status, ['uploading', 'completing']),
+    ));
+    if (activeSessions >= settings.directUploadMaxActiveSessions) {
+      throw new HTTPException(429, {
+        message: `同时进行的浏览器直传会话过多（上限 ${settings.directUploadMaxActiveSessions} 个），请完成或取消后再试`,
+      });
+    }
+  }
 
   const config = await resolveConfig(input.storageConfigId);
   const driver = getDirectMultipartDriver(config.provider);

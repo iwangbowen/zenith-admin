@@ -7,6 +7,7 @@ describe('rate limit policy matching', () => {
   expect(rateLimitPathMatches('/api/users/{id}','/api/users/42/roles')).toBe(false);
   expect(rateLimitPathMatches('/api/files/*/content','/api/files/4/content')).toBe(true);
   expect(rateLimitPathMatches('/api/tree/*','/api/tree/a/b')).toBe(true);
+  expect(rateLimitPathMatches('/api/files/direct-uploads/*/parts/*/url','/api/files/direct-uploads/u1/parts/2/url')).toBe(true);
   expect(rateLimitPathMatches('/api/x.json','/api/xAjson')).toBe(false);
  });
  it('selects by method, stage and deterministic priority',()=>{

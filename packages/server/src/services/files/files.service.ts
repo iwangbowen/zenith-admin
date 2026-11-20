@@ -239,7 +239,14 @@ export async function findReusableFileByHash(input: { fileName: string; fileSize
   const hash = createHash('sha256');
   for await (const chunk of Readable.fromWeb(stream as Parameters<typeof Readable.fromWeb>[0])) hash.update(chunk as Buffer);
   if (hash.digest('hex') !== input.contentHash.toLowerCase()) return null;
-  return mapManagedFile(file, config);
+  // 秒传复用对象记录，但文件名 / MIME 以本次上传为准，避免列表里显示旧的文件名。
+  const dot = input.fileName.lastIndexOf('.');
+  const [updated] = await db.update(managedFiles).set({
+    originalName: input.fileName,
+    mimeType: input.mimeType ?? file.mimeType,
+    extension: dot > 0 && dot < input.fileName.length - 1 ? input.fileName.slice(dot + 1).toLowerCase() : null,
+  }).where(eq(managedFiles.id, file.id)).returning();
+  return mapManagedFile(updated ?? file, config);
 }
 
 export async function uploadManagedFile(file: File, options: ManagedFileUploadOptions = {}) {

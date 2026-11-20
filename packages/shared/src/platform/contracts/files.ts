@@ -201,7 +201,8 @@ export const directUploadPartAckSchema = z.object({
 }).meta({ id: 'DirectUploadPartAck' });
 
 export const directUploadCompleteSchema = z.object({
-  contentHash: z.string().max(64).optional(),
+  /** 浏览器流式计算得到的整文件 SHA-256；完成时必须由服务端复核 */
+  contentHash: z.string().length(64),
 });
 
 const directUploadPartParams = uploadIdParam.extend({

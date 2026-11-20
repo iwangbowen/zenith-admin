@@ -56,7 +56,7 @@
 服务端 → 初始化 provider multipart 会话并返回分片大小
 浏览器 → 为每片申请短时 PUT URL / 凭证并直传云存储
 浏览器 → 确认分片 ETag；刷新后查询状态并只重传缺失分片
-浏览器 → POST /api/files/direct-uploads/{uploadId}/complete
+浏览器 → POST /api/files/direct-uploads/{uploadId}/complete（必须携带整文件 SHA-256）
 服务端 → 合并、HEAD 校验真实对象大小、校验类型与 SHA-256、写入 managed_files
 ```
 
@@ -103,5 +103,6 @@
 ## 6. 环境变量与配置
 
 - 直传有效期来自存储配置的 `presignedExpirySeconds`（默认 1800 秒）。
+- 每用户同时进行中的直传会话上限来自运行时设置 `files.directUploadMaxActiveSessions`（默认 20，0 表示不限制）。
 - 「上传方式」为 `browser-direct` 时，文件列表使用直传；直传失败会自动释放直传会话并回退服务端中转。其他入口仍可走服务端中转。
 - 服务端中转保留给 local / SFTP、后端生成文件和不支持直传的 provider。

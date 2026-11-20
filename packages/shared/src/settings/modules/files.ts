@@ -26,6 +26,8 @@ export const filesSettingsSchema = z.object({
     .meta({ title: '分片上传阈值（MB）', description: '超过该大小的文件走分片上传 + 断点续传，不超过则单请求上传（含网盘简单上传 / 新版本）；受反向代理请求体上限约束' }),
   chunkSizeMb: z.int().min(UPLOAD_CHUNK_MIN_BYTES / MIB).max(UPLOAD_CHUNK_MAX_BYTES / MIB).default(UPLOAD_CHUNK_MIN_BYTES / MIB)
     .meta({ title: '分片大小（MB）', description: '服务端裁定的分片基线，不低于对象存储要求的最小分片；文件过大时自动上调以不超过片数上限' }),
+  directUploadMaxActiveSessions: z.int().min(0).max(200).default(20)
+    .meta({ title: '浏览器直传最大在途会话', description: '每用户同时进行中的浏览器直传会话上限；0 表示不限制' }),
 }).meta({ id: 'Settings.Files' });
 
 export type FilesSettings = z.output<typeof filesSettingsSchema>;
