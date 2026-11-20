@@ -171,9 +171,10 @@ export async function getBucketAccessInfo(config: FileStorageConfigRow): Promise
     const s3 = loadS3();
     const aclResult = await client.send(new s3.GetBucketAclCommand({ Bucket: config.s3Bucket! }));
     const grants = aclResult.Grants ?? [];
-    const publicRead = grants.some((grant) => grant.Permission === 'READ' && String(grant.Grantee?.URI ?? '').includes('AllUsers'));
-    const publicWrite = grants.some((grant) => grant.Permission === 'WRITE' && String(grant.Grantee?.URI ?? '').includes('AllUsers'));
-    const acl: FileBucketAcl = publicWrite ? 'public-read-write' : publicRead ? 'public-read' : 'private';
+    const publicGrants = grants.filter((grant) => String(grant.Grantee?.URI ?? '').includes('AllUsers'));
+    const publicRead = publicGrants.some((grant) => grant.Permission === 'READ' || grant.Permission === 'FULL_CONTROL');
+    const publicWrite = publicGrants.some((grant) => grant.Permission === 'WRITE' || grant.Permission === 'FULL_CONTROL');
+    const acl: FileBucketAcl | null = publicRead && publicWrite ? 'public-read-write' : publicRead ? 'public-read' : publicGrants.length > 0 ? null : 'private';
     let blockPublicAccess: boolean | null;
     try {
       const pab = await client.send(new s3.GetPublicAccessBlockCommand({ Bucket: config.s3Bucket! }));
@@ -183,7 +184,7 @@ export async function getBucketAccessInfo(config: FileStorageConfigRow): Promise
       if ((err as { name?: string }).name === 'NoSuchPublicAccessBlockConfiguration') blockPublicAccess = false;
       else blockPublicAccess = null;
     }
-    return { bucketAcl: acl, blockPublicAccess, effectivePublic: (acl === 'public-read' || acl === 'public-read-write') && blockPublicAccess === false, checkedAt: new Date() };
+    return { bucketAcl: acl, blockPublicAccess, effectivePublic: publicRead && blockPublicAccess === false, checkedAt: new Date() };
   }
   if (config.provider === 'cos') {
     const cos = createCosClient(config);
@@ -202,10 +203,11 @@ export async function getBucketAccessInfo(config: FileStorageConfigRow): Promise
     };
     const result = await bos.getBucketAcl(config.bosBucket!);
     const entries = result.body?.accessControlList ?? [];
-    const publicRead = entries.some((entry) => entry.grantee?.some((g) => g.id === 'AllUsers') && entry.permission?.some((p) => p.includes('READ')));
-    const publicWrite = entries.some((entry) => entry.grantee?.some((g) => g.id === 'AllUsers') && entry.permission?.some((p) => p.includes('WRITE')));
-    const acl: FileBucketAcl = publicWrite ? 'public-read-write' : publicRead ? 'public-read' : 'private';
-    return { bucketAcl: acl, blockPublicAccess: null, effectivePublic: acl !== 'private', checkedAt: new Date() };
+    const publicGrants = entries.filter((entry) => entry.grantee?.some((g) => g.id === 'AllUsers'));
+    const publicRead = publicGrants.some((entry) => entry.permission?.some((permission) => permission === 'READ' || permission === 'FULL_CONTROL'));
+    const publicWrite = publicGrants.some((entry) => entry.permission?.some((permission) => permission === 'WRITE' || permission === 'FULL_CONTROL'));
+    const acl: FileBucketAcl | null = publicRead && publicWrite ? 'public-read-write' : publicRead ? 'public-read' : publicGrants.length > 0 ? null : 'private';
+    return { bucketAcl: acl, blockPublicAccess: null, effectivePublic: publicRead, checkedAt: new Date() };
   }
   if (config.provider === 'kodo') {
     const { mac, conf } = createKodoUploader(config);
@@ -234,10 +236,11 @@ export async function getBucketAccessInfo(config: FileStorageConfigRow): Promise
       });
     });
     const grants = result.AccessControlList?.Grants ?? [];
-    const publicRead = grants.some((grant) => grant.Permission === 'READ' && grant.Grantee?.URI?.includes('AllUsers'));
-    const publicWrite = grants.some((grant) => grant.Permission === 'WRITE' && grant.Grantee?.URI?.includes('AllUsers'));
-    const acl: FileBucketAcl = publicWrite ? 'public-read-write' : publicRead ? 'public-read' : 'private';
-    return { bucketAcl: acl, blockPublicAccess: null, effectivePublic: acl !== 'private', checkedAt: new Date() };
+    const publicGrants = grants.filter((grant) => grant.Grantee?.URI?.includes('AllUsers'));
+    const publicRead = publicGrants.some((grant) => grant.Permission === 'READ' || grant.Permission === 'FULL_CONTROL');
+    const publicWrite = publicGrants.some((grant) => grant.Permission === 'WRITE' || grant.Permission === 'FULL_CONTROL');
+    const acl: FileBucketAcl | null = publicRead && publicWrite ? 'public-read-write' : publicRead ? 'public-read' : publicGrants.length > 0 ? null : 'private';
+    return { bucketAcl: acl, blockPublicAccess: null, effectivePublic: publicRead, checkedAt: new Date() };
   }
   throw new HTTPException(400, { message: `当前存储类型不支持 Bucket 权限探测：${config.provider}` });
 }

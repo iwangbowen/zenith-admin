@@ -7,6 +7,7 @@ const accountKey = Buffer.alloc(32, 7).toString('base64');
 const require = createRequire(import.meta.url);
 const OssConstructor = require('ali-oss') as typeof import('ali-oss').default;
 const CosConstructor = require('cos-nodejs-sdk-v5') as typeof import('cos-nodejs-sdk-v5');
+const S3Sdk = require('@aws-sdk/client-s3') as typeof import('@aws-sdk/client-s3');
 
 function config(provider: string, values: Record<string, unknown>): FileStorageConfigRow {
   return {
@@ -104,5 +105,57 @@ describe('COS multipart authorization', () => {
     expect(url.searchParams.get('q-signature')).toBe('signature');
     expect(getObjectUrl).toHaveBeenCalledWith(expect.objectContaining({ Sign: false, Query: { uploadId: 'cos-upload', partNumber: '3' } }), expect.any(Function));
     expect(getAuth).toHaveBeenCalledWith(expect.objectContaining({ Method: 'PUT', Query: { uploadId: 'cos-upload', partNumber: '3' } }));
+  });
+});
+
+describe('S3 public bucket ACL detection', () => {
+  it('treats FULL_CONTROL as both public read and public write', async () => {
+    vi.spyOn(S3Sdk.S3Client.prototype, 'send').mockImplementation(async (command: unknown) => {
+      if ((command as { constructor: { name: string } }).constructor.name === 'GetBucketAclCommand') {
+        return {
+          Grants: [{
+            Permission: 'FULL_CONTROL',
+            Grantee: { URI: 'http://acs.amazonaws.com/groups/global/AllUsers' },
+          }],
+        } as never;
+      }
+      return {
+        PublicAccessBlockConfiguration: {
+          BlockPublicAcls: false,
+          IgnorePublicAcls: false,
+          BlockPublicPolicy: false,
+          RestrictPublicBuckets: false,
+        },
+      } as never;
+    });
+
+    const result = await getBucketAccessInfo(config('s3', {}));
+
+    expect(result).toMatchObject({ bucketAcl: 'public-read-write', effectivePublic: true, blockPublicAccess: false });
+  });
+
+  it('does not classify a public write-only grant as public read', async () => {
+    vi.spyOn(S3Sdk.S3Client.prototype, 'send').mockImplementation(async (command: unknown) => {
+      if ((command as { constructor: { name: string } }).constructor.name === 'GetBucketAclCommand') {
+        return {
+          Grants: [{
+            Permission: 'WRITE',
+            Grantee: { URI: 'http://acs.amazonaws.com/groups/global/AllUsers' },
+          }],
+        } as never;
+      }
+      return {
+        PublicAccessBlockConfiguration: {
+          BlockPublicAcls: false,
+          IgnorePublicAcls: false,
+          BlockPublicPolicy: false,
+          RestrictPublicBuckets: false,
+        },
+      } as never;
+    });
+
+    const result = await getBucketAccessInfo(config('s3', {}));
+
+    expect(result).toMatchObject({ bucketAcl: null, effectivePublic: false, blockPublicAccess: false });
   });
 });
