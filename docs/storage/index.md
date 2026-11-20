@@ -45,7 +45,7 @@ Bucket 权限探测、下载方式与浏览器直传的专题说明见[文件存
 | `obs` | 华为云 OBS | `obsEndpoint`、`obsBucket`、`obsAccessKeyId`、`obsSecretAccessKey` | `esdk-obs-nodejs`，支持签名 URL 与原生 multipart |
 | `kodo` | 七牛云 Kodo | `kodoAccessKey`、`kodoSecretKey`、`kodoBucket`；可选 `kodoRegion`、`kodoEndpoint` | 七牛 SDK 表单上传；签名下载依赖 `publicBaseUrl` 或 `kodoEndpoint`；服务端中转走本地暂存合并，`uploadMode=browser-direct` 走分片上传 v2 |
 | `bos` | 百度云 BOS | `bosEndpoint`、`bosBucket`、`bosAccessKeyId`、`bosSecretAccessKey` | `@baiducloud/sdk`，支持签名 URL 与原生 multipart |
-| `azure` | Azure Blob | `azureAccountName`、`azureAccountKey`、`azureContainerName`；可选 `azureEndpoint` | `@azure/storage-blob`，支持 SAS URL 与 block list multipart；Azure staged blocks 无显式 abort，未提交块由云端过期 |
+| `azure` | Azure Blob | `azureAccountName`、`azureAccountKey`、`azureContainerName`；可选 `azureEndpoint`、管理面 `azureTenantId` / `azureClientId` / `azureClientSecret` / `azureSubscriptionId` / `azureResourceGroup` / `azureCloud` | `@azure/storage-blob`，支持 SAS URL 与 block list multipart；配置管理面凭据后额外探测账号级 `allowBlobPublicAccess`；Azure staged blocks 无显式 abort，未提交块由云端过期 |
 | `sftp` | SFTP | `sftpHost`、`sftpUsername`；可选 `sftpPort`、`sftpPassword`、`sftpPrivateKey`、`sftpRootPath`、`sftpBaseUrl` | `ssh2-sftp-client`，上传前递归建目录；分片走本地暂存合并 |
 
 云 SDK 使用 `createRequire` 懒加载，只在对应 provider 首次使用时加载，降低 Server 启动成本。

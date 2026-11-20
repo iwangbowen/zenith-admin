@@ -24,6 +24,7 @@ export const STORAGE_SECRET_FIELDS = [
   'kodoSecretKey',
   'bosSecretAccessKey',
   'azureAccountKey',
+  'azureClientSecret',
   'sftpPassword',
   'sftpPrivateKey',
 ] as const;
@@ -37,6 +38,7 @@ export function mapFileStorageConfig(row: typeof fileStorageConfigs.$inferSelect
     kodoSecretKey: _kodoSecret,
     bosSecretAccessKey: _bosSecret,
     azureAccountKey: _azureKey,
+    azureClientSecret: _azureClientSecret,
     sftpPassword: _sftpPwd,
     sftpPrivateKey: _sftpKey,
     ...safe
@@ -60,6 +62,7 @@ const EMPTY_PROVIDER_FIELDS = {
   kodoAccessKey: null, kodoSecretKey: null, kodoBucket: null, kodoRegion: null, kodoEndpoint: null,
   bosEndpoint: null, bosBucket: null, bosAccessKeyId: null, bosSecretAccessKey: null,
   azureAccountName: null, azureAccountKey: null, azureContainerName: null, azureEndpoint: null,
+  azureTenantId: null, azureClientId: null, azureClientSecret: null, azureSubscriptionId: null, azureResourceGroup: null, azureCloud: 'public',
   sftpHost: null, sftpPort: null, sftpUsername: null, sftpPassword: null, sftpPrivateKey: null, sftpRootPath: null, sftpBaseUrl: null,
 };
 
@@ -135,6 +138,9 @@ export function toStoragePayload(input: StorageInput) {
         ...base,
         azureAccountName: input.azureAccountName ?? null, azureAccountKey: input.azureAccountKey ?? null,
         azureContainerName: input.azureContainerName ?? null, azureEndpoint: input.azureEndpoint ?? null,
+        azureTenantId: input.azureTenantId?.trim() || null, azureClientId: input.azureClientId?.trim() || null,
+        azureClientSecret: input.azureClientSecret ?? null, azureSubscriptionId: input.azureSubscriptionId?.trim() || null,
+        azureResourceGroup: input.azureResourceGroup?.trim() || null, azureCloud: input.azureCloud ?? 'public',
       };
     case 'sftp':
       return {

@@ -26,6 +26,8 @@ const loadCos = () => require('cos-nodejs-sdk-v5') as typeof import('cos-nodejs-
 const loadQiniu = () => require('qiniu') as typeof import('qiniu');
 const loadBaiduBce = () => require('@baiducloud/sdk') as typeof import('@baiducloud/sdk');
 const loadAzureBlob = () => require('@azure/storage-blob') as typeof import('@azure/storage-blob');
+const loadAzureIdentity = () => require('@azure/identity') as typeof import('@azure/identity');
+const loadAzureArmStorage = () => require('@azure/arm-storage') as typeof import('@azure/arm-storage');
 
 // esdk-obs-nodejs 是 CJS 模块，无官方类型声明，运行时通过 require 加载
 type ObsClientConstructor = new (opts: Record<string, string>) => ObsClientType;
@@ -399,13 +401,49 @@ export async function getBucketAccessInfo(config: FileStorageConfigRow): Promise
     const access = (properties as unknown as { blobPublicAccess?: string }).blobPublicAccess;
     const publicAccess = access === 'container' || access === 'blob';
     const acl: FileBucketAcl = publicAccess ? 'public-read' : 'private';
+    let accountBlockPublicAccess: boolean | null = null;
+    if (config.azureTenantId && config.azureClientId && config.azureClientSecret
+      && config.azureSubscriptionId && config.azureResourceGroup && config.azureAccountName) {
+      try {
+        const { ClientSecretCredential } = loadAzureIdentity();
+        const { StorageManagementClient } = loadAzureArmStorage();
+        const cloudSetting = config.azureCloud === 'china'
+          ? 'AZURE_CHINA_CLOUD'
+          : config.azureCloud === 'us-government'
+            ? 'AZURE_US_GOVERNMENT'
+            : 'AZURE_PUBLIC_CLOUD';
+        const authorityHost = config.azureCloud === 'china'
+          ? 'https://login.chinacloudapi.cn'
+          : config.azureCloud === 'us-government'
+            ? 'https://login.microsoftonline.us'
+            : 'https://login.microsoftonline.com';
+        const credential = new ClientSecretCredential(
+          config.azureTenantId,
+          config.azureClientId,
+          config.azureClientSecret,
+          { authorityHost },
+        );
+        const management = new StorageManagementClient(credential, config.azureSubscriptionId, {
+          cloudSetting: cloudSetting as never,
+        });
+        const account = await management.storageAccounts.getProperties(
+          config.azureResourceGroup,
+          config.azureAccountName,
+        );
+        accountBlockPublicAccess = account.allowBlobPublicAccess === false
+          ? true
+          : account.allowBlobPublicAccess === true ? false : null;
+      } catch {
+        accountBlockPublicAccess = null;
+      }
+    }
     return {
       bucketAcl: acl,
       blockPublicAccess: null,
       policyPublic: null,
       publicStatus: null,
-      accountBlockPublicAccess: null,
-      effectivePublic: publicAccess,
+      accountBlockPublicAccess,
+      effectivePublic: accountBlockPublicAccess !== true && publicAccess,
       checkedAt: new Date(),
     };
   }

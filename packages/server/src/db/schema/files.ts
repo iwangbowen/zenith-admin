@@ -96,6 +96,13 @@ export const fileStorageConfigs = pgTable('file_storage_configs', {
   azureAccountKey: varchar({ length: 256 }),
   azureContainerName: varchar({ length: 128 }),
   azureEndpoint: varchar({ length: 256 }),
+  /** Azure 管理面凭据（可选，仅用于账号级 allowBlobPublicAccess 探测） */
+  azureTenantId: varchar({ length: 64 }),
+  azureClientId: varchar({ length: 64 }),
+  azureClientSecret: varchar({ length: 256 }),
+  azureSubscriptionId: varchar({ length: 64 }),
+  azureResourceGroup: varchar({ length: 128 }),
+  azureCloud: varchar({ length: 32 }).default('public'),
   // SFTP
   sftpHost: varchar({ length: 256 }),
   sftpPort: integer().default(22),

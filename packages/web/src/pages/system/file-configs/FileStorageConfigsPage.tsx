@@ -128,6 +128,7 @@ function buildPayload(provider: FileStorageProvider, isDefault: boolean, values:
       s3Bucket: normalizeOptional(values.s3Bucket),
       s3AccessKeyId: normalizeOptional(values.s3AccessKeyId),
       s3SecretAccessKey: normalizeOptional(values.s3SecretAccessKey),
+      s3AccountId: normalizeOptional(values.s3AccountId),
       s3ForcePathStyle: values.s3ForcePathStyle ?? false,
       remark: normalizeOptional(values.remark),
     };
@@ -196,6 +197,12 @@ function buildPayload(provider: FileStorageProvider, isDefault: boolean, values:
       azureAccountKey: normalizeOptional(values.azureAccountKey),
       azureContainerName: normalizeOptional(values.azureContainerName),
       azureEndpoint: normalizeOptional(values.azureEndpoint),
+      azureTenantId: normalizeOptional(values.azureTenantId),
+      azureClientId: normalizeOptional(values.azureClientId),
+      azureClientSecret: normalizeOptional(values.azureClientSecret),
+      azureSubscriptionId: normalizeOptional(values.azureSubscriptionId),
+      azureResourceGroup: normalizeOptional(values.azureResourceGroup),
+      azureCloud: values.azureCloud ?? 'public',
       remark: normalizeOptional(values.remark),
     };
   }
@@ -261,6 +268,7 @@ export default function FileStorageConfigsPage() {
       publicBaseUrl: '',
       presignedExpirySeconds: PRESIGNED_EXPIRY_DEFAULT_SECONDS,
       localRootPath: 'storage/local',
+      azureCloud: 'public',
       remark: '',
     },
     // 密钥字段为 write-only：接口不返回，表单一律以空值起始，留空提交即沿用原值
@@ -306,6 +314,12 @@ export default function FileStorageConfigsPage() {
       azureAccountKey: '',
       azureContainerName: config.azureContainerName ?? '',
       azureEndpoint: config.azureEndpoint ?? '',
+      azureTenantId: config.azureTenantId ?? '',
+      azureClientId: config.azureClientId ?? '',
+      azureClientSecret: '',
+      azureSubscriptionId: config.azureSubscriptionId ?? '',
+      azureResourceGroup: config.azureResourceGroup ?? '',
+      azureCloud: config.azureCloud ?? 'public',
       sftpHost: config.sftpHost ?? '',
       sftpPort: config.sftpPort ?? 22,
       sftpUsername: config.sftpUsername ?? '',
@@ -888,6 +902,34 @@ export default function FileStorageConfigsPage() {
               <Row gutter={16}>
                 <Col span={24}>
                   <Form.Input field="azureEndpoint" label="Endpoint（可选）" placeholder="自定义端点，默认 Azure 全球端点" />
+                </Col>
+              </Row>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Input field="azureTenantId" label="管理面 Tenant ID（可选）" placeholder="用于账号级公共访问探测" />
+                </Col>
+                <Col span={12}>
+                  <Form.Input field="azureClientId" label="管理面 Client ID（可选）" placeholder="Service Principal 客户端 ID" />
+                </Col>
+              </Row>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Input field="azureSubscriptionId" label="Subscription ID（可选）" placeholder="Azure 订阅 ID" />
+                </Col>
+                <Col span={12}>
+                  <Form.Input field="azureResourceGroup" label="Resource Group（可选）" placeholder="存储账户所在资源组" />
+                </Col>
+              </Row>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Select field="azureCloud" label="Azure 云环境" style={{ width: '100%' }}>
+                    <Select.Option value="public">Azure 公有云</Select.Option>
+                    <Select.Option value="china">Azure 中国云</Select.Option>
+                    <Select.Option value="us-government">Azure 美国政府云</Select.Option>
+                  </Form.Select>
+                </Col>
+                <Col span={12}>
+                  <FormPasswordInput field="azureClientSecret" label="管理面 Client Secret（可选）" placeholder={modal.isEdit ? '留空表示不修改' : 'Service Principal 客户端密钥'} />
                 </Col>
               </Row>
             </>

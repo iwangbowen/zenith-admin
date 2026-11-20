@@ -88,6 +88,12 @@ const baseFileStorageConfigSchema = z.object({
   azureAccountKey: z.string().max(256).optional(),
   azureContainerName: z.string().max(128).optional(),
   azureEndpoint: z.string().max(256).optional(),
+  azureTenantId: z.string().max(64).optional(),
+  azureClientId: z.string().max(64).optional(),
+  azureClientSecret: z.string().max(256).optional(),
+  azureSubscriptionId: z.string().max(64).optional(),
+  azureResourceGroup: z.string().max(128).optional(),
+  azureCloud: z.enum(['public', 'china', 'us-government']).optional(),
   // SFTP
   sftpHost: z.string().max(256).optional(),
   sftpPort: z.number().int().min(1).max(65535).optional(),

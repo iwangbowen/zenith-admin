@@ -68,6 +68,11 @@ export const fileStorageConfigSchema = z.object({
   azureAccountName: z.string().nullable().optional(),
   azureContainerName: z.string().nullable().optional(),
   azureEndpoint: z.string().nullable().optional(),
+  azureTenantId: z.string().nullable().optional(),
+  azureClientId: z.string().nullable().optional(),
+  azureSubscriptionId: z.string().nullable().optional(),
+  azureResourceGroup: z.string().nullable().optional(),
+  azureCloud: z.enum(['public', 'china', 'us-government']).nullable().optional(),
   // SFTP
   sftpHost: z.string().nullable().optional(),
   sftpPort: z.int().nullable().optional(),
