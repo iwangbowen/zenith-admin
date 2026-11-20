@@ -24,6 +24,7 @@ export const fileUploadModeEnum = pgEnum('file_upload_mode', ['server-proxy', 'b
  */
 export const fileVisibilityEnum = pgEnum('file_visibility', ['public', 'restricted']);
 export const fileGcStateEnum = pgEnum('file_gc_state', ['live', 'orphan', 'deleting']);
+export const azureCloudEnum = pgEnum('azure_cloud', ['public', 'china', 'us-government']);
 
 // ─── 文件存储配置表 ──────────────────────────────────────────────────────────
 export const fileStorageConfigs = pgTable('file_storage_configs', {
@@ -102,7 +103,7 @@ export const fileStorageConfigs = pgTable('file_storage_configs', {
   azureClientSecret: varchar({ length: 256 }),
   azureSubscriptionId: varchar({ length: 64 }),
   azureResourceGroup: varchar({ length: 128 }),
-  azureCloud: varchar({ length: 32 }).default('public'),
+  azureCloud: azureCloudEnum().default('public'),
   // SFTP
   sftpHost: varchar({ length: 256 }),
   sftpPort: integer().default(22),
@@ -189,13 +190,27 @@ export const uploadSessions = pgTable('upload_sessions', {
   publicAccess: boolean().notNull().default(false),
   accessStrategy: fileAccessStrategyEnum(),
   uploadMode: fileUploadModeEnum().notNull().default('server-proxy'),
+  /**
+   * 业务归属模块。null = 通用文件中心会话；非空 = 业务上传会话，完成时必须经所属模块的
+   * `completeBusinessUpload` 校验绑定后落库，通用直传完成接口一律拒绝。
+   */
+  module: varchar({ length: 64 }),
+  /** 上传会话的最终可见性；完成上传时原样写入 managed_files，业务调用点不再单独传 */
+  visibility: fileVisibilityEnum().notNull().default('public'),
+  /** 客户端声明的内容 SHA-256（hex），完成时与实际内容比对 */
+  expectedHash: varchar({ length: 64 }),
+  /** 完成后由服务端计算 SHA-256 并写入 contentHash（制品 / 固件等需要可信摘要的模块） */
+  computeHash: boolean().notNull().default(false),
+  /** 分片合并时跳过 MIME / 魔数白名单校验（任意二进制制品） */
+  skipTypeCheck: boolean().notNull().default(false),
   status: uploadSessionStatusEnum().notNull().default('uploading'),
   tenantId: tenantIdColumn(),
   ...auditColumns(),
   ...timestampColumns(),
-}, (t) => [index('upload_sessions_tenant_idx').on(t.tenantId), 
+}, (t) => [index('upload_sessions_tenant_idx').on(t.tenantId),
   index('upload_sessions_created_at_idx').on(t.createdAt),
   index('upload_sessions_status_idx').on(t.status),
+  index('upload_sessions_module_status_idx').on(t.module, t.status),
 ]);
 
 export type UploadSessionRow = typeof uploadSessions.$inferSelect;

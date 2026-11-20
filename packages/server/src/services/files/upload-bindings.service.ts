@@ -15,6 +15,14 @@ export async function bindUploadSession(uploadId: string, module: string, payloa
   await db.insert(uploadSessionBindings).values({ uploadId, module, payload, tenantId: getCreateTenantId(currentUser()) });
 }
 
+/** 显式中止时释放绑定；会话保留到保留策略清理，绑定随会话级联删除亦可兜底 */
+export async function unbindUploadSession(uploadId: string, module: string) {
+  await db.delete(uploadSessionBindings).where(and(
+    eq(uploadSessionBindings.uploadId, uploadId),
+    eq(uploadSessionBindings.module, module),
+  ));
+}
+
 /**
  * 读取并校验绑定：必须是当前用户在同一模块下发起的会话；payload 按模块 schema 解析，
  * schema 演进后旧会话解析失败视为上下文失效，让客户端重新上传而不是带着旧上下文落地。

@@ -26,7 +26,7 @@ export function mapManagedFile(row: typeof managedFiles.$inferSelect, config?: F
  * 受控文件在无对象级 ACL 的 provider 上只能依赖 Bucket/Container 私有。
  * 未探测或非私有直接拒绝，避免公共 Bucket 下 restricted 文件被匿名读取。
  */
-function assertRestrictedStorageSafe(config: FileStorageConfigRow) {
+export function assertRestrictedStorageSafe(config: FileStorageConfigRow) {
   if (config.provider === 'local' || config.provider === 'sftp') return;
   if (FILE_OBJECT_ACL_SUPPORT[config.provider]) return;
   if (config.bucketAcl !== 'private') {
@@ -97,6 +97,23 @@ async function withStorageConfig(file: typeof managedFiles.$inferSelect) {
 /** 按存储配置策略解析文件访问直链（presigned 每次签发新鲜 URL，调用方不得长期缓存） */
 export async function getFileAccessUrl(id: string, purpose?: 'preview' | 'download') {
   const { file, storageConfig } = await getStoredFileForRead(id);
+  return resolveAccessUrl(file, storageConfig, purpose);
+}
+
+/**
+ * restricted 文件的访问直链。只允许在调用方已按业务权限完成授权后使用
+ * （设备 OTA 下载、业务附件预览等）；通用 content 接口仍由 getStoredFileForRead 拒绝。
+ */
+export async function getRestrictedFileAccessUrl(id: string, purpose?: 'preview' | 'download') {
+  const { file, storageConfig } = await getRestrictedFileForRead(id);
+  return resolveAccessUrl(file, storageConfig, purpose);
+}
+
+async function resolveAccessUrl(
+  file: typeof managedFiles.$inferSelect,
+  storageConfig: typeof fileStorageConfigs.$inferSelect,
+  purpose?: 'preview' | 'download',
+) {
   const contentDisposition = purpose === 'download'
     ? attachmentDisposition(file.originalName)
     : undefined;

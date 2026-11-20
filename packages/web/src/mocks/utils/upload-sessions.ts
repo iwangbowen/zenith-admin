@@ -42,7 +42,7 @@ export function initMockUploadSession<TMeta extends Record<string, unknown>>(inp
     uploadId, fileName: input.fileName, fileSize: input.fileSize, mimeType: input.mimeType,
     chunkSize, totalChunks, received: new Set(), status: 'uploading', meta,
   });
-  return { uploadId, chunkSize, totalChunks, received: [] };
+  return { uploadId, mode: 'server-proxy', chunkSize, totalChunks, received: [] };
 }
 
 export function getMockUploadSession<TMeta = Record<string, unknown>>(uploadId: string): MockUploadSession<TMeta> | null {

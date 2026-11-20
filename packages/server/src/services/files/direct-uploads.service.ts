@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { HTTPException } from 'hono/http-exception';
 import type { z } from '@hono/zod-openapi';
@@ -10,6 +10,7 @@ import {
   UPLOAD_MAX_CHUNKS,
   type directUploadInitSchema,
   type directUploadCompleteSchema,
+  type FileVisibility,
 } from '@zenith/shared/platform';
 import { db } from '../../db';
 import { fileStorageConfigs, uploadChunks, uploadSessions, type UploadSessionRow } from '../../db/schema';
@@ -20,14 +21,24 @@ import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { formatDateTime } from '../../lib/datetime';
 import { getSettings } from '../../lib/settings';
 import { buildWhere } from '../../lib/where-helpers';
-import { assertUploadSizeAllowed } from './files.service';
+import { assertRestrictedStorageSafe, assertUploadSizeAllowed } from './files.service';
 import { abortChunkUpload, completeChunkUpload } from './upload-sessions.service';
+import { unbindUploadSession } from './upload-bindings.service';
 import { recordDirectUploadBytes, recordFileUploadMetric } from '../../lib/file-upload-metrics';
 
 type DirectUploadInit = z.infer<typeof directUploadInitSchema>;
 type DirectUploadComplete = z.infer<typeof directUploadCompleteSchema>;
 
 const KODO_CHUNK_SIZE = 4 * 1024 * 1024;
+
+/** 业务会话在直传通道上的附加属性；通用直传不传 */
+export interface DirectUploadSessionOptions {
+  module?: string | null;
+  visibility?: FileVisibility;
+  expectedHash?: string | null;
+  computeHash?: boolean;
+  skipTypeCheck?: boolean;
+}
 
 async function resolveConfig(storageConfigId?: number) {
   const where = storageConfigId
@@ -37,11 +48,22 @@ async function resolveConfig(storageConfigId?: number) {
   return requireRow(config, storageConfigId ? '文件存储配置不存在或未启用' : '当前没有可用的默认文件服务', 400);
 }
 
-async function ensureDirectSession(uploadId: string) {
+async function ensureOwnedSession(uploadId: string) {
   const user = currentUser();
   const where = buildWhere(eq(uploadSessions.uploadId, uploadId), eq(uploadSessions.createdBy, user.userId), tenantCondition(uploadSessions, user));
-  const session = await requireFirstRow(db.select().from(uploadSessions).where(where).limit(1), '直传会话不存在或已过期');
+  return requireFirstRow(db.select().from(uploadSessions).where(where).limit(1), '直传会话不存在或已过期');
+}
+
+async function ensureDirectSession(uploadId: string) {
+  const session = await ensureOwnedSession(uploadId);
   if (session.uploadMode !== 'browser-direct') throw new HTTPException(404, { message: '直传会话不存在或已过期' });
+  return session;
+}
+
+/** 业务会话：已完成业务 init（有 module 绑定），通用直传接口不得接管 */
+async function ensureBusinessSession(uploadId: string) {
+  const session = await ensureOwnedSession(uploadId);
+  if (!session.module) throw new HTTPException(404, { message: '上传会话不存在或已过期' });
   return session;
 }
 
@@ -52,7 +74,7 @@ async function getSessionConfig(session: UploadSessionRow) {
   return withFileBucket(session, current);
 }
 
-export async function createDirectUpload(input: DirectUploadInit) {
+export async function createDirectUpload(input: DirectUploadInit, options: DirectUploadSessionOptions = {}) {
   const user = currentUser();
   const settings = await getSettings('files');
   await assertUploadSizeAllowed(input.fileSize, settings);
@@ -60,6 +82,7 @@ export async function createDirectUpload(input: DirectUploadInit) {
     const activeSessions = await db.$count(uploadSessions, and(
       eq(uploadSessions.createdBy, user.userId),
       eq(uploadSessions.uploadMode, 'browser-direct'),
+      options.module ? eq(uploadSessions.module, options.module) : isNull(uploadSessions.module),
       inArray(uploadSessions.status, ['uploading', 'completing']),
     ));
     if (activeSessions >= settings.directUploadMaxActiveSessions) {
@@ -75,6 +98,12 @@ export async function createDirectUpload(input: DirectUploadInit) {
     throw new HTTPException(400, { message: '该文件服务不支持浏览器分片直传，请使用服务端中转' });
   }
 
+  // restricted 会话必须落到私有对象：强制 private ACL + proxy 访问策略
+  if (options.visibility === 'restricted') assertRestrictedStorageSafe(config);
+  const uploadConfig = options.visibility === 'restricted'
+    ? { ...config, objectAcl: 'private' as const, accessStrategy: 'proxy' as const }
+    : config;
+
   const chunkSize = config.provider === 'kodo'
     ? KODO_CHUNK_SIZE
     : resolveUploadChunkSize(input.fileSize, settings.chunkSizeMb * 1024 * 1024);
@@ -86,9 +115,9 @@ export async function createDirectUpload(input: DirectUploadInit) {
 
   const { objectKey } = buildUploadObjectKey(input.fileName, config.basePath);
   const uploadId = randomUUID();
-  const multipartUploadId = await driver.init(config, objectKey, input.mimeType).catch((error) => { throw mapObjectAclError(error); });
-  const objectAcl = resolveObjectAcl(config);
-  const publicAccess = resolvePublicAccess(config, objectAcl);
+  const multipartUploadId = await driver.init(uploadConfig, objectKey, input.mimeType).catch((error) => { throw mapObjectAclError(error); });
+  const objectAcl = resolveObjectAcl(uploadConfig);
+  const publicAccess = resolvePublicAccess(uploadConfig, objectAcl);
   const bucketName = extractBucketName(config);
 
   try {
@@ -106,8 +135,13 @@ export async function createDirectUpload(input: DirectUploadInit) {
       multipartUploadId,
       objectAcl,
       publicAccess,
-      accessStrategy: config.accessStrategy,
+      accessStrategy: uploadConfig.accessStrategy,
       uploadMode: 'browser-direct',
+      module: options.module ?? null,
+      visibility: options.visibility ?? 'public',
+      expectedHash: options.expectedHash?.toLowerCase() ?? null,
+      computeHash: options.computeHash ?? false,
+      skipTypeCheck: options.skipTypeCheck ?? false,
       tenantId: getCreateTenantId(user),
     });
   } catch (error) {
@@ -119,6 +153,7 @@ export async function createDirectUpload(input: DirectUploadInit) {
 
   return {
     uploadId,
+    mode: 'browser-direct' as const,
     provider: config.provider,
     objectKey,
     bucketName,
@@ -126,12 +161,11 @@ export async function createDirectUpload(input: DirectUploadInit) {
     totalChunks,
     received: [] as number[],
     publicAccess,
-    accessStrategy: config.accessStrategy,
+    accessStrategy: uploadConfig.accessStrategy,
   };
 }
 
-export async function getDirectUploadPartUrl(uploadId: string, partNumber: number) {
-  const session = await ensureDirectSession(uploadId);
+async function partUrlForSession(session: UploadSessionRow, partNumber: number) {
   if (session.status !== 'uploading') throw new HTTPException(400, { message: '上传会话已结束' });
   if (!Number.isInteger(partNumber) || partNumber < 1 || partNumber > session.totalChunks) {
     throw new HTTPException(400, { message: '分片序号越界' });
@@ -143,8 +177,11 @@ export async function getDirectUploadPartUrl(uploadId: string, partNumber: numbe
   return { partNumber, url: target.url, method: target.method, headers: target.headers, partTag: target.partTag, expiresAt: formatDateTime(target.expiresAt) };
 }
 
-export async function acknowledgeDirectUploadPart(uploadId: string, partNumber: number, input: { etag: string; size: number }) {
-  const session = await ensureDirectSession(uploadId);
+export async function getDirectUploadPartUrl(uploadId: string, partNumber: number) {
+  return partUrlForSession(await ensureDirectSession(uploadId), partNumber);
+}
+
+async function acknowledgePartForSession(session: UploadSessionRow, partNumber: number, input: { etag: string; size: number }) {
   if (session.status !== 'uploading') throw new HTTPException(400, { message: '上传会话已结束' });
   const index = partNumber - 1;
   if (!Number.isInteger(partNumber) || index < 0 || index >= session.totalChunks) throw new HTTPException(400, { message: '分片序号越界' });
@@ -162,15 +199,48 @@ export async function acknowledgeDirectUploadPart(uploadId: string, partNumber: 
   return { index, receivedCount: rows.length };
 }
 
-export async function getDirectUploadStatus(uploadId: string) {
-  const session = await ensureDirectSession(uploadId);
+export async function acknowledgeDirectUploadPart(uploadId: string, partNumber: number, input: { etag: string; size: number }) {
+  return acknowledgePartForSession(await ensureDirectSession(uploadId), partNumber, input);
+}
+
+async function statusForSession(session: UploadSessionRow) {
   const rows = await db.select({ index: uploadChunks.index }).from(uploadChunks)
     .where(eq(uploadChunks.uploadSessionId, session.id)).orderBy(asc(uploadChunks.index));
-  return { uploadId, status: session.status, chunkSize: session.chunkSize, totalChunks: session.totalChunks, received: rows.map((row) => row.index) };
+  return { uploadId: session.uploadId, status: session.status, chunkSize: session.chunkSize, totalChunks: session.totalChunks, received: rows.map((row) => row.index) };
+}
+
+export async function getDirectUploadStatus(uploadId: string) {
+  return statusForSession(await ensureDirectSession(uploadId));
+}
+
+// ─── 业务上传会话的分片通道 ──────────────────────────────────────────────────
+
+/** 业务直传分片地址：会话必须由当前用户为某个业务模块创建 */
+export async function getBusinessUploadPartUrl(uploadId: string, partNumber: number) {
+  const session = await ensureBusinessSession(uploadId);
+  if (session.uploadMode !== 'browser-direct') throw new HTTPException(404, { message: '该会话不是浏览器直传' });
+  return partUrlForSession(session, partNumber);
+}
+
+export async function acknowledgeBusinessUploadPart(uploadId: string, partNumber: number, input: { etag: string; size: number }) {
+  const session = await ensureBusinessSession(uploadId);
+  if (session.uploadMode !== 'browser-direct') throw new HTTPException(404, { message: '该会话不是浏览器直传' });
+  return acknowledgePartForSession(session, partNumber, input);
+}
+
+export async function getBusinessUploadStatus(uploadId: string) {
+  return statusForSession(await ensureBusinessSession(uploadId));
+}
+
+export async function abortBusinessUpload(uploadId: string) {
+  const session = await ensureBusinessSession(uploadId);
+  await abortChunkUpload(uploadId, { allowBrowserDirect: true });
+  await unbindUploadSession(session.uploadId, session.module!);
 }
 
 export async function completeDirectUpload(uploadId: string, input: DirectUploadComplete) {
-  await ensureDirectSession(uploadId);
+  const session = await ensureDirectSession(uploadId);
+  if (session.module) throw new HTTPException(400, { message: '该上传会话属于业务模块，请在业务页面完成上传' });
   try {
     const file = await completeChunkUpload(uploadId, { expectedHash: input.contentHash, allowBrowserDirect: true });
     recordFileUploadMetric('directCompleted');

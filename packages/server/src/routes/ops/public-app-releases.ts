@@ -13,7 +13,7 @@ import { HTTPException } from 'hono/http-exception';
 import { publicAppReleaseContract } from '@zenith/shared/ops';
 import { defineContractRoute } from '../../lib/contract-route';
 import { ErrorResponse, jsonContent, okBody, validationHook } from '../../lib/openapi-schemas';
-import { getStoredFileForRead } from '../../services/files/files.service';
+import { getRestrictedFileForRead } from '../../services/files/files.service';
 import { readStoredFile } from '../../lib/file-storage';
 import { parseRangeHeader, rangeNotSatisfiable, supportsRange, rangeContentHeaders } from '../../lib/http-range';
 import {
@@ -84,7 +84,7 @@ const downloadRoute = defineContractRoute(publicAppReleaseContract.download, {
     }
     if (!artifact.fileId) throw new HTTPException(404, { message: '文件不存在' });
 
-    const { file, storageConfig } = await getStoredFileForRead(artifact.fileId);
+    const { file, storageConfig } = await getRestrictedFileForRead(artifact.fileId);
     // metadata（latest.yml）必须实时反映最新发布，禁止缓存；二进制制品内容不可变，可放心缓存
     const cacheControl = artifact.kind === 'metadata' ? 'no-store' : 'public, max-age=3600';
     const baseHeaders: Record<string, string> = {

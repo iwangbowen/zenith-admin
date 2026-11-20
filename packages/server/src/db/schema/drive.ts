@@ -420,23 +420,6 @@ export const driveRecentAccess = pgTable('drive_recent_access', {
   index('drive_recent_access_user_time_idx').on(t.userId, t.lastAccessAt),
 ]);
 
-/** 分片上传会话与目标目录的绑定（随 upload_sessions 保留策略清理） */
-export const driveUploadBindings = pgTable('drive_upload_bindings', {
-  id: idColumn(),
-  uploadId: varchar({ length: 64 }).notNull().unique('drive_upload_bindings_upload_id_unique'),
-  spaceId: integer().notNull().references(() => driveSpaces.id, { onDelete: 'cascade' }),
-  parentId: integer().references(() => driveNodes.id, { onDelete: 'cascade' }),
-  /** 非空 = 上传为该文件节点的新版本 */
-  nodeId: integer().references(() => driveNodes.id, { onDelete: 'cascade' }),
-  fileName: varchar({ length: 255 }).notNull(),
-  fileSize: bigint({ mode: 'number' }).notNull(),
-  conflictPolicy: driveUploadConflictPolicyEnum().notNull().default('rename'),
-  expectedHash: varchar({ length: 64 }),
-  tenantId: tenantIdColumn(),
-  createdBy: integer().references(() => users.id, { onDelete: 'cascade' }),
-  createdAt: timestamptz().defaultNow().notNull(),
-});
-
 // ─── 标签 / 评论 / 全文索引（P2）─────────────────────────────────────────────
 
 export const driveTags = pgTable('drive_tags', {

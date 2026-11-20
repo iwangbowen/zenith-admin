@@ -6,7 +6,7 @@ import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
 import { and, asc, eq, gte, inArray, lt, notExists, or } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { countUploadChunks, expectedUploadChunkSize, resolveUploadChunkSize, UPLOAD_CHUNK_MAX_BYTES, UPLOAD_MAX_CHUNKS, type InitChunkUploadInput } from '@zenith/shared/platform';
+import { countUploadChunks, expectedUploadChunkSize, resolveUploadChunkSize, UPLOAD_CHUNK_MAX_BYTES, UPLOAD_MAX_CHUNKS, type FileVisibility, type InitChunkUploadInput } from '@zenith/shared/platform';
 import { db } from '../../db';
 import { uploadSessions, uploadChunks, managedFiles, fileStorageConfigs, type FileStorageConfigRow, type UploadSessionRow } from '../../db/schema';
 import { buildUploadObjectKey, uploadObjectByConfig, extractBucketName, getDirectMultipartDriver, getMultipartDriver, headStoredObject, mapObjectAclError, resolveObjectAcl, resolvePublicAccess, readStoredFile, deleteObjectByConfig, withFileBucket } from '../../lib/file-storage';
@@ -14,12 +14,14 @@ import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { currentUser } from '../../lib/context';
 import { config } from '../../config';
 import { getSettings } from '../../lib/settings';
-import { assertUploadSizeAllowed, assertUploadTypeAllowed, mapManagedFile, type ManagedFileUploadOptions } from './files.service';
+import { assertRestrictedStorageSafe, assertUploadSizeAllowed, assertUploadTypeAllowed, mapManagedFile, type ManagedFileUploadOptions } from './files.service';
 import { blobUploadTypeSource, isCompoundFile } from './upload-type';
 import { buildWhere } from '../../lib/where-helpers';
 
 /** 完成分片上传时归属模块可指定的属性 */
-export interface ChunkUploadCompleteOptions extends Pick<ManagedFileUploadOptions, 'visibility' | 'skipTypeCheck'> {
+export interface ChunkUploadCompleteOptions extends Pick<ManagedFileUploadOptions, 'skipTypeCheck'> {
+  /** 通用文件中心的历史调用点可指定；业务会话一律以会话上的 visibility 为准 */
+  visibility?: ManagedFileUploadOptions['visibility'];
   /** Internal handoff from direct-uploads.service after its owner check. */
   allowBrowserDirect?: boolean;
   /**
@@ -29,6 +31,15 @@ export interface ChunkUploadCompleteOptions extends Pick<ManagedFileUploadOption
   expectedHash?: string | null;
   /** 无客户端声明值时也由服务端计算 SHA-256 并写入 `contentHash`（制品 / 固件等需要服务端可信摘要的模块） */
   computeHash?: boolean;
+}
+
+/** 业务上传会话在 init 时一次声明的属性；complete 不再依赖调用点记忆 */
+export interface ChunkUploadSessionOptions {
+  module: string;
+  visibility: FileVisibility;
+  expectedHash?: string | null;
+  computeHash?: boolean;
+  skipTypeCheck?: boolean;
 }
 
 /**
@@ -50,6 +61,11 @@ async function ensureSession(uploadId: string) {
   const tc = tenantCondition(uploadSessions, user);
   const where = buildWhere(eq(uploadSessions.uploadId, uploadId), tc);
   return requireFirstRow(db.select().from(uploadSessions).where(where).limit(1), '上传会话不存在或已过期');
+}
+
+/** 业务完成接口读取会话属性（可见性 / 直传模式 / 声明哈希）；归属与租户条件由 ensureSession 校验 */
+export async function getUploadSession(uploadId: string) {
+  return ensureSession(uploadId);
 }
 
 async function getReceivedIndices(sessionId: number): Promise<number[]> {
@@ -195,7 +211,7 @@ async function assertStoredObjectTypeAllowed(session: UploadSessionRow, config: 
 
 const HASH_MISMATCH_MESSAGE = '文件内容校验失败：实际内容的 SHA-256 与声明不一致，请重新上传';
 
-export async function initChunkUpload(input: InitChunkUploadInput) {
+export async function initChunkUpload(input: InitChunkUploadInput, options?: ChunkUploadSessionOptions) {
   const user = currentUser();
   const settings = await getSettings('files');
   await assertUploadSizeAllowed(input.fileSize, settings);
@@ -215,13 +231,19 @@ export async function initChunkUpload(input: InitChunkUploadInput) {
     .limit(1);
   const defaultConfig = requireRow(maybeDefaultConfig, '当前没有可用的默认文件服务，请先在文件配置中启用并设置默认服务', 400);
 
+  // restricted 会话必须落到私有对象：强制 private ACL + proxy 访问策略，禁止继承配置里的公共读
+  if (options?.visibility === 'restricted') assertRestrictedStorageSafe(defaultConfig);
+  const uploadConfig = options?.visibility === 'restricted'
+    ? { ...defaultConfig, objectAcl: 'private' as const, accessStrategy: 'proxy' as const }
+    : defaultConfig;
+
   const { objectKey } = buildUploadObjectKey(input.fileName, defaultConfig.basePath);
   const uploadId = randomUUID();
 
   // 云原生 multipart：先在云端初始化拿到 multipartUploadId；否则走本地暂存
-  const driver = getMultipartDriver(defaultConfig.provider);
+  const driver = getMultipartDriver(uploadConfig.provider);
   const multipartUploadId = driver
-    ? await driver.init(defaultConfig, objectKey, input.mimeType ?? undefined).catch((err) => { throw mapObjectAclError(err); })
+    ? await driver.init(uploadConfig, objectKey, input.mimeType ?? undefined).catch((err) => { throw mapObjectAclError(err); })
     : null;
 
   await db.insert(uploadSessions).values({
@@ -236,14 +258,19 @@ export async function initChunkUpload(input: InitChunkUploadInput) {
     objectKey,
     bucketName: extractBucketName(defaultConfig),
     multipartUploadId,
-    objectAcl: resolveObjectAcl(defaultConfig),
-    publicAccess: resolvePublicAccess(defaultConfig, resolveObjectAcl(defaultConfig)),
-    accessStrategy: defaultConfig.accessStrategy,
+    objectAcl: resolveObjectAcl(uploadConfig),
+    publicAccess: resolvePublicAccess(uploadConfig, resolveObjectAcl(uploadConfig)),
+    accessStrategy: uploadConfig.accessStrategy,
+    module: options?.module ?? null,
+    visibility: options?.visibility ?? 'public',
+    expectedHash: options?.expectedHash?.toLowerCase() ?? null,
+    computeHash: options?.computeHash ?? false,
+    skipTypeCheck: options?.skipTypeCheck ?? false,
     tenantId: getCreateTenantId(user),
   });
   if (!driver) await fs.mkdir(sessionTempDir(uploadId), { recursive: true });
 
-  return { uploadId, chunkSize, totalChunks, received: [] as number[] };
+  return { uploadId, mode: 'server-proxy' as const, chunkSize, totalChunks, received: [] as number[] };
 }
 
 export async function uploadChunk(uploadId: string, index: number, chunk: File, options: Pick<ManagedFileUploadOptions, 'skipTypeCheck'> = {}) {
@@ -266,7 +293,7 @@ export async function uploadChunk(uploadId: string, index: number, chunk: File, 
     // 云原生 multipart：分片直传云端，记录 ETag（首片做真实类型校验，快速失败）
     const body = Buffer.from(await chunk.arrayBuffer());
     // Non-CFB formats can fail early. CFB directory sectors may be in later chunks, so validate them after completion.
-    if (index === 0 && !options.skipTypeCheck && !isCompoundFile(body)) {
+    if (index === 0 && !options.skipTypeCheck && !session.skipTypeCheck && !isCompoundFile(body)) {
       await assertUploadTypeAllowed(blobUploadTypeSource(chunk), session.mimeType ?? '');
     }
     const config = await getSessionConfig(session.storageConfigId);
@@ -362,14 +389,15 @@ async function mergeAndRegister(
     await failSession(session, config, `分片总大小（${receivedBytes} 字节）与声明的文件大小（${session.fileSize} 字节）不一致`);
   }
   const settings = await getSettings('files');
-  const expectedHash = options.expectedHash?.toLowerCase() ?? null;
+  const expectedHash = (session.expectedHash ?? options.expectedHash)?.toLowerCase() ?? null;
   const verifyLimitBytes = settings.directUploadHashVerifyMaxMb * 1024 * 1024;
   const skipDirectHashVerify = session.uploadMode === 'browser-direct'
     && expectedHash !== null
     && verifyLimitBytes > 0
     && session.fileSize > verifyLimitBytes;
   const effectiveExpectedHash = skipDirectHashVerify ? null : expectedHash;
-  const needHash = effectiveExpectedHash !== null || options.computeHash === true;
+  const needHash = effectiveExpectedHash !== null || session.computeHash || options.computeHash === true;
+  const skipTypeCheck = session.skipTypeCheck || options.skipTypeCheck === true;
   let contentHash: string | null = null;
   const driver = session.uploadMode === 'browser-direct' ? getDirectMultipartDriver(session.provider) : getMultipartDriver(session.provider);
 
@@ -394,7 +422,7 @@ async function mergeAndRegister(
         await failSession(session, config, `云端对象类型校验失败（期望 ${session.mimeType}，实际 ${head.mimeType}）`, { multipartCompleted: true });
       }
     }
-    if (!options.skipTypeCheck) {
+    if (!skipTypeCheck) {
       try {
         await assertStoredObjectTypeAllowed(session, config);
       } catch (err) {
@@ -412,7 +440,7 @@ async function mergeAndRegister(
     }
   } else {
     // 本地暂存：首片真实类型校验 + 内容哈希校验 + 按序流式合并上传
-    if (!options.skipTypeCheck) {
+    if (!skipTypeCheck) {
       try {
         await assertUploadTypeAllowed({
           size: session.fileSize,
@@ -459,6 +487,8 @@ async function mergeAndRegister(
   }
 
   const extension = path.extname(session.fileName).replace('.', '').toLowerCase() || null;
+  // 业务会话以 init 时写入的可见性为准；通用文件中心保留调用点覆盖能力
+  const visibility = session.module ? session.visibility : (options.visibility ?? session.visibility);
   const fileValues = {
       storageConfigId: config.id,
       storageName: config.name,
@@ -472,9 +502,10 @@ async function mergeAndRegister(
       objectAcl: session.objectAcl,
       publicAccess: session.publicAccess,
       accessStrategy: session.accessStrategy,
-      visibility: options.visibility ?? 'public',
-      gcState: options.visibility === 'restricted' ? 'orphan' : 'live',
-      orphanedAt: options.visibility === 'restricted' ? new Date() : null,
+      // 业务会话以 init 时写入的可见性为准；通用文件中心保留调用点覆盖能力
+      visibility,
+      gcState: visibility === 'restricted' ? 'orphan' : 'live',
+      orphanedAt: visibility === 'restricted' ? new Date() : null,
       contentHash,
       tenantId: getCreateTenantId(user),
   } satisfies typeof managedFiles.$inferInsert;

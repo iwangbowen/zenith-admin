@@ -78,7 +78,7 @@ import {
 } from './iot';
 import {
   driveActivities, driveFileVersions, driveNodeComments, driveNodePermissions, driveNodeProfiles, driveNodeRenditions, driveNodes, driveNodeStars, driveNodeSubscriptions, driveNodeTags,
-  driveNodeTexts, driveRecentAccess, driveShareAccessLogs, driveShareLinks, driveSpaceMembers, driveSpaces, driveTags, driveUploadBindings,
+  driveNodeTexts, driveRecentAccess, driveShareAccessLogs, driveShareLinks, driveSpaceMembers, driveSpaces, driveTags,
 } from './drive';
 import { operationLogSubjects, operationLogs } from './logs';
 
@@ -2228,11 +2228,6 @@ export const driveNodeStarsRelations = relations(driveNodeStars, ({ one }) => ({
 export const driveRecentAccessRelations = relations(driveRecentAccess, ({ one }) => ({
   node: one(driveNodes, { fields: [driveRecentAccess.nodeId], references: [driveNodes.id] }),
   user: one(users, { fields: [driveRecentAccess.userId], references: [users.id] }),
-}));
-
-export const driveUploadBindingsRelations = relations(driveUploadBindings, ({ one }) => ({
-  space: one(driveSpaces, { fields: [driveUploadBindings.spaceId], references: [driveSpaces.id] }),
-  parent: one(driveNodes, { fields: [driveUploadBindings.parentId], references: [driveNodes.id] }),
 }));
 
 export const driveTagsRelations = relations(driveTags, ({ one, many }) => ({

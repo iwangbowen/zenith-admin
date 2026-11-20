@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto';
+import * as z from 'zod';
 import { HTTPException } from 'hono/http-exception';
 import { and, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import {
+  DRIVE_UPLOAD_CONFLICT_POLICIES,
   type DriveActivityAction,
   type DriveFileVersion,
   type DriveNode,
@@ -14,14 +16,17 @@ import {
 import type { UploadSessionInit } from '@zenith/shared/platform';
 import { db } from '../../db';
 import type { DbExecutor } from '../../db/types';
-import { driveFileVersions, driveNodeRenditions, driveNodeTexts, driveNodes, driveUploadBindings, managedFiles, type DriveNodeRow, type DriveSpaceRow } from '../../db/schema';
+import { driveFileVersions, driveNodeRenditions, driveNodeTexts, driveNodes, managedFiles, type DriveNodeRow, type DriveSpaceRow } from '../../db/schema';
 import { currentUser, currentUserId } from '../../lib/context';
 import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { formatDateTime } from '../../lib/datetime';
 import { getCreateTenantId, tenantCondition } from '../../lib/tenant';
-import { uploadManagedFile, assertUploadSizeAllowed, simpleUploadLimitBytes } from '../files/files.service';
+import { getRestrictedFileForRead, uploadManagedFile, assertUploadSizeAllowed, simpleUploadLimitBytes } from '../files/files.service';
 import { releaseManagedFiles, retainManagedFiles } from '../files/file-gc.service';
-import { abortChunkUpload, completeChunkUpload, getUploadStatus, initChunkUpload, uploadChunk } from '../files/upload-sessions.service';
+import { abortChunkUpload, getUploadStatus, uploadChunk } from '../files/upload-sessions.service';
+import { completeBusinessUpload, initBusinessUpload } from '../files/business-uploads.service';
+import { requireUploadBinding, unbindUploadSession } from '../files/upload-bindings.service';
+import { readStoredFile } from '../../lib/file-storage';
 import { ensureNodeRole, loadDriveSubjects, visibleNodeCondition, type DriveSubjectSet } from './drive-access.service';
 import { childAclOf } from './drive-acl';
 import { assertDriveFileAllowed } from './drive-content-policy';
@@ -328,7 +333,21 @@ export async function uploadDriveNodeVersion(nodeId: number, file: File, comment
   return finishNode(appended);
 }
 
-// ─── 分片上传（包装通用 upload_sessions）──────────────────────────────────────
+// ─── 分片上传（包装统一业务上传会话）──────────────────────────────────────────
+
+const DRIVE_UPLOAD_MODULE = 'drive-upload';
+
+const driveUploadPayloadSchema = z.object({
+  spaceId: z.int(),
+  parentId: z.int().nullable(),
+  nodeId: z.int().nullable(),
+  fileName: z.string().min(1),
+  fileSize: z.int().nonnegative(),
+  conflictPolicy: z.enum(DRIVE_UPLOAD_CONFLICT_POLICIES),
+  expectedHash: z.string().nullable(),
+});
+
+type DriveUploadBinding = z.infer<typeof driveUploadPayloadSchema>;
 
 export async function initDriveUpload(data: DriveUploadInitInput): Promise<UploadSessionInit> {
   await assertExtensionAllowed(data.fileName);
@@ -348,53 +367,72 @@ export async function initDriveUpload(data: DriveUploadInitInput): Promise<Uploa
   if (quota.remaining !== null && quota.remaining < data.fileSize) {
     throw new HTTPException(400, { message: '空间配额不足，请清理回收站或联系管理员扩容' });
   }
-  const session = await initChunkUpload({
-    fileName: data.fileName, fileSize: data.fileSize, mimeType: data.mimeType, chunkSize: data.chunkSize,
-  });
-  await db.insert(driveUploadBindings).values({
-    uploadId: session.uploadId,
-    spaceId: target.space.id,
-    parentId: target.parentId,
-    nodeId: data.nodeId ?? null,
+  return initBusinessUpload({
+    module: DRIVE_UPLOAD_MODULE,
+    payload: {
+      spaceId: target.space.id,
+      parentId: target.parentId,
+      nodeId: data.nodeId ?? null,
+      fileName: data.fileName,
+      fileSize: data.fileSize,
+      conflictPolicy: data.conflictPolicy,
+      expectedHash: data.contentHash?.toLowerCase() ?? null,
+    },
+    visibility: 'restricted',
     fileName: data.fileName,
     fileSize: data.fileSize,
-    conflictPolicy: data.conflictPolicy,
+    mimeType: data.mimeType,
+    chunkSize: data.chunkSize,
     expectedHash: data.contentHash?.toLowerCase() ?? null,
-    tenantId: getCreateTenantId(currentUser()),
-    createdBy: currentUserId(),
+    skipTypeCheck: true,
+    allowDirect: true,
   });
-  return session;
 }
 
-async function ensureBinding(uploadId: string) {
-  return requireFirstRow(
-    db.select().from(driveUploadBindings)
-      .where(and(eq(driveUploadBindings.uploadId, uploadId), eq(driveUploadBindings.createdBy, currentUserId())))
-      .limit(1),
-    '上传会话不存在',
-  );
+async function requireDriveUpload(uploadId: string): Promise<DriveUploadBinding> {
+  return requireUploadBinding(uploadId, DRIVE_UPLOAD_MODULE, driveUploadPayloadSchema);
 }
 
 export async function uploadDriveChunk(uploadId: string, index: number, chunk: File) {
-  const binding = await ensureBinding(uploadId);
-  // 首片按内容做可执行文件拦截（伪装扩展名也拦得住）
+  const binding = await requireDriveUpload(uploadId);
+  // 首片按内容做可执行文件拦截（伪装扩展名也拦得住）；直传会话没有服务端分片，改在 complete 后抽检
   if (index === 0) await assertDriveFileAllowed(binding.fileName, Buffer.from(await chunk.slice(0, 4100).arrayBuffer()));
-  return uploadChunk(uploadId, index, chunk, { skipTypeCheck: true });
+  return uploadChunk(uploadId, index, chunk);
+}
+
+/** 直传会话无法在分片阶段抽检内容：complete 后读取对象头 4KB 再走同一套内容策略 */
+async function assertDirectUploadContentAllowed(fileId: string, fileName: string) {
+  const { file, storageConfig } = await getRestrictedFileForRead(fileId);
+  const head = await readStoredFile(file, storageConfig, { start: 0, end: Math.min(4095, Math.max(file.size, 1) - 1) });
+  const reader = head.stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (total < 4096) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      total += value.byteLength;
+    }
+  } finally {
+    await reader.cancel().catch(() => { /* 读取完成后取消剩余流 */ });
+  }
+  await assertDriveFileAllowed(fileName, Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).subarray(0, 4096));
 }
 
 export async function getDriveUploadStatus(uploadId: string) {
-  await ensureBinding(uploadId);
+  await requireDriveUpload(uploadId);
   return getUploadStatus(uploadId);
 }
 
 export async function abortDriveUpload(uploadId: string) {
-  await ensureBinding(uploadId);
-  await abortChunkUpload(uploadId);
-  await db.delete(driveUploadBindings).where(eq(driveUploadBindings.uploadId, uploadId));
+  await requireDriveUpload(uploadId);
+  await abortChunkUpload(uploadId, { allowBrowserDirect: true });
+  await unbindUploadSession(uploadId, DRIVE_UPLOAD_MODULE);
 }
 
 export async function completeDriveUpload(data: DriveUploadCompleteInput): Promise<DriveNode> {
-  const binding = await ensureBinding(data.uploadId);
+  const binding = await requireDriveUpload(data.uploadId);
   const targetNode = binding.nodeId ? await ensureDriveNodeExists(binding.nodeId) : null;
   if (targetNode) {
     await ensureNodeRole(targetNode, 'editor', '没有该文件的编辑权限');
@@ -403,30 +441,34 @@ export async function completeDriveUpload(data: DriveUploadCompleteInput): Promi
     await resolveWritableParent(binding.spaceId, binding.parentId ?? null);
   }
   await assertDriveFileAllowed(targetNode?.name ?? binding.fileName);
-  const file = await completeChunkUpload(data.uploadId, { visibility: 'restricted', expectedHash: binding.expectedHash, skipTypeCheck: true }).catch(async (err: unknown) => {
-    // 内容校验失败等不可恢复错误会把会话置为 aborted，绑定随之失去意义
-    const status = await getUploadStatus(data.uploadId).then((s) => s.status).catch(() => null);
-    if (status && status !== 'uploading') await db.delete(driveUploadBindings).where(eq(driveUploadBindings.uploadId, data.uploadId));
-    throw err;
+
+  return completeBusinessUpload({
+    uploadId: data.uploadId,
+    module: DRIVE_UPLOAD_MODULE,
+    schema: driveUploadPayloadSchema,
+    onComplete: async (file, meta, context) => {
+      if (context.mode === 'browser-direct') {
+        await assertDirectUploadContentAllowed(file.id, meta.fileName);
+      }
+      let result: { row: DriveNodeRow; releasedFileIds: string[] };
+      if (meta.nodeId) {
+        const node = await ensureDriveNodeExists(meta.nodeId);
+        const settings = await getDriveSettings();
+        const subjects = await loadDriveSubjects();
+        result = await db.transaction((tx) => appendVersion(tx, node, {
+          fileId: file.id, size: file.size, mimeType: file.mimeType ?? null, contentHash: file.contentHash ?? null,
+        }, '分片上传覆盖', settings, subjects));
+      } else {
+        const { space, ancestorIds } = await resolveWritableParent(meta.spaceId, meta.parentId ?? null);
+        result = await attachFileAsNode({
+          space, parentId: meta.parentId ?? null, ancestorIds, fileName: meta.fileName,
+          fileId: file.id, size: file.size, mimeType: file.mimeType ?? null, contentHash: file.contentHash ?? null,
+          conflictPolicy: meta.conflictPolicy,
+        });
+      }
+      return finishNode(result);
+    },
   });
-  let result: { row: DriveNodeRow; releasedFileIds: string[] };
-  if (binding.nodeId) {
-    const node = await ensureDriveNodeExists(binding.nodeId);
-    const settings = await getDriveSettings();
-    const subjects = await loadDriveSubjects();
-    result = await db.transaction((tx) => appendVersion(tx, node, {
-      fileId: file.id, size: file.size, mimeType: file.mimeType ?? null, contentHash: file.contentHash ?? null,
-    }, '分片上传覆盖', settings, subjects));
-  } else {
-    const { space, ancestorIds } = await resolveWritableParent(binding.spaceId, binding.parentId ?? null);
-    result = await attachFileAsNode({
-      space, parentId: binding.parentId ?? null, ancestorIds, fileName: binding.fileName,
-      fileId: file.id, size: file.size, mimeType: file.mimeType ?? null, contentHash: file.contentHash ?? null,
-      conflictPolicy: binding.conflictPolicy,
-    });
-  }
-  await db.delete(driveUploadBindings).where(eq(driveUploadBindings.uploadId, data.uploadId));
-  return finishNode(result);
 }
 
 // ─── 版本 ─────────────────────────────────────────────────────────────────────

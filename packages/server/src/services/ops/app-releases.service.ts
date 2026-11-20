@@ -33,9 +33,11 @@ import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { pageOffset } from '../../lib/pagination';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
-import { deleteManagedFile, saveGeneratedManagedFile } from '../files/files.service';
-import { bindUploadSession, requireUploadBinding } from '../files/upload-bindings.service';
-import { abortChunkUpload, completeChunkUpload, getUploadStatus, initChunkUpload, uploadChunk } from '../files/upload-sessions.service';
+import { deleteGeneratedManagedFile, saveGeneratedManagedFile } from '../files/files.service';
+import { requireUploadBinding } from '../files/upload-bindings.service';
+import { abortChunkUpload, getUploadStatus, uploadChunk } from '../files/upload-sessions.service';
+import { initBusinessUpload, completeBusinessUpload } from '../files/business-uploads.service';
+import { releaseManagedFiles, retainManagedFiles } from '../files/file-gc.service';
 import { countActiveDevices, getDeviceVersionDistribution, upsertDeviceHeartbeat } from './client-devices.service';
 import { pickEntity } from '../../lib/entity-map';
 import { localDate } from "../../lib/datetime-sql";
@@ -304,16 +306,11 @@ export async function deleteAppRelease(id: number) {
   const before = await ensureAppReleaseExists(id);
   if (before.status === 'published') throw new HTTPException(400, { message: '已发布版本不可删除，请先撤回' });
   const artifacts = await db.select().from(appArtifacts).where(eq(appArtifacts.releaseId, id));
-  await db.delete(appReleases).where(eq(appReleases.id, id)); // 制品行随外键级联删除
-  // 存储清理是尽力而为的副作用，不放入事务：失败只影响存储空间，不影响发布数据一致性
-  for (const artifact of artifacts) {
-    if (!artifact.fileId) continue;
-    try {
-      await deleteManagedFile(artifact.fileId);
-    } catch (err) {
-      logger.warn(`[app-releases] 删除制品文件失败 fileId=${artifact.fileId}: ${err instanceof Error ? err.message : String(err)}`);
-    }
-  }
+  // 制品行随外键级联删除；托管文件按引用计数释放，由孤儿 GC 回收对象
+  await db.transaction(async (tx) => {
+    await tx.delete(appReleases).where(eq(appReleases.id, id));
+    await releaseManagedFiles(tx, artifacts.map((artifact) => artifact.fileId));
+  });
 }
 
 // ─── 制品 ─────────────────────────────────────────────────────────────────────
@@ -337,29 +334,31 @@ export async function addFileArtifact(releaseId: number, meta: AddFileArtifactMe
     mimeType: file.type || 'application/octet-stream',
     tenantId: null,
     createdBy: currentUser().userId,
+    visibility: 'restricted',
   });
   try {
-    const [row] = await db
-      .insert(appArtifacts)
-      .values({
-        releaseId,
-        platform: meta.platform,
-        arch: meta.arch,
-        kind: meta.kind,
-        fileId: uploaded.id,
-        fileName: file.name,
-        size: file.size,
-        sha256,
-      })
-      .returning();
-    return mapAppArtifact(row);
+    return await db.transaction(async (tx) => {
+      await retainManagedFiles(tx, [uploaded.id]);
+      const [row] = await tx
+        .insert(appArtifacts)
+        .values({
+          releaseId,
+          platform: meta.platform,
+          arch: meta.arch,
+          kind: meta.kind,
+          fileId: uploaded.id,
+          fileName: file.name,
+          size: file.size,
+          sha256,
+        })
+        .returning();
+      return mapAppArtifact(row);
+    });
   } catch (err) {
-    // 制品行写入失败时回收刚上传的文件，避免存储残留
-    try {
-      await deleteManagedFile(uploaded.id);
-    } catch {
+    // 事务已回滚，引用计数仍为 0；回收刚上传的文件，避免存储残留
+    await deleteGeneratedManagedFile(uploaded.id, null).catch(() => {
       logger.warn(`[app-releases] 回收上传文件失败 fileId=${uploaded.id}`);
-    }
+    });
     rethrowPgUniqueViolation(err, '该版本下已存在同名制品文件');
     throw err;
   }
@@ -389,17 +388,23 @@ export async function initArtifactUpload(releaseId: number, input: InitAppArtifa
   // 同名制品在 complete 时才会撞唯一约束，先查一次让用户在传完几百 MB 之前就得到提示
   const duplicated = await db.$count(appArtifacts, and(eq(appArtifacts.releaseId, releaseId), eq(appArtifacts.fileName, input.fileName)));
   if (duplicated > 0) throw new HTTPException(400, { message: '该版本下已存在同名制品文件' });
-  const session = await initChunkUpload({ fileName: input.fileName, fileSize: input.fileSize, mimeType: input.mimeType, chunkSize: input.chunkSize });
-  await bindUploadSession(session.uploadId, ARTIFACT_UPLOAD_MODULE, {
-    releaseId, platform: input.platform, arch: input.arch, kind: input.kind, fileName: input.fileName,
+  return initBusinessUpload({
+    module: ARTIFACT_UPLOAD_MODULE,
+    payload: { releaseId, platform: input.platform, arch: input.arch, kind: input.kind, fileName: input.fileName },
+    visibility: 'restricted',
+    fileName: input.fileName,
+    fileSize: input.fileSize,
+    mimeType: input.mimeType,
+    chunkSize: input.chunkSize,
+    computeHash: true,
+    skipTypeCheck: true,
+    allowDirect: true,
   });
-  return session;
 }
 
 export async function uploadArtifactChunk(releaseId: number, uploadId: string, index: number, chunk: File) {
   await requireArtifactUpload(releaseId, uploadId);
-  // 制品是任意二进制，与单请求上传一样跳过 MIME 白名单
-  return uploadChunk(uploadId, index, chunk, { skipTypeCheck: true });
+  return uploadChunk(uploadId, index, chunk);
 }
 
 export async function getArtifactUploadStatus(releaseId: number, uploadId: string) {
@@ -413,33 +418,37 @@ export async function abortArtifactUpload(releaseId: number, uploadId: string) {
 }
 
 export async function completeArtifactUpload(releaseId: number, uploadId: string) {
-  const meta = await requireArtifactUpload(releaseId, uploadId);
   await ensureAppReleaseExists(releaseId);
-  const file = await completeChunkUpload(uploadId, { skipTypeCheck: true, computeHash: true });
-  try {
-    const [row] = await db
-      .insert(appArtifacts)
-      .values({
-        releaseId,
-        platform: meta.platform,
-        arch: meta.arch,
-        kind: meta.kind,
-        fileId: file.id,
-        fileName: meta.fileName,
-        size: file.size,
-        sha256: file.contentHash ?? null,
-      })
-      .returning();
-    return mapAppArtifact(row);
-  } catch (err) {
-    try {
-      await deleteManagedFile(file.id);
-    } catch {
-      logger.warn(`[app-releases] 回收分片上传文件失败 fileId=${file.id}`);
-    }
-    rethrowPgUniqueViolation(err, '该版本下已存在同名制品文件');
-    throw err;
-  }
+  return completeBusinessUpload({
+    uploadId,
+    module: ARTIFACT_UPLOAD_MODULE,
+    schema: artifactUploadPayloadSchema,
+    onComplete: async (file, meta) => {
+      if (meta.releaseId !== releaseId) throw new HTTPException(400, { message: '上传会话不属于该版本' });
+      try {
+        return await db.transaction(async (tx) => {
+          await retainManagedFiles(tx, [file.id]);
+          const [row] = await tx
+            .insert(appArtifacts)
+            .values({
+              releaseId,
+              platform: meta.platform,
+              arch: meta.arch,
+              kind: meta.kind,
+              fileId: file.id,
+              fileName: meta.fileName,
+              size: file.size,
+              sha256: file.contentHash ?? null,
+            })
+            .returning();
+          return mapAppArtifact(row);
+        });
+      } catch (err) {
+        rethrowPgUniqueViolation(err, '该版本下已存在同名制品文件');
+        throw err;
+      }
+    },
+  });
 }
 
 export async function addExternalArtifact(releaseId: number, input: CreateExternalArtifactInput) {
@@ -477,14 +486,10 @@ export async function getAppArtifactBeforeAudit(id: number) {
 
 export async function deleteAppArtifact(id: number) {
   const artifact = await ensureAppArtifactExists(id);
-  await db.delete(appArtifacts).where(eq(appArtifacts.id, id));
-  if (artifact.fileId) {
-    try {
-      await deleteManagedFile(artifact.fileId);
-    } catch (err) {
-      logger.warn(`[app-releases] 删除制品文件失败 fileId=${artifact.fileId}: ${err instanceof Error ? err.message : String(err)}`);
-    }
-  }
+  await db.transaction(async (tx) => {
+    await tx.delete(appArtifacts).where(eq(appArtifacts.id, id));
+    if (artifact.fileId) await releaseManagedFiles(tx, [artifact.fileId]);
+  });
 }
 
 // ─── 公开侧：检查更新 / 制品分发 / 回执 ──────────────────────────────────────

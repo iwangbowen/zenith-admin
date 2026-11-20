@@ -16,7 +16,7 @@ import { ingestIotDeviceLogs } from '../../services/iot/iot-device-logs.service'
 import { ingestGatewayBatch, ingestGatewayEvent } from '../../services/iot/iot-topology.service';
 import { getIotDesiredPayload } from '../../services/iot/iot-shadow.service';
 import { ensureOtaDownloadAllowed, getPendingOtaPayload, reportIotOtaProgress } from '../../services/iot/iot-ota.service';
-import { getFileAccessUrl } from '../../services/files/files.service';
+import { getRestrictedFileAccessUrl } from '../../services/files/files.service';
 
 const ingestRouter = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -104,7 +104,7 @@ const otaFirmwareRoute = defineContractRoute(iotIngestContract.otaFirmware, {
   handler: async (c) => {
     const { taskId } = c.req.valid('query');
     const fileId = await ensureOtaDownloadAllowed(c.get('iotDevice'), taskId);
-    const { url } = await getFileAccessUrl(fileId, 'download');
+    const { url } = await getRestrictedFileAccessUrl(fileId, 'download');
     return c.redirect(url, 302);
   },
 });

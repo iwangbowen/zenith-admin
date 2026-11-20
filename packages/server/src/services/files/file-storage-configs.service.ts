@@ -2,7 +2,7 @@ import type { QueryOutputOf } from '@zenith/shared/core';
 import { listRows } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
 import { clearDefaultFlag as clearTableDefaultFlag } from '../../lib/default-flag';
-import { fileStorageConfigs, managedFiles, uploadSessions } from '../../db/schema';
+import { fileStorageConfigs, managedFiles, uploadSessions, type FileStorageConfigRow } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
 import { createFileStorageConfigSchema, FILE_BUCKET_ACCESS_SUPPORT, FILE_OBJECT_ACL_SUPPORT, fileStorageConfigContract, type FileBucketAcl } from '@zenith/shared/platform';
 import type { z } from '@hono/zod-openapi';
@@ -64,7 +64,7 @@ const EMPTY_PROVIDER_FIELDS = {
   azureAccountName: null, azureAccountKey: null, azureContainerName: null, azureEndpoint: null,
   azureTenantId: null, azureClientId: null, azureClientSecret: null, azureSubscriptionId: null, azureResourceGroup: null, azureCloud: 'public',
   sftpHost: null, sftpPort: null, sftpUsername: null, sftpPassword: null, sftpPrivateKey: null, sftpRootPath: null, sftpBaseUrl: null,
-};
+} as const;
 
 export function toStoragePayload(input: StorageInput) {
   // 对象 ACL 仅在 provider 支持时保留（更新接口为 partial schema，此处按支持矩阵兜底回落 default）

@@ -127,6 +127,13 @@
       "when": 1795157340435,
       "tag": "0017_violet_eternity",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1795161076179,
+      "tag": "0018_lowly_guardian",
+      "breakpoints": true
     }
   ]
 }

@@ -18,7 +18,7 @@ import {
   findReusableFileByHash,
 } from '../../services/files/files.service';
 import { initChunkUpload, uploadChunk, completeChunkUpload, getUploadStatus, abortChunkUpload } from '../../services/files/upload-sessions.service';
-import { abortDirectUpload, acknowledgeDirectUploadPart, completeDirectUpload, createDirectUpload, getDirectUploadPartUrl, getDirectUploadStatus } from '../../services/files/direct-uploads.service';
+import { abortDirectUpload, acknowledgeBusinessUploadPart, acknowledgeDirectUploadPart, abortBusinessUpload, completeDirectUpload, createDirectUpload, getBusinessUploadPartUrl, getBusinessUploadStatus, getDirectUploadPartUrl, getDirectUploadStatus } from '../../services/files/direct-uploads.service';
 import { readStoredFile } from '../../lib/file-storage';
 import { parseRangeHeader, rangeNotSatisfiable, supportsRange, rangeContentHeaders } from '../../lib/http-range';
 import { attachmentDisposition, inlineOrAttachmentDisposition } from '../../lib/content-disposition';
@@ -193,6 +193,34 @@ const directUploadAbortRoute = defineContractRoute(fileContract.directUploadAbor
   },
 });
 
+// ─── 业务上传会话的直传通道 ─────────────────────────────────────────────────
+// init / complete 由各业务模块的契约承载（业务权限与落库语义在那边），这里只提供
+// 「当前用户 + 业务会话」的分片地址、确认、进度与中止。
+const businessUploadPartUrlRoute = defineContractRoute(fileContract.businessUploadPartUrl, {
+  handler: async (c) => {
+    const { uploadId, partNumber } = c.req.valid('param');
+    return c.json(okBody(await getBusinessUploadPartUrl(uploadId, partNumber)), 200);
+  },
+});
+
+const businessUploadPartAckRoute = defineContractRoute(fileContract.businessUploadPartAck, {
+  handler: async (c) => {
+    const { uploadId, partNumber } = c.req.valid('param');
+    return c.json(okBody(await acknowledgeBusinessUploadPart(uploadId, partNumber, c.req.valid('json'))), 200);
+  },
+});
+
+const businessUploadStatusRoute = defineContractRoute(fileContract.businessUploadStatus, {
+  handler: async (c) => c.json(okBody(await getBusinessUploadStatus(c.req.valid('param').uploadId)), 200),
+});
+
+const businessUploadAbortRoute = defineContractRoute(fileContract.businessUploadAbort, {
+  handler: async (c) => {
+    await abortBusinessUpload(c.req.valid('param').uploadId);
+    return c.json(okBody(null, '已中止'), 200);
+  },
+});
+
 const quickUploadRoute = defineContractRoute(fileContract.quickUpload, {
   handler: async (c) => c.json(okBody(await findReusableFileByHash(c.req.valid('json'))), 200),
 });
@@ -233,6 +261,10 @@ mountCrud(filesRouter, fileContract,
     directUploadStatusRoute,
     directUploadCompleteRoute,
     directUploadAbortRoute,
+    businessUploadPartUrlRoute,
+    businessUploadPartAckRoute,
+    businessUploadStatusRoute,
+    businessUploadAbortRoute,
     quickUploadRoute,
     uploadRoute,
     uploadOneRoute,

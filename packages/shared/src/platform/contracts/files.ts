@@ -6,6 +6,7 @@ import {
   FILE_ACCESS_STRATEGIES,
   FILE_STORAGE_PROVIDERS,
   FILE_TYPE_FILTERS,
+  FILE_UPLOAD_MODES,
   FILE_URL_RESULT_STRATEGIES,
   FILE_VISIBILITIES,
   UPLOAD_SESSION_STATUSES,
@@ -82,11 +83,23 @@ export type FileStats = z.infer<typeof fileStatsSchema>;
 
 // ─── 分片上传会话 ─────────────────────────────────────────────────────────────
 
+/**
+ * 分片上传初始化结果。`mode` 由服务端按存储配置与业务策略裁定：
+ * - server-proxy：分片经服务端中转，chunk 接口在业务契约上；
+ * - browser-direct：分片经直传地址上传到对象存储，part 接口使用 `businessUpload*`。
+ * direct 专属字段只在 browser-direct 时返回。
+ */
 export const uploadSessionInitSchema = z.object({
   uploadId: z.string(),
+  mode: z.enum(FILE_UPLOAD_MODES),
   chunkSize: z.int(),
   totalChunks: z.int(),
   received: z.array(z.int()).meta({ description: '已接收的分片序号（从 0 计），用于断点续传' }),
+  provider: z.enum(FILE_STORAGE_PROVIDERS).optional(),
+  objectKey: z.string().optional(),
+  bucketName: z.string().nullable().optional(),
+  publicAccess: z.boolean().optional(),
+  accessStrategy: z.enum(FILE_ACCESS_STRATEGIES).optional(),
 }).meta({ id: 'UploadSessionInit' });
 
 export type UploadSessionInit = z.infer<typeof uploadSessionInitSchema>;
@@ -170,14 +183,11 @@ export const directUploadInitSchema = z.object({
   storageConfigId: z.int().optional(),
 });
 
-export const directUploadSessionSchema = z.object({
-  uploadId: z.string(),
+export const directUploadSessionSchema = uploadSessionInitSchema.extend({
+  mode: z.literal('browser-direct'),
   provider: z.enum(FILE_STORAGE_PROVIDERS),
   objectKey: z.string(),
   bucketName: z.string().nullable().optional(),
-  chunkSize: z.int().positive(),
-  totalChunks: z.int().nonnegative(),
-  received: z.array(z.int()),
   publicAccess: z.boolean(),
   accessStrategy: z.enum(FILE_ACCESS_STRATEGIES),
 }).meta({ id: 'DirectUploadSession' });
@@ -242,6 +252,13 @@ export const fileContract = defineContract('/api/files', {
   directUploadStatus: op.get('/direct-uploads/{uploadId}/status', { access: 'authenticated', params: uploadIdParam, response: uploadSessionStatusSchema, summary: '查询浏览器直传续传状态' }),
   directUploadComplete: op.post('/direct-uploads/{uploadId}/complete', { access: { permission: 'system:file:upload' }, audit: { description: '完成浏览器直传', recordBody: false }, params: uploadIdParam, body: directUploadCompleteSchema, response: managedFileSchema, summary: '完成浏览器直传' }),
   directUploadAbort: op.delete('/direct-uploads/{uploadId}', { access: { permission: 'system:file:upload' }, audit: { description: '中止浏览器直传', recordBody: false }, params: uploadIdParam, summary: '中止浏览器直传' }),
+  // ─── 业务上传会话的直传分片通道 ───────────────────────────────────────────
+  // 会话由业务 init 创建并校验业务权限；这里只按「当前用户 + 会话归属」放行，
+  // 完成落库仍必须回到业务模块自己的 complete（通用 complete 拒绝业务会话）。
+  businessUploadPartUrl: op.post('/business-uploads/{uploadId}/parts/{partNumber}/url', { access: 'authenticated', params: directUploadPartParams, response: directUploadPartUrlSchema, summary: '签发业务直传分片地址' }),
+  businessUploadPartAck: op.post('/business-uploads/{uploadId}/parts/{partNumber}/complete', { access: 'authenticated', params: directUploadPartParams, body: directUploadPartAckSchema, response: uploadChunkResultSchema, summary: '确认业务直传分片' }),
+  businessUploadStatus: op.get('/business-uploads/{uploadId}', { access: 'authenticated', params: uploadIdParam, response: uploadSessionStatusSchema, summary: '业务上传会话进度' }),
+  businessUploadAbort: op.delete('/business-uploads/{uploadId}', { access: 'authenticated', params: uploadIdParam, summary: '中止业务上传会话' }),
   quickUpload: op.post('/quick-upload', { access: { permission: 'system:file:upload' }, audit: { description: '秒传文件', recordBody: false }, body: quickUploadSchema, response: managedFileSchema.nullable(), summary: '按内容哈希秒传' }),
   detail: op.get('/{id}', { access: { permission: 'system:file:list' }, params: fileIdParam, response: managedFileSchema, summary: '获取文件详情' }),
   upload: op.post('/upload', { access: { permission: 'system:file:upload' }, audit: { description: '上传文件', recordBody: false }, body: uploadBody, response: z.array(managedFileSchema), summary: '上传文件' }),
