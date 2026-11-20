@@ -5,7 +5,7 @@ import { advanceTokens } from '../../../lib/workflow-token-engine';
 import type { WorkflowFlowData, WorkflowStarterContext, WorkflowPathPlanOptions } from '@zenith/shared/workflow';
 import { findNextApproverSelectNodes } from '@zenith/shared/workflow';
 import { HTTPException } from 'hono/http-exception';
-import { filterSelectedApproverIds } from '../workflow-assignee-resolver.service';
+import { buildStarterContext, filterSelectedApproverIds } from '../workflow-assignee-resolver.service';
 import type { DbExecutor } from '../../../db/types';
 
 /** 发起前快速校验：流程是否存在可执行入口（token 引擎 seed dry-run，与实际物化同源） */
@@ -36,10 +36,19 @@ export async function assertSelectedNextApprovers(
   fromNodeKey: string,
   selectedNextApprovers: Record<string, number[]> | undefined,
   executor: DbExecutor,
+  context: {
+    /** 本次审批合并后的表单值（实例 formData + 本节点允许写回的 formUpdates） */
+    formData?: Readonly<Record<string, unknown>>;
+    /** 条件规则引用发起人维度（部门 / 角色 / 岗位）时才需要 */
+    initiatorId?: number;
+  } = {},
 ): Promise<void> {
-  // 仅校验「紧邻的下一审批节点」中的 approverSelect（穿过网关/抄送，遇到人工节点即停），
-  // 与引擎本次推进实际物化的任务一致，避免对更下游 approverSelect 的过早强制选人。
-  const selectNodes = findNextApproverSelectNodes(flowData, fromNodeKey);
+  // 与引擎选边同源：条件分支只对命中（或尚不确定）的分支要求选人，
+  // 否则「未经过分支上的 approverSelect」会被误判为必填，甚至把选人结果应用到错误分支。
+  const starter = context.initiatorId != null && flowUsesStarterConditions(flowData)
+    ? await buildStarterContext(context.initiatorId, executor)
+    : undefined;
+  const selectNodes = findNextApproverSelectNodes(flowData, fromNodeKey, { formData: context.formData, starter });
   if (selectNodes.length === 0) return;
   for (const node of selectNodes) {
     const picked = await filterSelectedApproverIds(node.data, selectedNextApprovers?.[node.data.key] ?? [], executor);
@@ -47,4 +56,11 @@ export async function assertSelectedNextApprovers(
       throw new HTTPException(400, { message: `请选择节点「${node.data.label || node.data.key}」的审批人` });
     }
   }
+}
+
+/** 流程条件中是否存在引用发起人维度（user/dept/role/post）的规则 */
+function flowUsesStarterConditions(flowData: WorkflowFlowData): boolean {
+  return (flowData.edges ?? []).some((edge) =>
+    [edge.condition, ...(edge.conditions ?? []).flatMap((group) => group.rules)]
+      .some((rule) => rule?.source === 'starter'));
 }

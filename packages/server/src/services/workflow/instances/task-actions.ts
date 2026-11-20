@@ -121,7 +121,9 @@ export async function listTaskSelectableNextApprovers(
   requireRow(inst, '流程实例不存在');
   const flowData = inst.definitionSnapshot?.flowData;
   if (!flowData) return [];
-  const nodes = findNextApproverSelectNodes(flowData, task.nodeKey)
+  const nodes = findNextApproverSelectNodes(flowData, task.nodeKey, {
+    formData: (inst.formData ?? {}) as Record<string, unknown>,
+  })
     .filter((node) => !query.nodeKey || node.data.key === query.nodeKey);
   return Promise.all(nodes.map(async (node) => {
     const { items, truncated } = await searchSelectableApprovers(node.data, { keyword: query.keyword, limit: query.limit });
@@ -148,10 +150,20 @@ async function approveUserTask(taskId: number, comment: string | undefined, atta
   // 校验"操作按钮设置"：通过按钮须启用 + 附件必填（uploadMode === 'required'）
   const flowData = inst.definitionSnapshot?.flowData;
   const nodeCfg = flowData?.nodes.find((n) => n.data.key === task.nodeKey)?.data;
+  const fieldPerms = resolveNodeFieldPermissions(flowData, task.nodeKey);
+  const permittedFormUpdates = sanitizeFormUpdatesByNodePerms(fieldPerms, formUpdates);
   assertActionButtonEnabled(inst, task.nodeKey, 'approve');
   assertActionUploadRequirement(inst, task.nodeKey, 'approve', attachments);
   if (flowData) {
-    await assertSelectedNextApprovers(flowData, task.nodeKey, selectedNextApprovers, db);
+    // 选人校验用「实例当前表单值 + 本节点可写回的修改」求值分支条件（含公式/合计等派生值），
+    // 与引擎本次推进实际选边一致：未经过的分支不再强制选人。
+    await assertSelectedNextApprovers(flowData, task.nodeKey, selectedNextApprovers, db, {
+      formData: normalizeInstanceFormData(inst.formSnapshot, {
+        ...((inst.formData ?? {}) as Record<string, unknown>),
+        ...permittedFormUpdates,
+      }),
+      initiatorId: inst.initiatorId,
+    });
   }
   if (nodeCfg?.operations?.includes('opinionRequired') && !comment?.trim()) {
     throw new HTTPException(400, { message: '请填写审批意见后再提交' });
@@ -159,7 +171,7 @@ async function approveUserTask(taskId: number, comment: string | undefined, atta
   const businessApproval = await getWorkflowInstanceBusinessAdapter(inst)?.prepareApproval?.({ instance: inst, task, actor, input: businessInput, formUpdates });
   const signatureSnapshot = await resolveWorkflowTaskSignature(nodeCfg, signature, batch);
   const signedFormUpdates = await resolveWorkflowFormSignatures(inst.formSnapshot,
-    sanitizeFormUpdatesByNodePerms(resolveNodeFieldPermissions(flowData, task.nodeKey), formUpdates),
+    permittedFormUpdates,
     (inst.formData ?? {}) as Record<string, unknown>);
   // 委派任务：suggest（建议制）由代理人操作时生成回执给委托人确认；full（默认）代理人直接代批，comment 留痕
   if (task.delegatedFromId && task.delegatedFromId !== actor.userId) {
