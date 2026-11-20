@@ -1,5 +1,5 @@
 {
-  "$comment": "构建产物预算（npm run check:bundle）。v2.88.0 引入权限自助入口、完整流程图预览和通用业务动作表单后，按本次实测产物增加少量余量；v2.92.0 看板操作分布改为按日聚合切片后新增少量 chunk，入口总量上限 890→900；v2.94.0 工作流与通知修复后 AdminLayout 增量文件增至 46，上限 44→48。后续新增首屏依赖仍需单独评估。口径见 scripts/bundle-analyze.mjs。maxTotalJsChunks / maxTotalJsMB 是入口 assetsDir 内全部 JS（含按需加载）的总量：某入口误引后台页面注册表时关键路径指标不变、但这里会成倍增长。",
+  "$comment": "构建产物预算（npm run check:bundle）。v2.88.0 引入权限自助入口、完整流程图预览和通用业务动作表单后，按本次实测产物增加少量余量；v2.92.0 看板操作分布改为按日聚合切片后新增少量 chunk，入口总量上限 890→900；v2.94.0 工作流与通知修复后 AdminLayout 增量文件增至 46，上限 44→48；v3.34.0 文件存储直传、业务上传会话与云端权限面板后按实测调整：index 总包 45→46MB、已登录首屏 1000→1010KB，approval 185→190 chunk、21→22MB。后续新增首屏依赖仍需单独评估。口径见 scripts/bundle-analyze.mjs。maxTotalJsChunks / maxTotalJsMB 是入口 assetsDir 内全部 JS（含按需加载）的总量：某入口误引后台页面注册表时关键路径指标不变、但这里会成倍增长。",
   "maxJsChunks": 1160,
   "entries": {
     "index.html": {
@@ -18,10 +18,10 @@
       },
       "authenticatedFirstScreen": {
         "maxFiles": 60,
-        "maxGzKB": 1000
+        "maxGzKB": 1010
       },
       "maxTotalJsChunks": 900,
-      "maxTotalJsMB": 45
+      "maxTotalJsMB": 46
     },
     "member.html": {
       "maxCriticalFiles": 8,
@@ -34,8 +34,8 @@
       "maxCriticalFiles": 8,
       "maxCriticalGzKB": 220,
       "maxCriticalCssFiles": 4,
-      "maxTotalJsChunks": 185,
-      "maxTotalJsMB": 21
+      "maxTotalJsChunks": 190,
+      "maxTotalJsMB": 22
     }
   }
 }
