@@ -1838,7 +1838,7 @@ export const workflowHandlers = [
       const flowForNext = inst.definitionSnapshot?.flowData ?? def?.flowData;
       const node = flowForNext?.nodes.find((item) => item.data.key === task?.nodeKey)?.data;
       const requiresIndividual = !!inst.definitionSnapshot?.customForm?.actionComponent || signaturePolicy === 'handwritten' || node?.actionButtons?.approve?.uploadMode === 'required'
-        || (!!task && !!flowForNext && findNextApproverSelectNodes(flowForNext, task.nodeKey).length > 0);
+        || (!!task && !!flowForNext && findNextApproverSelectNodes(flowForNext, task.nodeKey, { formData: (inst.formData ?? {}) as Record<string, unknown> }).length > 0);
       const requirements = workflowApprovalRequirements(node, requiresIndividual);
       return [{ ...toInstanceListItem(inst), pendingTaskId: taskId, pendingTaskNodeKey: task?.nodeKey, pendingTaskNodeName: task?.nodeName, pendingTaskKind: task?.taskKind, canQuickApprove: requirements.canQuickApprove, canBatchApprove: requirements.canBatchApprove, pendingOpinionRequired: requirements.opinionRequired, pendingSignaturePolicy: signaturePolicy, requiresIndividual, ...sla, summary }];
     });
@@ -2498,7 +2498,13 @@ export const workflowHandlers = [
     const flowData = def?.flowData ?? null;
     if (!flowData) return ok([]);
     const keyword = query.keyword?.trim().toLowerCase() ?? '';
-    const groups = findNextApproverSelectNodes(flowData, task.nodeKey)
+    // 与服务端一致：审批表单里未提交的字段值也参与分支求值，切分支后能换出对应选人控件
+    let pendingFormData: Record<string, unknown> = {};
+    try {
+      const parsed: unknown = query.formData ? JSON.parse(query.formData) : null;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) pendingFormData = parsed as Record<string, unknown>;
+    } catch { pendingFormData = {}; }
+    const groups = findNextApproverSelectNodes(flowData, task.nodeKey, { formData: { ...(inst.formData ?? {}), ...pendingFormData } })
       .filter((node) => matchesFilter(node.data.key, query.nodeKey))
       .map((node) => {
         const scopeType = node.data.selectScopeType ?? 'user';

@@ -1,6 +1,7 @@
-import type { WorkflowFieldPermission, WorkflowFlowData, WorkflowFormField, WorkflowInstanceFormSnapshot, WorkflowJobStatus, WorkflowNodeConfig, WorkflowNodeFailurePolicy } from './types';
+import type { WorkflowFieldPermission, WorkflowFlowData, WorkflowFormField, WorkflowInstanceFormSnapshot, WorkflowJobStatus, WorkflowNodeConfig, WorkflowNodeFailurePolicy, WorkflowStarterContext } from './types';
 import type { WorkflowInstanceSummaryItem } from './contracts/instances';
 import { WORKFLOW_JOB_STATUSES } from './constants';
+import { selectWorkflowPathBranches } from './path-planner';
 import { escapeRegExp } from '../core/text';
 
 type WorkflowFlowNode = WorkflowFlowData['nodes'][number];
@@ -37,6 +38,9 @@ const PASSTHROUGH_TYPES = new Set([
   'ccNode',
 ]);
 
+/** 需要按条件收窄出边的网关类型（并行网关全选，互斥 / 包容 / 路由按条件） */
+const GATEWAY_TYPES = new Set(['exclusiveGateway', 'parallelGateway', 'inclusiveGateway', 'routeGateway']);
+
 /**
  * 从指定节点出发，沿正常出边（排除异常边 / catch 节点）穿过网关、抄送等「穿透型」节点，
  * 在遇到第一个**人工审批节点**（approve / handler）即停止（不再越过），
@@ -50,16 +54,45 @@ const PASSTHROUGH_TYPES = new Set([
  *
  * @param flowData    流程图数据（节点 + 连线）
  * @param fromNodeKey 当前审批节点的 key
+ * @param context     选边上下文（表单值 / 发起人 / 当前时间），用于与运行时选边同源；
+ *                    缺少表单值时条件求值结果为 unknown，对应分支仍按需选人处理（保守）
  * @returns 紧邻下一审批节点中、需由当前审批人选人的 approverSelect 节点列表（按 key 去重）
  */
 export function findNextApproverSelectNodes(
   flowData: WorkflowFlowData,
   fromNodeKey: string,
+  context: {
+    formData?: Readonly<Record<string, unknown>>;
+    starter?: WorkflowStarterContext;
+    now?: string | number | Date;
+  } = {},
 ): WorkflowFlowNode[] {
   const startNode = flowData.nodes.find((n) => n.data.key === fromNodeKey);
   if (!startNode) return [];
 
   const nodeById = new Map(flowData.nodes.map((n) => [n.id, n]));
+  const outgoing = new Map<string, typeof flowData.edges>();
+  for (const edge of flowData.edges ?? []) {
+    if (edge.isException) continue;
+    if (nodeById.get(edge.target)?.data.type === 'catchNode') continue;
+    const list = outgoing.get(edge.source) ?? [];
+    list.push(edge);
+    outgoing.set(edge.source, list);
+  }
+  /** 按运行时选边语义收窄当前网关的出边；conditions 决定的分支不再被一律要求选人 */
+  const selectedOutEdges = (node: WorkflowFlowNode): typeof flowData.edges => {
+    const edges = outgoing.get(node.id) ?? [];
+    if (!GATEWAY_TYPES.has(node.data.type)) return edges;
+    // 路由网关的决策结果尚未产生：token 停在网关等待决策，紧邻的人工节点此时不应要求选人
+    if (node.data.type === 'routeGateway' && node.data.decisionRuleKey) return [];
+    const selected = selectWorkflowPathBranches(node.data, edges, {
+      formData: context.formData ?? {},
+      starter: context.starter,
+      now: context.now,
+    });
+    return edges.filter((_, index) => selected[index]?.status !== 'excluded');
+  };
+
   const result: WorkflowFlowNode[] = [];
   const seenKeys = new Set<string>();
   const visited = new Set<string>([startNode.id]);
@@ -67,10 +100,12 @@ export function findNextApproverSelectNodes(
 
   while (queue.length > 0) {
     const currentId = queue.shift()!;
-    for (const edge of flowData.edges ?? []) {
-      if (edge.source !== currentId || edge.isException || visited.has(edge.target)) continue;
+    const currentNode = nodeById.get(currentId);
+    if (!currentNode) continue;
+    for (const edge of selectedOutEdges(currentNode)) {
+      if (visited.has(edge.target)) continue;
       const target = nodeById.get(edge.target);
-      if (!target || target.data.type === 'catchNode') continue;
+      if (!target) continue;
       visited.add(edge.target);
 
       if (HUMAN_TASK_TYPES.has(target.data.type)) {

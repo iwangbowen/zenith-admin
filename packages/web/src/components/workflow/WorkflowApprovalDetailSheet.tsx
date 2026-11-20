@@ -21,7 +21,7 @@ import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { WorkflowActionButtonConfig, WorkflowDefinition, WorkflowFieldPermission, WorkflowInstance, WorkflowTask } from '@zenith/shared/workflow';
 import { hasEditableFieldPermission, isWorkflowBaseApprovalTask, resolveWorkflowActionButton as resolveButton, WORKFLOW_RETURN_TO_INITIATOR_KEY } from '@zenith/shared/workflow';
 import { resolveRejectTargetHint } from '@/utils/workflow-reject';
-import { resolveWorkflowDetailDefinition } from '@/utils/workflow-snapshot';
+import { resolveWorkflowDetailDefinition, pickPendingConditionValues } from '@/utils/workflow-snapshot';
 import { useQuickPhrases } from '@/hooks/useQuickPhrases';
 import type { SignatureInput } from '@zenith/shared/core';
 import FileAttachment from '@/components/FileAttachment';
@@ -123,6 +123,9 @@ export default function WorkflowApprovalDetailSheet({
   // 候选被服务端限量截断（truncated）的组按组远程搜索；防抖后再发请求
   const [nextApproverSearch, setNextApproverSearch] = useState<WorkflowNextApproverSearch | null>(null);
   const [debouncedNextApproverSearch] = useDebouncedValue(nextApproverSearch, { wait: 300 });
+  // 审批表单里尚未提交、参与分支条件求值的值：切换分支时及时换出对应的选人控件
+  const [pendingFormValues, setPendingFormValues] = useState<Record<string, unknown>>({});
+  const [debouncedPendingFormValues] = useDebouncedValue(pendingFormValues, { wait: 300 });
   const resetNextApprovers = useCallback(() => {
     setSelectedNextApprovers({});
     setSelectedNextApproverNames({});
@@ -177,6 +180,11 @@ export default function WorkflowApprovalDetailSheet({
   useEffect(() => {
     if (visible) setViewId(instanceId);
   }, [visible, instanceId]);
+
+  // 切换实例 / 任务时清空待提交表单值，避免把上一条的编辑带入当前选人分支
+  useEffect(() => {
+    setPendingFormValues({});
+  }, [instanceId, taskId]);
 
   useEffect(() => {
     if (!visible) {
@@ -274,7 +282,11 @@ export default function WorkflowApprovalDetailSheet({
   // 审批操作可用时（pending 且为当前实例）即预取「下一节点自选审批人」候选：
   // 既供审批弹窗使用，也用于判断「同意」能否走一键快速通道（无下游自选才允许）。
   const nextApproversEnabled = visible && taskId != null && detail?.id === instanceId && currentTask?.status === 'pending';
-  const nextApproversQuery = useWorkflowSelectableNextApprovers(taskId, nextApproversEnabled);
+  const pendingConditionValues = useMemo(
+    () => pickPendingConditionValues(currentDetailDefinition?.flowData, debouncedPendingFormValues),
+    [currentDetailDefinition, debouncedPendingFormValues],
+  );
+  const nextApproversQuery = useWorkflowSelectableNextApprovers(taskId, nextApproversEnabled, undefined, pendingConditionValues);
   const selectedNextGroups = nextApproversEnabled ? (nextApproversQuery.data ?? []) : [];
   const hasApproverSelectDownstream = selectedNextGroups.length > 0;
   // 仅 truncated 的组会发起：只取该节点按关键词过滤后的候选
@@ -282,6 +294,7 @@ export default function WorkflowApprovalDetailSheet({
     taskId,
     nextApproversEnabled && !!debouncedNextApproverSearch,
     debouncedNextApproverSearch ?? undefined,
+    pendingConditionValues,
   );
 
   // 一键快速同意的门槛：通过按钮无必填附件、节点无意见必填 / 签名要求、且下一节点无需自选审批人。
@@ -654,6 +667,7 @@ export default function WorkflowApprovalDetailSheet({
             viewerFieldPermissions={detail?.id === instanceId ? viewerFieldPermissions : null}
             formEditable={formEditable}
             onFormApiReady={(api) => { detailFormApi.current = api; }}
+            onFormValuesChange={setPendingFormValues}
           />
         )}
       </WorkflowSideSheet>

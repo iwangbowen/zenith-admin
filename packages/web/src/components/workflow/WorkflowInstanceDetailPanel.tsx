@@ -124,6 +124,8 @@ interface Props {
    * designer 表单为 Semi FormApi；custom 业务表单为组件注册的 WorkflowBusinessFormApi。
    */
   onFormApiReady?: (api: FormApi | WorkflowBusinessFormApi) => void;
+  /** designer 表单值变化（仅 formEditable）：供「下一节点自选审批人」按待提交值求值分支 */
+  onFormValuesChange?: (values: Record<string, unknown>) => void;
 }
 
 /** 流转记录显示范围：默认审批与协办（真实环节），可放开到抄送 / 全部留痕 */
@@ -373,7 +375,7 @@ export function WorkflowDetailSkeleton() {  const placeholder = (
 
 export default function WorkflowInstanceDetailPanel({
   instance, definition, loading, extraActions, onOpenInstance, onRecalled,
-  viewerFieldPermissions, formEditable = false, onFormApiReady,
+  viewerFieldPermissions, formEditable = false, onFormApiReady, onFormValuesChange,
   formContent, readOnly = false,
 }: Readonly<Props>) {
   const { user } = useAuth();
@@ -456,6 +458,7 @@ export default function WorkflowInstanceDetailPanel({
           readOnly={!formEditable}
           readOnlyAsText
           getFormApi={formEditable ? onFormApiReady : undefined}
+          onValueChange={formEditable ? onFormValuesChange : undefined}
           labelPosition={formSettings?.labelPosition}
           labelAlign={formSettings?.labelAlign}
           labelWidth={formSettings?.labelWidth}

@@ -42,16 +42,18 @@ async function planBatchTasks(taskIds: number[], opts: { checkApproverSelect: bo
     ));
   const taskById = new Map(taskRows.map((t) => [t.id, t]));
 
-  let snapshotByInstance = new Map<number, WorkflowFlowData | undefined>();
+  let contextByInstance = new Map<number, { flowData: WorkflowFlowData; formData: Record<string, unknown> } | undefined>();
   if (opts.checkApproverSelect && taskRows.length > 0) {
     const instanceIds = [...new Set(taskRows.map((t) => t.instanceId))];
     const instRows = await db
-      .select({ id: workflowInstances.id, definitionSnapshot: workflowInstances.definitionSnapshot })
+      .select({ id: workflowInstances.id, definitionSnapshot: workflowInstances.definitionSnapshot, formData: workflowInstances.formData })
       .from(workflowInstances)
       .where(inArray(workflowInstances.id, instanceIds));
-    snapshotByInstance = new Map(instRows.map((r) => [
+    contextByInstance = new Map(instRows.map((r) => [
       r.id,
-      r.definitionSnapshot?.flowData ?? undefined,
+      r.definitionSnapshot?.flowData
+        ? { flowData: r.definitionSnapshot.flowData, formData: (r.formData ?? {}) as Record<string, unknown> }
+        : undefined,
     ]));
   }
 
@@ -62,9 +64,10 @@ async function planBatchTasks(taskIds: number[], opts: { checkApproverSelect: bo
       continue;
     }
     if (opts.checkApproverSelect) {
-      // 批量审批无法逐个为「下一节点自选审批人」指定人选 —— 提前识别并跳过，提示单独审批
-      const flowData = snapshotByInstance.get(task.instanceId);
-      if (flowData && findNextApproverSelectNodes(flowData, task.nodeKey).length > 0) {
+      // 批量审批无法逐个为「下一节点自选审批人」指定人选 —— 提前识别并跳过，提示单独审批。
+      // 用实例当前表单值求值分支条件：未经过分支上的 approverSelect 不再阻断批量审批。
+      const context = contextByInstance.get(task.instanceId);
+      if (context && findNextApproverSelectNodes(context.flowData, task.nodeKey, { formData: context.formData }).length > 0) {
         precheckFailures.set(taskId, '需指定下一节点审批人，请单独审批');
         continue;
       }

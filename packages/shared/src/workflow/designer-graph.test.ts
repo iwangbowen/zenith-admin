@@ -195,6 +195,26 @@ describe('graph editing projection', () => {
     expect(graph.nodes[1].data.triggerConfig).toEqual(config);
   });
 
+  it('keeps a newly added empty branch instead of reusing the default branch edge id', () => {
+    const graph = flow([
+      node('s', 'start'), node('fork', 'exclusiveGateway'), node('a', 'approve'), node('b', 'approve'), node('join', 'exclusiveGateway'), node('end', 'end'),
+    ], [['s', 'fork'], ['fork', 'a'], ['fork', 'b'], ['fork', 'join'], ['a', 'join'], ['b', 'join'], ['join', 'end']]);
+    graph.edges[1] = { ...graph.edges[1], conditions: [{ type: 'and', rules: [{ field: 'kind', operator: 'eq', value: 'a' }] }] };
+    graph.edges[2] = { ...graph.edges[2], conditions: [{ type: 'and', rules: [{ field: 'kind', operator: 'eq', value: 'b' }] }] };
+    graph.edges[3] = { ...graph.edges[3], isDefault: true, label: '默认' };
+    const process = projected(graph);
+    const fork = process.initiator.children!;
+    // 设计器「添加分支」生成的新分支没有 graphEdge，且与默认分支的 (source,target) 相同
+    fork.branches!.splice(fork.branches!.findIndex(b => b.isDefault), 0, { id: 'branch-new', name: '条件3', priority: 3 });
+
+    const compiled = compileWorkflowTree(process);
+    const outEdges = compiled.edges.filter(e => e.source === 'fork');
+    expect(outEdges).toHaveLength(4);
+    expect(new Set(outEdges.map(e => e.id)).size).toBe(4);
+    expect(outEdges.find(e => e.isDefault)).toMatchObject({ target: 'join', label: '默认' });
+    expect(outEdges.find(e => e.label === '条件3')).toBeTruthy();
+  });
+
   it('compiles new editor-only trigger controls and rejects invalid mapping JSON', () => {
     const process: WorkflowDesignerProcess = { initiator: { id: 'initiator', key: 'start', type: 'initiator', name: '发起', props: {}, children: {
       id: 'trigger', type: 'trigger', name: '同步数据', props: { triggerType: 'http', headers: '{"X-Test":"ok"}', httpMethod: 'POST', timeoutMs: 5000 },

@@ -216,7 +216,7 @@ export async function listPendingMine(query: QueryOutputOf<typeof workflowInstan
       const node = flow?.nodes.find((n) => n.data.key === r.task.nodeKey)?.data;
       const pendingSignaturePolicy = node?.signaturePolicy ?? 'none';
       // 紧邻下一节点为「审批人自选」的任务无法批量审批（需逐个指定下一节点审批人），列表提前标注
-      const requiresIndividual = !!r.inst.definitionSnapshot?.customForm?.actionComponent || pendingSignaturePolicy === 'handwritten' || node?.actionButtons?.approve?.uploadMode === 'required' || (flow ? findNextApproverSelectNodes(flow, r.task.nodeKey).length > 0 : false);
+      const requiresIndividual = !!r.inst.definitionSnapshot?.customForm?.actionComponent || pendingSignaturePolicy === 'handwritten' || node?.actionButtons?.approve?.uploadMode === 'required' || (flow ? findNextApproverSelectNodes(flow, r.task.nodeKey, { formData: (r.inst.formData ?? {}) as Record<string, unknown> }).length > 0 : false);
       const sla = computeTaskSla(r.task.slaDeadline);
       const summary = resolveInstanceSummary(r.inst, flow);
       const pendingDelegatedFromName = r.task.delegatedFromId ? (delegatorNames.get(r.task.delegatedFromId) ?? `#${r.task.delegatedFromId}`) : null;

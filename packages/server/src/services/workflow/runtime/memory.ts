@@ -271,16 +271,19 @@ export class MemoryWorkflowRuntime {
       if (!resolveWorkflowActionButton(config.actionButtons, command.action).enabled) throw new Error('节点未启用该操作');
       if (this.requirements(run, task).length && !command.requirementsConfirmed) throw new Error('请确认模拟满足审批意见、签名和附件要求');
     }
+    const patch = sanitizeFormUpdatesByNodePerms(resolveNodeFieldPermissions(run.flow, task.nodeKey), command.formPatch);
+    // 先重算派生值（公式 / 合计）再选边：formPatch 可能改的是公式输入，
+    // 与随后推进使用同一份 formData，避免模拟选边与推进分支不一致。
+    const patchedFormData = computeWorkflowDerivedValues(run.fields, { ...run.formData, ...patch });
     if (command.action === 'approve') {
-      for (const next of findNextApproverSelectNodes(run.flow, task.nodeKey)) {
+      for (const next of findNextApproverSelectNodes(run.flow, task.nodeKey, { formData: patchedFormData, starter: run.starter })) {
         const selected = command.selectedNextApprovers?.[next.data.key] ?? run.selected[next.data.key] ?? [];
         const allowed = await this.facts.filterSelected(next.data, selected);
         if (!allowed.length) throw new Error('请选择节点「' + next.data.label + '」的审批人');
         run.selected[next.data.key] = allowed;
       }
     }
-    const patch = sanitizeFormUpdatesByNodePerms(resolveNodeFieldPermissions(run.flow, task.nodeKey), command.formPatch);
-    run.formData = computeWorkflowDerivedValues(run.fields, { ...run.formData, ...patch });
+    run.formData = patchedFormData;
     if (task.taskKind === 'suggestion') {
       if (run.tasks.some(item => item.id !== task.id && item.activationId === task.activationId && item.assigneeId === task.delegatedFromId && ['pending', 'waiting'].includes(item.status))) throw new Error('原审批人已有本轮活动任务');
       task.status = command.action === 'reject' ? 'rejected' : 'approved';
@@ -464,7 +467,7 @@ export class MemoryWorkflowRuntime {
         const task = this.executions.flatMap(run => run.status === 'running' ? run.tasks : []).find(item => item.status === 'pending' && item.taskKind !== 'excluded');
         if (!task) break;
         const run = this.runFor(task);
-        if (this.requirements(run, task).length || findNextApproverSelectNodes(run.flow, task.nodeKey).length) break;
+        if (this.requirements(run, task).length || findNextApproverSelectNodes(run.flow, task.nodeKey, { formData: run.formData, starter: run.starter }).length) break;
         await this.command({ nodeKey: task.nodeKey, taskId: task.id, executionPath: task.executionPath, action: 'approve' });
       }
     } catch (error) {
@@ -476,7 +479,7 @@ export class MemoryWorkflowRuntime {
     const tasks = [];
     for (const run of this.executions.filter(item => item.status === 'running')) for (const task of run.tasks.filter(t => t.status === 'pending' || t.status === 'waiting')) {
       const selectableNext = [];
-      for (const next of findNextApproverSelectNodes(run.flow, task.nodeKey)) {
+      for (const next of findNextApproverSelectNodes(run.flow, task.nodeKey, { formData: run.formData, starter: run.starter })) {
         const users = await this.facts.candidates(next.data);
         const names = await this.facts.names(users);
         selectableNext.push({ nodeKey: next.data.key, label: next.data.label, users: users.map(id => ({ id, name: names.get(id) ?? '用户#' + id })) });
