@@ -173,7 +173,7 @@ export default function FilesPage() {
   const listQuery = useFileList({ page, pageSize, ...filterQuery });
   const data = listQuery.data ?? null;
   const preview = useFilePreview(() => data?.list ?? []);
-  const uploadFileMutation = useUploadFile();
+  const uploadFileMutation = useUploadFile({ allowDirect: false });
   const directUploadMutation = useDirectUploadFile();
   const chunkThreshold = useChunkUploadThreshold();
   const { data: defaultStorageConfig } = useDefaultFileStorageConfig();

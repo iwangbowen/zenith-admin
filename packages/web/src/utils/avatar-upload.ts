@@ -1,5 +1,6 @@
 import { fileContract } from '@zenith/shared/platform';
 import { api } from '@/lib/contract-query';
+import { uploadManagedFileAuto } from './managed-file-upload';
 
 /**
  * 管理后台文件中心头像上传（裁剪 Blob → 文件中心 → URL）。
@@ -10,8 +11,12 @@ import { api } from '@/lib/contract-query';
  *（`bundle-budget.json` 的 member.html chunk 数）。
  */
 export async function uploadAvatarBlobToFileCenter(blob: Blob): Promise<string> {
+  const file = new File([blob], 'avatar.jpg', { type: blob.type || 'image/jpeg' });
   const formData = new FormData();
-  formData.append('file', blob, 'avatar.jpg');
+  formData.append('file', file);
   // code !== 0 由 api() 抛 ApiError，调用方按场景提示；请求层静默
-  return (await api(fileContract.uploadOne, { body: formData }, { silent: true })).url;
+  const uploaded = await uploadManagedFileAuto(file, {
+    proxy: () => api(fileContract.uploadOne, { body: formData }, { silent: true }),
+  });
+  return uploaded.url;
 }

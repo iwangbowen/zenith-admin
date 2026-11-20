@@ -1,13 +1,9 @@
 import { useState } from 'react';
-import { Button, Form, Space, Tag, Toast, Typography, Upload } from '@douyinfe/semi-ui';
+import { Form, Space, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { ImagePlus, Trash2 } from 'lucide-react';
 import { channelContract, type ChannelAdmin } from '@zenith/shared/messaging';
-import { fileContract } from '@zenith/shared/platform';
-import { config } from '@/config';
-import { urlOf } from '@/lib/contract-query';
-import { request } from '@/utils/request';
 import { usePermission } from '@/hooks/usePermission';
+import { ImageUploadField } from '@/components/ImageUploadField';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { ListSearchToolbar, useCrudOperationColumn } from '@/components/list-page';
 import { UserAvatar } from '@/components/UserAvatar';
@@ -74,12 +70,6 @@ export default function ChannelsPage() {
 
   const openCreate = () => { setAvatarUrl(''); modal.openCreate(); };
   const openEdit = (ch: ChannelAdmin) => { setAvatarUrl(ch.avatar ?? ''); modal.openEdit(ch); };
-
-  const handleAvatarUpload = (res: unknown) => {
-    const r = res as { code?: number; data?: { url?: string } };
-    if (r?.code === 0 && r.data?.url) { setAvatarUrl(r.data.url); Toast.success('头像已上传'); }
-    else Toast.error('头像上传失败');
-  };
 
   const openPublish = (ch: ChannelAdmin) => { setPublishTarget(ch); setPublishVisible(true); };
 
@@ -171,32 +161,14 @@ export default function ChannelsPage() {
         />
         <Form.Input field="name" label="名称" rules={[{ required: true, message: '请填写名称' }]} />
         <Form.Slot label="头像">
-          <Space align="center">
-            {avatarUrl
-              ? (
-                <div style={{ position: 'relative', width: 64, height: 64 }}>
-                  <img src={avatarUrl} alt="头像" style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 'var(--semi-border-radius-medium)', border: '1px solid var(--semi-color-border)' }} />
-                  <Button
-                    theme="borderless" type="danger" size="small" icon={<Trash2 size={14} />}
-                    style={{ position: 'absolute', top: -8, right: -8, background: 'var(--semi-color-bg-2)' }}
-                    onClick={() => setAvatarUrl('')}
-                  />
-                </div>
-              )
-              : (
-                <Upload
-                  action={`${config.apiBaseUrl}${urlOf(fileContract.uploadOne)}`}
-                  headers={() => request.authHeaders()}
-                  name="file"
-                  accept="image/*"
-                  limit={1}
-                  showUploadList={false}
-                  onSuccess={handleAvatarUpload}
-                >
-                  <Button icon={<ImagePlus size={14} />}>上传头像</Button>
-                </Upload>
-              )}
-          </Space>
+          <ImageUploadField
+            value={avatarUrl}
+            onChange={setAvatarUrl}
+            label="头像"
+            previewStyle={{ width: 64, height: 64 }}
+            buttonSize="small"
+            uploadSuccessMessage="头像已上传"
+          />
         </Form.Slot>
         <Form.TextArea field="description" label="简介" autosize={{ minRows: 2, maxRows: 4 }} />
         {modal.isEdit && (

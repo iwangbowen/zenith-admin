@@ -3,6 +3,7 @@ import { Button, Empty, Spin, Toast, Typography } from '@douyinfe/semi-ui';
 import { Plus, X } from 'lucide-react';
 import { fileContract, type ManagedFile } from '@zenith/shared/platform';
 import { api } from '@/lib/contract-query';
+import { uploadManagedFileAuto } from '@/utils/managed-file-upload';
 import { useAddChatCustomEmoji, useChatCustomEmojis, useDeleteChatCustomEmoji } from '@/hooks/queries/chat';
 import type { ChatCustomEmoji } from '@zenith/shared/chat';
 
@@ -27,7 +28,9 @@ export function StickerPanel({
     fd.append('file', file);
     let uploaded: ManagedFile;
     try {
-      uploaded = await api(fileContract.uploadOne, { body: fd }, { silent: true });
+      uploaded = await uploadManagedFileAuto(file, {
+        proxy: () => api(fileContract.uploadOne, { body: fd }, { silent: true }),
+      });
     } catch {
       Toast.error('上传失败');
       return;

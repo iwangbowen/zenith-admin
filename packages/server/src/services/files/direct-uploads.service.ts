@@ -22,6 +22,7 @@ import { getSettings } from '../../lib/settings';
 import { buildWhere } from '../../lib/where-helpers';
 import { assertUploadSizeAllowed } from './files.service';
 import { abortChunkUpload, completeChunkUpload } from './upload-sessions.service';
+import { recordDirectUploadBytes, recordFileUploadMetric } from '../../lib/file-upload-metrics';
 
 type DirectUploadInit = z.infer<typeof directUploadInitSchema>;
 type DirectUploadComplete = z.infer<typeof directUploadCompleteSchema>;
@@ -113,6 +114,8 @@ export async function createDirectUpload(input: DirectUploadInit) {
     await driver.abort(config, objectKey, multipartUploadId).catch(() => {});
     throw error;
   }
+  recordFileUploadMetric('directStarted');
+  recordDirectUploadBytes(input.fileSize);
 
   return {
     uploadId,
@@ -168,11 +171,18 @@ export async function getDirectUploadStatus(uploadId: string) {
 
 export async function completeDirectUpload(uploadId: string, input: DirectUploadComplete) {
   await ensureDirectSession(uploadId);
-  const file = await completeChunkUpload(uploadId, { expectedHash: input.contentHash, allowBrowserDirect: true });
-  return file;
+  try {
+    const file = await completeChunkUpload(uploadId, { expectedHash: input.contentHash, allowBrowserDirect: true });
+    recordFileUploadMetric('directCompleted');
+    return file;
+  } catch (error) {
+    recordFileUploadMetric('directFailed');
+    throw error;
+  }
 }
 
 export async function abortDirectUpload(uploadId: string) {
   await ensureDirectSession(uploadId);
   await abortChunkUpload(uploadId, { allowBrowserDirect: true });
+  recordFileUploadMetric('directAborted');
 }

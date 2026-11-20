@@ -47,6 +47,8 @@ export const fileStorageConfigs = pgTable('file_storage_configs', {
   bucketPolicyPublic: boolean(),
   /** provider 返回的 Bucket 综合公共访问状态（目前 OBS 提供该接口） */
   bucketPublicStatus: boolean(),
+  /** 账号级阻止公共访问状态（目前 OSS 支持探测） */
+  bucketAccountBlockPublicAccess: boolean(),
   bucketAccessCheckedAt: timestamptz(),
   bucketAccessError: text(),
   // 自定义访问域名（CDN/加速域名），public 策略优先使用
@@ -66,6 +68,8 @@ export const fileStorageConfigs = pgTable('file_storage_configs', {
   s3AccessKeyId: varchar({ length: 128 }),
   s3SecretAccessKey: varchar({ length: 256 }),
   s3ForcePathStyle: boolean().default(false),
+  /** AWS 账号 ID；用于 S3 Control 账号级公共访问探测（可选） */
+  s3AccountId: varchar({ length: 32 }),
   // 腾讯云 COS
   cosRegion: varchar({ length: 64 }),
   cosBucket: varchar({ length: 128 }),

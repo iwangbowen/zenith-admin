@@ -12,6 +12,7 @@ import { countActiveWorkerNodes, getQueueDepthSnapshot } from './pg-boss-schedul
 import { getWsFanoutCounters } from './ws-fanout';
 import { getWsSnapshot } from './ws-manager';
 import { apiAccessLogStats } from './api-access-log';
+import { getFileUploadCounters } from './file-upload-metrics';
 import type { WorkflowJobRuntimeStatus } from '@zenith/shared/workflow';
 
 let workflowMetricsCache: { until: number; value: Promise<WorkflowJobRuntimeStatus> } | null = null;
@@ -86,6 +87,15 @@ export function registerZenithMetrics(registry: Registry): void {
   gauge('zenith_api_access_log_pending', 'Buffered API access records awaiting persistence', () => apiAccessLogStats().pending);
   counter('zenith_api_access_log_dropped_total', 'API access records dropped since process start', () => apiAccessLogStats().dropped);
   counter('zenith_api_access_log_flush_failures_total', 'Failed API access log batches since process start', () => apiAccessLogStats().flushFailures);
+
+  // ── 文件上传 ──
+  counter('zenith_file_direct_uploads_started_total', 'Browser direct upload sessions started', () => getFileUploadCounters().directStarted);
+  counter('zenith_file_direct_uploads_completed_total', 'Browser direct upload sessions completed', () => getFileUploadCounters().directCompleted);
+  counter('zenith_file_direct_uploads_failed_total', 'Browser direct upload sessions failed', () => getFileUploadCounters().directFailed);
+  counter('zenith_file_direct_uploads_aborted_total', 'Browser direct upload sessions aborted', () => getFileUploadCounters().directAborted);
+  counter('zenith_file_direct_upload_bytes_total', 'Bytes accepted through browser direct upload', () => getFileUploadCounters().directBytes);
+  counter('zenith_file_quick_upload_hits_total', 'Quick upload requests served from an existing object', () => getFileUploadCounters().quickUploadHits);
+  counter('zenith_file_quick_upload_misses_total', 'Quick upload requests that fell through to normal upload', () => getFileUploadCounters().quickUploadMisses);
 
   // ── WebSocket ──
   gauge('zenith_ws_connections', 'Current WebSocket connections', () => getWsSnapshot().currentConnections);

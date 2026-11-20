@@ -1,18 +1,13 @@
 /** 单图上传字段（受控）：已上传时展示预览缩略图 + 悬浮删除按钮，未上传时展示上传按钮。 */
 import { Button, Space, Toast, Upload } from '@douyinfe/semi-ui';
 import { ImagePlus, Trash2 } from 'lucide-react';
-import { fileContract } from '@zenith/shared/platform';
+import { fileContract, type ManagedFile } from '@zenith/shared/platform';
 import { config } from '@/config';
 import { urlOf } from '@/lib/contract-query';
 import { request } from '@/utils/request';
+import { uploadManagedFileAuto } from '@/utils/managed-file-upload';
 
 const UPLOAD_ACTION = `${config.apiBaseUrl}${urlOf(fileContract.uploadOne)}`;
-
-/** 从统一响应包络中取出上传后的文件 URL；失败返回 null */
-function extractUploadUrl(res: unknown): string | null {
-  const r = res as { code?: number; data?: { url?: string } };
-  return r?.code === 0 && r.data?.url ? r.data.url : null;
-}
 
 interface ImageUploadFieldProps {
   /** 当前图片 URL，空串表示未上传 */
@@ -85,23 +80,32 @@ export function ImageUploadField({
             limit={1}
             showUploadList={false}
             disabled={disabled}
-            customRequest={customUpload ? async ({ fileInstance, onSuccess, onError }) => {
+            customRequest={async ({ fileInstance, onProgress, onSuccess, onError }) => {
+              const reportPercent = (percent: number) => {
+                const total = fileInstance.size || 100;
+                onProgress?.({ total, loaded: Math.round((percent / 100) * total) });
+              };
               try {
-                const url = await customUpload(fileInstance);
+                const url = customUpload
+                  ? await customUpload(fileInstance)
+                  : (await uploadManagedFileAuto(fileInstance, {
+                    onProgress: reportPercent,
+                    proxy: async () => {
+                      const formData = new FormData();
+                      formData.append('file', fileInstance);
+                      const res = await request.postForm<ManagedFile>(urlOf(fileContract.uploadOne), formData, {
+                        onProgress: reportPercent,
+                        silent: true,
+                      });
+                      if (res.code !== 0 || !res.data) throw new Error(`${label}上传失败`);
+                      return res.data;
+                    },
+                  })).url;
                 uploaded(url);
                 onSuccess?.({ code: 0, data: { url } });
               } catch (error) {
                 Toast.error(error instanceof Error ? error.message : `${label}上传失败`);
                 onError?.({ status: 0 });
-              }
-            } : undefined}
-            onSuccess={(res) => {
-              if (customUpload) return;
-              const url = extractUploadUrl(res);
-              if (url) {
-                uploaded(url);
-              } else {
-                Toast.error(`${label}上传失败`);
               }
             }}
           >

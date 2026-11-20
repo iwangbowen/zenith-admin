@@ -60,6 +60,7 @@ const baseFileStorageConfigSchema = z.object({
   s3Bucket: z.string().max(128).optional(),
   s3AccessKeyId: z.string().max(128).optional(),
   s3SecretAccessKey: z.string().max(256).optional(),
+  s3AccountId: z.string().regex(/^\d{12}$/, 'AWS 账号 ID 应为 12 位数字').optional().or(z.literal('')),
   s3ForcePathStyle: z.boolean().optional(),
   // 腾讯云 COS
   cosRegion: z.string().max(64).optional(),

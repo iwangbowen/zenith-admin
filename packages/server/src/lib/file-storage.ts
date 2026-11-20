@@ -20,6 +20,7 @@ import logger from './logger';
 const require = createRequire(import.meta.url);
 const loadOss = () => require('ali-oss') as typeof import('ali-oss');
 const loadS3 = () => require('@aws-sdk/client-s3') as typeof import('@aws-sdk/client-s3');
+const loadS3Control = () => require('@aws-sdk/client-s3-control') as typeof import('@aws-sdk/client-s3-control');
 const loadS3Presigner = () => require('@aws-sdk/s3-request-presigner') as typeof import('@aws-sdk/s3-request-presigner');
 const loadCos = () => require('cos-nodejs-sdk-v5') as typeof import('cos-nodejs-sdk-v5');
 const loadQiniu = () => require('qiniu') as typeof import('qiniu');
@@ -121,6 +122,8 @@ export interface FileBucketAccessInfo {
   policyPublic: boolean | null;
   /** provider 返回的综合公共访问状态；null = 未探测或 provider 未提供该接口 */
   publicStatus: boolean | null;
+  /** 账号级阻止公共访问；null = 未探测或 provider 未提供该接口 */
+  accountBlockPublicAccess: boolean | null;
   effectivePublic: boolean;
   checkedAt: Date;
 }
@@ -133,6 +136,33 @@ function nestedBoolean(source: unknown, keys: string[]): boolean | null {
     if (value !== null) return value;
   }
   return null;
+}
+
+function jsonPolicyAllowsPublic(policy: unknown): boolean | null {
+  if (!policy || typeof policy !== 'object') return null;
+  const raw = (policy as { Statement?: unknown }).Statement ?? policy;
+  const statements = Array.isArray(raw) ? raw : [raw];
+  for (const statement of statements) {
+    if (!statement || typeof statement !== 'object') continue;
+    const value = statement as Record<string, unknown>;
+    if (String(value.Effect ?? '').toLowerCase() !== 'allow') continue;
+    const principal = value.Principal;
+    const principalPublic = principal === '*'
+      || (Array.isArray(principal) && principal.includes('*'))
+      || (principal && typeof principal === 'object'
+        && Object.values(principal as Record<string, unknown>).some((entry) => Array.isArray(entry) && entry.includes('*')));
+    if (!principalPublic) continue;
+    const actions = Array.isArray(value.Action) ? value.Action : [value.Action];
+    const canRead = actions.some((action) => {
+      const text = String(action ?? '').toLowerCase();
+      return text === '*' || text === 'cos:*' || text.endsWith(':getobject') || text === 'cos:getobject';
+    });
+    if (!canRead) continue;
+    // 任何 Condition 都可能限制匿名访问范围；无法仅凭策略断言完全公开。
+    if (value.Condition && typeof value.Condition === 'object' && Object.keys(value.Condition).length > 0) return null;
+    return true;
+  }
+  return false;
 }
 
 function publicAccessBlockEnabled(source: unknown): boolean | null {
@@ -170,6 +200,19 @@ export async function getBucketAccessInfo(config: FileStorageConfigRow): Promise
       request(params: Record<string, unknown>): Promise<{ data?: Buffer | string }>;
       parseXML(value: Buffer | string): Promise<Record<string, unknown>>;
     };
+    let accountBlockPublicAccess: boolean | null;
+    try {
+      const accountResult = await oss.request({
+        method: 'GET',
+        subres: 'publicAccessBlock',
+        successStatuses: [200],
+      });
+      const accountParsed = accountResult.data ? await oss.parseXML(accountResult.data) : {};
+      const accountPolicy = (accountParsed.PublicAccessBlockConfiguration ?? accountParsed) as Record<string, unknown>;
+      accountBlockPublicAccess = toBooleanOrNull(accountPolicy?.BlockPublicAccess);
+    } catch {
+      accountBlockPublicAccess = null;
+    }
     let blockPublicAccess: boolean | null;
     let policyPublic: boolean | null;
     try {
@@ -205,7 +248,10 @@ export async function getBucketAccessInfo(config: FileStorageConfigRow): Promise
       blockPublicAccess,
       policyPublic,
       publicStatus: null,
-      effectivePublic: (aclPublic || policyPublic === true) && blockPublicAccess === false,
+      accountBlockPublicAccess,
+      effectivePublic: accountBlockPublicAccess !== true
+        && (aclPublic || policyPublic === true)
+        && blockPublicAccess === false,
       checkedAt: new Date(),
     };
   }
@@ -234,12 +280,30 @@ export async function getBucketAccessInfo(config: FileStorageConfigRow): Promise
     } catch (err) {
       if ((err as { name?: string }).name !== 'NoSuchBucketPolicy') policyPublic = null;
     }
+    let accountBlockPublicAccess: boolean | null = null;
+    if (config.s3AccountId && !config.s3Endpoint) {
+      try {
+        const control = createS3ControlClient(config);
+        const controlSdk = loadS3Control();
+        const pab = await control.send(new controlSdk.GetPublicAccessBlockCommand({ AccountId: config.s3AccountId }));
+        const value = pab.PublicAccessBlockConfiguration;
+        accountBlockPublicAccess = Boolean(value?.BlockPublicAcls
+          || value?.IgnorePublicAcls
+          || value?.BlockPublicPolicy
+          || value?.RestrictPublicBuckets);
+      } catch {
+        accountBlockPublicAccess = null;
+      }
+    }
     return {
       bucketAcl: acl,
       blockPublicAccess,
       policyPublic,
       publicStatus: null,
-      effectivePublic: (publicRead || policyPublic === true) && blockPublicAccess === false,
+      accountBlockPublicAccess,
+      effectivePublic: accountBlockPublicAccess !== true
+        && (publicRead || policyPublic === true)
+        && blockPublicAccess === false,
       checkedAt: new Date(),
     };
   }
@@ -252,12 +316,27 @@ export async function getBucketAccessInfo(config: FileStorageConfigRow): Promise
       });
     });
     const acl = normalizeBucketAcl(result.ACL);
+    let policyPublic: boolean | null;
+    try {
+      const policy = await new Promise<{ Policy?: unknown }>((resolve, reject) => {
+        cos.getBucketPolicy({ Bucket: config.cosBucket!, Region: config.cosRegion! }, (err, data) => {
+          if (err) reject(err instanceof Error ? err : new Error(String(err)));
+          else resolve(data as { Policy?: unknown });
+        });
+      });
+      policyPublic = jsonPolicyAllowsPublic(policy.Policy);
+    } catch (error) {
+      const code = String((error as { code?: unknown }).code ?? '');
+      policyPublic = code.includes('NoSuch') ? false : null;
+    }
+    const aclPublic = acl === 'public-read' || acl === 'public-read-write';
     return {
       bucketAcl: acl,
       blockPublicAccess: null,
-      policyPublic: null,
+      policyPublic,
       publicStatus: null,
-      effectivePublic: acl === 'public-read' || acl === 'public-read-write',
+      accountBlockPublicAccess: null,
+      effectivePublic: aclPublic || policyPublic === true,
       checkedAt: new Date(),
     };
   }
@@ -276,6 +355,7 @@ export async function getBucketAccessInfo(config: FileStorageConfigRow): Promise
       blockPublicAccess: null,
       policyPublic: null,
       publicStatus: null,
+      accountBlockPublicAccess: null,
       effectivePublic: publicRead,
       checkedAt: new Date(),
     };
@@ -284,15 +364,20 @@ export async function getBucketAccessInfo(config: FileStorageConfigRow): Promise
     const { mac, conf } = createKodoUploader(config);
     const bucketManager = new (loadQiniu().rs.BucketManager)(mac, conf);
     const result = await bucketManager.getBucketInfo(config.kodoBucket!);
-    const data = (result as unknown as { data?: { private?: number | string } }).data;
+    const data = (result as unknown as {
+      data?: { private?: number | string; anti_leech_mode?: number | string; token_anti_leech?: number | string };
+    }).data;
     const accessMode = Number(data?.private);
+    const antiLeech = Number(data?.anti_leech_mode) > 0 || Number(data?.token_anti_leech) > 0;
     const acl: FileBucketAcl | null = accessMode === 1 ? 'private' : accessMode === 0 ? 'public-read' : null;
+    const publicStatus = accessMode === 0 && !antiLeech;
     return {
       bucketAcl: acl,
       blockPublicAccess: null,
       policyPublic: null,
-      publicStatus: null,
-      effectivePublic: accessMode === 0,
+      publicStatus,
+      accountBlockPublicAccess: null,
+      effectivePublic: publicStatus,
       checkedAt: new Date(),
     };
   }
@@ -306,6 +391,7 @@ export async function getBucketAccessInfo(config: FileStorageConfigRow): Promise
       blockPublicAccess: null,
       policyPublic: null,
       publicStatus: null,
+      accountBlockPublicAccess: null,
       effectivePublic: publicAccess,
       checkedAt: new Date(),
     };
@@ -350,6 +436,7 @@ export async function getBucketAccessInfo(config: FileStorageConfigRow): Promise
       blockPublicAccess,
       policyPublic,
       publicStatus,
+      accountBlockPublicAccess: null,
       effectivePublic: publicStatus ?? ((publicRead || policyPublic === true) && blockPublicAccess === false),
       checkedAt: new Date(),
     };
@@ -503,6 +590,19 @@ function createS3Client(config: FileStorageConfigRow) {
   });
 }
 
+function createS3ControlClient(config: FileStorageConfigRow) {
+  if (!config.s3Region || !config.s3AccountId || !config.s3AccessKeyId || !config.s3SecretAccessKey) {
+    throw new Error('S3 Control 配置不完整');
+  }
+  return new (loadS3Control().S3ControlClient)({
+    region: config.s3Region,
+    credentials: {
+      accessKeyId: config.s3AccessKeyId,
+      secretAccessKey: config.s3SecretAccessKey,
+    },
+  });
+}
+
 function createCosClient(config: FileStorageConfigRow) {
   if (!config.cosRegion || !config.cosBucket || !config.cosSecretId || !config.cosSecretKey) {
     throw new Error('腾讯云 COS 配置不完整');
@@ -632,6 +732,7 @@ function splitEndpoint(endpoint: string): { scheme: string; host: string } {
  * - public-domain：自定义域名 / CDN（或 Kodo/SFTP 自带的访问域名）。
  */
 function bucketPublicBlockAllows(config: FileStorageConfigRow): boolean {
+  if (config.bucketAccountBlockPublicAccess === true) return false;
   if (config.bucketPublicStatus === true) return true;
   if (config.provider === 'oss' || config.provider === 's3' || config.provider === 'obs') {
     return config.bucketBlockPublicAccess === false;

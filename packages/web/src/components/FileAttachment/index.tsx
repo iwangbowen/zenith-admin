@@ -15,6 +15,7 @@ import { fileContract, type ManagedFile } from '@zenith/shared/platform';
 import { config } from '@/config';
 import { urlOf } from '@/lib/contract-query';
 import { request } from '@/utils/request';
+import { formDataWithFile, uploadManagedFileAuto } from '@/utils/managed-file-upload';
 import { formatDateTime } from '@/utils/date';
 import {
   getFileTypeIcon,
@@ -562,6 +563,32 @@ export default function FileAttachment({
         limit={limit > 0 ? limit : undefined}
         multiple={multiple}
         beforeUpload={isEditMode ? handleBeforeUpload : undefined}
+        customRequest={isEditMode && uploadPath === urlOf(fileContract.uploadOne) && !uploadData
+          ? async ({ fileInstance, onProgress, onSuccess, onError }) => {
+            const reportPercent = (percent: number) => {
+              const total = fileInstance.size || 100;
+              onProgress?.({ total, loaded: Math.round((percent / 100) * total) });
+            };
+            try {
+              const uploaded = await uploadManagedFileAuto(fileInstance, {
+                onProgress: reportPercent,
+                proxy: async () => {
+                  const formData = formDataWithFile(fileInstance);
+                  const res = await request.postForm<ManagedFile>(
+                    uploadAction,
+                    formData,
+                    { onProgress: reportPercent, silent: true },
+                  );
+                  if (res.code !== 0 || !res.data) throw new Error(res.message || '上传失败');
+                  return res.data;
+                },
+              });
+              onSuccess?.({ code: 0, data: uploaded, message: '上传成功' });
+            } catch {
+              onError?.({ status: 0 });
+            }
+          }
+          : undefined}
         onProgress={isEditMode ? handleProgress : undefined}
         onSuccess={isEditMode ? handleSuccess : undefined}
         onChange={isEditMode ? handleFileListChange : undefined}

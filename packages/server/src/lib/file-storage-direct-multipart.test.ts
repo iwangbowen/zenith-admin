@@ -70,11 +70,14 @@ describe('OSS bucket public access probing', () => {
       request: (params: Record<string, unknown>) => Promise<{ data?: Buffer }>;
     };
     const request = vi.spyOn(requestPrototype, 'request').mockImplementation(async (params) => {
-      expect(params).toMatchObject({ method: 'GET', bucket: 'demo-bucket' });
+      expect(params).toMatchObject({ method: 'GET' });
       if (params.subres === 'policyStatus') {
         return { data: Buffer.from('<PolicyStatus><IsPublic>false</IsPublic></PolicyStatus>') };
       }
       expect(params.subres).toBe('publicAccessBlock');
+      if (!params.bucket) {
+        return { data: Buffer.from('<PublicAccessBlockConfiguration><BlockPublicAccess>false</BlockPublicAccess></PublicAccessBlockConfiguration>') };
+      }
       return {
         data: Buffer.from('<PublicAccessBlockConfiguration><BlockPublicAccess>true</BlockPublicAccess></PublicAccessBlockConfiguration>'),
       };
@@ -85,12 +88,13 @@ describe('OSS bucket public access probing', () => {
     }));
 
     expect(getBucketInfo).toHaveBeenCalledOnce();
-    expect(request).toHaveBeenCalledTimes(2);
+    expect(request).toHaveBeenCalledTimes(3);
     expect(result).toMatchObject({
       bucketAcl: 'public-read',
       blockPublicAccess: true,
       policyPublic: false,
       publicStatus: null,
+      accountBlockPublicAccess: false,
       effectivePublic: false,
     });
   });

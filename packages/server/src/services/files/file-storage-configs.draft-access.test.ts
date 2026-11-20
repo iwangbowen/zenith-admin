@@ -6,6 +6,7 @@ const state = vi.hoisted(() => ({
     blockPublicAccess: false,
     policyPublic: false,
     publicStatus: null,
+    accountBlockPublicAccess: null,
     effectivePublic: true,
     checkedAt: new Date('2026-11-20T00:00:00.000Z'),
   },

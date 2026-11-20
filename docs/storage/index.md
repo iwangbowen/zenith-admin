@@ -40,7 +40,7 @@ Bucket 权限探测、下载方式与浏览器直传的专题说明见[文件存
 | --- | --- | --- | --- |
 | `local` | 本地磁盘 | `localRootPath` | 写入 `localRootPath`（相对路径按进程 cwd 解析），代理读取支持 Range |
 | `oss` | 阿里云 OSS | `ossRegion`、`ossEndpoint`、`ossBucket`、`ossAccessKeyId`、`ossAccessKeySecret` | `ali-oss` 懒加载，支持上传、读取、删除、签名 URL、原生 multipart |
-| `s3` | S3 兼容存储 | `s3Region`、`s3Bucket`、`s3AccessKeyId`、`s3SecretAccessKey`；可选 `s3Endpoint`、`s3ForcePathStyle` | AWS SDK v3，兼容 AWS S3 / MinIO / R2，代理读取支持 Range，支持签名 URL 与原生 multipart |
+| `s3` | S3 兼容存储 | `s3Region`、`s3Bucket`、`s3AccessKeyId`、`s3SecretAccessKey`；可选 `s3Endpoint`、`s3AccountId`、`s3ForcePathStyle` | AWS SDK v3，兼容 AWS S3 / MinIO / R2，代理读取支持 Range，支持签名 URL 与原生 multipart；配置 `s3AccountId` 时额外探测账号级 BPA |
 | `cos` | 腾讯云 COS | `cosRegion`、`cosBucket`、`cosSecretId`、`cosSecretKey` | `cos-nodejs-sdk-v5`，支持签名 URL 与原生 multipart；对象 ACL 不支持 `public-read-write` |
 | `obs` | 华为云 OBS | `obsEndpoint`、`obsBucket`、`obsAccessKeyId`、`obsSecretAccessKey` | `esdk-obs-nodejs`，支持签名 URL 与原生 multipart |
 | `kodo` | 七牛云 Kodo | `kodoAccessKey`、`kodoSecretKey`、`kodoBucket`；可选 `kodoRegion`、`kodoEndpoint` | 七牛 SDK 表单上传；签名下载依赖 `publicBaseUrl` 或 `kodoEndpoint`；服务端中转走本地暂存合并，`uploadMode=browser-direct` 走分片上传 v2 |

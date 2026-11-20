@@ -8,6 +8,7 @@ import { api } from '@/lib/contract-query';
 import { ApiError } from '@/lib/query';
 import { scopedStorageKey, storageNamespace } from '@/utils/storage';
 import { CHUNKED_UPLOAD_CANCELLED } from './chunked-upload';
+import { hashFileSha256 } from './file-hash';
 
 const PART_CONCURRENCY = 3;
 const PART_RETRIES = 3;
@@ -98,19 +99,6 @@ function expectedPartSize(fileSize: number, chunkSize: number, partNumber: numbe
   return Math.max(0, Math.min(chunkSize, fileSize - offset));
 }
 
-async function fingerprintFile(file: File, signal?: AbortSignal): Promise<string> {
-  const { createSHA256 } = await import('hash-wasm');
-  const hash = await createSHA256();
-  hash.init();
-  const bytesPerChunk = 4 * 1024 * 1024;
-  for (let offset = 0; offset < file.size; offset += bytesPerChunk) {
-    if (signal?.aborted) throw new DOMException('上传已取消', 'AbortError');
-    const end = Math.min(offset + bytesPerChunk, file.size);
-    hash.update(new Uint8Array(await file.slice(offset, end).arrayBuffer()));
-  }
-  return hash.digest('hex');
-}
-
 async function kodoPartMd5(blob: Blob): Promise<string> {
   const { createMD5 } = await import('hash-wasm');
   const hash = await createMD5();
@@ -189,7 +177,7 @@ async function findSession(key: string, signal?: AbortSignal) {
 export async function directMultipartUpload<TFile = unknown>(options: DirectMultipartOptions): Promise<TFile> {
   const { file, storageConfigId, contentHash, signal, onProgress } = options;
   const key = resumeKey(file, storageConfigId);
-  const fileHash = contentHash ?? await fingerprintFile(file, signal);
+  const fileHash = contentHash ?? await hashFileSha256(file, signal);
   let uploadId: string;
   let status: UploadSessionStatus;
   let checkpoint: DirectUploadCheckpoint;

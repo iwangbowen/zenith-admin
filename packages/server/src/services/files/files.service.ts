@@ -8,6 +8,7 @@ import { requireRow } from '../../lib/db-assert';
 import { managedFiles, fileStorageConfigs } from '../../db/schema';
 import type { FileStorageConfigRow } from '../../db/schema';
 import { buildManagedFileProxyUrl, buildPublicFileUrl, deleteStoredFile, headStoredObject, readStoredFile, resolveFileAccessUrl, resolveObjectAcl, resolvePublicAccess, uploadFileByConfig } from '../../lib/file-storage';
+import { recordFileUploadMetric } from '../../lib/file-upload-metrics';
 import { formatDateTime } from '../../lib/datetime';
 import { getSettings } from '../../lib/settings';
 import type { FilesSettings } from '@zenith/shared/settings';
@@ -205,7 +206,7 @@ export async function uploadManagedFileFromBody(fileValue: unknown, options: Man
 }
 
 /** 秒传：同一默认存储下按内容哈希命中且对象仍存在时，直接复用文件记录 */
-export async function findReusableFileByHash(input: { fileName: string; fileSize: number; mimeType?: string; contentHash: string }) {
+async function findReusableFileByHashInternal(input: { fileName: string; fileSize: number; mimeType?: string; contentHash: string }) {
   const user = currentUser();
   const [config] = await db
     .select()
@@ -247,6 +248,12 @@ export async function findReusableFileByHash(input: { fileName: string; fileSize
     extension: dot > 0 && dot < input.fileName.length - 1 ? input.fileName.slice(dot + 1).toLowerCase() : null,
   }).where(eq(managedFiles.id, file.id)).returning();
   return mapManagedFile(updated ?? file, config);
+}
+
+export async function findReusableFileByHash(input: { fileName: string; fileSize: number; mimeType?: string; contentHash: string }) {
+  const file = await findReusableFileByHashInternal(input);
+  recordFileUploadMetric(file ? 'quickUploadHits' : 'quickUploadMisses');
+  return file;
 }
 
 export async function uploadManagedFile(file: File, options: ManagedFileUploadOptions = {}) {

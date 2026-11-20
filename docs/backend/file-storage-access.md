@@ -43,7 +43,7 @@
 | Kodo | ✅（私有/公开） | ❌ |
 | local / SFTP | ❌ | ❌ |
 
-写操作使用独立权限 `system:file:config:bucket-access`，并记审计。当前面板探测和修改的是 Bucket / Container 级状态；OSS / S3 账号级阻止公共访问、Azure 账号级「允许 Blob 公共访问」尚未接入探测或展示，不能从 Bucket 状态推断账号级开关。OSS / S3 会读取 Bucket Policy 的公共访问状态，OBS 会读取 BPA 与 `GetBucketPublicStatus`；其他 provider 的 Bucket Policy / 防盗链仍可能影响实际匿名访问，面板显示的是 ACL/BPA/Policy 综合结果，不覆盖 CDN 自身鉴权。
+写操作使用独立权限 `system:file:config:bucket-access`，并记审计。当前面板探测和修改的是 Bucket / Container 级状态；OSS 会额外探测账号级阻止公共访问并展示（不提供修改），S3 在配置了 12 位 `s3AccountId` 时通过 S3 Control 探测账号级 BPA（不提供修改）。Azure 账号级「允许 Blob 公共访问」需要管理面凭据，尚未接入，不能从 Container 状态推断账号级开关。OSS / S3 会读取 Bucket Policy 的公共访问状态，OBS 会读取 BPA 与 `GetBucketPublicStatus`，COS 读取 Bucket Policy，Kodo 读取访问模式与防盗链；其他 provider 的 Bucket Policy / 防盗链仍可能影响实际匿名访问，面板显示的是 ACL/BPA/Policy 综合结果，不覆盖 CDN 自身鉴权。
 
 创建配置时，探测和设置直接使用尚未保存的表单凭据。云端权限修改会立即生效，不依赖点击「保存」创建配置行；修改表单中的 Provider 或凭据后会要求重新探测。
 
@@ -104,5 +104,15 @@
 
 - 直传有效期来自存储配置的 `presignedExpirySeconds`（默认 1800 秒）。
 - 每用户同时进行中的直传会话上限来自运行时设置 `files.directUploadMaxActiveSessions`（默认 20，0 表示不限制）。
-- 「上传方式」为 `browser-direct` 时，文件列表使用直传；直传失败会自动释放直传会话并回退服务端中转。其他入口仍可走服务端中转。
+- 服务端默认只对不超过 `files.directUploadHashVerifyMaxMb`（默认 256MB）的直传文件回读复核 SHA-256；更大的文件只校验大小/类型，浏览器仍在 Worker 中计算哈希用于续传本地校验。
+- 「上传方式」为 `browser-direct` 时，文件列表、聊天附件、头像、媒体选择器和通用附件等走直传；直传失败会自动释放直传会话并回退服务端中转。导入预检使用 `restricted` 可见性，仍走服务端；网盘、工作流附件、CMS 素材、App 制品等带业务绑定的上传也走各自服务端通道，避免绕过业务权限与落库校验。
 - 服务端中转保留给 local / SFTP、后端生成文件和不支持直传的 provider。
+
+## 7. 指标
+
+Prometheus 抓取端点会导出以下进程内计数：
+
+- `zenith_file_direct_uploads_started_total` / `completed` / `failed` / `aborted`：直传会话生命周期。
+- `zenith_file_direct_upload_bytes_total`：直传接受的总字节数。
+- `zenith_file_quick_upload_hits_total` / `misses_total`：秒传命中率。
+- 直传降级到服务端中转由浏览器侧触发，目前通过上传结果和前端错误日志排查；后续可补浏览器埋点。

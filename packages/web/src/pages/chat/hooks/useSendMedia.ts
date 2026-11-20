@@ -5,6 +5,7 @@ import { chatContract } from '@zenith/shared/chat';
 import { fileContract, type ManagedFile } from '@zenith/shared/platform';
 import { api, urlOf } from '@/lib/contract-query';
 import { request } from '@/utils/request';
+import { formDataWithFile, uploadManagedFileAuto } from '@/utils/managed-file-upload';
 import { sendWsMessage } from '@/hooks/useWebSocket';
 import { useAddChatCustomEmoji } from '@/hooks/queries/chat';
 import type { ChatAssetMeta, ChatCustomEmoji, ChatLinkPreview, ChatMessage } from '@zenith/shared/chat';
@@ -28,11 +29,17 @@ export function useSendMedia({
 }) {
   const sendFileMessage = useCallback(async (file: File, onProgress?: (percent: number) => void) => {
     if (!activeConvId) return false;
-    const fd = new FormData();
-    fd.append('file', file);
-    const uploadRes = await request.postForm<ManagedFile>(urlOf(fileContract.uploadOne), fd, { onProgress, silent: true });
-    if (uploadRes.code !== 0 || !uploadRes.data) return false;
-    const { id: fileId, url, originalName, size } = uploadRes.data;
+    const fd = formDataWithFile(file);
+    const uploaded = await uploadManagedFileAuto(file, {
+      onProgress,
+      proxy: async () => {
+        const res = await request.postForm<ManagedFile>(urlOf(fileContract.uploadOne), fd, { onProgress, silent: true });
+        if (res.code !== 0 || !res.data) throw new Error('上传失败');
+        return res.data;
+      },
+    }).catch(() => null);
+    if (!uploaded) return false;
+    const { id: fileId, url, originalName, size } = uploaded;
     // 视频文件走 video 消息类型（内联播放），其余为普通文件
     const isVideo = (file.type || '').startsWith('video/');
     const asset: ChatAssetMeta = {
@@ -106,13 +113,17 @@ export function useSendMedia({
   ): Promise<ChatMessage | null> => {
     if (!activeConvId) return null;
     const dimensions = await getImageDimensions(file);
-    const fd = new FormData();
-    fd.append('file', file);
-    const uploadRes = await request.postForm<ManagedFile>(urlOf(fileContract.uploadOne), fd, { onProgress, silent: true });
-    if (uploadRes.code !== 0 || !uploadRes.data) {
-      return null;
-    }
-    const { url, originalName, size } = uploadRes.data;
+    const fd = formDataWithFile(file);
+    const uploaded = await uploadManagedFileAuto(file, {
+      onProgress,
+      proxy: async () => {
+        const res = await request.postForm<ManagedFile>(urlOf(fileContract.uploadOne), fd, { onProgress, silent: true });
+        if (res.code !== 0 || !res.data) throw new Error('上传失败');
+        return res.data;
+      },
+    }).catch(() => null);
+    if (!uploaded) return null;
+    const { url, originalName, size } = uploaded;
     if (uploadId) {
       setUploadingItems((prev) => prev.map((item) => item.id === uploadId ? { ...item, remoteUrl: url } : item));
     }
@@ -141,11 +152,12 @@ export function useSendMedia({
     if (!activeConvId) return;
     const ext = mimeType.includes('mp4') ? 'm4a' : (mimeType.includes('ogg') ? 'ogg' : 'webm');
     const file = new File([blob], `voice-${Date.now()}.${ext}`, { type: mimeType });
-    const fd = new FormData();
-    fd.append('file', file);
+    const fd = formDataWithFile(file);
     let uploaded: ManagedFile;
     try {
-      uploaded = await api(fileContract.uploadOne, { body: fd }, { silent: true });
+      uploaded = await uploadManagedFileAuto(file, {
+        proxy: () => api(fileContract.uploadOne, { body: fd }, { silent: true }),
+      });
     } catch {
       Toast.error('语音上传失败');
       return;

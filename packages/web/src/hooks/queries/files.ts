@@ -6,6 +6,7 @@ import { api, contractKey, createResourceQueries, urlOf, useApiQuery } from '@/l
 import { unwrap } from '@/lib/query';
 import { request } from '@/utils/request';
 import { directMultipartUpload } from '@/utils/direct-multipart-upload';
+import { formDataWithFile, uploadManagedFileAuto } from '@/utils/managed-file-upload';
 import { useMySettings } from './settings-projections';
 
 export type FileListParams = QueryOf<typeof fileContract.list>;
@@ -55,12 +56,32 @@ interface UploadVariables {
 
 /** 多文件上传（进入文件管理列表）；带上传进度，故走 XHR 表单通道而非 api()（H5：带进度回调的上传）。
  * 新文件进入列表、统计面板与目录浏览（按文件表汇总），三者一并回源；详情缓存与本次无关 */
-export function useUploadFile() {
+export function useUploadFile(runtime: { allowDirect?: boolean } = {}) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ formData, onProgress, signal, visibility }: UploadVariables) => {
+    mutationFn: async ({ formData, onProgress, signal, visibility }: UploadVariables) => {
       if (visibility) formData.append('visibility', visibility);
-      return request.postForm<OutputOf<typeof fileContract.upload>>(urlOf(fileContract.upload), formData, { onProgress, signal }).then(unwrap);
+      const files = formData.getAll('file').filter((value): value is File => value instanceof File);
+      const proxy = (file?: File) => request.postForm<OutputOf<typeof fileContract.upload>>(
+        urlOf(fileContract.upload),
+        file ? formDataWithFile(file, formData) : formData,
+        { onProgress, signal },
+      ).then(unwrap);
+      if (visibility === 'restricted' || runtime.allowDirect === false || files.length === 0) {
+        return proxy();
+      }
+      const uploaded = await Promise.all(files.map((file) => uploadManagedFileAuto(file, {
+        onProgress,
+        signal,
+        allowDirect: runtime.allowDirect,
+        proxy: async () => {
+          const list = await proxy(file);
+          const first = list[0];
+          if (!first) throw new Error('上传失败');
+          return first;
+        },
+      })));
+      return uploaded;
     },
     onSuccess: () => invalidateAfterFilesAdded(qc),
   });
@@ -126,7 +147,13 @@ export function useDirectUploadFile() {
  */
 export function useUploadOneFile() {
   return useMutation({
-    mutationFn: ({ formData, onProgress }: UploadVariables) =>
-      request.postForm<OutputOf<typeof fileContract.uploadOne>>(urlOf(fileContract.uploadOne), formData, { onProgress, silent: true }).then(unwrap),
+    mutationFn: async ({ formData, onProgress, signal, visibility }: UploadVariables) => {
+      const file = formData.get('file');
+      const proxy = () => request.postForm<OutputOf<typeof fileContract.uploadOne>>(
+        urlOf(fileContract.uploadOne), formData, { onProgress, signal, silent: true },
+      ).then(unwrap);
+      if (visibility === 'restricted' || !(file instanceof File)) return proxy();
+      return uploadManagedFileAuto(file, { onProgress, signal, proxy });
+    },
   });
 }

@@ -361,8 +361,15 @@ async function mergeAndRegister(
   if (receivedBytes !== session.fileSize) {
     await failSession(session, config, `分片总大小（${receivedBytes} 字节）与声明的文件大小（${session.fileSize} 字节）不一致`);
   }
+  const settings = await getSettings('files');
   const expectedHash = options.expectedHash?.toLowerCase() ?? null;
-  const needHash = expectedHash !== null || options.computeHash === true;
+  const verifyLimitBytes = settings.directUploadHashVerifyMaxMb * 1024 * 1024;
+  const skipDirectHashVerify = session.uploadMode === 'browser-direct'
+    && expectedHash !== null
+    && verifyLimitBytes > 0
+    && session.fileSize > verifyLimitBytes;
+  const effectiveExpectedHash = skipDirectHashVerify ? null : expectedHash;
+  const needHash = effectiveExpectedHash !== null || options.computeHash === true;
   let contentHash: string | null = null;
   const driver = session.uploadMode === 'browser-direct' ? getDirectMultipartDriver(session.provider) : getMultipartDriver(session.provider);
 
@@ -398,7 +405,7 @@ async function mergeAndRegister(
     }
     if (needHash) {
       contentHash = await sha256OfStoredObject(session, config);
-      if (expectedHash && contentHash !== expectedHash) {
+      if (effectiveExpectedHash && contentHash !== effectiveExpectedHash) {
         await deleteObjectByConfig(config, session.objectKey, session.bucketName).catch(() => { /* 对象清理失败不掩盖校验错误 */ });
         await failSession(session, config, HASH_MISMATCH_MESSAGE, { multipartCompleted: true });
       }
@@ -440,7 +447,7 @@ async function mergeAndRegister(
     }
     if (needHash) {
       contentHash = await sha256OfChunkFiles(uploadId, session.totalChunks);
-      if (expectedHash && contentHash !== expectedHash) await failSession(session, config, HASH_MISMATCH_MESSAGE);
+      if (effectiveExpectedHash && contentHash !== effectiveExpectedHash) await failSession(session, config, HASH_MISMATCH_MESSAGE);
     }
     const mergedStream = Readable.from(mergedChunkStream(uploadId, session.totalChunks));
     await uploadObjectByConfig(config, {

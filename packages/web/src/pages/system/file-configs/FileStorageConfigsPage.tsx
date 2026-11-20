@@ -64,7 +64,9 @@ function resolveEffectivePublic(
   blockPublicAccess: boolean | null | undefined,
   policyPublic: boolean | null | undefined,
   publicStatus: boolean | null | undefined,
+  accountBlockPublicAccess: boolean | null | undefined,
 ): boolean {
+  if (accountBlockPublicAccess === true) return false;
   if (publicStatus !== null && publicStatus !== undefined) return publicStatus;
   const aclPublic = bucketAcl === 'public-read' || bucketAcl === 'public-read-write';
   if (provider === 'oss' || provider === 's3' || provider === 'obs') {
@@ -280,6 +282,7 @@ export default function FileStorageConfigsPage() {
       s3Endpoint: config.s3Endpoint ?? '',
       s3Bucket: config.s3Bucket ?? '',
       s3AccessKeyId: config.s3AccessKeyId ?? '',
+      s3AccountId: config.s3AccountId ?? '',
       s3SecretAccessKey: '',
       s3ForcePathStyle: config.s3ForcePathStyle ?? false,
       cosRegion: config.cosRegion ?? '',
@@ -338,12 +341,14 @@ export default function FileStorageConfigsPage() {
     const blockPublicAccess = modal.editing.bucketBlockPublicAccess ?? null;
     const policyPublic = modal.editing.bucketPolicyPublic ?? null;
     const publicStatus = modal.editing.bucketPublicStatus ?? null;
+    const accountBlockPublicAccess = modal.editing.bucketAccountBlockPublicAccess ?? null;
     setBucketAccess({
       bucketAcl: acl,
       blockPublicAccess,
       policyPublic,
       publicStatus,
-      effectivePublic: resolveEffectivePublic(modal.editing.provider, acl, blockPublicAccess, policyPublic, publicStatus),
+      accountBlockPublicAccess,
+      effectivePublic: resolveEffectivePublic(modal.editing.provider, acl, blockPublicAccess, policyPublic, publicStatus, accountBlockPublicAccess),
       checkedAt: modal.editing.bucketAccessCheckedAt ?? '',
     });
   }, [modal.editing]);
@@ -750,6 +755,11 @@ export default function FileStorageConfigsPage() {
                   />
                 </Col>
               </Row>
+              <Row gutter={16}>
+                <Col span={24}>
+                  <Form.Input field="s3AccountId" label="AWS 账号 ID（可选）" placeholder="12 位数字；用于账号级阻止公共访问探测" />
+                </Col>
+              </Row>
               <Form.Checkbox field="s3ForcePathStyle" noLabel>强制路径样式（MinIO / Ceph 等兼容当需开启）</Form.Checkbox>
             </>
           )}
@@ -1008,6 +1018,14 @@ export default function FileStorageConfigsPage() {
                   ? '未知'
                   : bucketAccess.blockPublicAccess ? '开启' : '关闭'}
               </Tag>
+              {bucketAccess?.accountBlockPublicAccess !== null && bucketAccess?.accountBlockPublicAccess !== undefined && (
+                <>
+                  <Text type="secondary">账号级阻止公共访问：</Text>
+                  <Tag size="small" color={bucketAccess.accountBlockPublicAccess ? 'red' : 'green'}>
+                    {bucketAccess.accountBlockPublicAccess ? '开启' : '关闭'}
+                  </Tag>
+                </>
+              )}
               <Text type="secondary">Bucket Policy 公共访问：</Text>
               <Tag
                 size="small"

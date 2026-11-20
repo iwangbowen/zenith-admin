@@ -54,7 +54,7 @@ export function mapFileStorageConfig(row: typeof fileStorageConfigs.$inferSelect
 const EMPTY_PROVIDER_FIELDS = {
   localRootPath: null,
   ossRegion: null, ossEndpoint: null, ossBucket: null, ossAccessKeyId: null, ossAccessKeySecret: null,
-  s3Region: null, s3Endpoint: null, s3Bucket: null, s3AccessKeyId: null, s3SecretAccessKey: null, s3ForcePathStyle: null,
+  s3Region: null, s3Endpoint: null, s3Bucket: null, s3AccessKeyId: null, s3SecretAccessKey: null, s3AccountId: null, s3ForcePathStyle: null,
   cosRegion: null, cosBucket: null, cosSecretId: null, cosSecretKey: null,
   obsEndpoint: null, obsBucket: null, obsAccessKeyId: null, obsSecretAccessKey: null,
   kodoAccessKey: null, kodoSecretKey: null, kodoBucket: null, kodoRegion: null, kodoEndpoint: null,
@@ -103,7 +103,7 @@ export function toStoragePayload(input: StorageInput) {
         ...base,
         s3Region: input.s3Region ?? null, s3Endpoint: input.s3Endpoint ?? null,
         s3Bucket: input.s3Bucket ?? null, s3AccessKeyId: input.s3AccessKeyId ?? null,
-        s3SecretAccessKey: input.s3SecretAccessKey ?? null, s3ForcePathStyle: input.s3ForcePathStyle ?? null,
+        s3SecretAccessKey: input.s3SecretAccessKey ?? null, s3AccountId: input.s3AccountId || null, s3ForcePathStyle: input.s3ForcePathStyle ?? null,
       };
     case 'cos':
       return {
@@ -203,11 +203,13 @@ async function probeBucketAccessForPayload(payload: StoragePayload): Promise<Par
   try {
     const info = await getBucketAccessInfo(payload as unknown as FileStorageConfigRow);
     const bucketAclPublic = info.bucketAcl === 'public-read' || info.bucketAcl === 'public-read-write';
-    const bpaBlocks = info.publicStatus === true
-      ? false
-      : payload.provider === 'oss' || payload.provider === 's3' || payload.provider === 'obs'
-        ? info.blockPublicAccess !== false
-        : info.blockPublicAccess === true;
+    const bpaBlocks = info.accountBlockPublicAccess === true
+      ? true
+      : info.publicStatus === true
+        ? false
+        : payload.provider === 'oss' || payload.provider === 's3' || payload.provider === 'obs'
+          ? info.blockPublicAccess !== false
+          : info.blockPublicAccess === true;
     if (payload.accessStrategy === 'public-bucket' && (!bucketAclPublic || bpaBlocks)) {
       throw new HTTPException(400, { message: 'Bucket ACL 当前不是公共读（或已开启阻止公共访问），无法保存 Bucket 公共读直链；请先在配置页调整 Bucket 权限，或改用其他下载方式' });
     }
@@ -219,6 +221,7 @@ async function probeBucketAccessForPayload(payload: StoragePayload): Promise<Par
       bucketBlockPublicAccess: info.blockPublicAccess,
       bucketPolicyPublic: info.policyPublic,
       bucketPublicStatus: info.publicStatus,
+      bucketAccountBlockPublicAccess: info.accountBlockPublicAccess,
       bucketAccessCheckedAt: info.checkedAt,
       bucketAccessError: null,
     };
@@ -229,6 +232,7 @@ async function probeBucketAccessForPayload(payload: StoragePayload): Promise<Par
       bucketBlockPublicAccess: null,
       bucketPolicyPublic: null,
       bucketPublicStatus: null,
+      bucketAccountBlockPublicAccess: null,
       bucketAccessCheckedAt: new Date(),
       bucketAccessError: err instanceof Error ? err.message : String(err),
     };
@@ -332,6 +336,7 @@ async function persistBucketAccess(id: number, info: BucketAccessInfo) {
     bucketBlockPublicAccess: info.blockPublicAccess,
     bucketPolicyPublic: info.policyPublic,
     bucketPublicStatus: info.publicStatus,
+    bucketAccountBlockPublicAccess: info.accountBlockPublicAccess,
     bucketAccessCheckedAt: info.checkedAt,
     bucketAccessError: null,
   }).where(eq(fileStorageConfigs.id, id));

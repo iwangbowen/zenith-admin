@@ -28,6 +28,8 @@ export const fileStorageConfigSchema = z.object({
   bucketPolicyPublic: z.boolean().nullable().optional(),
   /** provider 返回的 Bucket 综合公共访问状态（目前 OBS 提供该接口） */
   bucketPublicStatus: z.boolean().nullable().optional(),
+  /** 账号级阻止公共访问状态（目前 OSS 支持探测） */
+  bucketAccountBlockPublicAccess: z.boolean().nullable().optional(),
   bucketAccessCheckedAt: z.string().nullable().optional(),
   bucketAccessError: z.string().nullable().optional(),
   publicBaseUrl: z.string().nullable().optional().meta({ description: '自定义访问域名（CDN/加速域名），public 策略优先使用' }),
@@ -43,6 +45,7 @@ export const fileStorageConfigSchema = z.object({
   s3Endpoint: z.string().nullable().optional(),
   s3Bucket: z.string().nullable().optional(),
   s3AccessKeyId: z.string().nullable().optional(),
+  s3AccountId: z.string().nullable().optional().meta({ description: 'AWS 账号 ID，用于 S3 Control 账号级公共访问探测' }),
   s3ForcePathStyle: z.boolean().nullable().optional(),
   // 腾讯云 COS
   cosRegion: z.string().nullable().optional(),
@@ -87,6 +90,8 @@ export const fileBucketAccessInfoSchema = z.object({
   policyPublic: z.boolean().nullable(),
   /** provider 返回的综合公共访问状态；null = 未探测或 provider 未提供该接口 */
   publicStatus: z.boolean().nullable(),
+  /** 账号级阻止公共访问；null = 未探测或 provider 未提供该接口 */
+  accountBlockPublicAccess: z.boolean().nullable(),
   effectivePublic: z.boolean(),
   checkedAt: z.string(),
 }).meta({ id: 'FileBucketAccessInfo' });

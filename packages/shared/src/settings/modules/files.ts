@@ -28,6 +28,8 @@ export const filesSettingsSchema = z.object({
     .meta({ title: '分片大小（MB）', description: '服务端裁定的分片基线，不低于对象存储要求的最小分片；文件过大时自动上调以不超过片数上限' }),
   directUploadMaxActiveSessions: z.int().min(0).max(200).default(20)
     .meta({ title: '浏览器直传最大在途会话', description: '每用户同时进行中的浏览器直传会话上限；0 表示不限制' }),
+  directUploadHashVerifyMaxMb: z.int().min(0).max(102_400).default(256)
+    .meta({ title: '直传服务端复核上限（MB）', description: '浏览器直传文件不超过该大小时服务端回读并复核 SHA-256；超过则只校验大小/类型，0 表示全部复核' }),
 }).meta({ id: 'Settings.Files' });
 
 export type FilesSettings = z.output<typeof filesSettingsSchema>;
