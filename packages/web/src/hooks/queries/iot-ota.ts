@@ -1,12 +1,13 @@
 // eslint-disable-next-line no-restricted-imports -- H5 保留：手写 useQuery / useMutation 的理由见本文件对应 hook 的注释；queryKey 仍由 contractKey 生成
 import { keepPreviousData, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type { OutputOf, QueryOf } from '@zenith/shared/core';
-import { iotFirmwareContract, iotOtaTaskContract, type IotFirmware, type IotOtaTask } from '@zenith/shared/iot';
+import { iotFirmwareContract, iotOtaTaskContract, type InitIotFirmwareUploadInput, type IotFirmware, type IotOtaTask } from '@zenith/shared/iot';
+import { fileContract } from '@zenith/shared/platform';
 import { invalidateEntityRelations } from '@/lib/entity-relation-cache';
 import { request } from '@/utils/request';
 import { unwrap } from '@/lib/query';
-import { contractKey, createResourceQueries, urlOf, useApiMutation, useApiQuery } from '@/lib/contract-query';
-import { chunkedUpload, type ChunkedUploadEndpoints } from '@/utils/chunked-upload';
+import { api, contractKey, createResourceQueries, urlOf, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { uploadBusinessFile, type BusinessUploadEndpoints } from '@/utils/business-upload';
 import { useChunkUploadThreshold } from './files';
 
 // ─── 固件包 ───────────────────────────────────────────────────────────────────
@@ -24,13 +25,22 @@ export const {
   onDeleted: (qc) => { void invalidateEntityRelations(qc); },
 });
 
-/** 固件分片上传接口（init / chunk / complete / status / abort），由契约派生 */
-const FIRMWARE_UPLOAD_ENDPOINTS: ChunkedUploadEndpoints = {
-  init: urlOf(iotFirmwareContract.uploadInit),
-  chunk: urlOf(iotFirmwareContract.uploadChunk),
-  complete: urlOf(iotFirmwareContract.uploadComplete),
-  status: (uploadId) => urlOf(iotFirmwareContract.uploadStatus, { params: { uploadId } }),
-  abort: (uploadId) => urlOf(iotFirmwareContract.uploadAbort, { params: { uploadId } }),
+/** 固件上传通道：init / 服务端分片 / 浏览器直传都由固件契约派生 */
+const FIRMWARE_UPLOAD_ENDPOINTS: BusinessUploadEndpoints<IotFirmware> = {
+  init: (body) => api(iotFirmwareContract.uploadInit, { body: body as InitIotFirmwareUploadInput }),
+  proxy: {
+    chunk: urlOf(iotFirmwareContract.uploadChunk),
+    complete: urlOf(iotFirmwareContract.uploadComplete),
+    status: (uploadId) => urlOf(iotFirmwareContract.uploadStatus, { params: { uploadId } }),
+    abort: (uploadId) => urlOf(iotFirmwareContract.uploadAbort, { params: { uploadId } }),
+  },
+  direct: {
+    partUrl: (uploadId, partNumber) => api(fileContract.businessUploadPartUrl, { params: { uploadId, partNumber } }),
+    partAck: (uploadId, partNumber, body) => api(fileContract.businessUploadPartAck, { params: { uploadId, partNumber }, body }),
+    status: (uploadId) => api(fileContract.businessUploadStatus, { params: { uploadId } }),
+    complete: (uploadId) => api(iotFirmwareContract.uploadComplete, { body: { uploadId } }),
+    abort: (uploadId) => api(fileContract.businessUploadAbort, { params: { uploadId } }),
+  },
 };
 
 interface UploadIotFirmwareVariables {
@@ -52,7 +62,8 @@ export function useUploadIotFirmware() {
   return useMutation({
     mutationFn: ({ file, productId, version, releaseNotes, onProgress, signal }: UploadIotFirmwareVariables): Promise<IotFirmware> => {
       if (file.size > chunkThreshold) {
-        return chunkedUpload<IotFirmware>(file, {
+        return uploadBusinessFile<IotFirmware>({
+          file,
           endpoints: FIRMWARE_UPLOAD_ENDPOINTS,
           initExtra: { productId, version, releaseNotes: releaseNotes || undefined },
           resumeScope: `iot-firmware:${productId}:${version}`,
