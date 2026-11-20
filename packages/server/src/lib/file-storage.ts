@@ -483,6 +483,7 @@ export function isPublicAccessAllowed(file: FileUrlSource, config: FileStorageCo
   switch (config.accessStrategy) {
     case 'public-object':
       return (file.objectAcl === 'public-read' || file.objectAcl === 'public-read-write')
+        && file.publicAccess === true
         && (config.provider === 'oss' || config.provider === 's3'
           ? config.bucketBlockPublicAccess === false
           : config.bucketBlockPublicAccess !== true);

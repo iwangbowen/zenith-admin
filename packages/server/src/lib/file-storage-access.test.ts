@@ -79,7 +79,7 @@ const file = {
 describe('buildPublicFileUrl', () => {
   it('uses object ACL for public-object', () => {
     const url = buildPublicFileUrl(
-      { ...file, objectAcl: 'public-read' },
+      { ...file, objectAcl: 'public-read', publicAccess: true },
       config({ accessStrategy: 'public-object', bucketBlockPublicAccess: false }),
     );
     expect(url).toBe('https://demo-bucket.oss-cn-hangzhou.aliyuncs.com/uploads/a.txt');
@@ -87,6 +87,13 @@ describe('buildPublicFileUrl', () => {
 
   it('rejects inherited object ACL for public-object', () => {
     expect(buildPublicFileUrl(file, config({ accessStrategy: 'public-object', bucketBlockPublicAccess: false }))).toBeNull();
+  });
+
+  it('rejects object ACL without a verified public access snapshot', () => {
+    expect(buildPublicFileUrl({ ...file, objectAcl: 'public-read' }, config({
+      accessStrategy: 'public-object',
+      bucketBlockPublicAccess: null,
+    }))).toBeNull();
   });
 
   it('uses the upload snapshot for public-bucket', () => {
