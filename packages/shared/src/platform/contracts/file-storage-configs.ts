@@ -92,6 +92,11 @@ export const updateFileBucketAccessSchema = z.object({
   message: '至少提供一个要修改的权限项',
 });
 
+export const updateDraftFileBucketAccessSchema = z.object({
+  config: createFileStorageConfigSchema,
+  changes: updateFileBucketAccessSchema,
+}).meta({ id: 'UpdateDraftFileBucketAccess' });
+
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 
 export const fileStorageConfigListQuery = paginationQuery.extend({
@@ -105,6 +110,8 @@ export const fileStorageConfigContract = defineContract('/api/file-storage-confi
   test: op.post('/test', { access: { permission: 'system:file:config' }, audit: { description: '测试文件存储连接', recordBody: false }, body: createFileStorageConfigSchema, summary: '测试存储配置连接' }),
   testExisting: op.post('/{id}/test', { access: { permission: 'system:file:config' }, audit: { description: '测试文件存储连接', recordBody: false }, params: idParam, body: updateFileStorageConfigSchema, summary: '测试已保存存储配置连接' }),
   detail: op.get('/{id}', { access: { permission: 'system:file:config' }, params: idParam, response: fileStorageConfigSchema, summary: '存储配置详情' }),
+  probeDraftBucketAccess: op.post('/test/bucket-access/probe', { access: { permission: 'system:file:config:create' }, body: createFileStorageConfigSchema, response: fileBucketAccessInfoSchema, summary: '探测新配置的 Bucket 访问权限' }),
+  updateDraftBucketAccess: op.put('/test/bucket-access', { access: { permission: 'system:file:config:bucket-access' }, audit: { description: '修改新配置的 Bucket 访问权限', recordBody: false }, body: updateDraftFileBucketAccessSchema, response: fileBucketAccessInfoSchema, summary: '修改新配置的 Bucket 访问权限' }),
   probeBucketAccess: op.post('/{id}/bucket-access/probe', { access: { permission: 'system:file:config' }, params: idParam, response: fileBucketAccessInfoSchema, summary: '探测 Bucket 访问权限' }),
   updateBucketAccess: op.put('/{id}/bucket-access', { access: { permission: 'system:file:config:bucket-access' }, audit: '修改 Bucket 访问权限', params: idParam, body: updateFileBucketAccessSchema, response: fileBucketAccessInfoSchema, summary: '修改 Bucket 访问权限' }),
   create: op.post('/', { access: { permission: 'system:file:config:create' }, audit: '创建文件存储配置', body: createFileStorageConfigSchema, response: fileStorageConfigSchema, summary: '创建配置' }),

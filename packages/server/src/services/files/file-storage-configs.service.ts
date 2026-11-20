@@ -320,6 +320,49 @@ export async function probeFileStorageConfigBucketAccess(id: number) {
   }
 }
 
+function toDraftStorageConfig(data: StorageInput): FileStorageConfigRow {
+  return {
+    ...toStoragePayload(data),
+    id: 0,
+    createdBy: null,
+    updatedBy: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  } as FileStorageConfigRow;
+}
+
+export async function probeDraftFileStorageConfigBucketAccess(data: StorageInput) {
+  const storage = toDraftStorageConfig(data);
+  if (!FILE_BUCKET_ACCESS_SUPPORT[storage.provider]?.probe) {
+    throw new HTTPException(400, { message: `当前存储类型不支持 Bucket 权限探测：${storage.provider}` });
+  }
+  try {
+    return mapBucketAccessInfo(await getBucketAccessInfo(storage));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new HTTPException(400, { message: `Bucket 权限探测失败：${message}` });
+  }
+}
+
+export async function updateDraftFileStorageConfigBucketAccess(
+  data: StorageInput,
+  input: { acl?: FileBucketAcl; blockPublicAccess?: boolean },
+) {
+  const storage = toDraftStorageConfig(data);
+  const capability = FILE_BUCKET_ACCESS_SUPPORT[storage.provider];
+  if (!capability?.probe) throw new HTTPException(400, { message: `当前存储类型不支持 Bucket 权限设置：${storage.provider}` });
+  if (input.acl && !capability.setAcl) throw new HTTPException(400, { message: '当前存储类型不支持修改 Bucket ACL' });
+  if (input.blockPublicAccess !== undefined && !capability.setBlockPublicAccess) {
+    throw new HTTPException(400, { message: '当前存储类型不支持修改阻止公共访问' });
+  }
+  try {
+    return mapBucketAccessInfo(await setBucketAccessInfo(storage, input));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new HTTPException(400, { message: `Bucket 权限修改失败：${message}` });
+  }
+}
+
 export async function updateFileStorageConfigBucketAccess(
   id: number,
   input: { acl?: FileBucketAcl; blockPublicAccess?: boolean },

@@ -76,6 +76,14 @@ export function useProbeFileStorageConfigBucketAccess() {
   });
 }
 
+export function useProbeDraftFileStorageConfigBucketAccess() {
+  return useApiMutation(fileStorageConfigContract.probeDraftBucketAccess);
+}
+
+export function useUpdateDraftFileStorageConfigBucketAccess() {
+  return useApiMutation(fileStorageConfigContract.updateDraftBucketAccess);
+}
+
 export function useUpdateFileStorageConfigBucketAccess() {
   return useApiMutation(fileStorageConfigContract.updateBucketAccess, {
     invalidate: (qc, _output, vars) => {

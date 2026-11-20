@@ -1,6 +1,6 @@
 import { OpenAPIHono } from '@hono/zod-openapi';
 import { fileStorageConfigContract } from '@zenith/shared/platform';
-import { setAuditBeforeData } from '../../middleware/guard';
+import { setAuditAfterData, setAuditBeforeData } from '../../middleware/guard';
 import { defineContractRoute } from '../../lib/contract-route';
 import { ErrorResponse, jsonContent, okBody, validationHook } from '../../lib/openapi-schemas';
 import {
@@ -13,6 +13,8 @@ import {
   getFileStorageConfigBeforeAudit,
   getFileStorageConfig,
   probeFileStorageConfigBucketAccess,
+  probeDraftFileStorageConfigBucketAccess,
+  updateDraftFileStorageConfigBucketAccess,
   updateFileStorageConfigBucketAccess,
   testFileStorageConfig,
   testExistingFileStorageConfig,
@@ -39,6 +41,18 @@ const testExistingRoute = defineContractRoute(fileStorageConfigContract.testExis
     const { id } = c.req.valid('param');
     const result = await testExistingFileStorageConfig(id, c.req.valid('json'));
     return c.json(okBody(null, result.message), 200);
+  },
+});
+const probeDraftBucketAccessRoute = defineContractRoute(fileStorageConfigContract.probeDraftBucketAccess, {
+  handler: async (c) => c.json(okBody(await probeDraftFileStorageConfigBucketAccess(c.req.valid('json'))), 200),
+});
+const updateDraftBucketAccessRoute = defineContractRoute(fileStorageConfigContract.updateDraftBucketAccess, {
+  handler: async (c) => {
+    const { config, changes } = c.req.valid('json');
+    setAuditBeforeData(c, await probeDraftFileStorageConfigBucketAccess(config));
+    const info = await updateDraftFileStorageConfigBucketAccess(config, changes);
+    setAuditAfterData(c, info);
+    return c.json(okBody(info, 'Bucket 权限已更新'), 200);
   },
 });
 const setDefaultRoute = defineContractRoute(fileStorageConfigContract.setDefault, {
@@ -73,7 +87,7 @@ mountCrud(fileStorageConfigsRouter, fileStorageConfigContract,
     remove: deleteFileStorageConfig,
   },
   {},
-  [defaultRoute, testRoute, testExistingRoute, setDefaultRoute, probeBucketAccessRoute, updateBucketAccessRoute],
+  [defaultRoute, testRoute, testExistingRoute, probeDraftBucketAccessRoute, updateDraftBucketAccessRoute, setDefaultRoute, probeBucketAccessRoute, updateBucketAccessRoute],
 );
 
 export default fileStorageConfigsRouter;
