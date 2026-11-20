@@ -109,7 +109,7 @@ export const FILE_BUCKET_ACCESS_SUPPORT: Partial<Record<
   oss: { probe: true, setAcl: true, setBlockPublicAccess: true },
   s3: { probe: true, setAcl: true, setBlockPublicAccess: true },
   cos: { probe: true, setAcl: true, setBlockPublicAccess: false },
-  obs: { probe: true, setAcl: true, setBlockPublicAccess: false },
+  obs: { probe: true, setAcl: true, setBlockPublicAccess: true },
   bos: { probe: true, setAcl: true, setBlockPublicAccess: false },
   azure: { probe: true, setAcl: true, setBlockPublicAccess: false },
   kodo: { probe: true, setAcl: true, setBlockPublicAccess: false },

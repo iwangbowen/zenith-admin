@@ -47,6 +47,32 @@ const ACCESS_STRATEGY_HINTS: Record<FileAccessStrategy, string> = {
   'public-domain': '通过 CDN / 自定义域名提供永久直链，Bucket 可保持私有；需要在下方填写访问域名。',
 };
 
+function accessStrategiesFor(provider: FileStorageProvider): FileAccessStrategy[] {
+  return FILE_ACCESS_STRATEGY_OPTIONS
+    .map((option) => option.value)
+    .filter((strategy) => {
+      if (strategy === 'proxy' || strategy === 'public-domain') return true;
+      if (strategy === 'presigned') return provider !== 'local' && provider !== 'sftp';
+      if (strategy === 'public-object') return Boolean(FILE_OBJECT_ACL_SUPPORT[provider]);
+      return Boolean(FILE_BUCKET_ACCESS_SUPPORT[provider]?.probe);
+    });
+}
+
+function resolveEffectivePublic(
+  provider: FileStorageProvider,
+  bucketAcl: FileBucketAcl | null | undefined,
+  blockPublicAccess: boolean | null | undefined,
+  policyPublic: boolean | null | undefined,
+  publicStatus: boolean | null | undefined,
+): boolean {
+  if (publicStatus !== null && publicStatus !== undefined) return publicStatus;
+  const aclPublic = bucketAcl === 'public-read' || bucketAcl === 'public-read-write';
+  if (provider === 'oss' || provider === 's3' || provider === 'obs') {
+    return (aclPublic || policyPublic === true) && blockPublicAccess === false;
+  }
+  return aclPublic || policyPublic === true;
+}
+
 function normalizeOptional(value?: string): string {
   return value?.trim() ?? '';
 }
@@ -310,10 +336,14 @@ export default function FileStorageConfigsPage() {
     setFormIsDefault(modal.editing.isDefault);
     const acl = modal.editing.bucketAcl ?? null;
     const blockPublicAccess = modal.editing.bucketBlockPublicAccess ?? null;
+    const policyPublic = modal.editing.bucketPolicyPublic ?? null;
+    const publicStatus = modal.editing.bucketPublicStatus ?? null;
     setBucketAccess({
       bucketAcl: acl,
       blockPublicAccess,
-      effectivePublic: (acl === 'public-read' || acl === 'public-read-write') && blockPublicAccess !== true,
+      policyPublic,
+      publicStatus,
+      effectivePublic: resolveEffectivePublic(modal.editing.provider, acl, blockPublicAccess, policyPublic, publicStatus),
       checkedAt: modal.editing.bucketAccessCheckedAt ?? '',
     });
   }, [modal.editing]);
@@ -611,6 +641,11 @@ export default function FileStorageConfigsPage() {
                   }
                   if (!FILE_DIRECT_UPLOAD_SUPPORT[next]) {
                     modal.formApi.current?.setValue('uploadMode', 'server-proxy');
+                  }
+                  const currentStrategy = modal.formApi.current?.getValue('accessStrategy') as FileAccessStrategy | undefined;
+                  if (currentStrategy && !accessStrategiesFor(next).includes(currentStrategy)) {
+                    modal.formApi.current?.setValue('accessStrategy', 'proxy');
+                    setFormStrategy('proxy');
                   }
                 }}
                 placeholder="请选择存储类型"
@@ -928,8 +963,8 @@ export default function FileStorageConfigsPage() {
                 extraText={ACCESS_STRATEGY_HINTS[formStrategy]}
                 onChange={(value) => setFormStrategy(value as FileAccessStrategy)}
               >
-                {FILE_ACCESS_STRATEGY_OPTIONS.map((opt) => (
-                  <Select.Option key={opt.value} value={opt.value}>{opt.label}</Select.Option>
+                {accessStrategiesFor(formProvider).map((strategy) => (
+                  <Select.Option key={strategy} value={strategy}>{FILE_ACCESS_STRATEGY_LABELS[strategy]}</Select.Option>
                 ))}
               </Form.Select>
             </Col>
@@ -963,14 +998,38 @@ export default function FileStorageConfigsPage() {
               <Text type="secondary">Bucket ACL：</Text>
               <Tag size="small">{bucketAccess?.bucketAcl ? FILE_BUCKET_ACL_LABELS[bucketAccess.bucketAcl] : '未知'}</Tag>
               <Text type="secondary">Bucket 级阻止公共访问：</Text>
-              <Tag size="small" color={bucketAccess?.blockPublicAccess ? 'red' : 'green'}>
+              <Tag
+                size="small"
+                color={bucketAccess?.blockPublicAccess === null || bucketAccess?.blockPublicAccess === undefined
+                  ? 'grey'
+                  : bucketAccess.blockPublicAccess ? 'red' : 'green'}
+              >
                 {bucketAccess?.blockPublicAccess === null || bucketAccess?.blockPublicAccess === undefined
                   ? '未知'
                   : bucketAccess.blockPublicAccess ? '开启' : '关闭'}
               </Tag>
+              <Text type="secondary">Bucket Policy 公共访问：</Text>
+              <Tag
+                size="small"
+                color={bucketAccess?.policyPublic === null || bucketAccess?.policyPublic === undefined
+                  ? 'grey'
+                  : bucketAccess.policyPublic ? 'red' : 'green'}
+              >
+                {bucketAccess?.policyPublic === null || bucketAccess?.policyPublic === undefined
+                  ? '未知'
+                  : bucketAccess.policyPublic ? '是' : '否'}
+              </Tag>
+              {bucketAccess?.publicStatus !== null && bucketAccess?.publicStatus !== undefined && (
+                <>
+                  <Text type="secondary">云端公共状态：</Text>
+                  <Tag size="small" color={bucketAccess.publicStatus ? 'red' : 'green'}>
+                    {bucketAccess.publicStatus ? '公共' : '私有'}
+                  </Tag>
+                </>
+              )}
               <Text type="secondary">实际公共读：</Text>
-              <Tag size="small" color={bucketAccess?.effectivePublic ? 'green' : 'red'}>
-                {bucketAccess?.effectivePublic ? '是' : '否'}
+              <Tag size="small" color={bucketAccess?.checkedAt ? (bucketAccess.effectivePublic ? 'green' : 'red') : 'grey'}>
+                {bucketAccess?.checkedAt ? (bucketAccess.effectivePublic ? '是' : '否') : '未知'}
               </Tag>
               {bucketAccess?.checkedAt && <Text type="tertiary">检测于 {bucketAccess.checkedAt}</Text>}
             </div>

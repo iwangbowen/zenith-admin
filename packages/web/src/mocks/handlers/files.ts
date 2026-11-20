@@ -326,13 +326,16 @@ export const filesHandlers = [
   mock(fileStorageConfigContract.probeBucketAccess, ({ params, ok }) => {
     const config = requireItem(mockFileStorageConfigs, params.id, '存储配置不存在');
     const checkedAt = mockDateTime();
-    const effectivePublic = (config.bucketAcl === 'public-read' || config.bucketAcl === 'public-read-write')
-      && config.bucketBlockPublicAccess !== true;
+    const effectivePublic = config.bucketPublicStatus
+      ?? (((config.bucketAcl === 'public-read' || config.bucketAcl === 'public-read-write') || config.bucketPolicyPublic === true)
+        && config.bucketBlockPublicAccess !== true);
     config.bucketAccessCheckedAt = checkedAt;
     config.bucketAccessError = null;
     return ok({
       bucketAcl: config.bucketAcl ?? null,
       blockPublicAccess: config.bucketBlockPublicAccess ?? null,
+      policyPublic: config.bucketPolicyPublic ?? null,
+      publicStatus: config.bucketPublicStatus ?? null,
       effectivePublic,
       checkedAt,
     });
@@ -345,11 +348,14 @@ export const filesHandlers = [
     const checkedAt = mockDateTime();
     config.bucketAccessCheckedAt = checkedAt;
     config.bucketAccessError = null;
-    const effectivePublic = (config.bucketAcl === 'public-read' || config.bucketAcl === 'public-read-write')
-      && config.bucketBlockPublicAccess !== true;
+    const effectivePublic = config.bucketPublicStatus
+      ?? (((config.bucketAcl === 'public-read' || config.bucketAcl === 'public-read-write') || config.bucketPolicyPublic === true)
+        && config.bucketBlockPublicAccess !== true);
     return ok({
       bucketAcl: config.bucketAcl ?? null,
       blockPublicAccess: config.bucketBlockPublicAccess ?? null,
+      policyPublic: config.bucketPolicyPublic ?? null,
+      publicStatus: config.bucketPublicStatus ?? null,
       effectivePublic,
       checkedAt,
     }, 'Bucket 权限已更新');

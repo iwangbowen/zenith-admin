@@ -67,4 +67,22 @@ describe('file storage access strategy validation', () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it('requires a download domain for Kodo public-bucket links', () => {
+    const base = {
+      name: 'kodo',
+      provider: 'kodo',
+      status: 'enabled',
+      isDefault: false,
+      objectAcl: 'default',
+      accessStrategy: 'public-bucket',
+      presignedExpirySeconds: 1800,
+      kodoAccessKey: 'ak',
+      kodoSecretKey: 'sk',
+      kodoBucket: 'bucket',
+    } as const;
+    expect(createFileStorageConfigSchema.safeParse(base).success).toBe(false);
+    expect(createFileStorageConfigSchema.safeParse({ ...base, kodoEndpoint: 'https://cdn.example.com' }).success).toBe(true);
+    expect(createFileStorageConfigSchema.safeParse({ ...base, publicBaseUrl: 'https://cdn.example.com' }).success).toBe(true);
+  });
 });

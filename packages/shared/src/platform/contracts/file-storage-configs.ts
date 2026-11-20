@@ -24,6 +24,10 @@ export const fileStorageConfigSchema = z.object({
   bucketAcl: z.enum(FILE_BUCKET_ACLS).nullable().optional(),
   /** 最近一次探测的阻止公共访问状态；null = 该 provider 无此能力或尚未探测 */
   bucketBlockPublicAccess: z.boolean().nullable().optional(),
+  /** 最近一次探测的 Bucket Policy 是否允许匿名公共访问 */
+  bucketPolicyPublic: z.boolean().nullable().optional(),
+  /** provider 返回的 Bucket 综合公共访问状态（目前 OBS 提供该接口） */
+  bucketPublicStatus: z.boolean().nullable().optional(),
   bucketAccessCheckedAt: z.string().nullable().optional(),
   bucketAccessError: z.string().nullable().optional(),
   publicBaseUrl: z.string().nullable().optional().meta({ description: '自定义访问域名（CDN/加速域名），public 策略优先使用' }),
@@ -79,6 +83,10 @@ export type FileStorageConfig = z.infer<typeof fileStorageConfigSchema>;
 export const fileBucketAccessInfoSchema = z.object({
   bucketAcl: z.enum(FILE_BUCKET_ACLS).nullable(),
   blockPublicAccess: z.boolean().nullable(),
+  /** Bucket Policy 是否允许匿名公共访问；null = 未探测或 provider 未提供该状态 */
+  policyPublic: z.boolean().nullable(),
+  /** provider 返回的综合公共访问状态；null = 未探测或 provider 未提供该接口 */
+  publicStatus: z.boolean().nullable(),
   effectivePublic: z.boolean(),
   checkedAt: z.string(),
 }).meta({ id: 'FileBucketAccessInfo' });

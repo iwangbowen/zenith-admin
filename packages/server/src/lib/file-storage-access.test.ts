@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { FileStorageConfigRow } from '../db/schema';
-import { buildPublicFileUrl, resolvePublicAccess } from './file-storage';
+import { buildPublicFileUrl, resolveFileAccessUrl, resolvePublicAccess } from './file-storage';
 
 function config(overrides: Partial<FileStorageConfigRow>): FileStorageConfigRow {
   return {
@@ -14,6 +14,8 @@ function config(overrides: Partial<FileStorageConfigRow>): FileStorageConfigRow 
     accessStrategy: 'proxy',
     bucketAcl: null,
     bucketBlockPublicAccess: null,
+    bucketPolicyPublic: null,
+    bucketPublicStatus: null,
     bucketAccessCheckedAt: null,
     bucketAccessError: null,
     publicBaseUrl: null,
@@ -118,6 +120,20 @@ describe('buildPublicFileUrl', () => {
 
   it('returns null for proxy', () => {
     expect(buildPublicFileUrl({ ...file, objectAcl: 'public-read' }, config({ accessStrategy: 'proxy' }))).toBeNull();
+  });
+
+  it('never exposes restricted files as public', () => {
+    const publicDomain = config({ accessStrategy: 'public-domain', publicBaseUrl: 'https://cdn.example.com' });
+    expect(buildPublicFileUrl({ ...file, visibility: 'restricted' }, publicDomain)).toBeNull();
+  });
+
+  it('resolves restricted files through the proxy even with a public-domain strategy', async () => {
+    const result = await resolveFileAccessUrl(
+      { ...file, visibility: 'restricted' },
+      config({ accessStrategy: 'public-domain', publicBaseUrl: 'https://cdn.example.com' }),
+    );
+    expect(result).toMatchObject({ strategy: 'proxy' });
+    expect(result.url).toContain('/api/files/f1/content');
   });
 });
 

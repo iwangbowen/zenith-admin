@@ -117,8 +117,34 @@ function createOssClient(config: FileStorageConfigRow) {
 export interface FileBucketAccessInfo {
   bucketAcl: FileBucketAcl | null;
   blockPublicAccess: boolean | null;
+  /** Bucket Policy 是否允许匿名公共访问；null = 未探测或 provider 未提供该状态 */
+  policyPublic: boolean | null;
+  /** provider 返回的综合公共访问状态；null = 未探测或 provider 未提供该接口 */
+  publicStatus: boolean | null;
   effectivePublic: boolean;
   checkedAt: Date;
+}
+
+function nestedBoolean(source: unknown, keys: string[]): boolean | null {
+  if (!source || typeof source !== 'object') return null;
+  const record = source as Record<string, unknown>;
+  for (const key of keys) {
+    const value = toBooleanOrNull(record[key]);
+    if (value !== null) return value;
+  }
+  return null;
+}
+
+function publicAccessBlockEnabled(source: unknown): boolean | null {
+  if (!source || typeof source !== 'object') return null;
+  const record = source as Record<string, unknown>;
+  const configuration = (record.PublicAccessBlockConfiguration ?? record) as Record<string, unknown>;
+  const keys = ['BlockPublicAcls', 'IgnorePublicAcls', 'BlockPublicPolicy', 'RestrictPublicBuckets'];
+  if (!keys.some((key) => key in configuration)) return null;
+  return Boolean(configuration.BlockPublicAcls
+    || configuration.IgnorePublicAcls
+    || configuration.BlockPublicPolicy
+    || configuration.RestrictPublicBuckets);
 }
 
 function normalizeBucketAcl(value: unknown): FileBucketAcl | null {
@@ -140,12 +166,13 @@ export async function getBucketAccessInfo(config: FileStorageConfigRow): Promise
     const info = await client.getBucketInfo(config.ossBucket!);
     const bucket = (info as { bucket?: Record<string, unknown> }).bucket ?? info as Record<string, unknown>;
     const acl = normalizeBucketAcl((bucket.AccessControlList as { Grant?: unknown } | undefined)?.Grant);
+    const oss = client as unknown as {
+      request(params: Record<string, unknown>): Promise<{ data?: Buffer | string }>;
+      parseXML(value: Buffer | string): Promise<Record<string, unknown>>;
+    };
     let blockPublicAccess: boolean | null;
+    let policyPublic: boolean | null;
     try {
-      const oss = client as unknown as {
-        request(params: Record<string, unknown>): Promise<{ data?: Buffer | string }>;
-        parseXML(value: Buffer | string): Promise<Record<string, unknown>>;
-      };
       const result = await oss.request({
         method: 'GET',
         bucket: config.ossBucket!,
@@ -159,10 +186,26 @@ export async function getBucketAccessInfo(config: FileStorageConfigRow): Promise
       if ((error as { code?: string }).code === 'NoSuchPublicAccessBlockConfiguration') blockPublicAccess = false;
       else throw error;
     }
+    try {
+      const policyResult = await oss.request({
+        method: 'GET',
+        bucket: config.ossBucket!,
+        subres: 'policyStatus',
+        successStatuses: [200],
+      });
+      const policyParsed = policyResult.data ? await oss.parseXML(policyResult.data) : {};
+      const status = (policyParsed.PolicyStatus ?? policyParsed) as Record<string, unknown>;
+      policyPublic = nestedBoolean(status, ['IsPublic']);
+    } catch {
+      policyPublic = null;
+    }
+    const aclPublic = acl === 'public-read' || acl === 'public-read-write';
     return {
       bucketAcl: acl,
       blockPublicAccess,
-      effectivePublic: (acl === 'public-read' || acl === 'public-read-write') && blockPublicAccess === false,
+      policyPublic,
+      publicStatus: null,
+      effectivePublic: (aclPublic || policyPublic === true) && blockPublicAccess === false,
       checkedAt: new Date(),
     };
   }
@@ -184,7 +227,21 @@ export async function getBucketAccessInfo(config: FileStorageConfigRow): Promise
       if ((err as { name?: string }).name === 'NoSuchPublicAccessBlockConfiguration') blockPublicAccess = false;
       else blockPublicAccess = null;
     }
-    return { bucketAcl: acl, blockPublicAccess, effectivePublic: publicRead && blockPublicAccess === false, checkedAt: new Date() };
+    let policyPublic: boolean | null = null;
+    try {
+      const policy = await client.send(new s3.GetBucketPolicyStatusCommand({ Bucket: config.s3Bucket! }));
+      policyPublic = policy.PolicyStatus?.IsPublic ?? null;
+    } catch (err) {
+      if ((err as { name?: string }).name !== 'NoSuchBucketPolicy') policyPublic = null;
+    }
+    return {
+      bucketAcl: acl,
+      blockPublicAccess,
+      policyPublic,
+      publicStatus: null,
+      effectivePublic: (publicRead || policyPublic === true) && blockPublicAccess === false,
+      checkedAt: new Date(),
+    };
   }
   if (config.provider === 'cos') {
     const cos = createCosClient(config);
@@ -195,7 +252,14 @@ export async function getBucketAccessInfo(config: FileStorageConfigRow): Promise
       });
     });
     const acl = normalizeBucketAcl(result.ACL);
-    return { bucketAcl: acl, blockPublicAccess: null, effectivePublic: acl === 'public-read' || acl === 'public-read-write', checkedAt: new Date() };
+    return {
+      bucketAcl: acl,
+      blockPublicAccess: null,
+      policyPublic: null,
+      publicStatus: null,
+      effectivePublic: acl === 'public-read' || acl === 'public-read-write',
+      checkedAt: new Date(),
+    };
   }
   if (config.provider === 'bos') {
     const bos = createBosClient(config) as unknown as {
@@ -207,7 +271,14 @@ export async function getBucketAccessInfo(config: FileStorageConfigRow): Promise
     const publicRead = publicGrants.some((entry) => entry.permission?.some((permission) => permission === 'READ' || permission === 'FULL_CONTROL'));
     const publicWrite = publicGrants.some((entry) => entry.permission?.some((permission) => permission === 'WRITE' || permission === 'FULL_CONTROL'));
     const acl: FileBucketAcl | null = publicRead && publicWrite ? 'public-read-write' : publicRead ? 'public-read' : publicGrants.length > 0 ? null : 'private';
-    return { bucketAcl: acl, blockPublicAccess: null, effectivePublic: publicRead, checkedAt: new Date() };
+    return {
+      bucketAcl: acl,
+      blockPublicAccess: null,
+      policyPublic: null,
+      publicStatus: null,
+      effectivePublic: publicRead,
+      checkedAt: new Date(),
+    };
   }
   if (config.provider === 'kodo') {
     const { mac, conf } = createKodoUploader(config);
@@ -216,17 +287,31 @@ export async function getBucketAccessInfo(config: FileStorageConfigRow): Promise
     const data = (result as unknown as { data?: { private?: number | string } }).data;
     const accessMode = Number(data?.private);
     const acl: FileBucketAcl | null = accessMode === 1 ? 'private' : accessMode === 0 ? 'public-read' : null;
-    return { bucketAcl: acl, blockPublicAccess: null, effectivePublic: accessMode === 0, checkedAt: new Date() };
+    return {
+      bucketAcl: acl,
+      blockPublicAccess: null,
+      policyPublic: null,
+      publicStatus: null,
+      effectivePublic: accessMode === 0,
+      checkedAt: new Date(),
+    };
   }
   if (config.provider === 'azure') {
     const properties = await createAzureBlobClient(config).getProperties();
     const access = (properties as unknown as { blobPublicAccess?: string }).blobPublicAccess;
     const publicAccess = access === 'container' || access === 'blob';
     const acl: FileBucketAcl = publicAccess ? 'public-read' : 'private';
-    return { bucketAcl: acl, blockPublicAccess: null, effectivePublic: publicAccess, checkedAt: new Date() };
+    return {
+      bucketAcl: acl,
+      blockPublicAccess: null,
+      policyPublic: null,
+      publicStatus: null,
+      effectivePublic: publicAccess,
+      checkedAt: new Date(),
+    };
   }
   if (config.provider === 'obs') {
-    const obs = createObsClient(config) as unknown as {
+    const obs = createObsClient(config) as unknown as Record<string, unknown> & {
       getBucketAcl(params: Record<string, unknown>, cb: (err: unknown, result: { InterfaceResult?: { AccessControlList?: { Grants?: Array<{ Grantee?: { Type?: string; URI?: string }; Permission?: string }> } } }) => void): void;
     };
     const result = await new Promise<{ AccessControlList?: { Grants?: Array<{ Grantee?: { Type?: string; URI?: string }; Permission?: string }> } }>((resolve, reject) => {
@@ -240,7 +325,34 @@ export async function getBucketAccessInfo(config: FileStorageConfigRow): Promise
     const publicRead = publicGrants.some((grant) => grant.Permission === 'READ' || grant.Permission === 'FULL_CONTROL');
     const publicWrite = publicGrants.some((grant) => grant.Permission === 'WRITE' || grant.Permission === 'FULL_CONTROL');
     const acl: FileBucketAcl | null = publicRead && publicWrite ? 'public-read-write' : publicRead ? 'public-read' : publicGrants.length > 0 ? null : 'private';
-    return { bucketAcl: acl, blockPublicAccess: null, effectivePublic: publicRead, checkedAt: new Date() };
+
+    const optional = async (method: string): Promise<Record<string, unknown> | null> => {
+      const fn = obs[method];
+      if (typeof fn !== 'function') return null;
+      return new Promise((resolve) => {
+        (fn as (params: Record<string, unknown>, cb: (err: unknown, data?: { InterfaceResult?: Record<string, unknown> }) => void) => void)
+          .call(obs, { Bucket: config.obsBucket! }, (err, data) => {
+            if (err) resolve(null);
+            else resolve(data?.InterfaceResult ?? null);
+          });
+      });
+    };
+    const bpa = await optional('getBucketPublicAccessBlock');
+    const policy = await optional('getBucketPolicyPublicStatus');
+    const status = await optional('getBucketPublicStatus');
+    const blockPublicAccess = publicAccessBlockEnabled(bpa);
+    const policyPublic = nestedBoolean(policy, ['IsPublic'])
+      ?? nestedBoolean((policy?.PolicyStatus as Record<string, unknown> | undefined), ['IsPublic']);
+    const publicStatus = nestedBoolean(status, ['IsPublic'])
+      ?? nestedBoolean((status?.BucketStatus as Record<string, unknown> | undefined), ['IsPublic']);
+    return {
+      bucketAcl: acl,
+      blockPublicAccess,
+      policyPublic,
+      publicStatus,
+      effectivePublic: publicStatus ?? ((publicRead || policyPublic === true) && blockPublicAccess === false),
+      checkedAt: new Date(),
+    };
   }
   throw new HTTPException(400, { message: `当前存储类型不支持 Bucket 权限探测：${config.provider}` });
 }
@@ -328,14 +440,49 @@ export async function setBucketAccessInfo(
     return getBucketAccessInfo(config);
   }
   if (config.provider === 'obs') {
-    if (!input.acl) throw new HTTPException(400, { message: 'OBS 仅支持修改 Bucket ACL' });
-    const obs = createObsClient(config) as unknown as { setBucketAcl(params: Record<string, unknown>, cb: (err: unknown) => void): void };
-    await new Promise<void>((resolve, reject) => {
-      obs.setBucketAcl({ Bucket: config.obsBucket!, ACL: input.acl }, (err) => {
-        if (err) reject(err instanceof Error ? err : new Error(String(err)));
-        else resolve();
+    if (!input.acl && input.blockPublicAccess === undefined) {
+      throw new HTTPException(400, { message: 'OBS 需要提供 Bucket ACL 或阻止公共访问设置' });
+    }
+    const obs = createObsClient(config) as unknown as Record<string, unknown> & {
+      setBucketAcl(params: Record<string, unknown>, cb: (err: unknown) => void): void;
+    };
+    const setBlockPublicAccess = async (enabled: boolean) => {
+      // 关闭 BPA 使用 DeleteBucketPublicAccessBlock；Put 全 false 在 OBS 上可能被视为空配置。
+      const method = enabled ? 'putBucketPublicAccessBlock' : 'deleteBucketPublicAccessBlock';
+      const fn = obs[method];
+      if (typeof fn !== 'function') throw new HTTPException(400, { message: '当前 OBS SDK 不支持阻止公共访问设置' });
+      await new Promise<void>((resolve, reject) => {
+        (fn as (params: Record<string, unknown>, cb: (err: unknown) => void) => void)
+          .call(obs, {
+            Bucket: config.obsBucket!,
+            ...(enabled ? {
+              BlockPublicAcls: true,
+              IgnorePublicAcls: true,
+              BlockPublicPolicy: true,
+              RestrictPublicBuckets: true,
+            } : {}),
+          }, (err) => {
+            if (err) reject(err instanceof Error ? err : new Error(String(err)));
+            else resolve();
+          });
       });
-    });
+    };
+    if (input.blockPublicAccess === false) await setBlockPublicAccess(false);
+    if (input.acl) {
+      if (input.blockPublicAccess !== false && (input.acl === 'public-read' || input.acl === 'public-read-write')) {
+        const current = await getBucketAccessInfo(config);
+        if (current.blockPublicAccess === true) {
+          throw new HTTPException(400, { message: '请先关闭 OBS Bucket 的阻止公共访问，再设置公共 ACL' });
+        }
+      }
+      await new Promise<void>((resolve, reject) => {
+        obs.setBucketAcl({ Bucket: config.obsBucket!, ACL: input.acl }, (err) => {
+          if (err) reject(err instanceof Error ? err : new Error(String(err)));
+          else resolve();
+        });
+      });
+    }
+    if (input.blockPublicAccess === true) await setBlockPublicAccess(true);
     return getBucketAccessInfo(config);
   }
   throw new HTTPException(400, { message: `当前存储类型不支持 Bucket 权限设置：${config.provider}` });
@@ -463,6 +610,8 @@ interface FileUrlSource {
   objectAcl?: 'default' | 'private' | 'public-read' | 'public-read-write' | null;
   /** 上传时快照：该对象当时是否可公共读取 */
   publicAccess?: boolean | null;
+  /** 受控文件不允许生成公开直链；调用方必须走归属模块鉴权接口 */
+  visibility?: 'public' | 'restricted' | null;
 }
 
 function encodeObjectKey(objectKey: string) {
@@ -482,20 +631,25 @@ function splitEndpoint(endpoint: string): { scheme: string; host: string } {
  * - public-bucket：上传时快照确认 Bucket 公共读；
  * - public-domain：自定义域名 / CDN（或 Kodo/SFTP 自带的访问域名）。
  */
+function bucketPublicBlockAllows(config: FileStorageConfigRow): boolean {
+  if (config.bucketPublicStatus === true) return true;
+  if (config.provider === 'oss' || config.provider === 's3' || config.provider === 'obs') {
+    return config.bucketBlockPublicAccess === false;
+  }
+  return config.bucketBlockPublicAccess !== true;
+}
+
 export function isPublicAccessAllowed(file: FileUrlSource, config: FileStorageConfigRow): boolean {
+  if (file.visibility === 'restricted') return false;
   switch (config.accessStrategy) {
     case 'public-object':
       return (file.objectAcl === 'public-read' || file.objectAcl === 'public-read-write')
         && file.publicAccess === true
-        && (config.provider === 'oss' || config.provider === 's3'
-          ? config.bucketBlockPublicAccess === false
-          : config.bucketBlockPublicAccess !== true);
+        && bucketPublicBlockAllows(config);
     case 'public-bucket':
       return file.publicAccess === true
         && (config.bucketAcl === 'public-read' || config.bucketAcl === 'public-read-write')
-        && (config.provider === 'oss' || config.provider === 's3'
-          ? config.bucketBlockPublicAccess === false
-          : config.bucketBlockPublicAccess !== true);
+        && bucketPublicBlockAllows(config);
     case 'public-domain':
       return Boolean(config.publicBaseUrl?.trim())
         || (config.provider === 'kodo' && Boolean(config.kodoEndpoint))
@@ -516,12 +670,10 @@ export function resolvePublicAccess(
   switch (config.accessStrategy) {
     case 'public-object':
       return (objectAcl === 'public-read' || objectAcl === 'public-read-write')
-        && (config.provider === 'oss' || config.provider === 's3' ? config.bucketBlockPublicAccess === false : true);
+        && bucketPublicBlockAllows(config);
     case 'public-bucket':
       return (config.bucketAcl === 'public-read' || config.bucketAcl === 'public-read-write')
-        && (config.provider === 'oss' || config.provider === 's3'
-          ? config.bucketBlockPublicAccess === false
-          : config.bucketBlockPublicAccess !== true);
+        && bucketPublicBlockAllows(config);
     case 'public-domain':
       return Boolean(config.publicBaseUrl?.trim())
         || (config.provider === 'kodo' && Boolean(config.kodoEndpoint))
@@ -905,6 +1057,9 @@ export async function resolveFileAccessUrl(
   options?: { contentDisposition?: string },
 ): Promise<FileAccessUrlResult> {
   const effective = withFileBucket(file, config);
+  if (file.visibility === 'restricted') {
+    return { url: buildManagedFileProxyUrl(file.id), strategy: 'proxy', expiresAt: null };
+  }
   const strategy = config.accessStrategy;
   if (strategy.startsWith('public-') && isPublicAccessAllowed(file, config)) {
     const url = buildPublicObjectUrl(effective, file.objectKey);
@@ -978,7 +1133,7 @@ export function mapObjectAclError(err: unknown): unknown {
   const message = String((err as { message?: unknown })?.message ?? '');
   const name = String((err as { name?: unknown })?.name ?? '');
   const code = String((err as { code?: unknown })?.code ?? '');
-  if (message.includes('Put public object acl is not allowed')) {
+  if (message.includes('Put public object acl is not allowed') || message.includes('BlockPublicAcls')) {
     return new HTTPException(400, { message: 'Bucket 已开启「阻止公共访问」防护，禁止上传公共读/公共读写文件；请在云控制台关闭该防护，或将文件配置的读写权限改为「私有 / 继承 Bucket」' });
   }
   if (name === 'AccessControlListNotSupported' || code === 'AccessControlListNotSupported') {

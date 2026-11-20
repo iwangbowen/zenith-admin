@@ -4,6 +4,8 @@ const state = vi.hoisted(() => ({
   info: {
     bucketAcl: 'public-read',
     blockPublicAccess: false,
+    policyPublic: false,
+    publicStatus: null,
     effectivePublic: true,
     checkedAt: new Date('2026-11-20T00:00:00.000Z'),
   },

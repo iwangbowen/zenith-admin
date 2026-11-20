@@ -8,8 +8,16 @@ import { LOOKUP_STALE_TIME } from '@/lib/query';
 /** 改配置可能同时改变默认项标记；文件浏览结果与配置增删改无关，不动 */
 const DEFAULT_CONFIG_KEY = contractKey(fileStorageConfigContract.defaultConfig);
 
+const FILE_LIST_KEY = contractKey(fileContract.list);
+const FILE_DETAIL_KEY = contractKey(fileContract.detail);
+
 const crud = createResourceQueries(fileStorageConfigContract, {
-  onSaved: (qc) => void qc.invalidateQueries({ queryKey: DEFAULT_CONFIG_KEY }),
+  onSaved: (qc) => {
+    void qc.invalidateQueries({ queryKey: DEFAULT_CONFIG_KEY });
+    // 下载方式/对象 ACL 改变会影响已有文件的 directUrl
+    void qc.invalidateQueries({ queryKey: FILE_LIST_KEY });
+    void qc.invalidateQueries({ queryKey: FILE_DETAIL_KEY });
+  },
   onDeleted: (qc, ids) => {
     // 该配置下的浏览结果已无对应存储源
     for (const id of ids) qc.removeQueries({ queryKey: contractKey(fileContract.browse, { query: { storageConfigId: id } }) });
@@ -72,6 +80,8 @@ export function useProbeFileStorageConfigBucketAccess() {
     invalidate: (qc, _output, vars) => {
       void qc.invalidateQueries({ queryKey: fileStorageConfigKeys.lists });
       void qc.invalidateQueries({ queryKey: fileStorageConfigKeys.detail(vars.params.id) });
+      void qc.invalidateQueries({ queryKey: FILE_LIST_KEY });
+      void qc.invalidateQueries({ queryKey: FILE_DETAIL_KEY });
     },
   });
 }
@@ -89,6 +99,8 @@ export function useUpdateFileStorageConfigBucketAccess() {
     invalidate: (qc, _output, vars) => {
       void qc.invalidateQueries({ queryKey: fileStorageConfigKeys.lists });
       void qc.invalidateQueries({ queryKey: fileStorageConfigKeys.detail(vars.params.id) });
+      void qc.invalidateQueries({ queryKey: FILE_LIST_KEY });
+      void qc.invalidateQueries({ queryKey: FILE_DETAIL_KEY });
     },
   });
 }

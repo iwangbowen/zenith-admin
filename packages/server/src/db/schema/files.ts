@@ -43,6 +43,10 @@ export const fileStorageConfigs = pgTable('file_storage_configs', {
   bucketAcl: fileBucketAclEnum(),
   /** 最近一次探测的阻止公共访问状态；null = provider 无此能力或尚未探测 */
   bucketBlockPublicAccess: boolean(),
+  /** 最近一次探测的 Bucket Policy 是否允许匿名公共访问 */
+  bucketPolicyPublic: boolean(),
+  /** provider 返回的 Bucket 综合公共访问状态（目前 OBS 提供该接口） */
+  bucketPublicStatus: boolean(),
   bucketAccessCheckedAt: timestamptz(),
   bucketAccessError: text(),
   // 自定义访问域名（CDN/加速域名），public 策略优先使用

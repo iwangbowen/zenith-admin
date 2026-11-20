@@ -125,6 +125,13 @@ function addAccessStrategyIssues(data: Partial<FileStorageConfigBase>, ctx: z.Re
     if ((data.objectAcl ?? 'default') !== 'default') {
       ctx.addIssue({ code: 'custom', message: 'Bucket 公共读直链要求对象读写权限为「继承 Bucket」', path: ['objectAcl'] });
     }
+    if (data.provider === 'kodo' && !data.publicBaseUrl?.trim() && !data.kodoEndpoint?.trim()) {
+      ctx.addIssue({
+        code: 'custom',
+        message: '七牛云 Bucket 公共读直链需要配置访问域名（kodoEndpoint 或 publicBaseUrl）',
+        path: ['kodoEndpoint'],
+      });
+    }
   }
   if (data.accessStrategy === 'public-domain') {
     const hasDomain = Boolean(data.publicBaseUrl?.trim())

@@ -2,10 +2,9 @@ import type { QueryOutputOf } from '@zenith/shared/core';
 import { listRows } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
 import { clearDefaultFlag as clearTableDefaultFlag } from '../../lib/default-flag';
-import { fileStorageConfigs, managedFiles } from '../../db/schema';
+import { fileStorageConfigs, managedFiles, uploadSessions } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
-import type { createFileStorageConfigSchema } from '@zenith/shared/platform';
-import { FILE_BUCKET_ACCESS_SUPPORT, FILE_OBJECT_ACL_SUPPORT, fileStorageConfigContract, type FileBucketAcl } from '@zenith/shared/platform';
+import { createFileStorageConfigSchema, FILE_BUCKET_ACCESS_SUPPORT, FILE_OBJECT_ACL_SUPPORT, fileStorageConfigContract, type FileBucketAcl } from '@zenith/shared/platform';
 import type { z } from '@hono/zod-openapi';
 import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { randomUUID } from 'node:crypto';
@@ -158,7 +157,7 @@ export async function clearDefaultFlag(executor: DbExecutor) {
 }
 
 // ─── 业务入口 ─────────────────────────────────────────────────────────────────
-import { asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '../../db';
 import { buildWhere, dateRangeConditions } from '../../lib/where-helpers';
 import { HTTPException } from 'hono/http-exception';
@@ -203,15 +202,23 @@ async function probeBucketAccessForPayload(payload: StoragePayload): Promise<Par
   if (!capability?.probe) return {};
   try {
     const info = await getBucketAccessInfo(payload as unknown as FileStorageConfigRow);
-    if (payload.accessStrategy === 'public-bucket' && !info.effectivePublic) {
-      throw new HTTPException(400, { message: 'Bucket 当前不是公共读（或已开启阻止公共访问），无法保存 Bucket 公共读直链；请先在配置页调整 Bucket 权限，或改用其他下载方式' });
+    const bucketAclPublic = info.bucketAcl === 'public-read' || info.bucketAcl === 'public-read-write';
+    const bpaBlocks = info.publicStatus === true
+      ? false
+      : payload.provider === 'oss' || payload.provider === 's3' || payload.provider === 'obs'
+        ? info.blockPublicAccess !== false
+        : info.blockPublicAccess === true;
+    if (payload.accessStrategy === 'public-bucket' && (!bucketAclPublic || bpaBlocks)) {
+      throw new HTTPException(400, { message: 'Bucket ACL 当前不是公共读（或已开启阻止公共访问），无法保存 Bucket 公共读直链；请先在配置页调整 Bucket 权限，或改用其他下载方式' });
     }
-    if (payload.accessStrategy === 'public-object' && info.blockPublicAccess === true) {
-      throw new HTTPException(400, { message: 'Bucket 已开启阻止公共访问，无法保存对象公共读直链；请关闭 Bucket 的阻止公共访问，或改用 Bucket 公共读 / 自定义域名 / 临时签名' });
+    if (payload.accessStrategy === 'public-object' && bpaBlocks) {
+      throw new HTTPException(400, { message: 'Bucket 已开启阻止公共访问或 BPA 状态未知，无法保存对象公共读直链；请关闭 Bucket 的阻止公共访问，或改用 Bucket 公共读 / 自定义域名 / 临时签名' });
     }
     return {
       bucketAcl: info.bucketAcl,
       bucketBlockPublicAccess: info.blockPublicAccess,
+      bucketPolicyPublic: info.policyPublic,
+      bucketPublicStatus: info.publicStatus,
       bucketAccessCheckedAt: info.checkedAt,
       bucketAccessError: null,
     };
@@ -220,6 +227,8 @@ async function probeBucketAccessForPayload(payload: StoragePayload): Promise<Par
     return {
       bucketAcl: null,
       bucketBlockPublicAccess: null,
+      bucketPolicyPublic: null,
+      bucketPublicStatus: null,
       bucketAccessCheckedAt: new Date(),
       bucketAccessError: err instanceof Error ? err.message : String(err),
     };
@@ -248,7 +257,26 @@ export async function updateFileStorageConfig(id: number, data: Partial<StorageI
   for (const field of STORAGE_SECRET_FIELDS) {
     if (!data[field]) merged[field] = current[field];
   }
-  const payload = toStoragePayload(merged as StorageInput);
+  if (data.provider && data.provider !== current.provider) {
+    const [fileCount, sessionCount] = await Promise.all([
+      db.$count(managedFiles, eq(managedFiles.storageConfigId, id)),
+      db.$count(uploadSessions, eq(uploadSessions.storageConfigId, id)),
+    ]);
+    if (fileCount > 0 || sessionCount > 0) {
+      throw new HTTPException(400, {
+        message: '该配置已有文件或上传会话，不能切换存储类型；请新建配置并迁移文件',
+      });
+    }
+  }
+  // partial schema 会跳过缺失字段的跨字段校验，合并后必须按完整 schema 再校验一次
+  const validation = createFileStorageConfigSchema.safeParse(merged);
+  if (!validation.success) {
+    const issue = validation.error.issues[0];
+    throw new HTTPException(400, {
+      message: issue ? `${issue.path.join('.') || '配置'}：${issue.message}` : '文件配置不合法',
+    });
+  }
+  const payload = toStoragePayload(validation.data);
   const probe = await probeBucketAccessForPayload(payload);
   const updated = await db.transaction(async (tx) => {
     if (data.isDefault) await clearDefaultFlag(tx);
@@ -278,8 +306,12 @@ export async function deleteFileStorageConfig(id: number) {
   const [target] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.id, id)).limit(1);
   requireRow(target, '文件配置不存在');
   if (target.isDefault) throw new HTTPException(400, { message: '默认文件服务不能删除，请先切换默认服务' });
-  const valueCount = await db.$count(managedFiles, eq(managedFiles.storageConfigId, id));
+  const [valueCount, sessionCount] = await Promise.all([
+    db.$count(managedFiles, eq(managedFiles.storageConfigId, id)),
+    db.$count(uploadSessions, and(eq(uploadSessions.storageConfigId, id), inArray(uploadSessions.status, ['uploading', 'completing']))),
+  ]);
   if (valueCount > 0) throw new HTTPException(400, { message: '该文件配置下已有文件记录，不能删除' });
+  if (sessionCount > 0) throw new HTTPException(400, { message: '该文件配置下还有未完成的上传会话，请等待完成或中止后再删除' });
   await db.delete(fileStorageConfigs).where(eq(fileStorageConfigs.id, id));
 }
 
@@ -298,6 +330,8 @@ async function persistBucketAccess(id: number, info: BucketAccessInfo) {
   await db.update(fileStorageConfigs).set({
     bucketAcl: info.bucketAcl,
     bucketBlockPublicAccess: info.blockPublicAccess,
+    bucketPolicyPublic: info.policyPublic,
+    bucketPublicStatus: info.publicStatus,
     bucketAccessCheckedAt: info.checkedAt,
     bucketAccessError: null,
   }).where(eq(fileStorageConfigs.id, id));

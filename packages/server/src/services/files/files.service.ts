@@ -1,4 +1,4 @@
-import { fileContract, managedFileSchema } from '@zenith/shared/platform';
+import { FILE_OBJECT_ACL_SUPPORT, fileContract, managedFileSchema, type FileVisibility } from '@zenith/shared/platform';
 import { createHash } from 'node:crypto';
 import { openAsBlob } from 'node:fs';
 import { Readable } from 'node:stream';
@@ -7,7 +7,6 @@ import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
 import { managedFiles, fileStorageConfigs } from '../../db/schema';
 import type { FileStorageConfigRow } from '../../db/schema';
-import type { FileVisibility } from '@zenith/shared/platform';
 import { buildManagedFileProxyUrl, buildPublicFileUrl, deleteStoredFile, headStoredObject, readStoredFile, resolveFileAccessUrl, resolveObjectAcl, resolvePublicAccess, uploadFileByConfig } from '../../lib/file-storage';
 import { formatDateTime } from '../../lib/datetime';
 import { getSettings } from '../../lib/settings';
@@ -22,6 +21,20 @@ export function mapManagedFile(row: typeof managedFiles.$inferSelect, config?: F
 }
 
 /** 归属模块上传时的附加属性：受控可见性与内容哈希 */
+/**
+ * 受控文件在无对象级 ACL 的 provider 上只能依赖 Bucket/Container 私有。
+ * 未探测或非私有直接拒绝，避免公共 Bucket 下 restricted 文件被匿名读取。
+ */
+function assertRestrictedStorageSafe(config: FileStorageConfigRow) {
+  if (config.provider === 'local' || config.provider === 'sftp') return;
+  if (FILE_OBJECT_ACL_SUPPORT[config.provider]) return;
+  if (config.bucketAcl !== 'private') {
+    throw new HTTPException(400, {
+      message: `${config.provider} 不支持对象级 ACL，受控文件要求 Bucket/Container 为私有；请先在文件配置中探测并设为私有`,
+    });
+  }
+}
+
 export interface ManagedFileUploadOptions {
   visibility?: FileVisibility;
   contentHash?: string | null;
@@ -243,6 +256,7 @@ export async function uploadManagedFile(file: File, options: ManagedFileUploadOp
     .where(and(eq(fileStorageConfigs.isDefault, true), eq(fileStorageConfigs.status, 'enabled')))
     .limit(1);
   const defaultConfig = requireRow(maybeDefaultConfig, '当前没有可用的默认文件服务，请先在文件配置中启用并设置默认服务', 400);
+  if (options.visibility === 'restricted') assertRestrictedStorageSafe(defaultConfig);
   const uploadConfig = options.visibility === 'restricted' ? { ...defaultConfig, objectAcl: 'private' as const, accessStrategy: 'proxy' as const } : defaultConfig;
   const objectAcl = resolveObjectAcl(uploadConfig);
   const publicAccess = resolvePublicAccess(uploadConfig, objectAcl);
@@ -288,6 +302,7 @@ export async function saveGeneratedManagedFile(input: ({ buffer: Buffer | Uint8A
     .where(and(eq(fileStorageConfigs.isDefault, true), eq(fileStorageConfigs.status, 'enabled')))
     .limit(1);
   const defaultConfig = requireRow(maybeDefaultConfig, '当前没有可用的默认文件服务，请先在文件配置中启用并设置默认服务', 400);
+  if (input.visibility === 'restricted') assertRestrictedStorageSafe(defaultConfig);
   const uploadConfig = input.visibility === 'restricted' ? { ...defaultConfig, objectAcl: 'private' as const, accessStrategy: 'proxy' as const } : defaultConfig;
   const objectAcl = resolveObjectAcl(uploadConfig);
   const publicAccess = resolvePublicAccess(uploadConfig, objectAcl);

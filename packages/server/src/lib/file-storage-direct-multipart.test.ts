@@ -8,6 +8,7 @@ const require = createRequire(import.meta.url);
 const OssConstructor = require('ali-oss') as typeof import('ali-oss').default;
 const CosConstructor = require('cos-nodejs-sdk-v5') as typeof import('cos-nodejs-sdk-v5');
 const S3Sdk = require('@aws-sdk/client-s3') as typeof import('@aws-sdk/client-s3');
+const ObsConstructor = require('esdk-obs-nodejs') as new (...args: unknown[]) => Record<string, unknown>;
 
 function config(provider: string, values: Record<string, unknown>): FileStorageConfigRow {
   return {
@@ -69,7 +70,11 @@ describe('OSS bucket public access probing', () => {
       request: (params: Record<string, unknown>) => Promise<{ data?: Buffer }>;
     };
     const request = vi.spyOn(requestPrototype, 'request').mockImplementation(async (params) => {
-      expect(params).toMatchObject({ method: 'GET', bucket: 'demo-bucket', subres: 'publicAccessBlock' });
+      expect(params).toMatchObject({ method: 'GET', bucket: 'demo-bucket' });
+      if (params.subres === 'policyStatus') {
+        return { data: Buffer.from('<PolicyStatus><IsPublic>false</IsPublic></PolicyStatus>') };
+      }
+      expect(params.subres).toBe('publicAccessBlock');
       return {
         data: Buffer.from('<PublicAccessBlockConfiguration><BlockPublicAccess>true</BlockPublicAccess></PublicAccessBlockConfiguration>'),
       };
@@ -80,8 +85,43 @@ describe('OSS bucket public access probing', () => {
     }));
 
     expect(getBucketInfo).toHaveBeenCalledOnce();
-    expect(request).toHaveBeenCalledOnce();
-    expect(result).toMatchObject({ bucketAcl: 'public-read', blockPublicAccess: true, effectivePublic: false });
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(result).toMatchObject({
+      bucketAcl: 'public-read',
+      blockPublicAccess: true,
+      policyPublic: false,
+      publicStatus: null,
+      effectivePublic: false,
+    });
+  });
+});
+
+describe('OBS bucket public access probing', () => {
+  it('reads BPA and the provider public status instead of treating ACL as the whole truth', async () => {
+    type ObsCallback = (err: unknown, data?: { InterfaceResult?: Record<string, unknown> }) => void;
+    const prototype = ObsConstructor.prototype as unknown as Record<string, (params: Record<string, unknown>, cb: ObsCallback) => void>;
+    vi.spyOn(prototype, 'getBucketAcl').mockImplementation((_params, cb) => {
+      cb(null, { InterfaceResult: { AccessControlList: { Grants: [] } } });
+    });
+    vi.spyOn(prototype, 'getBucketPublicAccessBlock').mockImplementation((_params, cb) => {
+      cb(null, { InterfaceResult: { PublicAccessBlockConfiguration: { BlockPublicAcls: true } } });
+    });
+    vi.spyOn(prototype, 'getBucketPolicyPublicStatus').mockImplementation((_params, cb) => {
+      cb(null, { InterfaceResult: { IsPublic: true } });
+    });
+    vi.spyOn(prototype, 'getBucketPublicStatus').mockImplementation((_params, cb) => {
+      cb(null, { InterfaceResult: { IsPublic: false } });
+    });
+
+    const result = await getBucketAccessInfo(config('obs', {}));
+
+    expect(result).toMatchObject({
+      bucketAcl: 'private',
+      blockPublicAccess: true,
+      policyPublic: true,
+      publicStatus: false,
+      effectivePublic: false,
+    });
   });
 });
 

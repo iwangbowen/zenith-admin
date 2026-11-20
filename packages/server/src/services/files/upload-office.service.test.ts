@@ -18,6 +18,7 @@ vi.mock('../../lib/file-storage', () => ({
   buildUploadObjectKey: vi.fn(), uploadObjectByConfig: vi.fn(), uploadFileByConfig: vi.fn(),
   extractBucketName: vi.fn(), getMultipartDriver: vi.fn(), mapObjectAclError: (err: unknown) => err,
   resolveObjectAcl: vi.fn(), resolvePublicAccess: vi.fn(() => false), readStoredFile: vi.fn(), deleteObjectByConfig: vi.fn(),
+  withFileBucket: (_file: unknown, storageConfig: unknown) => storageConfig,
   buildManagedFileProxyUrl: (id: string) => `/files/${id}`, buildPublicFileUrl: () => null,
 }));
 
@@ -92,7 +93,7 @@ describe('Office upload service paths with real type detection and stubbed persi
     }
     await expect(completeChunkUpload('sample')).resolves.toMatchObject({ id: 'managed-file' });
     expect(uploadObjectByConfig).toHaveBeenCalledOnce();
-    expect(insert.values).toHaveBeenCalledWith(expect.objectContaining({ mimeType: mime }));
+    expect(insert.values).toHaveBeenCalledWith([expect.objectContaining({ mimeType: mime })]);
     await expect(fs.stat(path.join(tempRoot, 'sample'))).rejects.toThrow();
   });
 
@@ -161,7 +162,7 @@ describe('Office upload service paths with real type detection and stubbed persi
     vi.mocked(readStoredFile).mockImplementation(async () => ({ stream: file.stream(), contentType: file.type, fileName: file.name }));
     const hash = createHash('sha256').update(Buffer.from(await file.arrayBuffer())).digest('hex');
     await completeChunkUpload('sample', { expectedHash: hash });
-    expect(insert.values).toHaveBeenCalledWith(expect.objectContaining({ contentHash: hash }));
+    expect(insert.values).toHaveBeenCalledWith([expect.objectContaining({ contentHash: hash })]);
     expect(deleteObjectByConfig).not.toHaveBeenCalled();
   });
 
