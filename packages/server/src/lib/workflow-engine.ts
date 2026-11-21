@@ -6,7 +6,7 @@
  * 自动节点由 workflow-jobs 调度，子实例展开与汇聚由 instances/subprocess.ts 负责。
  */
 import type { WorkflowFlowData, WorkflowNodeConfig, WorkflowEdge, WorkflowStarterContext, WorkflowApproveMethod, WorkflowResolvedApproveMethod, WorkflowFormField, WorkflowPredictedPathNode } from '@zenith/shared/workflow';
-import { WORKFLOW_SCHEMA_VERSION, evaluateWorkflowCondition, evaluateWorkflowConditionGroup, evaluateWorkflowConditionGroups, workflowEdgeHasCondition, workflowEdgeMatchesCondition, planWorkflowPath } from '@zenith/shared/workflow';
+import { WORKFLOW_SCHEMA_VERSION, classifyWorkflowNode, evaluateWorkflowCondition, evaluateWorkflowConditionGroup, evaluateWorkflowConditionGroups, workflowEdgeHasCondition, workflowEdgeMatchesCondition, planWorkflowPath } from '@zenith/shared/workflow';
 
 /**
  * 将不同 schema 版本的 flowData 迁移到当前引擎 schema（运行时兼容迁移）。
@@ -114,7 +114,7 @@ export function isDefaultEdge(edge: WorkflowEdge, _targetNode?: FlowNode): boole
 }
 
 /** 同一网关内条件去重用的稳定签名（忽略空规则） */
-function workflowConditionSignature(edge: WorkflowEdge): string | null {
+export function workflowConditionSignature(edge: WorkflowEdge): string | null {
   const groups = edge.conditions?.length ? edge.conditions : edge.condition ? [{ type: 'and' as const, rules: [edge.condition] }] : [];
   if (!groups.length) return null;
   return JSON.stringify(groups.map((group) => ({
@@ -198,17 +198,24 @@ export function predictRemainingPath(
 ): PredictedPathNode[] {
   const active = new Set(fromNodeKeys);
   const plan = planWorkflowPath(flowData, { formData, starter, activeNodeKeys: fromNodeKeys, ...options });
+  const configs = new Map(flowData.nodes.map(node => [node.data.key, node.data]));
   return plan.nodes.filter(node => !active.has(node.nodeKey) && !options.completedNodeKeys?.includes(node.nodeKey)
-    && ['approve', 'handler', 'ccNode'].includes(node.nodeType)).map(node => ({
-    key: node.nodeKey,
-    name: node.nodeName || node.nodeKey,
-    type: node.nodeType === 'ccNode' ? 'cc' : node.nodeType as 'approve' | 'handler',
-    branchLabel: plan.branches.find(branch => branch.target === node.nodeId)?.label ?? null,
-    status: node.status,
-    reason: node.reason,
-    estimatedApprovers: [],
-    approverReason: null,
-  }));
+    && ['approve', 'handler', 'ccNode', 'subProcess', 'delay', 'trigger'].includes(node.nodeType)).map(node => {
+    const behavior = configs.has(node.nodeKey) ? classifyWorkflowNode(configs.get(node.nodeKey)!) : null;
+    return {
+      key: node.nodeKey,
+      name: node.nodeName || node.nodeKey,
+      type: node.nodeType === 'ccNode' ? 'cc' : node.nodeType as 'approve' | 'handler' | 'subProcess' | 'delay' | 'trigger',
+      branchLabel: plan.branches.find(branch => branch.target === node.nodeId)?.label ?? null,
+      status: node.status,
+      reason: node.reason,
+      blocking: behavior?.kind === 'wait' && behavior.blocks,
+      waitReason: behavior?.waitReason,
+      requiresApproverSelection: behavior?.requiresApproverSelection,
+      estimatedApprovers: [],
+      approverReason: null,
+    };
+  });
 }
 
 /**

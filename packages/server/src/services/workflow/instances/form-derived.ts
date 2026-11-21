@@ -1,5 +1,5 @@
-import { computeWorkflowDerivedValues, stripWorkflowSerialNumberValues } from '@zenith/shared/workflow';
-import type { WorkflowInstanceFormSnapshot } from '@zenith/shared/workflow';
+import { computeWorkflowDerivedValues, resolveNodeFieldPermissions, sanitizeFormUpdatesByNodePerms, stripWorkflowSerialNumberValues } from '@zenith/shared/workflow';
+import type { WorkflowFlowData, WorkflowInstanceFormSnapshot } from '@zenith/shared/workflow';
 
 /**
  * 服务端权威派生值归一（公式 / `daysFromKey` 天数 / 明细行内公式与聚合）。
@@ -18,4 +18,26 @@ export function normalizeInstanceFormData(
 ): Record<string, unknown> {
   if (formSnapshot?.formType !== 'designer' || !formSnapshot.fields?.length) return formData;
   return stripWorkflowSerialNumberValues(formSnapshot.fields, computeWorkflowDerivedValues(formSnapshot.fields, formData));
+}
+
+/**
+ * 审批表单准备唯一入口：节点字段权限过滤 → 合并实例值 → 重算派生值。
+ * 校验、落库、选人预览与批量预检都调用它，避免「校验用一份、执行用另一份」。
+ */
+export function prepareApprovalFormData(input: {
+  flowData: WorkflowFlowData | null | undefined;
+  nodeKey: string;
+  formSnapshot: WorkflowInstanceFormSnapshot | null | undefined;
+  instanceFormData: Record<string, unknown> | null | undefined;
+  formUpdates: Record<string, unknown> | null | undefined;
+}): { allowedUpdates: Record<string, unknown>; mergedFormData: Record<string, unknown> } {
+  const allowedUpdates = sanitizeFormUpdatesByNodePerms(
+    resolveNodeFieldPermissions(input.flowData, input.nodeKey),
+    input.formUpdates,
+  );
+  const mergedFormData = normalizeInstanceFormData(input.formSnapshot, {
+    ...(input.instanceFormData ?? {}),
+    ...allowedUpdates,
+  });
+  return { allowedUpdates, mergedFormData };
 }

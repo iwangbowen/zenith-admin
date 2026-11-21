@@ -465,6 +465,26 @@ describe('remaining path prediction', () => {
     expect(result.find(node => node.key === 'a2')?.status).toBe('unknown');
     expect(values).toEqual({ amount: 150, total: 999 });
   });
+
+  it('includes blocking wait nodes in remaining path predictions', () => {
+    const flow: WorkflowFlowData = {
+      nodes: [
+        { id: 'n1', position: { x: 0, y: 0 }, data: { key: 'start', type: 'start', label: '开始' } },
+        { id: 'n2', position: { x: 0, y: 0 }, data: { key: 'wait', type: 'trigger', label: '等待回调', triggerConfig: { triggerType: 'callback' } } },
+        { id: 'n3', position: { x: 0, y: 0 }, data: { key: 'approve', type: 'approve', label: '审批' } },
+        { id: 'n4', position: { x: 0, y: 0 }, data: { key: 'end', type: 'end', label: '结束' } },
+      ],
+      edges: [
+        { id: 'e1', source: 'n1', target: 'n2' },
+        { id: 'e2', source: 'n2', target: 'n3' },
+        { id: 'e3', source: 'n3', target: 'n4' },
+      ],
+    };
+    const result = predictRemainingPath(flow, ['start'], {});
+    const wait = result.find((node) => node.key === 'wait');
+    expect(wait).toMatchObject({ type: 'trigger', blocking: true, waitReason: 'trigger' });
+    expect(result.some((node) => node.key === 'approve')).toBe(true);
+  });
 });
 
 describe('canonical branch semantics', () => {

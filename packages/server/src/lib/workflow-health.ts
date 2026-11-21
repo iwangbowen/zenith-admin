@@ -8,7 +8,7 @@
  *  - timeout   超时/SLA 策略完整性（审批节点是否配置超时提醒）
  */
 import type { WorkflowDefinitionBranchCoverageItem, WorkflowDefinitionHealthCheckItem, WorkflowDefinitionHealthIssue, WorkflowDefinitionHealthReport, WorkflowEdge, WorkflowEdgeCondition, WorkflowFlowData, WorkflowNodeConfig } from '@zenith/shared/workflow';
-import { edgeHasCondition, validateFlowData } from './workflow-engine';
+import { edgeHasCondition, validateFlowData, workflowConditionSignature } from './workflow-engine';
 import { validateExpression } from './workflow-expression';
 import { formatDateTime } from './datetime';
 import { clamp } from '@zenith/shared/core';
@@ -82,15 +82,6 @@ function statusFromIssues(issues: WorkflowDefinitionHealthIssue[]): WorkflowDefi
   if (issues.some((i) => i.severity === 'critical')) return 'fail';
   if (issues.some((i) => i.severity === 'warning')) return 'warn';
   return 'pass';
-}
-
-function conditionSignature(e: WorkflowEdge): string {
-  if (e.condition) {
-    const c = e.condition;
-    return JSON.stringify({ f: c.field, o: c.operator, v: c.value, s: c.source ?? 'form', ag: c.aggregate ?? null });
-  }
-  if (Array.isArray(e.conditions)) return JSON.stringify(e.conditions);
-  return '';
 }
 
 /** 单条件数值区间：用于网关两两重叠检测（仅 form 数值比较）。null=无法判定。 */
@@ -251,7 +242,7 @@ export function analyzeWorkflowHealth(
     }
     const seen = new Map<string, string>();
     for (const e of conditional) {
-      const sig = conditionSignature(e);
+      const sig = workflowConditionSignature(e) ?? '';
       const tName = nodeName(e.target);
       if (seen.has(sig)) {
         gwIssues.push(issue('warning', `网关「${gw.data.label || gw.data.key}」分支「${seen.get(sig)}」与「${tName}」条件完全相同（重叠）`, '合并或区分这两条分支的条件', gw));
@@ -264,7 +255,7 @@ export function analyzeWorkflowHealth(
       for (let i = 0; i < conditional.length; i++) {
         for (let j = i + 1; j < conditional.length; j++) {
           const a = conditional[i], b = conditional[j];
-          if (conditionSignature(a) !== conditionSignature(b) && rangesOverlap(a, b)) {
+          if (workflowConditionSignature(a) !== workflowConditionSignature(b) && rangesOverlap(a, b)) {
             gwIssues.push(issue('warning', `网关「${gw.data.label || gw.data.key}」分支「${nodeName(a.target)}」与「${nodeName(b.target)}」条件区间重叠`, '排他网关要求条件互斥，请收紧区间或改用包容网关', gw));
           }
         }

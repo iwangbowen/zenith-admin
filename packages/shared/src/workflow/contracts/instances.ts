@@ -200,10 +200,15 @@ export type WorkflowChildInstanceSummary = z.infer<typeof workflowChildInstanceS
 export const workflowPredictedPathNodeSchema = z.object({
   key: z.string(),
   name: z.string(),
-  type: z.enum(['approve', 'handler', 'cc']),
+  type: z.enum(['approve', 'handler', 'cc', 'ccNode', 'subProcess', 'delay', 'trigger']),
   branchLabel: z.string().nullable().optional().meta({ description: '进入该节点经过的条件分支标签' }),
   status: z.enum(WORKFLOW_PATH_STATUSES).optional(),
   reason: z.string().optional(),
+  /** 是否会等待异步条件（门控触发器 / 延时 / 等待型子流程） */
+  blocking: z.boolean().optional(),
+  waitReason: z.enum(['external', 'delay', 'subprocess', 'trigger']).optional(),
+  /** 需要上一节点审批人为其选人 */
+  requiresApproverSelection: z.boolean().optional(),
   estimatedApprovers: z.array(z.object({ id: z.number().int(), name: z.string() })).optional(),
   approverReason: z.string().nullable().optional(),
   policySkipped: z.boolean().optional().meta({ description: '按同发起人 / 去重策略将自动跳过' }),
