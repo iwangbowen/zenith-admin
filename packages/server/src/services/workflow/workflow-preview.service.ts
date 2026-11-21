@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { getWorkflowDefinitionBusinessAdapter } from '../../lib/workflow-business';
 import { HTTPException } from 'hono/http-exception';
 import { getWorkflowNumberingFields, planWorkflowPath } from '@zenith/shared/workflow';
+import { classifyWorkflowNode } from '@zenith/shared/workflow';
 import type { WorkflowCustomFormConfig, WorkflowFlowData, WorkflowApproverPreviewNode, WorkflowFormField, WorkflowPredictedPathNode } from '@zenith/shared/workflow';
 import { db } from '../../db';
 import { workflowDefinitions } from '../../db/schema';
@@ -65,8 +66,12 @@ export async function previewFlowData(
   });
   const configs = new Map(flowData.nodes.map(node => [node.data.key, node.data]));
   const branchMemberships = buildPreviewBranchMemberships(plan);
-  const planned = plan.nodes.filter(node => APPROVER_TYPES.has(node.nodeType) || node.nodeType === 'ccNode' || node.nodeType === 'subProcess');
-  const path: WorkflowPredictedPathNode[] = planned.filter(node => node.nodeType !== 'subProcess').map(node => ({
+  const planned = plan.nodes.filter(node => APPROVER_TYPES.has(node.nodeType)
+    || node.nodeType === 'ccNode'
+    || node.nodeType === 'subProcess'
+    || node.nodeType === 'delay'
+    || node.nodeType === 'trigger');
+  const path: WorkflowPredictedPathNode[] = planned.filter(node => APPROVER_TYPES.has(node.nodeType) || node.nodeType === 'ccNode').map(node => ({
     key: node.nodeKey,
     name: node.nodeName,
     type: node.nodeType === 'ccNode' ? 'cc' : node.nodeType as 'approve' | 'handler',
@@ -85,17 +90,25 @@ export async function previewFlowData(
   const nodes = await Promise.all(planned.map(async (node): Promise<WorkflowApproverPreviewNode> => {
     const config = configs.get(node.nodeKey)!;
     const prediction = byKey.get(node.nodeKey);
-    // 抄送 / 子流程没有“审批动作”，自动动作只标注人工审批 / 办理节点
+    const behavior = classifyWorkflowNode(config);
+    const isWait = behavior.kind === 'wait';
+    // 抄送 / 子流程 / 等待节点没有“审批动作”，自动动作只标注人工审批 / 办理节点
     const automaticAction = node.nodeType !== 'approve' && node.nodeType !== 'handler' ? null
       : prediction?.policySkipped ? 'approve' : config.approvalType === 'autoReject' ? 'reject' : config.approvalType === 'autoApprove' || config.approveMethod === 'auto' ? 'approve' : null;
     const isInitiatorSelect = INITIATOR_SELECT_TYPES.has(config.assigneeType ?? '');
     const selectionRequired = isInitiatorSelect && node.status !== 'excluded';
-    const approvers = prediction?.estimatedApprovers ?? [];
+    const approvers = isWait ? [] : prediction?.estimatedApprovers ?? [];
     const dynamicApprover = config.approveMethod === 'random' || DYNAMIC_ASSIGNEE_TYPES.has(config.assigneeType ?? '');
     const approverState: 'known' | 'empty' | 'unknown' =
-      automaticAction || approvers.length > 0 ? 'known'
+      isWait || automaticAction || approvers.length > 0 ? (isWait ? 'unknown' : 'known')
         : node.status === 'excluded' || node.nodeType === 'subProcess' || dynamicApprover || selectionRequired ? 'unknown'
           : 'empty';
+    const waitReason = behavior.waitReason;
+    const waitText = waitReason === 'delay' ? '到达设定时间后继续'
+      : waitReason === 'subprocess' ? (behavior.blocks ? '子流程进入后按其流程配置确定' : '子流程已发起，不等待其完成')
+        : waitReason === 'external' || waitReason === 'trigger'
+          ? (config.triggerConfig?.triggerType === 'callback' ? '等待外部回调后继续' : '等待异步处理完成后继续')
+          : null;
     return {
       nodeKey: node.nodeKey,
       nodeName: node.nodeName,
@@ -103,13 +116,16 @@ export async function previewFlowData(
       status: node.status,
       reason: node.reason,
       approvers,
-      approverReason: node.status === 'excluded' ? null : selectionRequired
-        ? (node.status === 'unknown' ? '路径待确认，请预选审批人；仅进入该节点时生效' : '请由发起人选择审批人')
-        : node.nodeType === 'subProcess' ? '子流程进入后按其流程配置确定' : prediction?.approverReason ?? null,
+      approverReason: node.status === 'excluded' ? null
+        : selectionRequired ? (node.status === 'unknown' ? '路径待确认，请预选审批人；仅进入该节点时生效' : '请由发起人选择审批人')
+          : waitText ?? prediction?.approverReason ?? null,
       selectableApprovers: selectionRequired ? await listSelectableApprovers(config) : undefined,
       selectionRequired,
-      approveMethod: automaticAction ? null : config.approveMethod ?? null,
+      approveMethod: automaticAction || isWait ? null : config.approveMethod ?? null,
       automaticAction,
+      blocking: isWait && behavior.blocks,
+      waitReason,
+      requiresApproverSelection: behavior.requiresApproverSelection,
       branchLabel: plan.branches.find(branch => branch.target === node.nodeId)?.label
         ?? branchMemberships.get(node.nodeId)?.[0]?.branchLabel
         ?? null,

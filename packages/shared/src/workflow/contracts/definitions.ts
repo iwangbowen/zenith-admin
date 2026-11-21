@@ -191,6 +191,11 @@ export const workflowApproverPreviewNodeSchema = z.object({
   selectionRequired: z.boolean().optional(),
   approveMethod: z.string().nullable().optional().meta({ description: '多人审批方式（and/or/sequential/ratio）' }),
   automaticAction: z.enum(['approve', 'reject']).nullable().optional(),
+  /** 该步骤需要等待（门控触发器 / 延时 / 等待型子流程） */
+  blocking: z.boolean().optional().meta({ description: '是否会在该步骤等待异步条件' }),
+  waitReason: z.enum(['external', 'delay', 'subprocess', 'trigger']).optional().meta({ description: '等待原因' }),
+  /** 需要上一节点审批人为其选人（仅人工且 assigneeType=approverSelect） */
+  requiresApproverSelection: z.boolean().optional().meta({ description: '是否需要上一节点审批人选人' }),
   branchLabel: z.string().nullable().optional().meta({ description: '所在分支标签（条件 / 并行分支时）' }),
   branchPath: z.array(workflowPreviewBranchRefSchema).optional().meta({ description: '所在条件分支及其状态，用于把未确定的多条分支聚合展示' }),
   approverState: z.enum(['known', 'empty', 'unknown']).optional().meta({ description: 'known=已确定；empty=已确定无人；unknown=节点到达时才能确定' }),

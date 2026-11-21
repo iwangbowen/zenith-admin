@@ -124,6 +124,12 @@ export function groupUnknownBranches(nodes: readonly WorkflowApproverPreviewNode
 /** 分支链路文案：节点名 + 类型/自动动作提示，按流转顺序用箭头连接 */
 export function branchChainText(nodes: readonly WorkflowApproverPreviewNode[], max = 6): string {
   const label = (node: WorkflowApproverPreviewNode): string => {
+    if (node.blocking) {
+      if (node.waitReason === 'delay') return `${node.nodeName}（等待延时）`;
+      if (node.waitReason === 'subprocess') return `${node.nodeName}（等待子流程）`;
+      return `${node.nodeName}（等待回调）`;
+    }
+    if (node.nodeType === 'trigger') return `${node.nodeName}（异步触发）`;
     if (node.nodeType === 'ccNode') return `${node.nodeName}（抄送）`;
     if (node.nodeType === 'subProcess') return `${node.nodeName}（子流程）`;
     if (node.automaticAction === 'approve') return `${node.nodeName}（自动通过）`;
