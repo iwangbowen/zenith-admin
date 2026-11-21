@@ -23,7 +23,7 @@ import type { WorkflowSelectableNextApproverGroup } from '@zenith/shared/workflo
 import logger from '../../../lib/logger';
 import { cancelJobs, WORKFLOW_ADVANCING_JOB_TYPES } from '../../../lib/workflow-jobs/engine';
 import { armTaskAsyncJobs } from './async-jobs';
-import { assertSelectedNextApprovers } from './initiator-select';
+import { assertSelectedNextApprovers, applySelectedNextApproversToFlow } from './initiator-select';
 import { mapInstance, mapTask } from './mapping';
 import { advanceAndMaterialize, checkNodeCompletion, killInstanceTokens } from './materialize';
 import { normalizeInstanceFormData } from './form-derived';
@@ -320,6 +320,15 @@ export async function approveTaskCore(
 
     const formData = mergedFormData;
     const starter = await buildStarterContext(inst.initiatorId, tx);
+    // 选定的下一节点审批人固化进实例快照：后续由触发器作业 / 子流程推进时仍能解析出同一批人
+    const effectiveFlowData = options?.selectedNextApprovers && Object.keys(options.selectedNextApprovers).length > 0
+      ? await applySelectedNextApproversToFlow(flowData, options.selectedNextApprovers, tx)
+      : flowData;
+    if (effectiveFlowData !== flowData && snapshot) {
+      await tx.update(workflowInstances)
+        .set({ definitionSnapshot: { ...snapshot, flowData: effectiveFlowData } })
+        .where(eq(workflowInstances.id, inst.id));
+    }
     // 退回模式 backToOrigin：被退回任务通过后，直接跳回发起退回的来源节点（而非继续后续路径）
     const originCfg = task.returnOriginNodeKey
       ? flowData.nodes.find((n) => n.data.key === task.returnOriginNodeKey)?.data
@@ -331,9 +340,9 @@ export async function approveTaskCore(
       instanceId: inst.id,
       initiatorId: inst.initiatorId,
       executor: tx,
-      flowData,
+      flowData: effectiveFlowData,
       formData,
-      settings: flowData.settings,
+      settings: effectiveFlowData.settings,
       selectedNextApprovers: options?.selectedNextApprovers,
       starter,
       tenantId: inst.tenantId,
