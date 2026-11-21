@@ -26,7 +26,7 @@ import { armTaskAsyncJobs } from './async-jobs';
 import { assertSelectedNextApprovers, applySelectedNextApproversToFlow } from './initiator-select';
 import { mapInstance, mapTask } from './mapping';
 import { advanceAndMaterialize, checkNodeCompletion, killInstanceTokens } from './materialize';
-import { normalizeInstanceFormData } from './form-derived';
+import { prepareApprovalFormData, normalizeInstanceFormData } from './form-derived';
 import type { MaterializeTrigger } from './materialize';
 import { recordSlotOutcome, reconcileApprovalActivation, cancelApprovalActivations } from './approval-state';
 import { workflowApprovalSlots, workflowNodeActivations } from '../../../db/schema';
@@ -175,18 +175,19 @@ async function approveUserTask(taskId: number, comment: string | undefined, atta
   // 校验"操作按钮设置"：通过按钮须启用 + 附件必填（uploadMode === 'required'）
   const flowData = inst.definitionSnapshot?.flowData;
   const nodeCfg = flowData?.nodes.find((n) => n.data.key === task.nodeKey)?.data;
-  const fieldPerms = resolveNodeFieldPermissions(flowData, task.nodeKey);
-  const permittedFormUpdates = sanitizeFormUpdatesByNodePerms(fieldPerms, formUpdates);
+  const { allowedUpdates: permittedFormUpdates, mergedFormData: effectiveFormData } = prepareApprovalFormData({
+    flowData,
+    nodeKey: task.nodeKey,
+    formSnapshot: inst.formSnapshot,
+    instanceFormData: (inst.formData ?? {}) as Record<string, unknown>,
+    formUpdates,
+  });
   assertActionButtonEnabled(inst, task.nodeKey, 'approve');
   assertActionUploadRequirement(inst, task.nodeKey, 'approve', attachments);
   if (flowData) {
-    // 选人校验用「实例当前表单值 + 本节点可写回的修改」求值分支条件（含公式/合计等派生值），
-    // 与引擎本次推进实际选边一致：未经过的分支不再强制选人。
+    // 选人校验与执行共用同一份「权限过滤 + 合并 + 派生」后的表单值
     await assertSelectedNextApprovers(flowData, task.nodeKey, selectedNextApprovers, db, {
-      formData: normalizeInstanceFormData(inst.formSnapshot, {
-        ...((inst.formData ?? {}) as Record<string, unknown>),
-        ...permittedFormUpdates,
-      }),
+      formData: effectiveFormData,
       initiatorId: inst.initiatorId,
     });
   }
@@ -288,16 +289,17 @@ export async function approveTaskCore(
     // 审批人「可编辑」字段写回：按节点 fieldPermissions 白名单过滤后合并进实例 formData，
     // 在会签早退（节点未推进）时同样持久化，后续推进与分支条件均使用合并后的数据
     const baseFormData = (lockedInst.formData ?? inst.formData ?? {}) as Record<string, unknown>;
-    const sanitizedUpdates = sanitizeFormUpdatesByNodePerms(
-      resolveNodeFieldPermissions(flowData, task.nodeKey),
-      options?.formUpdates,
-    );
+    const { allowedUpdates: sanitizedUpdates, mergedFormData: normalizedFormData } = prepareApprovalFormData({
+      flowData,
+      nodeKey: task.nodeKey,
+      formSnapshot: inst.formSnapshot,
+      instanceFormData: baseFormData,
+      formUpdates: options?.formUpdates,
+    });
     const hasFormUpdates = Object.keys(sanitizedUpdates).length > 0;
     // 审批人改过字段后必须重算派生值（公式/合计），否则后续分支条件用的是脏值；
     // 未改字段时也校正一次（历史物化/旧客户端可能存下了未归一的派生值），仅在确实变化时回写。
-    const mergedInput = hasFormUpdates ? { ...baseFormData, ...sanitizedUpdates } : baseFormData;
-    const normalizedFormData = normalizeInstanceFormData(inst.formSnapshot, mergedInput);
-    const formDataChanged = hasFormUpdates || normalizedFormData !== mergedInput;
+    const formDataChanged = hasFormUpdates || normalizedFormData !== baseFormData;
     const mergedFormData = formDataChanged
       ? await bindWorkflowFormAttachments(tx, inst, inst.formSnapshot, normalizedFormData, actor.userId ?? undefined)
       : baseFormData;
