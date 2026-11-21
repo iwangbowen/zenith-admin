@@ -76,6 +76,47 @@ describe('findNextApproverSelectNodes', () => {
     };
     expect(findNextApproverSelectNodes(parallel, 'alloc', { formData: {} }).map((n) => n.data.key)).toEqual(['chuzhi', 'xietiao']);
   });
+
+  it('非门控触发器与不等待子流程可以穿透；门控触发器 / 等待子流程阻断', () => {
+    const chain = (intermediate: Partial<WorkflowNodeConfig> & { type: WorkflowNodeConfig['type'] }): WorkflowFlowData => ({
+      nodes: [
+        node('alloc', { type: 'approve' }),
+        node('mid', intermediate),
+        node('sel', { type: 'approve', assigneeType: 'approverSelect' }),
+        node('end', { type: 'end' }),
+      ],
+      edges: [
+        { id: 'a', source: 'alloc', target: 'mid' },
+        { id: 'b', source: 'mid', target: 'sel' },
+        { id: 'c', source: 'sel', target: 'end' },
+      ],
+    });
+    const asyncTrigger = chain({ type: 'trigger', triggerConfig: { triggerType: 'webhook', onFailure: 'continue' } });
+    expect(findNextApproverSelectNodes(asyncTrigger, 'alloc').map((n) => n.data.key)).toEqual(['sel']);
+    const gatedTrigger = chain({ type: 'trigger', triggerConfig: { triggerType: 'callback' } });
+    expect(findNextApproverSelectNodes(gatedTrigger, 'alloc')).toEqual([]);
+    const asyncSubProcess = chain({ type: 'subProcess', subProcessId: 1, subProcessWaitChild: false });
+    expect(findNextApproverSelectNodes(asyncSubProcess, 'alloc').map((n) => n.data.key)).toEqual(['sel']);
+    const waitingSubProcess = chain({ type: 'subProcess', subProcessId: 1, subProcessWaitChild: true });
+    expect(findNextApproverSelectNodes(waitingSubProcess, 'alloc')).toEqual([]);
+  });
+
+  it('自动节点的 approverSelect 不需要上一节点选人，继续查找后续人工节点', () => {
+    const autoFlow: WorkflowFlowData = {
+      nodes: [
+        node('alloc', { type: 'approve' }),
+        node('auto', { type: 'approve', approvalType: 'autoApprove', approveMethod: 'auto', assigneeType: 'approverSelect' }),
+        node('sel', { type: 'approve', assigneeType: 'approverSelect' }),
+        node('end', { type: 'end' }),
+      ],
+      edges: [
+        { id: 'a', source: 'alloc', target: 'auto' },
+        { id: 'b', source: 'auto', target: 'sel' },
+        { id: 'c', source: 'sel', target: 'end' },
+      ],
+    };
+    expect(findNextApproverSelectNodes(autoFlow, 'alloc').map((n) => n.data.key)).toEqual(['sel']);
+  });
 });
 
 const issue = (id: string, type: WorkflowHealthIssue['type'], severity: WorkflowHealthIssue['severity'], ageMinutes: number): WorkflowHealthIssue => ({

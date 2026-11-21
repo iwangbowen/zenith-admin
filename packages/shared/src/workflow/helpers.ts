@@ -1,10 +1,12 @@
 import type { WorkflowFieldPermission, WorkflowFlowData, WorkflowFormField, WorkflowInstanceFormSnapshot, WorkflowJobStatus, WorkflowNodeConfig, WorkflowNodeFailurePolicy, WorkflowStarterContext } from './types';
 import type { WorkflowInstanceSummaryItem } from './contracts/instances';
 import { WORKFLOW_JOB_STATUSES } from './constants';
-import { selectWorkflowPathBranches } from './path-planner';
+import { classifyWorkflowNode, selectWorkflowPathBranches } from './decision';
 import { escapeRegExp } from '../core/text';
 
 type WorkflowFlowNode = WorkflowFlowData['nodes'][number];
+
+export { isGatedTrigger } from './decision';
 
 /**
  * 归一化实例表单快照：落库 JSON / API 返回值 → 结构完整的快照对象；非对象（含数组）视为无快照。
@@ -24,22 +26,6 @@ export function normalizeWorkflowFormSnapshot(snapshot: unknown): WorkflowInstan
 }
 
 /** 人工审批节点类型（会创建待办、阻断流转，遍历到此即停止） */
-const HUMAN_TASK_TYPES = new Set(['approve', 'handler']);
-/**
- * 「穿透型」节点类型：本身不创建待办、不阻断流转，引擎会越过它们继续推进到下一批人工任务。
- * 仅这些类型允许在查找「紧邻的下一审批节点」时被穿过。
- */
-const PASSTHROUGH_TYPES = new Set([
-  'start',
-  'exclusiveGateway',
-  'parallelGateway',
-  'inclusiveGateway',
-  'routeGateway',
-  'ccNode',
-]);
-
-/** 需要按条件收窄出边的网关类型（并行网关全选，互斥 / 包容 / 路由按条件） */
-const GATEWAY_TYPES = new Set(['exclusiveGateway', 'parallelGateway', 'inclusiveGateway', 'routeGateway']);
 
 /**
  * 从指定节点出发，沿正常出边（排除异常边 / catch 节点）穿过网关、抄送等「穿透型」节点，
@@ -82,7 +68,7 @@ export function findNextApproverSelectNodes(
   /** 按运行时选边语义收窄当前网关的出边；conditions 决定的分支不再被一律要求选人 */
   const selectedOutEdges = (node: WorkflowFlowNode): typeof flowData.edges => {
     const edges = outgoing.get(node.id) ?? [];
-    if (!GATEWAY_TYPES.has(node.data.type)) return edges;
+    if (classifyWorkflowNode(node.data).kind !== 'gateway') return edges;
     // 路由网关的决策结果尚未产生：token 停在网关等待决策，紧邻的人工节点此时不应要求选人
     if (node.data.type === 'routeGateway' && node.data.decisionRuleKey) return [];
     const selected = selectWorkflowPathBranches(node.data, edges, {
@@ -108,19 +94,18 @@ export function findNextApproverSelectNodes(
       if (!target) continue;
       visited.add(edge.target);
 
-      if (HUMAN_TASK_TYPES.has(target.data.type)) {
-        // 紧邻的下一人工审批节点：是 approverSelect 则收集；无论是否收集都不再越过它
-        if (target.data.assigneeType === 'approverSelect' && !seenKeys.has(target.data.key)) {
+      // 与 token 引擎共用节点能力判定：人工节点停下；自动节点 / 非门控触发器 / 不等待子流程继续穿透；
+      // 门控触发器 / 延时 / 等待型子流程 / 结束节点阻断查找。
+      const behavior = classifyWorkflowNode(target.data);
+      if (behavior.kind === 'human') {
+        if (behavior.requiresApproverSelection && !seenKeys.has(target.data.key)) {
           seenKeys.add(target.data.key);
           result.push(target);
         }
         continue;
       }
-
-      // 仅穿透型节点（网关 / 抄送 / start）允许继续向后查找；其余阻断型节点（delay/trigger/subProcess/end）停止
-      if (PASSTHROUGH_TYPES.has(target.data.type)) {
-        queue.push(edge.target);
-      }
+      if (behavior.blocks) continue;
+      queue.push(edge.target);
     }
   }
 
@@ -161,14 +146,6 @@ export function resolveFailurePolicy(node: WorkflowNodeConfig | null | undefined
  * 引擎推进（token-engine）、任务展开（materialize）与作业执行（trigger-dispatch）三处必须使用
  * 同一判定，否则会出现「任务 waiting 而 token 已越过」的脱节，作业完成推进时报「缺少执行 Token」。
  */
-export function isGatedTrigger(cfg: { triggerType?: string; onFailure?: string } | null | undefined): boolean {
-  if (!cfg) return false;
-  return cfg.triggerType === 'callback'
-    || cfg.onFailure === 'block'
-    || cfg.triggerType === 'updateData'
-    || cfg.triggerType === 'deleteData';
-}
-
 // ─── 节点级表单字段权限（read / edit / hidden）──────────────────────────────────
 //
 // 设计器 FormPermissionTab 按节点为每个字段 key 配置权限；未配置的字段默认 `read`。

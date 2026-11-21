@@ -1,8 +1,43 @@
 import { workflowFlowDataSchema } from '@zenith/shared/workflow/graph-schema';
-import type { WorkflowFlowData } from '@zenith/shared/workflow';
+import { workflowEdgeHasCondition } from '@zenith/shared/workflow';
+import type { WorkflowEdge, WorkflowFlowData } from '@zenith/shared/workflow';
 /** 所有写入口共用 canonical graph 契约；不接受树或隐式旧格式转换。 */
 export function normalizeDefinitionFlowData(flowData: unknown): WorkflowFlowData | null {
- return flowData == null ? null : workflowFlowDataSchema.parse(flowData);
+  if (flowData == null) return null;
+  const graph = workflowFlowDataSchema.parse(flowData);
+  return { ...graph, edges: canonicalizeEdges(graph.edges) };
+}
+
+/**
+ * Canonical edge order：同一源节点的出边按 priority 排序并回填 priority，其余边保持首次出现顺序。
+ * 运行时与预测都按数组顺序消费出边，规范化后“数组顺序 = 显式优先级”，不再依赖调用方顺序。
+ */
+function canonicalizeEdges(edges: WorkflowEdge[]): WorkflowEdge[] {
+  const groups = new Map<string, Array<{ edge: WorkflowEdge; index: number }>>();
+  const sourceOrder: string[] = [];
+  edges.forEach((edge, index) => {
+    const list = groups.get(edge.source);
+    if (!list) {
+      groups.set(edge.source, [{ edge, index }]);
+      sourceOrder.push(edge.source);
+      return;
+    }
+    list.push({ edge, index });
+  });
+  const out: WorkflowEdge[] = [];
+  for (const source of sourceOrder) {
+    const list = groups.get(source)!;
+    list.sort((a, b) => (a.edge.priority ?? a.index) - (b.edge.priority ?? b.index) || a.index - b.index);
+    list.forEach(({ edge }, priority) => {
+      out.push({
+        ...edge,
+        priority,
+        // 默认 = 无条件；显式 isDefault 只作为 UI 提示，与条件互斥
+        ...(edge.isException ? {} : { isDefault: !workflowEdgeHasCondition(edge) }),
+      });
+    });
+  }
+  return out;
 }
 
 /** 读路径统一剔除遗留顶层字段（如旧 process 树结构）：不校验不抛错，保证旧行可读，

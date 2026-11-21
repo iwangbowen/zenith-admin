@@ -14,7 +14,7 @@
  */
 import { createHash, randomUUID } from 'node:crypto';
 import type { WorkflowFlowData, WorkflowStarterContext } from '@zenith/shared/workflow';
-import { isGatedTrigger } from '@zenith/shared/workflow';
+import { classifyWorkflowNode } from '@zenith/shared/workflow';
 import {
   buildAdjacency,
   edgeMatchesCondition,
@@ -384,7 +384,7 @@ export function advanceTokens(input: AdvanceTokensInput): AdvanceTokensResult {
       tasksToCreate.push(makeTaskAction(node, null));
       // 门控触发器（callback/block/数据变更）：token 停在节点，由作业完成或外部回调推进；
       // 其余为 fire-and-forget，token 直接越过（与 materialize 任务展开、trigger-dispatch 推进判定保持一致）
-      if (isGatedTrigger(node.data.triggerConfig)) {
+      if (classifyWorkflowNode(node.data).blocks) {
         emitToken(node.data.key, arrival.branchPath, arrival.parentTokenId);
         activeNodeKeys.push(node.data.key);
       } else {
@@ -397,7 +397,7 @@ export function advanceTokens(input: AdvanceTokensInput): AdvanceTokensResult {
 
     if (type === 'subProcess') {
       tasksToCreate.push(makeTaskAction(node, null));
-      const waitChild = node.data.subProcessWaitChild !== false;
+      const waitChild = classifyWorkflowNode(node.data).blocks;
       if (waitChild) {
         emitToken(node.data.key, arrival.branchPath, arrival.parentTokenId);
         activeNodeKeys.push(node.data.key);
