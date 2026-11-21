@@ -21,7 +21,7 @@ export function ThemedReactFlow<
     <ReactFlow<NodeType, EdgeType>
       {...props}
       className={['zenith-react-flow', className].filter(Boolean).join(' ')}
-      colorMode={isDark ? 'dark' : 'light'}
+      forceColorMode={isDark ? 'dark' : 'light'}
       proOptions={{ hideAttribution: true, ...proOptions }}
     />
   );

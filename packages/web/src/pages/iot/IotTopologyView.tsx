@@ -177,7 +177,7 @@ function IotTopologyGraph({ deviceId, onOpenChild }: Readonly<IotTopologyViewPro
     if (!ready || laidOutNodes.length === 0) return;
     const raf = requestAnimationFrame(() => {
       updateNodeInternals(laidOutNodes.map((n) => n.id));
-      void fitView({ padding: 0.2, duration: 200 });
+      void fitView({ padding: '8.33%', duration: 200 });
     });
     return () => cancelAnimationFrame(raf);
   }, [ready, laidOutNodes, updateNodeInternals, fitView]);
@@ -219,7 +219,7 @@ function IotTopologyGraph({ deviceId, onOpenChild }: Readonly<IotTopologyViewPro
             if (node.id.startsWith('c-') && onOpenChild) onOpenChild(Number(node.id.slice(2)));
           }}
           fitView
-          fitViewOptions={{ padding: 0.2 }}
+          fitViewOptions={{ padding: '8.33%' }}
           minZoom={0.2}
           maxZoom={2}
           proOptions={{ hideAttribution: true }}

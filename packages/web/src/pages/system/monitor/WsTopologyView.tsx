@@ -168,7 +168,7 @@ function WsTopologyGraph({ metrics, nodeRates, onSelectUser, onInspectTopic, onS
     if (!ready || !nodesInitialized || fitNodeTargets.length === 0) return;
     const raf = requestAnimationFrame(() => {
       updateNodeInternals(fitNodeTargets.map(({ id }) => id));
-      void fitView({ nodes: fitNodeTargets, padding: 0.2, maxZoom: 1, duration: 200 });
+      void fitView({ nodes: fitNodeTargets, padding: '8.33%', maxZoom: 1, duration: 200 });
     });
     return () => cancelAnimationFrame(raf);
   }, [fitView, nodesInitialized, ready, topologyStructureKey, updateNodeInternals]);
@@ -212,7 +212,7 @@ function WsTopologyGraph({ metrics, nodeRates, onSelectUser, onInspectTopic, onS
           nodeTypes={topoNodeTypes}
           onInit={(instance) => {
             // React Flow 首次测量自定义节点后再 fit，避免只按初始 0 尺寸计算而放大到 2x+。
-            requestAnimationFrame(() => instance.fitView({ nodes: fitNodeTargets, padding: 0.2, maxZoom: 1 }));
+            requestAnimationFrame(() => instance.fitView({ nodes: fitNodeTargets, padding: '8.33%', maxZoom: 1 }));
           }}
           onNodesChange={handleNodesChange}
           onEdgesChange={onEdgesChange}
@@ -243,7 +243,7 @@ function WsTopologyGraph({ metrics, nodeRates, onSelectUser, onInspectTopic, onS
           }}
           fitView
           // 单层 / 小数据集 fitView 可能把缩放放大到节点占满画布；限制默认缩放，避免首次打开节点过大。
-          fitViewOptions={{ nodes: fitNodeTargets, padding: 0.2, maxZoom: 1 }}
+          fitViewOptions={{ nodes: fitNodeTargets, padding: '8.33%', maxZoom: 1 }}
           minZoom={0.2}
           maxZoom={1}
           proOptions={{ hideAttribution: true }}

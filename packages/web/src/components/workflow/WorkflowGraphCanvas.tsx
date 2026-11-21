@@ -109,7 +109,7 @@ export default function WorkflowGraphCanvas({ flowData, nodeRuntime, height = 48
           edgesReconnectable={false}
           elementsSelectable={false}
           fitView
-          fitViewOptions={{ padding: 0.18 }}
+          fitViewOptions={{ padding: '7.63%' }}
           minZoom={0.15}
           maxZoom={1.5}
           ariaLabelConfig={{ 'controls.zoomIn.ariaLabel': '放大流程图', 'controls.zoomOut.ariaLabel': '缩小流程图', 'controls.fitView.ariaLabel': '自适应流程图' }}

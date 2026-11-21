@@ -315,7 +315,7 @@ function ErDiagramInner({ schema, onNodeDoubleClick }: Readonly<ErDiagramProps>)
     }
     setSelectedId(tableId);
     setTimeout(() => {
-      rf.fitView({ nodes: [{ id: tableId }], duration: 400, maxZoom: 1.2, padding: 0.35 });
+      rf.fitView({ nodes: [{ id: tableId }], duration: 400, maxZoom: 1.2, padding: '12.96%' });
     }, 50);
   }, [nodes, rf, setSelectedId]);
 
@@ -439,7 +439,7 @@ function ErDiagramInner({ schema, onNodeDoubleClick }: Readonly<ErDiagramProps>)
         onNodeDoubleClick={handleNodeDoubleClick}
         onPaneClick={handlePaneClick}
         fitView
-        fitViewOptions={{ padding: 0.15 }}
+        fitViewOptions={{ padding: '6.52%' }}
         minZoom={0.1}
         maxZoom={2}
         proOptions={{ hideAttribution: true }}

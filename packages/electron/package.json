@@ -10,23 +10,23 @@
   },
   "main": "dist/main.js",
   "dependencies": {
-    "electron-updater": "^6.8.9",
+    "electron-updater": "^6.8.11",
     "yauzl": "^3.4.0"
   },
   "scripts": {
     "dev": "tsc && concurrently \"npm run dev -w @zenith/web\" \"tsc --watch --preserveWatchOutput\" \"wait-on http://localhost:5373 && electron .\"",
-    "build": "tsc && electron-builder",
-    "build:win": "tsc && electron-builder --win",
-    "build:mac": "tsc && electron-builder --mac",
-    "build:linux": "tsc && electron-builder --linux"
+    "build": "tsc && electron-builder --config electron-builder.config.js",
+    "build:win": "tsc && electron-builder --config electron-builder.config.js --win",
+    "build:mac": "tsc && electron-builder --config electron-builder.config.js --mac",
+    "build:linux": "tsc && electron-builder --config electron-builder.config.js --linux"
   },
   "devDependencies": {
     "@types/yauzl": "^3.4.0",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "concurrently": "^10.0.5",
-    "electron": "44.3.0",
-    "electron-builder": "^26.15.3",
+    "concurrently": "^10.0.7",
+    "electron": "45.4.1",
+    "electron-builder": "^26.18.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "wait-on": "^9.1.0"
+    "wait-on": "^9.5.1"
   }
 }

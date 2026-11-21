@@ -1,8 +1,13 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Empty, Spin, Typography } from '@douyinfe/semi-ui';
-import { LngLatBounds, Map as MapLibreMap, Marker, NavigationControl, Popup, type StyleSpecification } from 'maplibre-gl';
+import { LngLatBounds, Map as MapLibreMap, Marker, NavigationControl, Popup, setWorkerUrl, type StyleSpecification } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
+// maplibre 通过运行时拼接 import.meta.url 定位 worker，打包器无法静态收集；显式经 Vite 产出并指定地址，dev 与生产都能加载。
+// 使用相对路径而非裸包名，避免 Vite 依赖预构建把 ?url 当成 JS 模块（裸包名会被 prebundle 成模块对象）。
+import maplibreWorkerUrl from '../../../../../node_modules/maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import type { IotDevice } from '@zenith/shared/iot';
+
+setWorkerUrl(maplibreWorkerUrl);
 
 const { Text } = Typography;
 

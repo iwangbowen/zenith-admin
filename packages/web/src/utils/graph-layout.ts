@@ -22,7 +22,11 @@ export function layoutWithDagre<N extends RFNode>(nodes: N[], edges: RFEdge[], o
   const margin = options.margin ?? 20;
   g.setGraph({ rankdir: options.rankdir, nodesep: options.nodesep, ranksep: options.ranksep, marginx: margin, marginy: margin });
   const sizeOf = typeof options.nodeSize === 'function' ? options.nodeSize : () => options.nodeSize as { width: number; height: number };
-  nodes.forEach((n) => g.setNode(n.id, sizeOf(n)));
+  // dagre 会把计算结果写回节点对象；固定尺寸时必须为每个节点创建独立对象，否则所有节点共享同一份 x/y。
+  nodes.forEach((n) => {
+    const size = sizeOf(n);
+    g.setNode(n.id, { width: size.width, height: size.height });
+  });
   edges.forEach((e) => g.setEdge(e.source, e.target));
   dagre.layout(g);
   return nodes.map((n) => {

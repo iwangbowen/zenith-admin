@@ -182,7 +182,7 @@ function FieldDependencyGraphInner({ fields }: Readonly<{ fields: WorkflowFormFi
           onNodeClick={handleNodeClick}
           onPaneClick={handlePaneClick}
           fitView
-          fitViewOptions={{ padding: 0.15 }}
+          fitViewOptions={{ padding: '6.52%' }}
           minZoom={0.1}
           maxZoom={2}
           proOptions={{ hideAttribution: true }}

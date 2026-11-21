@@ -9,7 +9,11 @@ import { createInstance, withdrawInstance, cancelInstance, deleteInstance, getIn
 import { getDraftEditor, listOwnDrafts, deleteOwnDraft } from '../../../services/workflow/workflow-instances.service';
 
 export const ownDraftsRoute = defineContractRoute(workflowInstanceContract.ownDrafts, { handler: async c => c.json(okBody(await listOwnDrafts(c.req.valid('query'))), 200) });
-export const draftEditorRoute = defineContractRoute(workflowInstanceContract.draftEditor, { handler: async c => c.json(okBody(await getDraftEditor(c.req.valid('param').id)), 200) });
+export const draftEditorRoute = defineContractRoute(workflowInstanceContract.draftEditor, {
+  // Hono 4.13.19 的 JSONParsed 会对递归的 WorkflowFormField 做循环截断（columns.fields → JSONValue），
+  // 与契约响应类型不再结构一致；运行时无影响，这里按契约响应类型收口。
+  handler: async c => c.json(okBody(await getDraftEditor(c.req.valid('param').id)), 200) as never,
+});
 export const deleteOwnDraftRoute = defineContractRoute(workflowInstanceContract.removeDraft, { handler: async c => { await deleteOwnDraft(c.req.valid('param').id); return c.json(okBody(null, '草稿已删除'), 200); } });
 
 export const createInstanceRoute = defineContractRoute(workflowInstanceContract.create, {
