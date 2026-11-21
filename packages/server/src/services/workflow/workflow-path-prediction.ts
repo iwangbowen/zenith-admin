@@ -1,4 +1,5 @@
 import type { WorkflowFlowData, WorkflowNodeConfig, WorkflowPredictedPathNode } from '@zenith/shared/workflow';
+import { classifyWorkflowNode } from '@zenith/shared/workflow';
 
 type PredictionResolvers = {
   resolve: (config: WorkflowNodeConfig) => Promise<number[]>;
@@ -46,6 +47,15 @@ export async function enrichPredictedApprovers(path: WorkflowPredictedPathNode[]
     const config = configs.get(entry.key);
     const result: WorkflowPredictedPathNode = { ...entry, estimatedApprovers: [], approverReason: null };
     if (!config || entry.status === 'excluded') return result;
+    const behavior = classifyWorkflowNode(config);
+    if (behavior.kind === 'wait') {
+      result.blocking = behavior.blocks;
+      result.waitReason = behavior.waitReason;
+      result.approverReason = behavior.waitReason === 'delay' ? '到达设定时间后继续'
+        : behavior.waitReason === 'subprocess' ? (behavior.blocks ? '子流程进入后按其流程配置确定' : '子流程已发起，不等待其完成')
+          : (config.triggerConfig?.triggerType === 'callback' ? '等待外部回调后继续' : '等待异步处理完成后继续');
+      return result;
+    }
     if (config.approveMethod === 'random') result.approverReason = '随机审批人在节点到达时确定';
     else if (config.approveMethod === 'auto' || config.approvalType === 'autoApprove' || config.approvalType === 'autoReject') result.approverReason = '自动处理节点，无需人工审批';
     else if (config.assigneeType === 'approverSelect') result.approverReason = '等待上一节点审批人选择';

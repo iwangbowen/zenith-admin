@@ -365,7 +365,17 @@ export default function ApprovalTimeline({ tasks, consults = [], approvalActivat
             <Timeline.Item key={`future-${n.key}`} dot={timelineDot(Clock, 'var(--semi-color-tertiary)')}>
               <Space spacing={8} wrap>
                 <Typography.Text strong style={{ fontSize: 13, color: 'var(--semi-color-text-2)' }}>{n.name}</Typography.Text>
-                <Tag color="grey" size="small">{n.type === 'cc' || n.type === 'ccNode' ? '待抄送' : (n.type === 'handler' ? '待办理' : '待审批')}</Tag>
+                <Tag color="grey" size="small">{n.type === 'cc' || n.type === 'ccNode' ? '待抄送'
+                  : n.type === 'handler' ? '待办理'
+                    : n.type === 'subProcess' ? '子流程'
+                      : n.type === 'delay' ? '延时'
+                        : n.type === 'trigger' ? '等待' : '待审批'}</Tag>
+                {n.blocking && (
+                  <Tag color="orange" size="small">
+                    {n.waitReason === 'delay' ? '等待延时' : n.waitReason === 'subprocess' ? '等待子流程' : '等待回调'}
+                  </Tag>
+                )}
+                {n.requiresApproverSelection && <Tag color="violet" size="small">上一节点选人</Tag>}
                 {n.status && <Tag color={n.status === 'unknown' ? 'orange' : 'blue'} size="small">{WORKFLOW_PATH_STATUS_LABELS[n.status]}</Tag>}
                 {n.branchLabel && <Tag color="violet" size="small">{n.branchLabel}</Tag>}
               </Space>
