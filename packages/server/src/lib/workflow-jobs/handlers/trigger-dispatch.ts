@@ -3,7 +3,7 @@ import { runWorkflowJobStep } from '../steps';
 import { throwIfWorkflowExternalEffectUncertain } from '../external-effects';
 import { eq } from 'drizzle-orm';
 import type { WorkflowTriggerNodeConfig } from '@zenith/shared/workflow';
-import { isGatedTrigger } from '@zenith/shared/workflow';
+import { classifyWorkflowNode } from '@zenith/shared/workflow';
 import { config } from '../../../config';
 import { db } from '../../../db';
 import { workflowTasks, workflowInstances } from '../../../db/schema';
@@ -147,7 +147,8 @@ async function handle({ payload, attempt, job, operationKey }: WorkflowJobContex
   // approved = fire-and-forget，token 已越过节点，触发事实已发生——即使实例已完成也照常外呼（与 Webhook 投递同语义）
   if (task.status === 'waiting' && inst.status !== 'running') throw new WorkflowJobSkip('实例不在运行中');
 
-  const cfg = snapshotNodeConfig(inst, task.nodeKey)?.triggerConfig;
+  const nodeConfig = snapshotNodeConfig(inst, task.nodeKey);
+  const cfg = nodeConfig?.triggerConfig;
   if (!cfg) {
     await handleNodeExecutionError({ instance: inst, task, nodeKey: task.nodeKey, nodeName: task.nodeName, errorMessage: '触发器节点缺少 triggerConfig', actor: ACTOR });
     throw new WorkflowJobError('触发器节点缺少 triggerConfig', { permanent: true });
@@ -159,8 +160,9 @@ async function handle({ payload, attempt, job, operationKey }: WorkflowJobContex
 
   if (result.status === 'success') {
     // 门控触发器（callback 除外，callback 由外部回调推进）执行成功后推进流程；
-    // 判定与 token-engine / materialize 的 isGatedTrigger 保持一致
-    const shouldAdvance = task.status === 'waiting' && triggerType !== 'callback' && isGatedTrigger(cfg);
+    // 判定与 token-engine / materialize 共用同一节点能力内核
+    const shouldAdvance = task.status === 'waiting' && triggerType !== 'callback'
+      && !!nodeConfig && classifyWorkflowNode(nodeConfig).blocks;
     if (shouldAdvance) {
       await approveTaskCore(task, inst, '触发器执行成功，自动推进', ACTOR);
     }

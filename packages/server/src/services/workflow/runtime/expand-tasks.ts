@@ -1,5 +1,5 @@
 import type { WorkflowNodeConfig, WorkflowFlowData, WorkflowResolvedApproveMethod } from '@zenith/shared/workflow';
-import { isGatedTrigger } from '@zenith/shared/workflow';
+import { classifyWorkflowNode } from '@zenith/shared/workflow';
 import type { workflowTasks } from '../../../db/schema';
 import { resolveRuntimeApproveMethod, type TaskAction } from '../../../lib/workflow-engine';
 import type { AssigneeRuntimeResult } from './assignee-policy';
@@ -114,8 +114,8 @@ export async function expandRuntimeTasks(tasks: TaskAction[], ctx: TaskExpansion
     if (t.nodeType === 'trigger') {
       const tcfg = t.nodeConfig.triggerConfig;
       const isCallback = tcfg?.triggerType === 'callback';
-      // 门控判定必须与 token-engine / trigger-dispatch 一致（isGatedTrigger）
-      if (isGatedTrigger(tcfg)) {
+      // 门控判定必须与 token-engine / trigger-dispatch 一致（classifyWorkflowNode）
+      if (classifyWorkflowNode(t.nodeConfig).blocks) {
         rows.push({
           instanceId: ctx.instanceId,
           nodeKey: t.nodeKey,
@@ -130,7 +130,7 @@ export async function expandRuntimeTasks(tasks: TaskAction[], ctx: TaskExpansion
       // 非阻塞触发器（continue/retry）：落到下方通用自动节点路径，由订阅者异步执行
     }
 
-    if (t.nodeType === 'subProcess' && t.nodeConfig.subProcessWaitChild !== false) {
+    if (t.nodeType === 'subProcess' && classifyWorkflowNode(t.nodeConfig).blocks) {
       rows.push({
         instanceId: ctx.instanceId,
         nodeKey: t.nodeKey,
