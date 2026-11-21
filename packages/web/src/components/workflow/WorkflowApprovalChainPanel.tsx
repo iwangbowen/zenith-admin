@@ -12,11 +12,12 @@
 import { uniquePositiveInts } from '@zenith/shared/core';
 import { useEffect, useId, useMemo, useState } from 'react';
 import { Button, Empty, Select, Space, Spin, Tag, Timeline, Typography } from '@douyinfe/semi-ui';
-import { Clock, Flag, Mail, Send, UserPlus, type LucideIcon } from 'lucide-react';
+import { Clock, Flag, GitBranch, Mail, Send, UserPlus, type LucideIcon } from 'lucide-react';
 import { WORKFLOW_APPROVE_METHOD_LABELS as METHOD_LABEL, WORKFLOW_PATH_STATUS_LABELS } from '@zenith/shared/workflow';
 import type { WorkflowApproverPreviewNode } from '@zenith/shared/workflow';
 import { UserAvatar } from '@/components/UserAvatar';
 import { timelineDot } from '@/components/workflow/timeline-dot';
+import { branchChainText, groupUnknownBranches, type PreviewBranchGroup } from '@/components/workflow/approval-chain-groups';
 import { useWorkflowApprovalPreview } from '@/hooks/queries/workflow-shared';
 
 export type SelectedInitiatorApprovers = Record<string, number[]>;
@@ -159,29 +160,87 @@ export function WorkflowApprovalChain({
   const startNode = nodes.find((n) => n.nodeType === 'start');
   const structureNodes = nodes.filter((n) => n.nodeType !== 'start');
   const flowNodes = structureNodes.filter((n) => n.status !== 'excluded');
-  const visibleNodes = showAllBranches ? structureNodes : flowNodes;
   const hasExcludedBranches = structureNodes.length !== flowNodes.length;
+  const hasBranchStructure = structureNodes.some((n) => (n.branchPath?.length ?? 0) > 0);
+  // 条件未定的多条分支聚合成一个步骤；展开「全部结构」时回到逐节点视图
+  const branchGrouping = useMemo(() => groupUnknownBranches(flowNodes), [flowNodes]);
+  const grouped = showAllBranches ? null : branchGrouping;
+  const renderedNodes = grouped ? flowNodes.filter((n) => !grouped.hiddenNodeKeys.has(n.nodeKey)) : flowNodes;
   const initiatorName = startNode?.approvers[0]?.name ?? '发起人';
   // 原因只在首个同因节点展开，避免 5 个下游节点整屏重复同一句提示
-  const reasonOwners = collapseRepeatedReasons(visibleNodes);
+  const reasonOwners = collapseRepeatedReasons(renderedNodes);
 
-  // 链路摘要：审批步数 + 去重审批人数（自选节点单列标注）
-  const approvalNodes = flowNodes.filter((n) => !n.automaticAction && (n.nodeType === 'approve' || n.nodeType === 'handler'));
+  // 链路摘要：审批步数 + 去重审批人数（自选节点单列标注）；条件分支按可能步数区间展示
+  const approvalNodes = renderedNodes.filter((n) => !n.automaticAction && (n.nodeType === 'approve' || n.nodeType === 'handler'));
   const approverIdSet = new Set<number>();
   approvalNodes.forEach((n) => n.approvers.forEach((a) => approverIdSet.add(a.id)));
-  const hasSelectNode = approvalNodes.some((n) => n.selectionRequired);
+  const hasSelectNode = approvalNodes.some((n) => n.selectionRequired)
+    || (grouped?.groups.some((group) => group.rows.some((row) => row.nodes.some((n) => n.selectionRequired))) ?? false);
+  const groupMinSteps = grouped?.groups.reduce((sum, group) => sum + group.minHumanSteps, 0) ?? 0;
+  const groupMaxSteps = grouped?.groups.reduce((sum, group) => sum + group.maxHumanSteps, 0) ?? 0;
   const unknownStepCount = approvalNodes.filter((n) => n.status === 'unknown').length;
-  const summaryText = [
-    `${unknownStepCount ? '预计' : '共'} ${approvalNodes.length} 步`,
-    unknownStepCount ? `${unknownStepCount} 步待条件确认` : null,
-    approverIdSet.size > 0 ? `约 ${approverIdSet.size} 人审批` : null,
-    hasSelectNode ? '含自选' : null,
-  ].filter(Boolean).join(' · ');
+  const summaryText = grouped && grouped.groups.length > 0
+    ? [
+      `预计 ${approvalNodes.length + groupMinSteps}–${approvalNodes.length + groupMaxSteps} 步`,
+      `${grouped.groups.length} 处条件分支待确认`,
+      approverIdSet.size > 0 ? `约 ${approverIdSet.size} 人审批` : null,
+      hasSelectNode ? '含自选' : null,
+    ].filter(Boolean).join(' · ')
+    : [
+      `${unknownStepCount ? '预计' : '共'} ${approvalNodes.length} 步`,
+      unknownStepCount ? `${unknownStepCount} 步待条件确认` : null,
+      approverIdSet.size > 0 ? `约 ${approverIdSet.size} 人审批` : null,
+      hasSelectNode ? '含自选' : null,
+    ].filter(Boolean).join(' · ');
 
   const handleSelect = (nodeKey: string, next: unknown) => {
     const ids = normalizeSelectedIds(next);
     onChange?.({ ...value, [nodeKey]: ids });
   };
+
+  type TimelineEntry =
+    | { kind: 'node'; node: WorkflowApproverPreviewNode; index: number; collapseGroup?: PreviewBranchGroup; inExpandedGroup?: boolean }
+    | { kind: 'group'; group: PreviewBranchGroup }
+    | { kind: 'groupHeader'; group: PreviewBranchGroup };
+  const collapseByLastIndex = new Map(
+    (showAllBranches ? branchGrouping.groups : []).map((group) => [group.lastIndex, group]),
+  );
+  const indexByNodeKey = new Map(flowNodes.map((node, index) => [node.nodeKey, index]));
+  const timelineEntries: TimelineEntry[] = [];
+
+  if (showAllBranches && branchGrouping.groups.length > 0) {
+    // 展开后按分支归拢：同一分支的节点连续排列，并带分支标签，避免交错后看不出原本是一个聚合
+    const groupByFirstIndex = new Map(branchGrouping.groups.map((group) => [group.firstIndex, group]));
+    const emitted = new Set<string>();
+    flowNodes.forEach((node, index) => {
+      const group = groupByFirstIndex.get(index);
+      if (group) {
+        timelineEntries.push({ kind: 'groupHeader', group });
+        const branchNodes = group.rows.flatMap((row) => row.nodes);
+        branchNodes.forEach((branchNode, position) => {
+          timelineEntries.push({
+            kind: 'node',
+            node: branchNode,
+            index: indexByNodeKey.get(branchNode.nodeKey) ?? index,
+            collapseGroup: position === branchNodes.length - 1 ? group : undefined,
+            inExpandedGroup: true,
+          });
+          emitted.add(branchNode.nodeKey);
+        });
+      }
+      if (emitted.has(node.nodeKey)) return;
+      timelineEntries.push({ kind: 'node', node, index });
+    });
+  } else {
+    flowNodes.forEach((node, index) => {
+      const group = grouped?.groupByFirstIndex.get(index);
+      if (group) timelineEntries.push({ kind: 'group', group });
+      if (!grouped?.hiddenNodeKeys.has(node.nodeKey)) {
+        timelineEntries.push({ kind: 'node', node, index, collapseGroup: collapseByLastIndex.get(index) });
+      }
+    });
+  }
+  const firstGroupIndex = (grouped ?? branchGrouping).groups[0]?.firstIndex ?? Number.POSITIVE_INFINITY;
 
   const renderApprovers = (n: WorkflowApproverPreviewNode) => {
     if (n.status === 'excluded') return null;
@@ -258,7 +317,7 @@ export function WorkflowApprovalChain({
         <Empty description="该流程无需审批，提交后自动通过" style={{ padding: 24 }} />
       ) : (
         <>
-          {hasExcludedBranches && (
+          {(hasExcludedBranches || hasBranchStructure) && (
             <Button size="small" theme="borderless" aria-pressed={showAllBranches}
               onClick={() => setShowAllBranches((current) => !current)}>
               {showAllBranches ? '预计路径' : '全部结构'}
@@ -287,16 +346,69 @@ export function WorkflowApprovalChain({
             </div>
           </Timeline.Item>
 
-          {/* 审批节点（提交前预测态） */}
-          {visibleNodes.map((n, idx) => {
+          {/* 审批节点（提交前预测态）。条件未定的多条互斥分支聚合为一个步骤，展开后回到逐节点视图 */}
+          {timelineEntries.map((entry) => {
+            if (entry.kind === 'groupHeader') {
+              const group = entry.group;
+              return (
+                <Timeline.Item key={`group-head-${group.gatewayKey}`} dot={timelineDot(GitBranch, '#8b5cf6')}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+                    <Typography.Text strong style={{ fontSize: 13 }}>{group.gatewayLabel}</Typography.Text>
+                    <Tag color="violet" size="small">已展开</Tag>
+                    <Typography.Text size="small" type="tertiary">{group.rows.length} 条可能路径</Typography.Text>
+                  </div>
+                  {group.reason && (
+                    <Typography.Text size="small" type="tertiary" style={{ display: 'block' }}>
+                      {group.reason}
+                    </Typography.Text>
+                  )}
+                </Timeline.Item>
+              );
+            }
+            if (entry.kind === 'group') {
+              const group = entry.group;
+              return (
+                <Timeline.Item key={`group-${group.gatewayKey}`} dot={timelineDot(GitBranch, '#8b5cf6')}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+                    <Typography.Text strong style={{ fontSize: 13 }}>{group.gatewayLabel}</Typography.Text>
+                    <Tag color="orange" size="small">待条件确认</Tag>
+                    <Typography.Text size="small" type="tertiary">{group.rows.length} 条可能路径</Typography.Text>
+                  </div>
+                  {group.reason && (
+                    <Typography.Text size="small" type="tertiary" style={{ display: 'block', marginBottom: 4 }}>
+                      {group.reason}
+                    </Typography.Text>
+                  )}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    {group.rows.map((row) => (
+                      <div key={row.branchKey} style={{ display: 'flex', alignItems: 'baseline', gap: 6, fontSize: 12, lineHeight: '20px', minWidth: 0 }}>
+                        <span style={{ flex: '0 0 auto', color: row.label === '默认' ? 'var(--semi-color-text-2)' : '#8b5cf6' }}>
+                          {row.label}
+                        </span>
+                        <span style={{ color: 'var(--semi-color-text-3)' }}>→</span>
+                        <span style={{ color: 'var(--semi-color-text-0)', minWidth: 0 }}>{branchChainText(row.nodes)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <Button size="small" theme="borderless" style={{ paddingLeft: 0, marginTop: 4 }}
+                    onClick={() => setShowAllBranches(true)}>
+                    查看完整链路
+                  </Button>
+                </Timeline.Item>
+              );
+            }
+            const n = entry.node;
             const meta = NODE_META[n.nodeType] ?? NODE_META.approve;
             const isExcluded = n.status === 'excluded';
             const isSelectableNode = !isExcluded && selectable && n.selectionRequired;
             const dotIcon = isSelectableNode ? UserPlus : meta.icon;
             const dotColor = isExcluded ? 'var(--semi-color-tertiary)' : isSelectableNode ? 'var(--semi-color-warning)' : meta.color;
             const sameReasonSteps = reasonOwners.get(n.nodeKey);
+            // 汇总分支之后的公共节点：预测原因是某一条分支的（如默认分支）会误导，交给分支汇总项表达
+            const suppressReason = Boolean(entry.inExpandedGroup)
+              || (n.status === 'unknown' && !(n.branchPath?.length) && entry.index > firstGroupIndex);
             return (
-              <Timeline.Item key={`${n.nodeKey}-${idx}`} dot={timelineDot(dotIcon, dotColor)}>
+              <Timeline.Item key={n.nodeKey} dot={timelineDot(dotIcon, dotColor)}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
                   <Typography.Text id={`${nodeLabelId}-${n.nodeKey}`} strong type={isExcluded ? 'tertiary' : undefined} style={{ fontSize: 13 }}>{n.nodeName}</Typography.Text>
                   {isSelectableNode ? (
@@ -314,7 +426,7 @@ export function WorkflowApprovalChain({
                   )}
                   {n.branchLabel && <Tag color="violet" size="small">{n.branchLabel}</Tag>}
                 </div>
-                {sameReasonSteps != null && (
+                {sameReasonSteps != null && !suppressReason && (
                   <Typography.Text size="small" type="tertiary" style={{ display: 'block', marginBottom: 4 }}>
                     {n.reason}{sameReasonSteps > 1 ? `（另有 ${sameReasonSteps - 1} 步同因）` : null}
                   </Typography.Text>
@@ -322,6 +434,12 @@ export function WorkflowApprovalChain({
                 {renderApprovers(n)}
                 {!isExcluded && n.approverReason && (isSelectableNode || n.approvers.length > 0) && (
                   <Typography.Text size="small" type="tertiary" style={{ display: 'block', marginTop: 4 }}>{n.approverReason}</Typography.Text>
+                )}
+                {entry.collapseGroup && (
+                  <Button size="small" theme="borderless" style={{ paddingLeft: 0, marginTop: 4 }}
+                    onClick={() => setShowAllBranches(false)}>
+                    收起分支
+                  </Button>
                 )}
               </Timeline.Item>
             );

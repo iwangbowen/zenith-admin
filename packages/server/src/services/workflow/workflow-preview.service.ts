@@ -64,6 +64,7 @@ export async function previewFlowData(
     recomputeDerivedValues: true,
   });
   const configs = new Map(flowData.nodes.map(node => [node.data.key, node.data]));
+  const branchMemberships = buildPreviewBranchMemberships(plan);
   const planned = plan.nodes.filter(node => APPROVER_TYPES.has(node.nodeType) || node.nodeType === 'ccNode' || node.nodeType === 'subProcess');
   const path: WorkflowPredictedPathNode[] = planned.filter(node => node.nodeType !== 'subProcess').map(node => ({
     key: node.nodeKey,
@@ -84,7 +85,9 @@ export async function previewFlowData(
   const nodes = await Promise.all(planned.map(async (node): Promise<WorkflowApproverPreviewNode> => {
     const config = configs.get(node.nodeKey)!;
     const prediction = byKey.get(node.nodeKey);
-    const automaticAction = prediction?.policySkipped ? 'approve' : config.approvalType === 'autoReject' ? 'reject' : config.approvalType === 'autoApprove' || config.approveMethod === 'auto' ? 'approve' : null;
+    // 抄送 / 子流程没有“审批动作”，自动动作只标注人工审批 / 办理节点
+    const automaticAction = node.nodeType !== 'approve' && node.nodeType !== 'handler' ? null
+      : prediction?.policySkipped ? 'approve' : config.approvalType === 'autoReject' ? 'reject' : config.approvalType === 'autoApprove' || config.approveMethod === 'auto' ? 'approve' : null;
     const isInitiatorSelect = INITIATOR_SELECT_TYPES.has(config.assigneeType ?? '');
     const selectionRequired = isInitiatorSelect && node.status !== 'excluded';
     const approvers = prediction?.estimatedApprovers ?? [];
@@ -107,7 +110,10 @@ export async function previewFlowData(
       selectionRequired,
       approveMethod: automaticAction ? null : config.approveMethod ?? null,
       automaticAction,
-      branchLabel: plan.branches.find(branch => branch.target === node.nodeId)?.label ?? null,
+      branchLabel: plan.branches.find(branch => branch.target === node.nodeId)?.label
+        ?? branchMemberships.get(node.nodeId)?.[0]?.branchLabel
+        ?? null,
+      branchPath: branchMemberships.get(node.nodeId),
       approverState,
     };
   }));
@@ -117,4 +123,77 @@ export async function previewFlowData(
     status: 'matched', reason: '当前发起人', approverReason: null,
     approveMethod: null, branchLabel: null, approverState: 'known',
   }, ...nodes];
+}
+
+type WorkflowPathPlan = ReturnType<typeof planWorkflowPath>;
+type BranchMembership = NonNullable<WorkflowApproverPreviewNode['branchPath']>;
+
+/**
+ * 为预测节点标注所属条件分支，供前端把「条件未定」的多条分支聚合展示。
+ *
+ * 分支归属按网关逐条计算：从分支入口沿未排除边求出可达节点集合，被两条及以上分支同时
+ * 可达的节点（汇聚点及其后的主线）不属于任何单条分支，不参与聚合。嵌套网关会为同一节点
+ * 记录多层分支，按网关在预测顺序中的先后从外层到内层排列。
+ */
+function buildPreviewBranchMemberships(
+  plan: WorkflowPathPlan,
+): Map<string, BranchMembership> {
+  const memberships = new Map<string, BranchMembership>();
+  const outgoing = new Map<string, WorkflowPathPlan['edges'][number][]>();
+  for (const edge of plan.edges) {
+    if (edge.status === 'excluded') continue;
+    const list = outgoing.get(edge.source) ?? [];
+    list.push(edge);
+    outgoing.set(edge.source, list);
+  }
+  const gatewayOrder = new Map(plan.nodes.map((node, index) => [node.nodeKey, index]));
+
+  for (const gateway of plan.nodes) {
+    if (!['exclusiveGateway', 'routeGateway', 'inclusiveGateway'].includes(gateway.nodeType)) continue;
+    const branches = plan.branches.filter((branch) => branch.gatewayKey === gateway.nodeKey);
+    // 单分支或已被排他到只剩一条路径时无需聚合
+    if (branches.filter((branch) => branch.status !== 'excluded').length < 2) continue;
+
+    const reach = new Map<string, Set<string>>();
+    for (const branch of branches) {
+      const visited = new Set<string>();
+      const queue = [branch.target];
+      while (queue.length > 0) {
+        const id = queue.shift()!;
+        if (visited.has(id) || id === gateway.nodeId) continue;
+        visited.add(id);
+        for (const edge of outgoing.get(id) ?? []) {
+          if (edge.target !== gateway.nodeId) queue.push(edge.target);
+        }
+      }
+      reach.set(branch.edgeId, visited);
+    }
+    const reachCount = new Map<string, number>();
+    for (const visited of reach.values()) {
+      for (const id of visited) reachCount.set(id, (reachCount.get(id) ?? 0) + 1);
+    }
+
+    branches.forEach((branch, index) => {
+      if (branch.status === 'excluded') return;
+      const branchLabel = branch.label ?? (branch.isDefault ? '默认' : `分支${index + 1}`);
+      for (const nodeId of reach.get(branch.edgeId) ?? []) {
+        if ((reachCount.get(nodeId) ?? 0) > 1) continue;
+        const list = memberships.get(nodeId) ?? [];
+        list.push({
+          gatewayKey: branch.gatewayKey,
+          gatewayLabel: gateway.nodeName,
+          gatewayType: gateway.nodeType as BranchMembership[number]['gatewayType'],
+          branchKey: `${branch.gatewayKey}#${index + 1}`,
+          branchLabel,
+          status: branch.status,
+        });
+        memberships.set(nodeId, list);
+      }
+    });
+  }
+
+  for (const list of memberships.values()) {
+    list.sort((a, b) => (gatewayOrder.get(a.gatewayKey) ?? 0) - (gatewayOrder.get(b.gatewayKey) ?? 0));
+  }
+  return memberships;
 }

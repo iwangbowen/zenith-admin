@@ -166,6 +166,18 @@ export type WorkflowVersionDiff = z.infer<typeof workflowVersionDiffSchema>;
 
 const approverRefSchema = z.object({ id: z.int(), name: z.string() });
 
+/** 预览节点所属的条件分支（同一节点可能位于多层嵌套分支内，按外层→内层排列） */
+export const workflowPreviewBranchRefSchema = z.object({
+  gatewayKey: z.string().meta({ description: '条件网关节点 key' }),
+  gatewayLabel: z.string().meta({ description: '条件网关节点名称' }),
+  gatewayType: z.enum(['exclusiveGateway', 'routeGateway', 'inclusiveGateway']),
+  branchKey: z.string().meta({ description: '分支唯一标识（网关 key + 分支序号）' }),
+  branchLabel: z.string().meta({ description: '分支名称（条件 / 默认）' }),
+  status: z.enum(WORKFLOW_PATH_STATUSES).meta({ description: '该分支当前的命中状态' }),
+}).meta({ id: 'WorkflowPreviewBranchRef' });
+
+export type WorkflowPreviewBranchRef = z.infer<typeof workflowPreviewBranchRefSchema>;
+
 /** 提交前审批链路预览节点 */
 export const workflowApproverPreviewNodeSchema = z.object({
   nodeKey: z.string(),
@@ -180,6 +192,7 @@ export const workflowApproverPreviewNodeSchema = z.object({
   approveMethod: z.string().nullable().optional().meta({ description: '多人审批方式（and/or/sequential/ratio）' }),
   automaticAction: z.enum(['approve', 'reject']).nullable().optional(),
   branchLabel: z.string().nullable().optional().meta({ description: '所在分支标签（条件 / 并行分支时）' }),
+  branchPath: z.array(workflowPreviewBranchRefSchema).optional().meta({ description: '所在条件分支及其状态，用于把未确定的多条分支聚合展示' }),
   approverState: z.enum(['known', 'empty', 'unknown']).optional().meta({ description: 'known=已确定；empty=已确定无人；unknown=节点到达时才能确定' }),
 }).meta({ id: 'WorkflowApproverPreviewNode' });
 
