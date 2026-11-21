@@ -78,6 +78,7 @@ function StorageObjectCard({
 }: Readonly<StorageObjectCardProps>) {
   const [ctxPos, setCtxPos] = useState<{ x: number; y: number } | null>(null);
   const ext = entry.name.includes('.') ? entry.name.split('.').pop()?.toUpperCase() ?? '' : '';
+  const previewable = canPreviewFile(null, entry.name);
   const runAndClose = (action: () => void) => {
     setCtxPos(null);
     action();
@@ -92,7 +93,15 @@ function StorageObjectCard({
           setCtxPos({ x: event.clientX, y: event.clientY });
         }}
       >
-        <button type="button" className="storage-browser__object-card-main" onClick={onPreview}>
+        <button
+          type="button"
+          className="storage-browser__object-card-main"
+          aria-label={previewable ? `预览 ${entry.name}` : entry.name}
+          style={{ cursor: previewable ? 'pointer' : 'default' }}
+          onClick={() => {
+            if (previewable) onPreview();
+          }}
+        >
           <span className="storage-browser__object-card-media">
             <span className="storage-browser__object-card-icon">{getFileTypeIcon(undefined, 34, entry.name)}</span>
             {ext && <span className="storage-browser__object-card-type">{ext}</span>}
@@ -124,7 +133,7 @@ function StorageObjectCard({
           onClose={() => setCtxPos(null)}
           render={(
             <Dropdown.Menu>
-              <Dropdown.Item onClick={() => runAndClose(onPreview)}>预览</Dropdown.Item>
+              {previewable && <Dropdown.Item onClick={() => runAndClose(onPreview)}>预览</Dropdown.Item>}
               <Dropdown.Item onClick={() => runAndClose(onDownload)}>下载</Dropdown.Item>
               {canRegister && <Dropdown.Item onClick={() => runAndClose(onRegister)}>收录到文件列表</Dropdown.Item>}
               {canRemove && (
@@ -355,14 +364,17 @@ export default function StorageFileBrowser({ config, onClose }: Readonly<Storage
         }
         const entry = row.entry;
         const file = entry.file;
-        const previewable = file ? canPreviewFile(file.mimeType, file.originalName) : true;
+        const previewable = file
+          ? canPreviewFile(file.mimeType, file.originalName)
+          : canPreviewFile(null, entry.name);
+        const openPreview = file
+          ? () => void preview.handlePreview(file)
+          : () => void openObject(entry);
         return (
           <FileNameCell
             name={entry.name}
             mimeType={file?.mimeType}
-            onClick={file
-              ? (previewable ? () => void preview.handlePreview(file) : undefined)
-              : () => void openObject(entry)}
+            onClick={previewable ? openPreview : undefined}
           />
         );
       },
@@ -417,8 +429,9 @@ export default function StorageFileBrowser({ config, onClose }: Readonly<Storage
           }
           return actions;
         }
+        const previewable = canPreviewFile(null, entry.name);
         return [
-          { key: 'open', label: '打开', onClick: () => void openObject(entry) },
+          { key: 'preview', label: '预览', disabled: !previewable, onClick: () => void openObject(entry) },
           { key: 'download', label: '下载', onClick: () => void openObject(entry, 'download') },
           { key: 'register', label: '收录', hidden: !canRegister, onClick: () => openRegister([entry]) },
           { key: 'remove', label: '删除', danger: true, hidden: !canRemoveUnregistered, onClick: () => void confirmRemove(entry) },
