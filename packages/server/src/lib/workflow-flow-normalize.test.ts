@@ -8,7 +8,13 @@ const graph = () => ({ nodes: [
 describe('canonical graph write boundary', () => {
   it('rejects a persisted tree', () => { expect(() => normalizeDefinitionFlowData({ ...graph(), process: { initiator: {} } })).toThrow(); });
   it('rejects incompatible condition values', () => { expect(() => normalizeDefinitionFlowData({ ...graph(), edges: [{ id: 'e1', source: 'start', target: 'legal', condition: { field: 'amount', operator: 'in', value: [1, 2] } }] })).toThrow(); });
-  it('keeps cycles and exception edge metadata', () => { const input = { ...graph(), edges: [...graph().edges, { id: 'retry', source: 'legal', target: 'start', isException: true, label: '补充复核' }] }; expect(normalizeDefinitionFlowData(input)?.edges).toEqual(input.edges); });
+  it('keeps cycles and exception edge metadata', () => {
+    const input = { ...graph(), edges: [...graph().edges, { id: 'retry', source: 'legal', target: 'start', isException: true, label: '补充复核' }] };
+    const out = normalizeDefinitionFlowData(input)!;
+    expect(out.edges.map((edge) => edge.id)).toEqual(['e1', 'e2', 'retry']);
+    expect(out.edges[2]).toMatchObject({ isException: true, label: '补充复核', priority: 1 });
+    expect(out.edges[2]).not.toHaveProperty('isDefault');
+  });
   it('is idempotent and accepts an empty draft', () => { const once = normalizeDefinitionFlowData(graph()); expect(normalizeDefinitionFlowData(once)).toEqual(once); expect(normalizeDefinitionFlowData({ nodes: [], edges: [] })).toEqual({ nodes: [], edges: [] }); expect(normalizeDefinitionFlowData(null)).toBeNull(); });
   it('enriches names without mutating source', () => { const input = graph(); expect(collectFlowAssigneeIds(input)).toEqual([17, 13]); const output = applyFlowAssigneeNames(input, new Map([[17, '张律师']])); expect(output?.nodes[1].data.assigneeNames).toEqual(['张律师', '用户#13']); expect(input.nodes[1].data).not.toHaveProperty('assigneeNames'); });
 });
