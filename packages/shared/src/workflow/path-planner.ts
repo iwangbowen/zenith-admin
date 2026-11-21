@@ -142,6 +142,8 @@ function futureInputs(node: WorkflowNodeConfig, current: UnknownFields, metadata
 export function selectWorkflowPathBranches(node: WorkflowNodeConfig, edges: readonly WorkflowEdge[], context: WorkflowConditionStateContext): WorkflowConditionResult[] {
   const condition = (edge: WorkflowEdge) => workflowEdgeConditionState(edge, context);
   if (node.type === 'exclusiveGateway' || node.type === 'routeGateway') {
+    // 汇聚网关通常只有一个出口：不是“条件默认分支”，避免把「所有条件均不成立」错误地挂到汇聚后的主线
+    if (edges.length <= 1) return edges.map(() => ({ status: 'matched' as const, reason: '正常后续路径' }));
     let earlierUnknown = false, certainCandidate = false;
     const firstDefault = edges.findIndex(edge => !workflowEdgeHasCondition(edge));
     const selected = edges.map(edge => {

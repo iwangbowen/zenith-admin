@@ -57,6 +57,12 @@ describe('workflow path prediction', () => {
     expect(selectWorkflowPathBranches(node('g', 'exclusiveGateway').data, outs, { formData: { amount: 1000 } }).map(row => row.status)).toEqual(['unknown', 'unknown', 'excluded']);
   });
 
+  it('treats a single-outlet gateway as a pass-through instead of a default branch', () => {
+    const outs = [edge('g', 'next')];
+    expect(selectWorkflowPathBranches(node('g', 'exclusiveGateway').data, outs, { formData: {} }))
+      .toEqual([{ status: 'matched', reason: '正常后续路径' }]);
+  });
+
   it('selects the default only after every condition is known false', () => {
     const outs = [edge('g', 'one', { condition: gt('amount', 10000) }), edge('g', 'default')];
     expect(selectWorkflowPathBranches(node('g', 'exclusiveGateway').data, outs, { formData: { amount: 2000 } }).map(row => row.status)).toEqual(['excluded', 'matched']);
