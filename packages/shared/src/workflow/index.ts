@@ -33,6 +33,7 @@ export * from './form-derived-values';
 export * from './designer-graph';
 
 export * from './conditions';
+export * from './decision';
 
 export * from './path-planner';
 

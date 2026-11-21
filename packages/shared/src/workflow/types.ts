@@ -506,6 +506,8 @@ export interface WorkflowEdge {
   target: string;
   type?: string;
   label?: string;
+  /** 同一源节点出边的求值顺序（0 起，越小优先级越高）；缺省时按数组顺序 */
+  priority?: number;
   condition?: WorkflowEdgeCondition | null;  // 排他网关出边的条件
   conditions?: WorkflowConditionGroup[] | null;
   isDefault?: boolean;

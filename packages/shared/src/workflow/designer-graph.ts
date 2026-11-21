@@ -183,7 +183,7 @@ export function projectWorkflowGraph(graph: WorkflowFlowData): WorkflowGraphProj
             name: edge.label ?? `分支 ${index + 1}`,
             graphDisplayName: edge.label ?? `分支 ${index + 1}`,
             ...(routeField && !edge.isDefault ? { caseValue: String((edge.conditions?.[0]?.rules[0] ?? edge.condition)?.value) } : {}),
-            priority: index,
+            priority: index + 1,
             isDefault: edge.isDefault ?? false,
             conditions: edge.conditions ? structuredClone(edge.conditions) : edge.condition ? [{ type: 'and', rules: [structuredClone(edge.condition)] }] : undefined,
             children: parseChain(edge.target, joinId),

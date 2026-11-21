@@ -39,6 +39,8 @@ const NODE_META: Record<string, { icon: LucideIcon; color: string; status: strin
   handler:    { icon: Clock, color: 'var(--semi-color-primary)', status: '待办理', statusColor: 'blue' },
   ccNode:     { icon: Mail,  color: 'var(--semi-color-warning)', status: '抄送',   statusColor: 'orange' },
   subProcess: { icon: Clock, color: 'var(--semi-color-primary)', status: '子流程', statusColor: 'purple' },
+  delay:      { icon: Clock, color: 'var(--semi-color-warning)', status: '延时',   statusColor: 'orange' },
+  trigger:    { icon: Clock, color: 'var(--semi-color-warning)', status: '等待',   statusColor: 'orange' },
 };
 
 function normalizeSelectedIds(value: unknown): number[] {
@@ -174,21 +176,25 @@ export function WorkflowApprovalChain({
   const approvalNodes = renderedNodes.filter((n) => !n.automaticAction && (n.nodeType === 'approve' || n.nodeType === 'handler'));
   const approverIdSet = new Set<number>();
   approvalNodes.forEach((n) => n.approvers.forEach((a) => approverIdSet.add(a.id)));
-  const hasSelectNode = approvalNodes.some((n) => n.selectionRequired)
-    || (grouped?.groups.some((group) => group.rows.some((row) => row.nodes.some((n) => n.selectionRequired))) ?? false);
+  const hasSelectNode = approvalNodes.some((n) => n.selectionRequired || n.requiresApproverSelection)
+    || (grouped?.groups.some((group) => group.rows.some((row) => row.nodes.some((n) => n.selectionRequired || n.requiresApproverSelection))) ?? false);
   const groupMinSteps = grouped?.groups.reduce((sum, group) => sum + group.minHumanSteps, 0) ?? 0;
   const groupMaxSteps = grouped?.groups.reduce((sum, group) => sum + group.maxHumanSteps, 0) ?? 0;
+  // 只统计已确定路径上的等待；条件分支内的等待用分支行标注（“等待子流程”），不在摘要里断言
+  const waitCount = renderedNodes.filter((n) => n.blocking).length;
   const unknownStepCount = approvalNodes.filter((n) => n.status === 'unknown').length;
   const summaryText = grouped && grouped.groups.length > 0
     ? [
       `预计 ${approvalNodes.length + groupMinSteps}–${approvalNodes.length + groupMaxSteps} 步`,
       `${grouped.groups.length} 处条件分支待确认`,
+      waitCount > 0 ? `含 ${waitCount} 步等待` : null,
       approverIdSet.size > 0 ? `约 ${approverIdSet.size} 人审批` : null,
       hasSelectNode ? '含自选' : null,
     ].filter(Boolean).join(' · ')
     : [
       `${unknownStepCount ? '预计' : '共'} ${approvalNodes.length} 步`,
       unknownStepCount ? `${unknownStepCount} 步待条件确认` : null,
+      waitCount > 0 ? `含 ${waitCount} 步等待` : null,
       approverIdSet.size > 0 ? `约 ${approverIdSet.size} 人审批` : null,
       hasSelectNode ? '含自选' : null,
     ].filter(Boolean).join(' · ');
@@ -404,6 +410,9 @@ export function WorkflowApprovalChain({
             const dotIcon = isSelectableNode ? UserPlus : meta.icon;
             const dotColor = isExcluded ? 'var(--semi-color-tertiary)' : isSelectableNode ? 'var(--semi-color-warning)' : meta.color;
             const sameReasonSteps = reasonOwners.get(n.nodeKey);
+            const waitLabel = n.blocking
+              ? (n.waitReason === 'delay' ? '等待延时' : n.waitReason === 'subprocess' ? '等待子流程' : '等待回调')
+              : null;
             // 汇总分支之后的公共节点：预测原因是某一条分支的（如默认分支）会误导，交给分支汇总项表达
             const suppressReason = Boolean(entry.inExpandedGroup)
               || (n.status === 'unknown' && !(n.branchPath?.length) && entry.index > firstGroupIndex);
@@ -415,8 +424,13 @@ export function WorkflowApprovalChain({
                     <Tag color="orange" size="small">
                       自选审批人{n.selectionRequired ? ' *' : ''}
                     </Tag>
+                  ) : waitLabel ? (
+                    <Tag color="orange" size="small">{waitLabel}</Tag>
                   ) : !isExcluded && (
                     <Tag color={meta.statusColor} size="small">{n.automaticAction === 'reject' ? '自动拒绝' : n.automaticAction === 'approve' ? '自动通过' : meta.status}</Tag>
+                  )}
+                  {!isExcluded && n.requiresApproverSelection && (
+                    <Tag color="violet" size="small">上一节点选人</Tag>
                   )}
                   {!isExcluded && !n.automaticAction && n.approveMethod && METHOD_LABEL[n.approveMethod] && (
                     <Tag color="light-blue" size="small">{METHOD_LABEL[n.approveMethod]}</Tag>

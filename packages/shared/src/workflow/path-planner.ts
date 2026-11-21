@@ -1,6 +1,9 @@
 import { computeWorkflowDerivedValues } from './form-derived-values';
-import { workflowEdgeConditionState, workflowEdgeHasCondition, type WorkflowConditionResult, type WorkflowConditionStateContext, type WorkflowConditionStatus } from './conditions';
+import { workflowEdgeHasCondition, type WorkflowConditionResult, type WorkflowConditionStatus } from './conditions';
+import { selectWorkflowPathBranches } from './decision';
 import type { WorkflowEdge, WorkflowFlowData, WorkflowFormField, WorkflowNodeConfig, WorkflowStarterContext } from './types';
+
+export { selectWorkflowPathBranches } from './decision';
 
 export type WorkflowPathNode = {
   nodeId: string;
@@ -136,43 +139,6 @@ function futureInputs(node: WorkflowNodeConfig, current: UnknownFields, metadata
   if (node.type === 'routeGateway' && node.decisionRuleKey) unknown['*'] = `「${node.label}」的决策结果尚未产生`;
   if (node.type === 'subProcess') for (const field of Object.keys(node.subProcessOutputMapping ?? {})) unknown[field] = `「${node.label}」的子流程结果尚未产生`;
   return expandDependencies(unknown, metadata);
-}
-
-/** Gateway selection preserves the runtime edge order (branch priority) and normal-edge fallback semantics. */
-export function selectWorkflowPathBranches(node: WorkflowNodeConfig, edges: readonly WorkflowEdge[], context: WorkflowConditionStateContext): WorkflowConditionResult[] {
-  const condition = (edge: WorkflowEdge) => workflowEdgeConditionState(edge, context);
-  if (node.type === 'exclusiveGateway' || node.type === 'routeGateway') {
-    // 汇聚网关通常只有一个出口：不是“条件默认分支”，避免把「所有条件均不成立」错误地挂到汇聚后的主线
-    if (edges.length <= 1) return edges.map(() => ({ status: 'matched' as const, reason: '正常后续路径' }));
-    let earlierUnknown = false, certainCandidate = false;
-    const firstDefault = edges.findIndex(edge => !workflowEdgeHasCondition(edge));
-    const selected = edges.map(edge => {
-      if (!workflowEdgeHasCondition(edge)) return { status: 'excluded' as const, reason: '未使用的默认分支' };
-      if (certainCandidate) return { status: 'excluded' as const, reason: '前面已有成立的优先分支' };
-      const result = condition(edge);
-      if (result.status === 'excluded') return result;
-      if (result.status === 'unknown') { earlierUnknown = true; return result; }
-      certainCandidate = true;
-      return earlierUnknown ? { status: 'unknown' as const, reason: '前面的优先分支尚不确定' } : result;
-    });
-    if (firstDefault >= 0) selected[firstDefault] = certainCandidate
-      ? { status: 'excluded', reason: '已有成立的条件分支' }
-      : earlierUnknown ? { status: 'unknown', reason: '条件尚不确定，暂不能确定默认分支' }
-        : { status: 'matched', reason: '所有条件均不成立，使用默认分支' };
-    return selected;
-  }
-  if (node.type === 'inclusiveGateway' && edges.length > 1) {
-    const selected = edges.map(edge => workflowEdgeHasCondition(edge) ? condition(edge) : { status: 'excluded' as const, reason: '未使用的默认分支' });
-    const conditional = selected.filter((_, index) => workflowEdgeHasCondition(edges[index]));
-    // The existing inclusive engine takes the last unconditional fallback; valid designer graphs have one.
-    const fallback = edges.reduce((last, edge, index) => !workflowEdgeHasCondition(edge) ? index : last, -1);
-    if (fallback >= 0) selected[fallback] = conditional.some(result => result.status === 'matched')
-      ? { status: 'excluded', reason: '已有成立的条件分支' }
-      : conditional.some(result => result.status === 'unknown') ? { status: 'unknown', reason: '条件尚不确定，暂不能确定默认分支' }
-        : { status: 'matched', reason: '所有条件均不成立，使用默认分支' };
-    return selected;
-  }
-  return edges.map(() => ({ status: 'matched', reason: node.type === 'parallelGateway' ? '并行分支均需经过' : '正常后续路径' }));
 }
 
 /**

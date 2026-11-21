@@ -237,6 +237,7 @@ export const workflowEdgeSchema: z.ZodType<WorkflowEdge> = z.strictObject({
   target: z.string(),
   type: z.string().optional(),
   label: z.string().optional(),
+  priority: z.number().int().min(0).optional(),
   condition: workflowEdgeConditionSchema.nullable().optional(),
   conditions: z.array(workflowConditionGroupSchema).nullable().optional(),
   isDefault: z.boolean().optional(),

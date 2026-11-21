@@ -30,6 +30,37 @@ export async function applyInitiatorSelectedApprovers(
   return applyRuntimeInitiatorSelections(flowData, selected, context, (config, ids) => filterSelectedApproverIds(config, ids, executor));
 }
 
+/**
+ * 把本次审批选定的「下一节点审批人」固化进实例流程图。
+ *
+ * 仅靠一次推进的 selectedNextApprovers 上下文不够：非门控触发器、子流程作业等会在稍后再次推进，
+ * 第二次推进没有上一节点的选择上下文，approverSelect 节点会拿到空审批人并被空策略自动通过。
+ * 固化后，同实例的后续推进（含作业）都使用同一批已选审批人。
+ */
+export async function applySelectedNextApproversToFlow(
+  flowData: WorkflowFlowData,
+  selected: SelectedApproverMap | null | undefined,
+  executor: DbExecutor,
+): Promise<WorkflowFlowData> {
+  const keys = new Set(Object.keys(selected ?? {}));
+  if (keys.size === 0) return flowData;
+  const nodes = await Promise.all(flowData.nodes.map(async (node) => {
+    if (!keys.has(node.data.key) || node.data.assigneeType !== 'approverSelect') return node;
+    const ids = await filterSelectedApproverIds(node.data, selected?.[node.data.key] ?? [], executor);
+    if (ids.length === 0) return node;
+    return {
+      ...node,
+      data: {
+        ...node.data,
+        assigneeType: 'user' as const,
+        assigneeIds: ids,
+        assigneeId: ids.length === 1 ? ids[0] : null,
+      },
+    };
+  }));
+  return { ...flowData, nodes };
+}
+
 
 export async function assertSelectedNextApprovers(
   flowData: WorkflowFlowData,

@@ -236,8 +236,8 @@ export function analyzeWorkflowHealth(
   const branchIssues: WorkflowDefinitionHealthIssue[] = [];
   for (const gw of nodes.filter((n) => GATEWAY_TYPES.has(n.data.type))) {
     const out = edgesBySource.get(gw.id) ?? [];
-    const conditional = out.filter((e) => edgeHasCondition(e) && !e.isDefault);
-    const defaults = out.filter((e) => e.isDefault || (!edgeHasCondition(e) && !e.isException));
+    const conditional = out.filter((e) => edgeHasCondition(e));
+    const defaults = out.filter((e) => !edgeHasCondition(e) && !e.isException);
     const hasDefault = defaults.length > 0;
     const gwIssues: WorkflowDefinitionHealthIssue[] = [];
 

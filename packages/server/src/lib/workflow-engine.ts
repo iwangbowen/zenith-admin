@@ -108,8 +108,21 @@ export const evaluateConditionGroups = evaluateWorkflowConditionGroups;
 export const edgeHasCondition = workflowEdgeHasCondition;
 export const edgeMatchesCondition = workflowEdgeMatchesCondition;
 
-export function isDefaultEdge(edge: WorkflowEdge, targetNode?: FlowNode): boolean {
-  return !!edge.isDefault || !!targetNode?.data.isDefault || !edgeHasCondition(edge);
+export function isDefaultEdge(edge: WorkflowEdge, _targetNode?: FlowNode): boolean {
+  // 默认分支只有一种定义：出边未配置任何条件。isDefault 仅作为设计器提示，不参与执行语义。
+  return !edgeHasCondition(edge);
+}
+
+/** 同一网关内条件去重用的稳定签名（忽略空规则） */
+function workflowConditionSignature(edge: WorkflowEdge): string | null {
+  const groups = edge.conditions?.length ? edge.conditions : edge.condition ? [{ type: 'and' as const, rules: [edge.condition] }] : [];
+  if (!groups.length) return null;
+  return JSON.stringify(groups.map((group) => ({
+    type: group.type,
+    rules: group.rules.map((rule) => [
+      rule.field, rule.operator, String(rule.value ?? ''), rule.source ?? 'form', rule.aggregate ?? '', rule.aggregateField ?? '',
+    ]),
+  })));
 }
 
 // ─── 任务/推进结果共享类型（token 引擎产出、仿真器 dry-run 共用）──────────────
@@ -268,6 +281,7 @@ export function validateFlowData(flowData: WorkflowFlowData): { valid: boolean; 
   }
 
   const edgeIdSet = new Set<string>();
+  const priorityBySource = new Map<string, Set<number>>();
   const normalInEdges = new Map<string, WorkflowEdge[]>();
   const normalOutEdges = new Map<string, WorkflowEdge[]>();
   const exceptionInEdges = new Map<string, WorkflowEdge[]>();
@@ -284,6 +298,15 @@ export function validateFlowData(flowData: WorkflowFlowData): { valid: boolean; 
       errors.push(`连线 ID"${edgeId}"重复`);
     } else {
       edgeIdSet.add(edgeId);
+    }
+    if (edge.isDefault && workflowEdgeHasCondition(edge)) {
+      errors.push(`连线"${display}"同时标记为默认分支并配置了条件；默认分支必须无任何条件`);
+    }
+    if (edge.priority !== undefined) {
+      const used = priorityBySource.get(source) ?? new Set<number>();
+      if (used.has(edge.priority)) errors.push(`连线"${display}"与同一节点的其他出边优先级重复（${edge.priority}）`);
+      else used.add(edge.priority);
+      priorityBySource.set(source, used);
     }
 
     const sourceNode = source ? nodeMapById.get(source) : undefined;
@@ -383,6 +406,22 @@ export function validateFlowData(flowData: WorkflowFlowData): { valid: boolean; 
           errors.push(`网关"${node.data.label}"需要保留一个默认分支`);
         } else if (defaultLike.length > 1) {
           errors.push(`网关"${node.data.label}"存在未配置条件的分支，请补全条件（最多保留一个默认分支）`);
+        }
+        // 条件重复 / 空条件组：运行期互斥网关首条命中后其余分支永远不可达，必须在发布前拦截
+        const seenConditions = new Map<string, string>();
+        for (const { edge, target } of outs) {
+          const groups = edge.conditions?.length ? edge.conditions
+            : edge.condition ? [{ type: 'and' as const, rules: [edge.condition] }] : [];
+          if (groups.some(group => group.rules.length === 0)) {
+            errors.push(`网关"${node.data.label}"存在空条件组，请补全或删除该分支`);
+            continue;
+          }
+          const signature = workflowConditionSignature(edge);
+          if (!signature) continue;
+          const targetLabel = nodeMap.get(target)?.data.label ?? target;
+          const duplicate = seenConditions.get(signature);
+          if (duplicate) errors.push(`网关"${node.data.label}"分支"${duplicate}"与"${targetLabel}"条件完全相同`);
+          else seenConditions.set(signature, targetLabel);
         }
       }
     }

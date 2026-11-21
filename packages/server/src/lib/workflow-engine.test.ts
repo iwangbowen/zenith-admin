@@ -9,6 +9,7 @@ import {
   resolveRuntimeApproveMethod,
   normalizeFlowData,
 } from './workflow-engine';
+import { normalizeDefinitionFlowData } from './workflow-flow-normalize';
 import type { WorkflowFlowData } from '@zenith/shared/workflow';
 import { WORKFLOW_SCHEMA_VERSION } from '@zenith/shared/workflow';
 
@@ -463,5 +464,55 @@ describe('remaining path prediction', () => {
     const result = predictRemainingPath(flow, ['a1'], values, undefined, { formFields: [{ key: 'amount', label: '金额', type: 'amount' }, { key: 'total', label: '合计', type: 'formula', formula: '{amount} * 2' }] });
     expect(result.find(node => node.key === 'a2')?.status).toBe('unknown');
     expect(values).toEqual({ amount: 150, total: 999 });
+  });
+});
+
+describe('canonical branch semantics', () => {
+  const node = (id: string, type: WorkflowFlowData['nodes'][number]['data']['type'], label = id): WorkflowFlowData['nodes'][number] => ({
+    id, position: { x: 0, y: 0 }, data: { key: id, type, label },
+  });
+  const branchFlow = (gatewayEdgePatch: { defaultHasCondition?: boolean } = {}): WorkflowFlowData => ({
+    nodes: [node('start', 'start'), node('gw', 'exclusiveGateway'), node('a', 'approve'), node('b', 'approve'), node('end', 'end')],
+    edges: [
+      { id: 'e1', source: 'start', target: 'gw' },
+      { id: 'e2', source: 'gw', target: 'a', condition: { field: 'kind', operator: 'eq', value: 'a' } },
+      gatewayEdgePatch.defaultHasCondition
+        ? { id: 'e3', source: 'gw', target: 'b', isDefault: true, condition: { field: 'kind', operator: 'eq', value: 'b' } }
+        : { id: 'e3', source: 'gw', target: 'b' },
+      { id: 'e4', source: 'a', target: 'end' },
+      { id: 'e5', source: 'b', target: 'end' },
+    ],
+  });
+
+  it('rejects an isDefault edge that also carries a condition', () => {
+    const result = validateFlowData(branchFlow({ defaultHasCondition: true }));
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((error) => error.includes('默认分支必须无任何条件'))).toBe(true);
+    expect(result.errors.some((error) => error.includes('需要保留一个默认分支'))).toBe(true);
+  });
+
+  it('rejects duplicate conditions inside one gateway', () => {
+    const flow = branchFlow();
+    flow.edges[2] = { ...flow.edges[2], conditions: [{ type: 'and', rules: [{ field: 'kind', operator: 'eq', value: 'a' }] }] };
+    const result = validateFlowData(flow);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((error) => error.includes('条件完全相同'))).toBe(true);
+  });
+
+  it('canonicalizes edge priority and default flags on write', () => {
+    const flow = branchFlow();
+    flow.edges = [
+      { id: 'e3', source: 'gw', target: 'b', priority: 0 },
+      { id: 'e1', source: 'start', target: 'gw' },
+      { id: 'e2', source: 'gw', target: 'a', priority: 1, condition: { field: 'kind', operator: 'eq', value: 'a' } },
+      { id: 'e4', source: 'a', target: 'end' },
+      { id: 'e5', source: 'b', target: 'end' },
+    ];
+    const graph = normalizeDefinitionFlowData(flow)!;
+    const gatewayEdges = graph.edges.filter((edge) => edge.source === 'gw');
+    expect(gatewayEdges.map((edge) => edge.target)).toEqual(['b', 'a']);
+    expect(gatewayEdges.map((edge) => edge.priority)).toEqual([0, 1]);
+    expect(gatewayEdges[0].isDefault).toBe(true);
+    expect(gatewayEdges[1].isDefault).toBe(false);
   });
 });
