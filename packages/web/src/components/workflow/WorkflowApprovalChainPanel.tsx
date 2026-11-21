@@ -180,9 +180,8 @@ export function WorkflowApprovalChain({
     || (grouped?.groups.some((group) => group.rows.some((row) => row.nodes.some((n) => n.selectionRequired || n.requiresApproverSelection))) ?? false);
   const groupMinSteps = grouped?.groups.reduce((sum, group) => sum + group.minHumanSteps, 0) ?? 0;
   const groupMaxSteps = grouped?.groups.reduce((sum, group) => sum + group.maxHumanSteps, 0) ?? 0;
-  const groupWaitCount = grouped?.groups.reduce((sum, group) =>
-    sum + group.rows.reduce((rowSum, row) => rowSum + row.nodes.filter((n) => n.blocking).length, 0), 0) ?? 0;
-  const waitCount = renderedNodes.filter((n) => n.blocking).length + groupWaitCount;
+  // 只统计已确定路径上的等待；条件分支内的等待用分支行标注（“等待子流程”），不在摘要里断言
+  const waitCount = renderedNodes.filter((n) => n.blocking).length;
   const unknownStepCount = approvalNodes.filter((n) => n.status === 'unknown').length;
   const summaryText = grouped && grouped.groups.length > 0
     ? [
