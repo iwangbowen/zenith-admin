@@ -6,7 +6,7 @@ import type { QueryOutputOf } from '@zenith/shared/core';
  * 内部负责：解析渠道配置、解密密钥组装 AdapterContext、订单状态机、事务落库、
  * 回调验签后处理、发支付事件。所有渠道差异封装在适配器内，业务层无感知。
  */
-import { and, desc, eq, gte, inArray, lte, ne, notInArray, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, lt, lte, ne, notInArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { createHash, randomUUID } from 'node:crypto';
 import { allocateBusinessNumber, attachBusinessNumber } from '../platform/numbering-runtime';
@@ -30,6 +30,7 @@ import type { AdapterContext, DecryptedSecrets, NotifyResult } from '../../lib/p
 import { recordEvent } from './payment-outbox.service';
 import { buildPaymentEventPayload } from './payment-events';
 import { assertMethodEnabled } from './payment-method.service';
+import { recordPaymentException } from './payment-exception.service';
 import { assertNoPendingRiskReview, evaluateRisk, recordRiskHit, suspendOrderForReview, type RiskCheckInput } from './payment-risk.service';
 import { lockCouponForPayment, releaseCouponForPayment, type CouponLockResult } from './payment-coupon.service';
 import { resolveApplicationChannelConfig } from './payment-apps.service';
@@ -42,6 +43,11 @@ import { pickEntity } from '../../lib/entity-map';
 
 function errMessage(err: unknown): string {
   return err instanceof Error ? err.message : '未知错误';
+}
+
+/** 能力评估器用 OPERATION_UNSUPPORTED 标识“渠道没有该操作”，区别于业务失败。 */
+function isOperationUnsupported(err: unknown): boolean {
+  return err instanceof HTTPException && /OPERATION_UNSUPPORTED/.test(err.message);
 }
 
 function resolveNotifyUrl(channel: PaymentChannel, channelConfig: PaymentChannelConfigRow): string {
@@ -358,16 +364,22 @@ async function reuseActiveBizOrder(input: InternalCreatePaymentInput, scope: Pay
       throw new HTTPException(409, { message: `该业务单渠道结果待确认，请先查单（订单号 ${existing.orderNo}）` });
     }
     if (synced.status === 'pending' || synced.status === 'paying') {
-      const config = await loadOrderConfig(existing);
+      const config = await loadOrderConfig(synced);
       if (!config) throw new HTTPException(409, { message: '原订单绑定的商户配置不可用，无法安全关闭' });
       assertPaymentEngineConfig(config);
       try {
-        await getAdapter(existing.channel).closePayment(buildAdapterContext(config), existing);
+        await assertPaymentOperation(config, 'payment.close', synced.payMethod, synced.currency, { recovery: true });
+        await getAdapter(synced.channel).closePayment(buildAdapterContext(config), synced);
       } catch (err) {
-        await markOrderUnknown(existing, err);
-        throw new HTTPException(409, { message: `原订单关单结果待确认，禁止创建新订单（订单号 ${existing.orderNo}）` });
+        if (isOperationUnsupported(err) && synced.channel === 'unionpay') {
+          // 银联二维码没有渠道关单 API；此时已确认未支付，按本地关单处理。
+          await markOrderClosed(synced);
+          return null;
+        }
+        await markOrderUnknown(synced, err);
+        throw new HTTPException(409, { message: `原订单关单结果待确认，禁止创建新订单（订单号 ${synced.orderNo}）` });
       }
-      await markOrderClosed(existing);
+      await markOrderClosed(synced);
     }
     return null;
   }
@@ -760,7 +772,16 @@ export async function closeExpiredOrderSafely(
   const config = await resolveConfig(synced);
   if (!config) throw new HTTPException(409, { message: '订单绑定的商户配置不可用，无法安全关单' });
   assertPaymentEngineConfig(config, { recovery: true });
-  await assertPaymentOperation(config, 'payment.close', synced.payMethod, synced.currency, { recovery: true });
+  try {
+    await assertPaymentOperation(config, 'payment.close', synced.payMethod, synced.currency, { recovery: true });
+  } catch (err) {
+    // 渠道没有关单 API（如云闪付二维码）时，查单确认未支付后本地关单。
+    if (isOperationUnsupported(err) && synced.channel === 'unionpay') {
+      await markOrderClosed(synced);
+      return true;
+    }
+    throw err;
+  }
   try {
     await getAdapter(synced.channel).closePayment(buildAdapterContext(config), synced);
   } catch (err) {
@@ -787,7 +808,19 @@ export async function closePayment(orderNo: string): Promise<void> {
   const config = await loadOrderConfig(order);
   if (!config) throw new HTTPException(409, { message: '订单绑定的商户配置不可用，无法安全关单' });
   assertPaymentEngineConfig(config);
-  await assertPaymentOperation(config, 'payment.close', order.payMethod, order.currency);
+  try {
+    await assertPaymentOperation(config, 'payment.close', order.payMethod, order.currency, { recovery: true });
+  } catch (err) {
+    if (isOperationUnsupported(err) && order.channel === 'unionpay') {
+      const synced = await syncOrderStatus(order);
+      if (synced.status === 'pending' || synced.status === 'paying') {
+        await markOrderClosed(synced);
+        return;
+      }
+      throw new HTTPException(409, { message: '订单状态已变化，请刷新后重试' });
+    }
+    throw err;
+  }
   try {
     await getAdapter(order.channel).closePayment(buildAdapterContext(config), order);
   } catch (err) {
@@ -833,16 +866,25 @@ async function settleRefundSuccess(
 }
 
 /** 执行渠道退款并落库（审批通过或免审批后调用）。失败时回滚订单状态并抛出。 */
-async function executeChannelRefund(
+export async function executeChannelRefund(
   order: PaymentOrderRow,
   refundRow: PaymentRefundRow,
   config: PaymentChannelConfigRow,
 ): Promise<{ refundNo: string; status: string }> {
   assertPaymentEngineConfig(config);
-  await assertPaymentOperation(config, 'refund.create', order.payMethod, order.currency);
+  await assertPaymentOperation(config, 'refund.create', order.payMethod, order.currency, { recovery: true });
   try {
     const ctx = buildAdapterContext(config);
     assertNotifyUrl(ctx.notifyUrl, config.sandbox);
+    // 先把“已提交渠道”持久化，进程在调用前后崩溃都能区分“未提交”和“结果未知”。
+    await db
+      .update(paymentRefunds)
+      .set({
+        channelSubmittedAt: new Date(),
+        submitAttempts: sql`${paymentRefunds.submitAttempts} + 1`,
+        unknownSince: null,
+      })
+      .where(eq(paymentRefunds.id, refundRow.id));
     const res = await getAdapter(order.channel).refund(ctx, order, refundRow);
 
     if (res.status === 'success') {
@@ -863,6 +905,7 @@ async function executeChannelRefund(
       .update(paymentRefunds)
       .set({
         status: 'unknown',
+        unknownSince: new Date(),
         errorMessage: `渠道结果待确认：${errMessage(err)}`.slice(0, 500),
         version: sql`${paymentRefunds.version} + 1`,
       })
@@ -952,7 +995,7 @@ export async function refund(input: CreateRefundInput & {
   // refund row. Otherwise the row would reserve the order's refundable amount
   // and leave the order in `refunding` even though no provider call occurred.
   assertPaymentEngineConfig(config);
-  await assertPaymentOperation(config, 'refund.create', order.payMethod, order.currency);
+  await assertPaymentOperation(config, 'refund.create', order.payMethod, order.currency, { recovery: true });
   assertNotifyUrl(buildAdapterContext(config).notifyUrl, config.sandbox);
 
   const operatorId = input.operatorId ?? currentUserOrNull()?.userId ?? null;
@@ -1051,6 +1094,10 @@ async function loadPendingRefundForApproval(id: number) {
 /** 审批通过待审批退款单并执行渠道退款。 */
 export async function approveRefund(id: number, remark?: string): Promise<{ refundNo: string; status: string }> {
   const { user, refundRow, order } = await loadPendingRefundForApproval(id);
+  const applicantId = refundRow.appliedById ?? refundRow.operatorId;
+  if (applicantId != null && applicantId === user.userId) {
+    throw new HTTPException(403, { message: '退款申请人与审批人必须为不同用户' });
+  }
   const config = await loadOrderConfig(order);
   if (!config) throw new HTTPException(400, { message: '支付渠道配置不存在，无法退款' });
 
@@ -1107,7 +1154,7 @@ function serializeHeaders(headers: Headers): string {
 async function applyNotify(
   configRow: PaymentChannelConfigRow,
   result: NotifyResult,
-): Promise<{ orderNo: string; appId: number | null }> {
+): Promise<{ orderNo: string; appId: number | null; outcome?: 'late_payment' }> {
   if (result.scene === 'refund') {
     if (!result.outRefundNo) throw new ProviderResultMismatchError('REFUND_NO_MISSING', '退款回调缺少商户退款单号');
     const [refundRow] = await db.select().from(paymentRefunds).where(eq(paymentRefunds.outRefundNo, result.outRefundNo)).limit(1);
@@ -1122,7 +1169,7 @@ async function applyNotify(
     await assertProviderResultMatchesOrder(
       configRow,
       order,
-      result,
+      { ...result, currency: result.currency ?? order.currency },
       result.tradeStatus === 'refunded' ? refundRow.refundAmount : undefined,
     );
     if (result.tradeStatus === 'refunded') {
@@ -1158,12 +1205,37 @@ async function applyNotify(
     return { orderNo: order.orderNo, appId: order.appId ?? null };
   }
   if (result.tradeStatus === 'success') {
-    await markOrderPaid(order, {
+    const paid = await markOrderPaid(order, {
       channelTradeNo: result.channelTradeNo,
       paidAmount: result.paidAmount,
       paidAt: result.paidAt,
       notifyData: result.raw ? JSON.stringify(result.raw).slice(0, 8000) : undefined,
     });
+    if (!paid) {
+      const [latest] = await db
+        .select({ status: paymentOrders.status })
+        .from(paymentOrders)
+        .where(eq(paymentOrders.id, order.id))
+        .limit(1);
+      // 并发重复回调：另一路径已置成功，不是迟到支付。
+      if (latest && ['success', 'refunding', 'refunded'].includes(latest.status)) {
+        return { orderNo: order.orderNo, appId: order.appId ?? null };
+      }
+      // 渠道已收款，但本地订单已 closed/failed；不能静默 ACK 当作正常处理。
+      await recordPaymentException({
+        type: 'late_payment',
+        orderNo: order.orderNo,
+        channel: order.channel,
+        channelConfigId: order.channelConfigId,
+        appId: order.appId,
+        amount: result.paidAmount ?? order.amount,
+        currency: result.currency ?? order.currency,
+        message: `订单状态 ${latest?.status ?? order.status} 后收到渠道支付成功回调`,
+        payload: result.raw ?? null,
+        tenantId: order.tenantId,
+      });
+      return { orderNo: order.orderNo, appId: order.appId ?? null, outcome: 'late_payment' };
+    }
   } else if (result.tradeStatus === 'closed') {
     await markOrderClosed(order);
   } else if (result.tradeStatus === 'failed') {
@@ -1246,7 +1318,11 @@ export async function handleNotify(
     if (notifyLogId != null) {
       await db
         .update(paymentNotifyLogs)
-        .set({ orderNo: applied.orderNo, appId: applied.appId, result: `processed:${result.tradeStatus}` })
+        .set({
+          orderNo: applied.orderNo,
+          appId: applied.appId,
+          result: applied.outcome === 'late_payment' ? 'late_payment' : `processed:${result.tradeStatus}`,
+        })
         .where(eq(paymentNotifyLogs.id, notifyLogId));
     }
   } catch (err) {
@@ -1389,6 +1465,7 @@ export async function syncRefundStatus(
   if (refundRow.status === 'success' || refundRow.status === 'failed') return refundRow;
   assertPaymentEngineConfig(config, { recovery: true });
   await assertPaymentOperation(config, 'refund.query', order.payMethod, order.currency, { recovery: true });
+  await db.update(paymentRefunds).set({ lastQueryAt: new Date() }).where(eq(paymentRefunds.id, refundRow.id));
   const res = await getAdapter(refundRow.channel).queryRefund(buildAdapterContext(config), refundRow, order);
 
   if (res.status === 'success') {
@@ -1414,6 +1491,41 @@ export async function syncRefundStatus(
 
   const [latest] = await db.select().from(paymentRefunds).where(eq(paymentRefunds.id, refundRow.id)).limit(1);
   return latest ?? refundRow;
+}
+
+/**
+ * 恢复“已落库但从未提交渠道”的退款。
+ *
+ * 退款单创建后、渠道调用前进程崩溃会留下 processing + channelSubmittedAt IS NULL。
+ * 这里用渠道幂等键 outRefundNo 重提；已提交过的退款不会进入本查询，避免重复退款。
+ */
+export async function retryUnsubmittedRefunds(): Promise<{ scanned: number; submitted: number }> {
+  const cutoff = new Date(Date.now() - 2 * 60_000);
+  const rows = await db
+    .select()
+    .from(paymentRefunds)
+    .where(and(
+      eq(paymentRefunds.status, 'processing'),
+      isNull(paymentRefunds.channelSubmittedAt),
+      inArray(paymentRefunds.approvalStatus, ['none', 'approved']),
+      lt(paymentRefunds.createdAt, cutoff),
+    ))
+    .orderBy(paymentRefunds.id)
+    .limit(100);
+  let submitted = 0;
+  for (const refundRow of rows) {
+    const [order] = await db.select().from(paymentOrders).where(eq(paymentOrders.id, refundRow.orderId)).limit(1);
+    if (!order || (order.status !== 'success' && order.status !== 'refunding')) continue;
+    const config = await loadOrderConfig(order);
+    if (!config) continue;
+    try {
+      await executeChannelRefund(order, refundRow, config);
+      submitted += 1;
+    } catch (err) {
+      logger.warn('[payment] retry unsubmitted refund failed', { refundNo: refundRow.refundNo, err: errMessage(err) });
+    }
+  }
+  return { scanned: rows.length, submitted };
 }
 
 /** 主动向渠道查询退款状态并同步本地（供后台「退款查单」）。 */

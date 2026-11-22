@@ -75,6 +75,9 @@ export const idempotencyKeyHeaders = z.object({
   'x-idempotency-key': z.string().trim().min(8).max(128).meta({ description: '业务幂等键（8-128 位，建议 UUID）', example: 'refund-01JABCDEF1234567890' }),
 });
 
+/** 公开收银台等可选幂等头：老客户端不传时保持兼容，新客户端传入即可防双击。 */
+export const optionalIdempotencyKeyHeaders = partialForUpdate(idempotencyKeyHeaders);
+
 export type CreatePaymentChannelConfigInput = z.infer<typeof createPaymentChannelConfigSchema>;
 
 export type UpdatePaymentChannelConfigInput = z.infer<typeof updatePaymentChannelConfigSchema>;

@@ -11,7 +11,7 @@ import { currentUser } from '../../lib/context';
 import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../../lib/tenant';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { pageOffset } from '../../lib/pagination';
-import { rethrowPgUniqueViolation } from '../../lib/db-errors';
+import { isPgError, PG_ERROR_CODES, rethrowPgUniqueViolation } from '../../lib/db-errors';
 import type { CreatePaymentAppInput, UpdatePaymentAppInput, PaymentApp, PaymentChannel } from '@zenith/shared/payment';
 import { pickEntity } from '../../lib/entity-map';
 
@@ -172,7 +172,14 @@ export async function updateApp(id: number, input: UpdatePaymentAppInput): Promi
 export async function deleteApp(id: number): Promise<void> {
   requireTenantScopeId(currentUser());
   await ensureApp(id);
-  await db.delete(paymentApps).where(and(eq(paymentApps.id, id), tenantCondition(paymentApps, currentUser())));
+  try {
+    await db.delete(paymentApps).where(and(eq(paymentApps.id, id), tenantCondition(paymentApps, currentUser())));
+  } catch (err) {
+    if (isPgError(err, PG_ERROR_CODES.foreignKeyViolation)) {
+      throw new HTTPException(409, { message: '该支付应用已被订单、链接、协议或账务记录引用，请改用停用' });
+    }
+    throw err;
+  }
 }
 
 /** 由可信内部 applicationId 解析支付路由；外部调用不得直接传该 ID。 */

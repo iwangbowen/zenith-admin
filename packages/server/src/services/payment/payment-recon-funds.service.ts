@@ -206,6 +206,8 @@ export function bankFactsFromAllocations(bankEntries: readonly BankFactRow[], se
 
 export async function loadBankFacts(executor: DbExecutor, period: PaymentStatementPeriodRow): Promise<ReconciliationEntry[]> {
   if (!period.currentStatementId) return [];
+  // 银行到账通常在一段窗口内匹配渠道结算；不能把全部历史未分配结算反复灌入本次核对。
+  const settlementLookbackStart = dayjs(period.billDate).subtract(90, 'day').format('YYYY-MM-DD');
   const bankEntries = await executor.select(bankEntryColumns).from(paymentStatementEntries)
     .where(buildWhere(eq(paymentStatementEntries.statementId, period.currentStatementId), exactTenantCondition(paymentStatementEntries.tenantId, period.tenantId),
       eq(paymentStatementEntries.type, 'settlement'), eq(paymentStatementEntries.direction, 'in'), eq(paymentStatementEntries.status, 'success')));
@@ -213,7 +215,8 @@ export async function loadBankFacts(executor: DbExecutor, period: PaymentStateme
     .innerJoin(paymentStatements, eq(paymentStatements.id, paymentStatementEntries.statementId))
     .innerJoin(paymentStatementPeriods, eq(paymentStatementPeriods.id, paymentStatements.periodId))
     .where(buildWhere(eq(paymentStatementPeriods.accountId, period.accountId), exactTenantCondition(paymentStatementPeriods.tenantId, period.tenantId),
-      eq(paymentStatementPeriods.currency, period.currency), inArray(paymentStatementPeriods.type, ['trade', 'fund']), lte(paymentStatementPeriods.billDate, period.billDate),
+      eq(paymentStatementPeriods.currency, period.currency), inArray(paymentStatementPeriods.type, ['trade', 'fund']),
+      gte(paymentStatementPeriods.billDate, settlementLookbackStart), lte(paymentStatementPeriods.billDate, period.billDate),
       eq(paymentStatementPeriods.currentStatementId, paymentStatements.id), eq(paymentStatements.status, 'validated'),
       exactTenantCondition(paymentStatementEntries.tenantId, period.tenantId), eq(paymentStatementEntries.type, 'settlement'), eq(paymentStatementEntries.direction, 'out'), eq(paymentStatementEntries.status, 'success')))
     .orderBy(asc(paymentStatementEntries.id)).limit(100_001);

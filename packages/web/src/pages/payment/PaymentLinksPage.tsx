@@ -12,7 +12,7 @@ import { formatDateTimeForApi } from '@/utils/date';
 import { EMPTY_PLACEHOLDER, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
-import { PAYMENT_CASHIER_METHODS, PAYMENT_METHOD_LABELS, PAYMENT_LINK_STATUS_LABELS, paymentLinkContract } from '@zenith/shared/payment';
+import { PAYMENT_CASHIER_METHODS, PAYMENT_LINK_PAY_METHODS, PAYMENT_METHOD_LABELS, PAYMENT_LINK_STATUS_LABELS, paymentLinkContract } from '@zenith/shared/payment';
 import type { PaymentApp, PaymentCashierMethod, PaymentLink, PaymentLinkStatus } from '@zenith/shared/payment';
 import { useDeletePaymentLinks, usePaymentLinkDetail, usePaymentLinkList, useRotatePaymentLinkToken, useSavePaymentLink, type PaymentLinkSaveValues } from '@/hooks/queries/payment-links';
 import { useEnsureShortLink } from '@/hooks/queries/short-links';
@@ -72,7 +72,8 @@ export default function PaymentLinksPage() {
   const { apps: paymentApps, appOptions, isFetching: appsFetching } = useEnabledPaymentAppLookup({ label: paymentAppOptionLabel });
   const appNameById = useMemo(() => new Map(paymentApps.map((app) => [app.id, app.name])), [paymentApps]);
   const selectedPaymentApp = paymentApps.find((app) => app.id === selectedApplicationId);
-  const { options: methodOptions } = useAppPaymentMethodOptions(selectedPaymentApp, PAYMENT_CASHIER_METHODS);
+  // 公开收银台只支持固定的一组方式；不能用全部收银台方式，否则 JSAPI/APP 会被服务端拒绝。
+  const { options: methodOptions } = useAppPaymentMethodOptions(selectedPaymentApp, PAYMENT_LINK_PAY_METHODS);
   const saveMutation = useSavePaymentLink();
   const modal = useEditModal<PaymentLink, LinkFormValues, PaymentLinkSaveValues>({
     entityName: '支付链接',

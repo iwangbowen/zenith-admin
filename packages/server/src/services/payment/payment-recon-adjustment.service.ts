@@ -177,6 +177,8 @@ export async function submitReconAdjustment(id: number, input: z.output<typeof s
     return updated;
   });
   if (claimed.status !== 'pending') return mapAdjustment(claimed);
+  // 重复提交/进程崩溃后恢复：已有关联工作流时不再新建实例。
+  if (claimed.workflowInstanceId != null) return mapAdjustment(claimed);
   const snapshot = paymentReconAdjustmentSchema.parse(claimed.evidence.submissionSnapshot);
   const instance = await startWorkflowForBiz({ definitionId: input.definitionId, title: `${claimed.reversalOfId ? '冲正' : '对账调整'} #${id} · ${claimed.amount.toString()} 分`, bizType: PAYMENT_RECON_ADJUSTMENT_BIZ_TYPE, bizId: id, variables: workflowVariables(snapshot) });
   await db.update(paymentReconAdjustments).set({ workflowInstanceId: instance.id }).where(and(adjustmentWhere(id, row.tenantId), eq(paymentReconAdjustments.status, 'pending'), isNull(paymentReconAdjustments.workflowInstanceId)));

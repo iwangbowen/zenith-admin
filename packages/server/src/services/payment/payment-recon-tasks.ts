@@ -26,7 +26,6 @@ import { requireReconAccount, requireStatementPeriod, requireStatement, requireR
   reconNotificationPolicy, notifyReconFailure, RECON_DOWNLOAD_TASK, RECON_IMPORT_TASK, RECON_COMPARE_TASK, RECON_COMPENSATE_TASK } from './payment-recon-common';
 import { archiveStatement, statementArtifact, readStatementFileBytes } from './payment-statement-storage.service';
 import { executeReconRun, loadTradeFacts, statementDateBounds } from './payment-recon-engine.service';
-import { formatDateTime } from '../../lib/datetime';
 
 export async function enqueueCommitted(id: number) {
   await enqueueAsyncTask(id).catch((error: unknown) => logger.warn({ taskId: id, error }, '支付对账任务已持久化，等待任务中心补投'));
@@ -166,10 +165,16 @@ function sumEntries(entries: ReconciliationEntry[]) {
   return { entryCount: entries.length, incomeAmount: income.toString(), expenseAmount: expense.toString(), paymentAmount: payment.toString(), refundAmount: refund.toString(), feeAmount: fee.toString() };
 }
 
-async function publishStatement(statementId: number, period: PaymentStatementPeriodRow, entries: ReconciliationEntry[], parserVersion: string, suppliedSummary: Record<string, unknown>, ctx: TaskRunContext) {
+/** 账单时间是无时区的当地钟点，必须按渠道账户 billTimezone 解释后落 timestamptz。 */
+function parseBillTimestamp(value: string, timeZone: string): Date {
+  const parsed = dayjs.tz(value, timeZone);
+  return parsed.isValid() ? parsed.toDate() : new Date(value);
+}
+
+async function publishStatement(statementId: number, period: PaymentStatementPeriodRow, entries: ReconciliationEntry[], parserVersion: string, suppliedSummary: Record<string, unknown>, ctx: TaskRunContext, billTimezone: string) {
   assertUniqueReconciliationEntries(entries);
   const summary = sumEntries(entries);
-  for (const key of ['entryCount', 'incomeAmount', 'expenseAmount', 'paymentAmount', 'refundAmount'] as const) {
+  for (const key of ['entryCount', 'incomeAmount', 'expenseAmount', 'paymentAmount', 'refundAmount', 'feeAmount'] as const) {
     if (suppliedSummary[key] != null && String(suppliedSummary[key]) !== String(summary[key])) throw new ProviderBillError('integrity', `账单汇总校验不通过：${key}`);
   }
   for (const entry of entries) {
@@ -199,7 +204,7 @@ async function publishStatement(statementId: number, period: PaymentStatementPer
           statementId, entryKey: entry.entryKey, type: entry.type, merchantOrderNo: entry.merchantOrderNo,
           merchantRefundNo: entry.merchantRefundNo, providerTransactionId: entry.providerTransactionId, providerRefundId: entry.providerRefundId,
           reference: entry.reference, currency: entry.currency, amount: BigInt(entry.amount), direction: entry.direction, status: entry.status,
-          occurredAt: new Date(entry.occurredAt), applicationId: (entry.merchantOrderNo ? byOrder.get(entry.merchantOrderNo) : undefined)
+          occurredAt: parseBillTimestamp(entry.occurredAt, billTimezone), applicationId: (entry.merchantOrderNo ? byOrder.get(entry.merchantOrderNo) : undefined)
             ?? (entry.providerTransactionId ? byReference.get(entry.providerTransactionId) : undefined) ?? null,
           raw: entry.raw ?? {}, lineNo: typeof entry.raw?.lineNo === 'number' ? entry.raw.lineNo : offset + i + 1,
           feeAmount: entry.feeAmount == null ? null : BigInt(entry.feeAmount), netAmount: entry.netAmount == null ? null : BigInt(entry.netAmount),
@@ -241,7 +246,7 @@ async function runStatementTask(ctx: TaskRunContext, mode: 'download' | 'import'
       if (ctx.payload.format === 'provider') {
         if (period.type === 'bank') throw new ProviderBillError('format', '银行流水需使用标准格式');
         const parsed = parseProviderBill(account.channel, period.type, bytes, file.filename, account.merchantId, period.billDate);
-        entries = parsed.entries.map((entry) => ({ ...entry, occurredAt: entry.occurredAt ?? formatDateTime(statementDateBounds(period.billDate, account.billTimezone).start), raw: { ...entry.raw, lineNo: entry.lineNo } }));
+        entries = parsed.entries.map((entry) => ({ ...entry, occurredAt: entry.occurredAt ?? dayjs.tz(`${period.billDate} 00:00:00`, account.billTimezone).format('YYYY-MM-DD HH:mm:ss'), raw: { ...entry.raw, lineNo: entry.lineNo } }));
         summary = parsed.summary; parserVersion = parsed.parserVersion;
       } else {
         const text = bytes.toString('utf8').replace(/^\uFEFF/, '');
@@ -271,11 +276,11 @@ async function runStatementTask(ctx: TaskRunContext, mode: 'download' | 'import'
         if (parsed.merchantId !== account.merchantId || parsed.billDate !== period.billDate || parsed.kind !== period.type) throw new ProviderBillError('integrity', '渠道账单身份或账期不一致');
         archivedId = (await archiveStatement(period, parsed.artifacts, 'provider_download', { merchantId: parsed.merchantId, billDate: parsed.billDate,
           kind: parsed.kind, configId: config.id, credentialVersion: config.credentialVersion, authenticated: true })).id;
-        entries = parsed.entries.map((entry) => ({ ...entry, occurredAt: entry.occurredAt ?? formatDateTime(statementDateBounds(period.billDate, account.billTimezone).start), raw: { ...entry.raw, lineNo: entry.lineNo } }));
+        entries = parsed.entries.map((entry) => ({ ...entry, occurredAt: entry.occurredAt ?? dayjs.tz(`${period.billDate} 00:00:00`, account.billTimezone).format('YYYY-MM-DD HH:mm:ss'), raw: { ...entry.raw, lineNo: entry.lineNo } }));
         summary = parsed.summary; parserVersion = parsed.parserVersion;
       }
     }
-    const id = await publishStatement(requireRow(archivedId, '原件尚未归档'), period, entries, parserVersion, summary, ctx);
+    const id = await publishStatement(requireRow(archivedId, '原件尚未归档'), period, entries, parserVersion, summary, ctx, account.billTimezone);
     if (id && ctx.payload.previousError) await db.transaction((tx) => notifyWithin(tx, 'payment.recon.recovered', {
       tenantId, recipients: policy.recipients, vars: { accountName: account.name, billDate: period.billDate },
       dedupeKey: `payment-recon-recovered:${period.id}:${period.generation}`, link: `/payment/recon?periodId=${period.id}` }));
@@ -312,7 +317,12 @@ export function registerPaymentReconTaskHandlers() {
       try { return await executeReconRun(runId, tenantId, ctx); }
       catch (error) {
         const [task] = await db.select({ maxAttempts: asyncTasks.maxAttempts }).from(asyncTasks).where(eq(asyncTasks.id, ctx.taskId)).limit(1);
-        await db.update(paymentReconRuns).set({ status: error instanceof TaskCancelledError || ctx.attempt >= (task?.maxAttempts ?? ctx.attempt) ? 'failed' : 'running', error: error instanceof Error ? error.message : String(error) })
+        const terminal = error instanceof TaskCancelledError || ctx.attempt >= (task?.maxAttempts ?? ctx.attempt);
+        await db.update(paymentReconRuns).set({
+          status: terminal ? 'failed' : 'running',
+          error: error instanceof Error ? error.message : String(error),
+          ...(terminal ? { finishedAt: new Date() } : {}),
+        })
           .where(and(eq(paymentReconRuns.id, runId), exactTenantCondition(paymentReconRuns.tenantId, tenantId)));
         throw error;
       }

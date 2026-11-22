@@ -170,7 +170,11 @@ export const paymentOrders = pgTable('payment_orders', {
     .on(sql`coalesce(${t.tenantId}, 0)`, sql`coalesce(${t.appId}, 0)`, t.idempotencyKey)
     .where(sql`${t.idempotencyKey} is not null`),
   index('payment_orders_biz_idx').on(t.tenantId, t.appId, t.bizType, t.bizId, t.currency),
+  index('payment_orders_config_out_trade_idx').on(t.channelConfigId, t.outTradeNo),
   index('payment_orders_status_idx').on(t.status),
+  index('payment_orders_status_created_idx').on(t.status, t.createdAt),
+  index('payment_orders_status_paid_idx').on(t.status, t.paidAt),
+  index('payment_orders_tenant_created_idx').on(t.tenantId, t.createdAt),
   index('payment_orders_expired_idx').on(t.expiredAt),
 ]);
 
@@ -194,6 +198,12 @@ export const paymentRefunds = pgTable('payment_refunds', {
   reason: varchar({ length: 256 }),
   status: paymentRefundStatusEnum().notNull().default('pending'),
   approvalStatus: paymentRefundApprovalStatusEnum().notNull().default('none'),
+  /** 渠道退款请求已发出的时间；null = 尚未提交渠道，可由恢复任务幂等重提。 */
+  channelSubmittedAt: timestamptz(),
+  /** 渠道退款提交次数（不含查单）。 */
+  submitAttempts: integer().notNull().default(0),
+  lastQueryAt: timestamptz(),
+  unknownSince: timestamptz(),
   appliedById: integer().references(() => users.id, { onDelete: 'set null' }),
   approverId: integer().references(() => users.id, { onDelete: 'set null' }),
   approvedAt: timestamptz(),
@@ -211,6 +221,9 @@ export const paymentRefunds = pgTable('payment_refunds', {
 }, (t) => [index('payment_refunds_order_idx').on(t.orderId), index('payment_refunds_operator_idx').on(t.operatorId), index('payment_refunds_tenant_idx').on(t.tenantId), 
   index('payment_refunds_order_no_idx').on(t.orderNo),
   index('payment_refunds_status_idx').on(t.status),
+  index('payment_refunds_status_created_idx').on(t.status, t.createdAt),
+  index('payment_refunds_tenant_created_idx').on(t.tenantId, t.createdAt),
+  uniqueIndex('payment_refunds_out_refund_no_uq').on(t.outRefundNo),
   uniqueIndex('payment_refunds_idempotency_scope_uq')
     .on(sql`coalesce(${t.tenantId}, 0)`, t.orderId, t.idempotencyKey)
     .where(sql`${t.idempotencyKey} is not null`),
@@ -250,6 +263,37 @@ export const paymentNotifyLogs = pgTable('payment_notify_logs', {
 export type PaymentNotifyLogRow = typeof paymentNotifyLogs.$inferSelect;
 
 export type NewPaymentNotifyLog = typeof paymentNotifyLogs.$inferInsert;
+
+// ─── 支付异常（迟到支付 / 金额不一致 / 未知结果等，待人工处置）────────────────
+export const paymentExceptionStatusEnum = pgEnum('payment_exception_status', ['open', 'resolved', 'ignored']);
+
+export const paymentExceptions = pgTable('payment_exceptions', {
+  id: idColumn(),
+  type: varchar({ length: 64 }).notNull(),
+  dedupeKey: varchar({ length: 160 }).notNull().unique('payment_exceptions_dedupe_key_unique'),
+  orderNo: varchar({ length: 64 }),
+  refundNo: varchar({ length: 64 }),
+  channel: paymentChannelEnum(),
+  channelConfigId: integer().references(() => paymentChannelConfigs.id, { onDelete: 'set null' }),
+  appId: integer().references(() => paymentApps.id, { onDelete: 'set null' }),
+  amount: integer(),
+  currency: varchar({ length: 8 }),
+  message: varchar({ length: 512 }),
+  payload: jsonb(),
+  status: paymentExceptionStatusEnum().notNull().default('open'),
+  tenantId: tenantIdColumn(),
+  resolvedAt: timestamptz(),
+  resolvedBy: integer().references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamptz().defaultNow().notNull(),
+}, (t) => [
+  index('payment_exceptions_status_created_idx').on(t.status, t.createdAt),
+  index('payment_exceptions_tenant_status_idx').on(t.tenantId, t.status),
+  index('payment_exceptions_order_idx').on(t.orderNo),
+]);
+
+export type PaymentExceptionRow = typeof paymentExceptions.$inferSelect;
+
+export type NewPaymentException = typeof paymentExceptions.$inferInsert;
 
 // ─── 手续费/费率规则 ─────────────────────────────────────────────────────────
 export const paymentFeeRules = pgTable('payment_fee_rules', {

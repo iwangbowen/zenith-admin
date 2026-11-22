@@ -9,7 +9,8 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { HTTPException } from 'hono/http-exception';
 import { httpPost } from '../http-client';
-import { formatDateTime } from '../datetime';
+import dayjs from 'dayjs';
+import { APP_TIME_ZONE, formatDateTime } from '../datetime';
 import logger from '../logger';
 import type { CreatePaymentResult } from '@zenith/shared/payment';
 import { rsaSign, rsaVerify, ensurePem } from './signing';
@@ -42,10 +43,9 @@ function requireField<T>(v: T | null | undefined, name: string): T {
   return v;
 }
 
+/** 银联 txnTime 必须按业务时区生成；云闪付/银联账单时区为北京时间。 */
 function txnTime(value: Date = new Date()): string {
-  const d = value;
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+  return dayjs(value).tz(APP_TIME_ZONE).format('YYYYMMDDHHmmss');
 }
 
 /** 银联签名串：按 key ASCII 升序拼接 k=v（& 连接，排除 signature 与空值） */
@@ -206,7 +206,8 @@ export const unionpayAdapter: PaymentChannelAdapter = {
       channelType: '08',
       currencyCode: '156',
       orderId: order.outTradeNo,
-      txnTime: txnTime(),
+      // 同一订单的申码/查单必须复用原始 txnTime，否则银联查单会返回“查无此交易”。
+      txnTime: txnTime(order.createdAt),
       txnAmt: String(order.amount),
       backUrl: ctx.notifyUrl,
     };
@@ -269,8 +270,9 @@ export const unionpayAdapter: PaymentChannelAdapter = {
       backUrl: ctx.notifyUrl,
     };
     const res = await unionpayRequest(ctx, PROD_GATEWAY, params);
-    // respCode 00=成功受理，03=处理中
-    return { channelRefundNo: res.queryId, status: res.respCode === '00' ? 'processing' : 'failed', raw: res };
+    // respCode 00=成功受理，03=处理中；只有明确的失败码才落 failed，
+    // 否则会释放可退额度但渠道随后退款成功，形成重复退款风险。
+    return { channelRefundNo: res.queryId, status: res.respCode === '00' || res.respCode === '03' ? 'processing' : 'failed', raw: res };
   },
 
   async queryRefund(ctx, refund): Promise<RefundQueryResult> {
@@ -284,7 +286,7 @@ export const unionpayAdapter: PaymentChannelAdapter = {
       txnSubType: '00',
       bizType: '000000',
       orderId: refund.outRefundNo,
-      txnTime: txnTime(),
+      txnTime: txnTime(refund.createdAt),
     };
     const res = await unionpayRequest(ctx, QUERY_GATEWAY, params);
     const status = mapUnionpayStatus(res.respCode, res.origRespCode);

@@ -40,6 +40,14 @@ export function PaymentResultModal({ result, method, onClose, extra }: Readonly<
               <div style={{ marginTop: 4 }}>{result.appOrderStr}</div>
             </div>
           )}
+          {result.jsapiParams && (
+            <div style={{ margin: '12px 0', wordBreak: 'break-all', fontSize: 12, textAlign: 'left' }}>
+              <Typography.Text type="tertiary">微信 JSAPI 调起参数（复制给公众号/小程序）：</Typography.Text>
+              <pre style={{ marginTop: 4, padding: 8, background: 'var(--semi-color-fill-0)', borderRadius: 'var(--semi-border-radius-small)', whiteSpace: 'pre-wrap' }}>
+                {JSON.stringify(result.jsapiParams, null, 2)}
+              </pre>
+            </div>
+          )}
           {extra}
         </div>
       )}

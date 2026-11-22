@@ -21,6 +21,7 @@ import { currentUser } from '../../lib/context';
 import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../../lib/tenant';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { pageOffset } from '../../lib/pagination';
+import { isPgError, PG_ERROR_CODES } from '../../lib/db-errors';
 import { buildAdapterContext, createOrderConfigResolver, loadOrderConfig } from './payment.service';
 import { postSystemJournal } from './payment-journal.service';
 import { getAdapter } from '../../lib/payment/registry';
@@ -132,7 +133,14 @@ export async function updateReceiver(id: number, input: UpdatePaymentSharingRece
 export async function deleteReceiver(id: number): Promise<void> {
   requireTenantScopeId(currentUser());
   await ensureReceiver(id);
-  await db.delete(paymentSharingReceivers).where(eq(paymentSharingReceivers.id, id));
+  try {
+    await db.delete(paymentSharingReceivers).where(eq(paymentSharingReceivers.id, id));
+  } catch (err) {
+    if (isPgError(err, PG_ERROR_CODES.foreignKeyViolation)) {
+      throw new HTTPException(409, { message: '该分账接收方已有分账单引用，请改用停用' });
+    }
+    throw err;
+  }
 }
 
 // ─── 分账单 ───────────────────────────────────────────────────────────────────

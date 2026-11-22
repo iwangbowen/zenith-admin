@@ -13,6 +13,7 @@ import { getPublicLink, payByLink } from '../../services/payment/payment-link.se
 import { getPublicCashierSession } from '../../services/payment/payment-cashier-session.service';
 import { getClientIp } from '../../lib/request-helpers';
 import { namedRateLimit } from '../../middleware/rate-limit';
+import { idempotencyGuard } from '../../middleware/idempotency';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -22,7 +23,10 @@ const getRoute = defineContractRoute(paymentLinkPublicContract.detail, {
 });
 
 const payRoute = defineContractRoute(paymentLinkPublicContract.pay, {
-  middleware: [namedRateLimit('payment_public_link_pay')],
+  middleware: [
+    namedRateLimit('payment_public_link_pay'),
+    idempotencyGuard({ ttlSeconds: 300, autoFingerprint: false }),
+  ],
   handler: async (c) => {
     const { token } = c.req.valid('param');
     const body = c.req.valid('json');

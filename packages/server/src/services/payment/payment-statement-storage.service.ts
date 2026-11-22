@@ -38,8 +38,10 @@ export async function archiveStatement(
   const nonCloud = storage.provider === 'local' || storage.provider === 'sftp';
   if (storage.objectAcl.startsWith('public')
     || storage.accessStrategy.startsWith('public-')
+    || storage.bucketPolicyPublic === true
+    || storage.bucketPublicStatus === true
     || (!nonCloud && !objectAclPrivate && !bucketPrivate)) {
-    throw new HTTPException(409, { message: '财务账单必须使用私有存储（私有对象 ACL 或私有 Bucket/Container），请修改默认存储访问策略' });
+    throw new HTTPException(409, { message: '财务账单必须使用私有存储（私有对象 ACL、私有 Bucket 且 Bucket Policy 不可公共读），请修改默认存储访问策略' });
   }
   const files: Array<Omit<typeof paymentStatementFiles.$inferInsert, 'id' | 'statementId' | 'createdAt'>> = [];
   for (const [i, artifact] of normalized.entries()) {

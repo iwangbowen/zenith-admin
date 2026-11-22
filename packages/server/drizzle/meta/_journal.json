@@ -148,6 +148,13 @@
       "when": 1795173570629,
       "tag": "0020_stiff_kabuki",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1795353212621,
+      "tag": "0021_tiresome_sentinels",
+      "breakpoints": true
     }
   ]
 }

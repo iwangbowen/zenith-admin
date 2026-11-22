@@ -52,6 +52,8 @@ export async function loadTradeFacts(executor: DbExecutor, period: PaymentStatem
     ...orders.filter((o) => (o.paidAt && o.paidAt >= start && o.paidAt < end) || nos.has(o.outTradeNo) || (o.channelTradeNo && refs.has(o.channelTradeNo))).map((o): ReconciliationEntry => ({
       entryKey: `payment:${o.outTradeNo}`, type: 'payment', merchantOrderNo: o.outTradeNo, providerTransactionId: o.channelTradeNo,
       amount: String(o.amount), currency: o.currency, direction: 'in', status: o.status,
+      feeAmount: o.feeAmount == null ? undefined : String(o.feeAmount),
+      netAmount: o.netAmount == null ? undefined : String(o.netAmount),
       occurredAt: formatDateTime(o.paidAt ?? o.createdAt), applicationId: o.appId, orderId: o.id, accountId: period.accountId,
       raw: { version: o.version, orderNo: o.orderNo, paidAmount: o.paidAmount, paidAt: o.paidAt ? formatDateTime(o.paidAt) : null },
     })),

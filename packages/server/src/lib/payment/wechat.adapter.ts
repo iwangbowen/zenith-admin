@@ -44,6 +44,27 @@ function requireField<T>(v: T | null | undefined, name: string): T {
   return v;
 }
 
+/**
+ * 微信支付 v3 的 API 响应也必须验签，否则被攻陷的出站链路可以伪造
+ * “支付成功 / 退款成功 / 转账成功”响应。账单响应在下方有独立的错误分类，
+ * 这里统一校验时间戳、平台证书和响应签名。
+ */
+async function verifyWechatResponse(ctx: AdapterContext, headers: Headers, body: string): Promise<void> {
+  if (!body) return;
+  const timestamp = headers.get('Wechatpay-Timestamp') ?? '';
+  const nonce = headers.get('Wechatpay-Nonce') ?? '';
+  const signature = headers.get('Wechatpay-Signature') ?? '';
+  const serial = headers.get('Wechatpay-Serial') ?? '';
+  if (!signature || !nonce || !/^\d+$/.test(timestamp) || Math.abs(Date.now() / 1000 - Number(timestamp)) > 300) {
+    throw new HTTPException(502, { message: '微信支付响应缺少有效签名头或已过期' });
+  }
+  const platformCert = (serial ? await getPlatformCert(ctx, serial) : null)
+    ?? (ctx.config.wechatPlatformCert ? ensurePem(ctx.config.wechatPlatformCert, 'CERTIFICATE') : null);
+  if (!platformCert || !rsaVerify(`${timestamp}\n${nonce}\n${body}\n`, signature, platformCert, 'RSA-SHA256')) {
+    throw new HTTPException(502, { message: '微信支付响应验签失败' });
+  }
+}
+
 function buildAuthToken(ctx: AdapterContext, method: string, urlPath: string, body: string): string {
   return buildWechatPayAuthorization({
     mchid: requireField(ctx.config.wechatMchId, '商户号(mchId)'),
@@ -102,6 +123,8 @@ async function wechatRequest<T = Record<string, unknown>>(
     }
     throw new HTTPException(providerHttpExceptionStatus(resp.status), { message: msg });
   }
+  // 账单响应在上面的分支里已按 ProviderBillError 分类验签；其余所有成功响应统一验签。
+  if (!urlPath.startsWith('/v3/bill/')) await verifyWechatResponse(ctx, resp.headers, text);
   try {
     return (text ? JSON.parse(text) : {}) as T;
   } catch {
@@ -388,6 +411,7 @@ export const wechatPayAdapter: PaymentChannelAdapter = {
     }
 
     const eventType = typeof envelope.event_type === 'string' ? envelope.event_type : '';
+    const isRefund = eventType.includes('REFUND');
     const merchantId = typeof data.mchid === 'string' ? data.mchid : undefined;
     const providerAppId = typeof data.appid === 'string' ? data.appid : undefined;
     const currency = typeof data.amount?.payer_currency === 'string'
@@ -395,11 +419,13 @@ export const wechatPayAdapter: PaymentChannelAdapter = {
       : typeof data.amount?.currency === 'string'
         ? data.amount.currency
         : undefined;
-    const identityValid = merchantId === ctx.config.wechatMchId && providerAppId === ctx.config.wechatAppId;
-    if (!identityValid || !currency) {
+    // 微信退款通知通常只带 mchid，不带 appid/币种；退款场景以本地退款单绑定的
+    // 商户配置为准，支付场景仍强校验 appid + 币种。
+    const identityValid = merchantId === ctx.config.wechatMchId && (isRefund || providerAppId === ctx.config.wechatAppId);
+    if (!identityValid || (!isRefund && !currency)) {
       return {
         valid: false,
-        scene: eventType.includes('REFUND') ? 'refund' : 'payment',
+        scene: isRefund ? 'refund' : 'payment',
         tradeStatus: 'unknown',
         ack: { body: JSON.stringify({ code: 'FAIL', message: '商户身份不匹配' }), contentType: 'application/json', status: 401 },
         message: !identityValid ? '微信回调商户号或 AppId 不匹配' : '微信回调缺少币种',
@@ -415,7 +441,7 @@ export const wechatPayAdapter: PaymentChannelAdapter = {
         message: '微信回调缺少事件标识',
       };
     }
-    if (eventType.includes('REFUND')) {
+    if (isRefund) {
       return {
         valid: true,
         scene: 'refund',

@@ -594,7 +594,7 @@ async function postSystemJournalWithExecutor(
       .filter((line) => line.accountId === availableAccount.id)
       .reduce((total, line) => total + line.debitAmount, 0n)
     : 0n;
-  if (availableAccount && availableDebit > 0n) {
+  if (availableAccount && availableDebit > 0n && !allowsMerchantReceivableDebit(input.sourceType)) {
     await assertMerchantAvailableDebit(executor, scope, availableAccount.id, availableDebit, input.sourceType, input.sourceId);
   }
   const [journal] = await executor
@@ -627,6 +627,25 @@ async function postSystemJournalWithExecutor(
   }
   await executor.insert(paymentJournalLines).values(normalized.map((line) => ({ ...line, journalId: journal.id })));
   return journal.id;
+}
+
+/**
+ * 退款、分账、手续费返还、对账调账是“已经发生/必须承认”的资金事实：
+ * 商户可用余额不足时不能拒绝过账，否则会出现“渠道已退款、本地台账缺失”的死信。
+ * 允许这些来源把 merchant_available 借成负数（即商户应收），后续收款/结算自动冲抵。
+ * 转账与人工凭证仍强制执行余额守卫。
+ */
+const MERCHANT_RECEIVABLE_SOURCE_TYPES = new Set([
+  'payment.refund',
+  'payment.fee',
+  'payment.sharing',
+  'payment.sharing_reversal',
+  'recon.adjust',
+  'recon.adjust.reversal',
+]);
+
+function allowsMerchantReceivableDebit(sourceType: string): boolean {
+  return MERCHANT_RECEIVABLE_SOURCE_TYPES.has(sourceType);
 }
 
 /**

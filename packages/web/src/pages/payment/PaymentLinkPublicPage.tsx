@@ -64,6 +64,7 @@ export default function PaymentLinkPublicPage() {
   const sessionToken = searchParams.get('session')?.trim() || undefined;
   // useEditModal 例外：公开支付页的付款信息表单（提交后进入收银台），非后台实体新增 / 编辑
   const formApi = useRef<FormApi | null>(null);
+  const payIdempotencyKey = useRef<string | null>(null);
   const linkQuery = usePublicPaymentLink(token);
   const payMutation = usePayPublicPaymentLink();
   const link: PaymentLinkPublic | null = linkQuery.data ?? null;
@@ -137,14 +138,17 @@ export default function PaymentLinkPublicPage() {
       return;
     }
 
+    payIdempotencyKey.current ??= crypto.randomUUID();
     try {
       const res = await payMutation.mutateAsync({
         params: { token },
+        headers: { 'x-idempotency-key': payIdempotencyKey.current },
         body: {
           amount: link.amount == null ? amount : undefined,
           payMethod: link.payMethod == null ? enumValueOf(PAYMENT_LINK_PAY_METHODS, payMethod) : undefined,
         },
       });
+      payIdempotencyKey.current = null;
       const nextSearchParams = new URLSearchParams(searchParams);
       nextSearchParams.set('session', res.sessionToken);
       setSearchParams(nextSearchParams, { replace: true });
@@ -154,6 +158,7 @@ export default function PaymentLinkPublicPage() {
         window.location.href = res.payParams.payUrl;
       }
     } catch (err) {
+      payIdempotencyKey.current = null;
       Toast.error(err instanceof Error ? err.message : '下单失败');
     }
   }
@@ -314,7 +319,7 @@ export default function PaymentLinkPublicPage() {
                       {wechatInAppBlocked ? (
                         <Button type="primary" block icon={<Copy size={16} />} onClick={copyPageUrl}>复制支付链接</Button>
                       ) : (
-                        <Button type="primary" block loading={payMutation.isPending} disabled={disabled} onClick={submitPay}>立即支付</Button>
+                        <Button type="primary" block loading={payMutation.isPending} disabled={disabled || payMutation.isPending} onClick={submitPay}>立即支付</Button>
                       )}
                     </Form>
                   </div>

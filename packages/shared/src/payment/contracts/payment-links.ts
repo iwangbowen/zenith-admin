@@ -7,7 +7,7 @@ import { PAYMENT_CASHIER_METHODS,
   PAYMENT_LINK_STATUSES,
   PAYMENT_LINK_UNAVAILABLE_REASONS,
   PAYMENT_METHODS, PAYMENT_LINK_STATUS_OPTIONS } from '../constants';
-import { createPaymentLinkSchema, payPaymentLinkSchema, updatePaymentLinkSchema } from '../validation';
+import { createPaymentLinkSchema, optionalIdempotencyKeyHeaders, payPaymentLinkSchema, updatePaymentLinkSchema } from '../validation';
 import { createPaymentResultSchema } from './payment-orders';
 
 // ─── 实体 ────────────────────────────────────────────────────────────────────
@@ -106,6 +106,14 @@ export const paymentCashierSessionParam = paymentLinkTokenParam.extend({
 /** 支付链接公开端点（无需登录，供 C 端用户访问收款链接 / 收款码） */
 export const paymentLinkPublicContract = defineContract('/api/public/payment/link', {
   detail: op.get('/{token}', { public: true, params: paymentLinkTokenParam, response: paymentLinkPublicSchema, summary: '获取支付链接信息（公开，无需登录）' }),
-  pay: op.post('/{token}/pay', { public: true, params: paymentLinkTokenParam, body: payPaymentLinkSchema, response: paymentCashierSessionSchema, summary: '通过支付链接下单（公开，无需登录）' }),
+  pay: op.post('/{token}/pay', {
+    public: true,
+    params: paymentLinkTokenParam,
+    headers: optionalIdempotencyKeyHeaders,
+    body: payPaymentLinkSchema,
+    response: paymentCashierSessionSchema,
+    summary: '通过支付链接下单（公开，无需登录）',
+    description: '建议携带 x-idempotency-key；同一 key 在 5 分钟内重复提交会回放首次收银台会话，避免双击产生多笔订单。',
+  }),
   session: op.get('/{token}/sessions/{sessionToken}', { public: true, params: paymentCashierSessionParam, response: paymentCashierSessionSchema, summary: '恢复收银台会话并同步支付状态' }),
 }, { tags: ['支付链接（公开）'] });

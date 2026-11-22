@@ -4,7 +4,7 @@
 import { and, inArray, lt } from 'drizzle-orm';
 import { db } from '../../db';
 import { paymentChannelConfigs, paymentOrders, paymentRefunds } from '../../db/schema';
-import { closeExpiredOrderSafely, createOrderConfigResolver, syncOrderStatus, syncRefundStatus } from './payment.service';
+import { closeExpiredOrderSafely, createOrderConfigResolver, retryUnsubmittedRefunds, syncOrderStatus, syncRefundStatus } from './payment.service';
 import logger from '../../lib/logger';
 
 /**
@@ -37,7 +37,8 @@ export async function closeExpiredOrders(): Promise<number> {
 }
 
 /** 对仍处于 paying/unknown 且创建超过 2 分钟的订单主动查单，纠正状态（回调兜底）。 */
-export async function runReconciliation(): Promise<{ checked: number; fixed: number; refundChecked: number; refundFixed: number }> {
+export async function runReconciliation(): Promise<{ checked: number; fixed: number; refundChecked: number; refundFixed: number; refundRetried: number }> {
+  const retriedRefunds = await retryUnsubmittedRefunds();
   const threshold = new Date(Date.now() - 2 * 60_000);
   const rows = await db
     .select()
@@ -83,5 +84,5 @@ export async function runReconciliation(): Promise<{ checked: number; fixed: num
       });
     }
   }
-  return { checked: rows.length, fixed, refundChecked: refunds.length, refundFixed };
+  return { checked: rows.length, fixed, refundChecked: refunds.length, refundFixed, refundRetried: retriedRefunds.submitted };
 }
