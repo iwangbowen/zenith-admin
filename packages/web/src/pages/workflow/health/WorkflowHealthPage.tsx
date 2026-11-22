@@ -139,7 +139,8 @@ export default function WorkflowHealthPage() {
               {...bind('thresholdMinutes', (v: unknown) => Number(v) || 30)}
               optionList={THRESHOLD_OPTIONS}
               prefix="人工滞留阈值"
-              style={{ width: 240 }}
+              // 前缀 + 「超过 30 分钟（推荐）」需单行完整展示，320 为实测下限
+              style={{ width: 320 }}
             />
             <FilterSelect
               placeholder="全部问题类型"
