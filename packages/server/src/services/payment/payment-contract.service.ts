@@ -66,10 +66,11 @@ export function mapDeductPlan(row: PaymentDeductPlanRow & { contractCount?: numb
   return pickEntity(paymentDeductPlanSchema, row);
 }
 
-export function mapContract(row: PaymentContractRow & { plan?: Pick<PaymentDeductPlanRow, 'name' | 'period' | 'amount'> | null }): PaymentContract {
+export function mapContract(row: PaymentContractRow & { plan?: Pick<PaymentDeductPlanRow, 'name' | 'period' | 'customDays' | 'amount'> | null }): PaymentContract {
   return pickEntity(paymentContractSchema, row, {
     planName: row.plan?.name ?? null,
     planPeriod: row.plan?.period ?? null,
+    planCustomDays: row.plan?.customDays ?? null,
     planAmount: row.plan?.amount ?? null,
   });
 }
@@ -216,7 +217,7 @@ export async function listContracts(q: ListContractsQuery) {
     count: () => db.$count(paymentContracts, where),
     rows: () => db.query.paymentContracts.findMany({
       where,
-      with: { plan: { columns: { name: true, period: true, amount: true } } },
+      with: { plan: { columns: { name: true, period: true, customDays: true, amount: true } } },
       orderBy: desc(paymentContracts.id),
       limit: pageSize,
       offset: pageOffset(page, pageSize),
@@ -244,7 +245,7 @@ export async function ensureWritableContract(id: number, applicationId: number):
 export async function getContract(id: number, applicationId: number): Promise<PaymentContract> {
   const row = requireRow(await db.query.paymentContracts.findFirst({
     where: buildWhere(and(eq(paymentContracts.id, id), eq(paymentContracts.appId, applicationId)), contractsTenantCondition()),
-    with: { plan: { columns: { name: true, period: true, amount: true } } },
+    with: { plan: { columns: { name: true, period: true, customDays: true, amount: true } } },
   }), '签约协议不存在');
   return mapContract(row);
 }

@@ -2,7 +2,7 @@ import { entityRelationColumn } from '@/components/entity-relations/entity-relat
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ListSearchToolbar } from '@/components/list-page';
-import { ArrayField, Banner, Button, Descriptions, Form, Modal, SideSheet, TabPane, Tabs, Tag, TextArea, Toast } from '@douyinfe/semi-ui';
+import { ArrayField, Banner, Button, Descriptions, Form, Modal, SideSheet, Spin, TabPane, Tabs, Tag, TextArea, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus, RotateCcw, Trash2 } from 'lucide-react';
 import type {
@@ -48,6 +48,7 @@ import {
   usePaymentFundReservationList,
   usePaymentJournalDetail,
   usePaymentJournalList,
+  usePaymentLedgerAccountBalance,
   usePaymentLedgerAccountList,
   usePostPaymentJournal,
   useReversePaymentJournal,
@@ -72,6 +73,13 @@ const CURRENCY_OPTIONS = [{ value: 'CNY', label: 'CNY · 人民币' }];
 
 function amountTotal(lines: readonly PaymentJournalLine[], field: 'debitAmount' | 'creditAmount'): bigint {
   return lines.reduce((total, line) => total + BigInt(line[field]), 0n);
+}
+
+function AccountBalanceCell({ accountId, field }: Readonly<{ accountId: number; field: 'balance' | 'available' }>) {
+  const balanceQuery = usePaymentLedgerAccountBalance(accountId);
+  if (balanceQuery.isPending) return <Spin size="small" />;
+  if (balanceQuery.isError || !balanceQuery.data) return <span>—</span>;
+  return <span>{formatMinorAmount(balanceQuery.data[field], balanceQuery.data.currency)}</span>;
 }
 
 interface AccountSearchParams {
@@ -522,6 +530,8 @@ export default function PaymentLedgerPage() {
     { title: '账户名称', dataIndex: 'name', minWidth: 240, render: renderEllipsis },
     { title: '科目', dataIndex: 'code', width: 130, render: (value: PaymentLedgerAccountCode) => PAYMENT_LEDGER_ACCOUNT_CODE_LABELS[value] },
     { title: '余额方向', dataIndex: 'normalBalance', width: 100, render: (value: PaymentLedgerNormalBalance) => PAYMENT_LEDGER_NORMAL_BALANCE_LABELS[value] },
+    { title: '账面余额', key: 'balance', dataIndex: 'id', width: 150, align: 'right', render: (value: number) => <AccountBalanceCell accountId={value} field="balance" /> },
+    { title: '可用余额', key: 'available', dataIndex: 'id', width: 150, align: 'right', render: (value: number) => <AccountBalanceCell accountId={value} field="available" /> },
     { title: '应用', dataIndex: 'appId', width: 200, render: (value: number) => renderEllipsis(appNameById.get(value) ?? `应用 #${value}`) },
     { title: '商户配置', dataIndex: 'channelConfigId', width: 220, render: (value: number) => renderEllipsis(merchantNameById.get(value) ?? `配置 #${value}`) },
     { title: '币种', dataIndex: 'currency', width: 80 },

@@ -157,6 +157,8 @@ const orderCloseRoute = defineContractRoute(paymentOrderContract.closeOrder, {
 const refundCreateRoute = defineContractRoute(paymentRefundContract.createRefund, {
   middleware: [idempotencyGuard({ ttlSeconds: 15, message: '退款处理中，请勿重复提交' })],
   handler: async (c) => {
+    // 退款按订单数据权限收敛，避免仅凭订单号越过部门/创建人范围。
+    await getOrderDetailByNo(c.req.valid('json').orderNo);
     const result = await refund({
       ...c.req.valid('json'),
       idempotencyKey: c.req.valid('header')['x-idempotency-key'],

@@ -5,6 +5,7 @@ import { defineContractRoute } from '../../lib/contract-route';
 import { okBody, validationHook } from '../../lib/openapi-schemas';
 import { getClientIp } from '../../lib/request-helpers';
 import { getPaymentEvent, getPaymentHealth, listPaymentEventAttempts, listPaymentEvents, redispatchEvent, simulateOrderPaid } from '../../services/payment/payment-ops.service';
+import { listPaymentExceptions, resolvePaymentException } from '../../services/payment/payment-exception.service';
 import { getOrderDetail } from '../../services/payment/payment.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
@@ -41,6 +42,18 @@ const healthRoute = defineContractRoute(paymentOpsContract.health, {
   handler: async (c) => c.json(okBody(await getPaymentHealth()), 200),
 });
 
-router.openapiRoutes([listEventsRoute, eventAttemptsRoute, healthRoute, redispatchRoute, simulateRoute] as const);
+const exceptionsRoute = defineContractRoute(paymentOpsContract.exceptions, {
+  handler: async (c) => c.json(okBody(await listPaymentExceptions(c.req.valid('query'))), 200),
+});
+
+const handleExceptionRoute = defineContractRoute(paymentOpsContract.handleException, {
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const body = c.req.valid('json');
+    return c.json(okBody(await resolvePaymentException(id, body.action, body.remark), '已处理'), 200);
+  },
+});
+
+router.openapiRoutes([listEventsRoute, eventAttemptsRoute, healthRoute, redispatchRoute, simulateRoute, exceptionsRoute, handleExceptionRoute] as const);
 
 export default router;

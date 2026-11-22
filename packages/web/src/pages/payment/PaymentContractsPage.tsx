@@ -231,7 +231,7 @@ export default function PaymentContractsPage() {
     { title: '支付应用', dataIndex: 'appId', width: 200, render: (value: number) => renderEllipsis(appById.get(value)?.name ?? `应用 #${value}`) },
     { title: '渠道', dataIndex: 'channel', width: 90, render: (v: PaymentChannel) => <PaymentChannelTag channel={v} textOnly /> },
     { title: '扣款计划', dataIndex: 'planName', minWidth: 200, render: (v: string | null, r) =>
-      renderEllipsis(v ? `${v}（${r.planPeriod ? describePlanPeriod({ period: r.planPeriod, customDays: null }) : EMPTY_PLACEHOLDER}）` : null) },
+      renderEllipsis(v ? `${v}（${r.planPeriod ? describePlanPeriod({ period: r.planPeriod, customDays: r.planCustomDays ?? null }) : EMPTY_PLACEHOLDER}）` : null) },
     { ...paymentMoneyColumn<PaymentContract>('每期金额', 'planAmount'), width: 100 },
     { title: '签约账号', dataIndex: 'signerAccount', width: 160, render: renderEllipsis },
     { title: '业务', dataIndex: 'bizType', width: 140, render: (v: string, r) => renderEllipsis(`${v}:${r.bizId}`) },

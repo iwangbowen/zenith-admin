@@ -4,6 +4,7 @@ import {
   paymentOpsContract,
   paymentReconContract,
   paymentRefundContract,
+  type PaymentException,
   type PaymentOpsHealth,
   type PaymentEventAttempt,
   type PaymentOutboxEvent,
@@ -172,10 +173,28 @@ const MOCK_OPS_HEALTH: PaymentOpsHealth = {
   sharingProcessing: 1,
   transferProcessing: 1,
   reconPendingDiff: 1,
+  paymentExceptionsOpen: 0,
 };
+
+const mockPaymentExceptions: PaymentException[] = [];
 
 const opsHandlers = [
   mock(paymentOpsContract.health, ({ ok }) => ok(MOCK_OPS_HEALTH)),
+  mock(paymentOpsContract.exceptions, ({ query, ok, paginate }) => {
+    const filtered = filterByKeyword(mockPaymentExceptions, query.keyword, [
+      (e) => e.orderNo,
+      (e) => e.refundNo,
+      (e) => e.message,
+    ]).filter((e) => matchesFilter(e.status, query.status) && matchesFilter(e.type, query.type));
+    return ok(paginate([...filtered].reverse()));
+  }),
+  mock(paymentOpsContract.handleException, ({ params, body, ok }) => {
+    const item = requireItem(mockPaymentExceptions, params.id, '支付异常不存在');
+    item.status = body.action === 'resolve' ? 'resolved' : 'ignored';
+    item.resolvedAt = new Date().toISOString();
+    item.resolvedBy = 1;
+    return ok(item);
+  }),
   mock(paymentOpsContract.events, ({ query, ok, paginate }) => {
     const filtered = filterByKeyword(outboxEvents, query.keyword, [(e) => e.orderNo])
       .filter((e) => matchesFilter(e.status, query.status) && matchesFilter(e.type, query.type));

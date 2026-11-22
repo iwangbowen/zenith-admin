@@ -4,12 +4,15 @@ import { paymentOpsContract } from '@zenith/shared/payment';
 import { contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
 export type PaymentEventListParams = NonNullable<QueryOf<typeof paymentOpsContract.events>>;
+export type PaymentExceptionListParams = NonNullable<QueryOf<typeof paymentOpsContract.exceptions>>;
 
 export const paymentEventKeys = {
   lists: contractKey(paymentOpsContract.events),
   list: (params: PaymentEventListParams) => contractKey(paymentOpsContract.events, { query: params }),
   attempts: (id: number | undefined) => contractKey(paymentOpsContract.eventAttempts, { params: { id: id ?? 0 } }),
   health: contractKey(paymentOpsContract.health),
+  exceptionLists: contractKey(paymentOpsContract.exceptions),
+  exceptionList: (params: PaymentExceptionListParams) => contractKey(paymentOpsContract.exceptions, { query: params }),
 };
 
 export function usePaymentEventList(params: PaymentEventListParams) {
@@ -33,4 +36,16 @@ export function useRedispatchPaymentEvent() {
 
 export function usePaymentOpsHealth(enabled = true) {
   return useApiQuery(paymentOpsContract.health, { refetchInterval: 30000, enabled });
+}
+
+export function usePaymentExceptionList(params: PaymentExceptionListParams) {
+  return useApiQuery(paymentOpsContract.exceptions, { query: params }, { placeholderData: keepPreviousData });
+}
+
+export function useHandlePaymentException() {
+  return useApiMutation(paymentOpsContract.handleException, {
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: paymentEventKeys.exceptionLists });
+    },
+  });
 }

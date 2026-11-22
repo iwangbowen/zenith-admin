@@ -1,4 +1,4 @@
-import { Spin, Table, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Spin, TabPane, Table, Tabs, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 // 直接引组件文件而非 charts 桶文件：后者会连带引入 ~2MB 的 vchart，本页无图表
@@ -6,6 +6,7 @@ import { StatCard, StatGrid } from '@/components/charts/StatCard';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { JsonBlock } from '@/components/JsonBlock';
 import { PaymentExpandedDetail } from './payment-expanded-detail';
+import PaymentExceptionsPanel from './PaymentExceptionsPanel';
 import { usePermission } from '@/hooks/usePermission';
 import { PAYMENT_EVENT_ATTEMPT_STATUS_LABELS, PAYMENT_OUTBOX_EVENT_STATUS_LABELS, PAYMENT_OUTBOX_EVENT_STATUS_OPTIONS, PAYMENT_OUTBOX_EVENT_STATUSES, type PaymentEventAttempt, type PaymentOutboxEvent } from '@zenith/shared/payment';
 import { paymentEventKeys, usePaymentEventAttempts, usePaymentEventList, usePaymentOpsHealth, useRedispatchPaymentEvent } from '@/hooks/queries/payment-events';
@@ -15,6 +16,7 @@ import { copyableNoColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-
 import { enumValueOf } from '@zenith/shared/core';
 import { useListPage } from '@/hooks/useListPage';
 import { useListDeepLink } from '@/hooks/useListDeepLink';
+import { useUrlTabState } from '@/hooks/useUrlTabState';
 
 const EVENT_STATUS_COLOR = { pending: 'blue', running: 'cyan', retrying: 'orange', succeeded: 'green', skipped: 'grey', dead: 'red' } as const satisfies Record<PaymentOutboxEvent['status'], string>;
 const ATTEMPT_STATUS_COLOR = { running: 'blue', succeeded: 'green', skipped: 'grey', failed: 'red' } as const satisfies Record<PaymentEventAttempt['status'], string>;
@@ -26,6 +28,7 @@ const HEALTH_LABELS = [
   ['sharingProcessing', '分账处理中'],
   ['transferProcessing', '转账处理中'],
   ['reconPendingDiff', '待处理对账差异'],
+  ['paymentExceptionsOpen', '支付异常待处理'],
 ] as const;
 
 interface SearchParams { keyword: string; status?: string; type?: string; }
@@ -80,6 +83,7 @@ function PaymentEventExpandedDetail({ event }: Readonly<{ event: PaymentOutboxEv
 
 export default function PaymentEventsPage() {
   const { hasPermission } = usePermission();
+  const [activeTab, setActiveTab] = useUrlTabState(['events', 'exceptions'] as const, 'events');
   const {
     bind,
     bindKeyword,
@@ -136,38 +140,45 @@ export default function PaymentEventsPage() {
   // 与订单统计等页面统一的无边框统计形态（StatGrid/StatCard）
 
   return (
-    <div className="page-container">
-      <ListSearchToolbar
-        keyword={<KeywordInput placeholder="订单号..." {...bindKeyword('keyword')} width={200} />}
-        filters={(
-          <>
-            <StatusSelect
-              items={PAYMENT_OUTBOX_EVENT_STATUS_OPTIONS}
-              {...bind('status')}
-            />
-            <KeywordInput placeholder="事件类型..." {...bindKeyword('type')} width={180} />
-          </>
-        )}
-        onSearch={handleSearch}
-        onReset={handleReset}
-        filterTitle="支付事件筛选"
-      />
+    <div className="page-container page-tabs-page">
+      <Tabs collapsible="auto" activeKey={activeTab} onChange={(key) => setActiveTab(key as 'events' | 'exceptions')} type="line" lazyRender keepDOM={false}>
+        <TabPane tab="事件投递" itemKey="events">
+          <ListSearchToolbar
+            keyword={<KeywordInput placeholder="订单号..." {...bindKeyword('keyword')} width={200} />}
+            filters={(
+              <>
+                <StatusSelect
+                  items={PAYMENT_OUTBOX_EVENT_STATUS_OPTIONS}
+                  {...bind('status')}
+                />
+                <KeywordInput placeholder="事件类型..." {...bindKeyword('type')} width={180} />
+              </>
+            )}
+            onSearch={handleSearch}
+            onReset={handleReset}
+            filterTitle="支付事件筛选"
+          />
 
-      <StatGrid minItemWidth={148} style={{ marginBottom: 12 }}>
-        {HEALTH_LABELS.map(([key, label]) => {
-          const value = health?.[key] ?? 0;
-          const danger = (key === 'outboxFailed' || key === 'webhookFailed24h') && value > 0;
-          return <StatCard key={key} title={label} value={value} accent={danger ? 'var(--semi-color-danger)' : undefined} />;
-        })}
-      </StatGrid>
+          <StatGrid minItemWidth={148} style={{ marginBottom: 12 }}>
+            {HEALTH_LABELS.map(([key, label]) => {
+              const value = health?.[key] ?? 0;
+              const danger = (key === 'outboxFailed' || key === 'webhookFailed24h' || key === 'paymentExceptionsOpen') && value > 0;
+              return <StatCard key={key} title={label} value={value} accent={danger ? 'var(--semi-color-danger)' : undefined} />;
+            })}
+          </StatGrid>
 
-      <ConfigurableTable
-        columns={columns}
-        empty="暂无数据"
-        {...tableProps}
-        expandedRowRender={renderExpanded}
-        expandRowByClick
-      />
+          <ConfigurableTable
+            columns={columns}
+            empty="暂无数据"
+            {...tableProps}
+            expandedRowRender={renderExpanded}
+            expandRowByClick
+          />
+        </TabPane>
+        <TabPane tab="支付异常" itemKey="exceptions">
+          <PaymentExceptionsPanel />
+        </TabPane>
+      </Tabs>
     </div>
   );
 }

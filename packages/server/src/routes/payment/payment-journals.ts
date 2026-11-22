@@ -9,6 +9,7 @@ import {
   createLedgerAccount,
   getActiveReservationAmount,
   getJournal,
+  getLedgerAccountBalance,
   listFundReservations,
   listJournals,
   listLedgerAccounts,
@@ -31,6 +32,10 @@ const accountCreateRoute = defineContractRoute(paymentJournalContract.createAcco
 
 const activeReservationRoute = defineContractRoute(paymentJournalContract.activeReservation, {
   handler: async (c) => c.json(okBody(await getActiveReservationAmount(c.req.valid('param').id)), 200),
+});
+
+const accountBalanceRoute = defineContractRoute(paymentJournalContract.accountBalance, {
+  handler: async (c) => c.json(okBody(await getLedgerAccountBalance(c.req.valid('param').id)), 200),
 });
 
 const reservationListRoute = defineContractRoute(paymentJournalContract.reservations, {
@@ -70,6 +75,7 @@ mountCrud(router, paymentJournalContract,
     accountListRoute,
     accountCreateRoute,
     activeReservationRoute,
+    accountBalanceRoute,
     reservationListRoute,
     reservationCreateRoute,
     reservationCaptureRoute,

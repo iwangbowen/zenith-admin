@@ -26,6 +26,7 @@ export const paymentContractSchema = z.object({
   planId: z.int(),
   planName: z.string().nullable().optional(),
   planPeriod: z.enum(PAYMENT_DEDUCT_PERIODS).nullable().optional(),
+  planCustomDays: z.int().nullable().optional().meta({ description: '自定义周期天数' }),
   planAmount: z.int().nullable().optional().meta({ description: '每期金额（分）' }),
   signerAccount: z.string(),
   signerName: z.string().nullable().optional(),

@@ -13,6 +13,8 @@ export const paymentLedgerAccountKeys = {
   list: (params: PaymentLedgerAccountListParams) => contractKey(paymentJournalContract.accounts, { query: params }),
   activeReservations: contractKey(paymentJournalContract.activeReservation),
   activeReservation: (accountId: number | undefined) => contractKey(paymentJournalContract.activeReservation, { params: { id: accountId ?? 0 } }),
+  balances: contractKey(paymentJournalContract.accountBalance),
+  balance: (accountId: number | undefined) => contractKey(paymentJournalContract.accountBalance, { params: { id: accountId ?? 0 } }),
 };
 
 export const paymentJournalKeys = {
@@ -41,6 +43,10 @@ export function usePaymentActiveReservationAmount(accountId: number | undefined,
   return useApiQuery(paymentJournalContract.activeReservation, { params: { id: accountId ?? 0 } }, { enabled: enabled && accountId !== undefined });
 }
 
+export function usePaymentLedgerAccountBalance(accountId: number | undefined, enabled = true) {
+  return useApiQuery(paymentJournalContract.accountBalance, { params: { id: accountId ?? 0 } }, { enabled: enabled && accountId !== undefined });
+}
+
 export function usePaymentJournalList(params: PaymentJournalListParams, enabled = true) {
   return useApiQuery(paymentJournalContract.list, { query: params }, { placeholderData: keepPreviousData, enabled });
 }
@@ -56,6 +62,7 @@ export function usePostPaymentJournal() {
       void invalidateEntityRelations(qc);
       qc.setQueryData(paymentJournalKeys.detail(journal.id), journal);
       void qc.invalidateQueries({ queryKey: paymentJournalKeys.lists });
+      void qc.invalidateQueries({ queryKey: paymentLedgerAccountKeys.balances });
     },
   });
 }
@@ -68,6 +75,7 @@ export function useReversePaymentJournal() {
       qc.setQueryData(paymentJournalKeys.detail(journal.id), journal);
       void qc.invalidateQueries({ queryKey: paymentJournalKeys.detail(params.id) });
       void qc.invalidateQueries({ queryKey: paymentJournalKeys.lists });
+      void qc.invalidateQueries({ queryKey: paymentLedgerAccountKeys.balances });
     },
   });
 }
@@ -82,6 +90,7 @@ export function useCreatePaymentFundReservation() {
     invalidate: (qc, _reservation, { body }) => {
       void qc.invalidateQueries({ queryKey: paymentFundReservationKeys.lists });
       void qc.invalidateQueries({ queryKey: paymentLedgerAccountKeys.activeReservation(body.accountId) });
+      void qc.invalidateQueries({ queryKey: paymentLedgerAccountKeys.balances });
     },
   });
 }
@@ -92,6 +101,7 @@ export function useTransitionPaymentFundReservation(action: 'capture' | 'release
     invalidate: (qc, reservation) => {
       void qc.invalidateQueries({ queryKey: paymentFundReservationKeys.lists });
       void qc.invalidateQueries({ queryKey: paymentLedgerAccountKeys.activeReservation(reservation.accountId) });
+      void qc.invalidateQueries({ queryKey: paymentLedgerAccountKeys.balances });
     },
   });
 }

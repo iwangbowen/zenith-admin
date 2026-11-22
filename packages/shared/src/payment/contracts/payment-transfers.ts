@@ -61,9 +61,7 @@ export const paymentTransferListQuery = paginationQuery.extend({
   ...dateRangeQuery(),
 });
 
-export const paymentTransferSummaryQuery = z.object({
-  channel: queryEnum(PAYMENT_CHANNELS),
-});
+export const paymentTransferSummaryQuery = paymentTransferListQuery.omit({ page: true, pageSize: true });
 
 export const paymentTransferContract = defineContract('/api/payment/transfers', {
   list: op.get('/', { access: { permission: 'payment:transfer:list' }, query: paymentTransferListQuery, response: paginated(paymentTransferSchema), summary: '转账单列表' }),

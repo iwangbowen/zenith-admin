@@ -32,7 +32,7 @@ beforeEach(() => {
   api
     .on('GET', '/api/payment/ops/events?page=1&pageSize=10', { list: [event], total: 1, page: 1, pageSize: 10 })
     .on('GET', '/api/payment/ops/events/7/attempts', [{ id: 1, eventId: 7, generation: 2, attemptNo: 1, status: 'succeeded', errorMessage: null, startedAt: event.createdAt, finishedAt: event.processedAt }])
-    .on('GET', '/api/payment/ops/health', { outboxPending: 0, outboxFailed: 0, webhookPending: 0, webhookFailed24h: 0, sharingProcessing: 0, transferProcessing: 0, reconPendingDiff: 0 })
+    .on('GET', '/api/payment/ops/health', { outboxPending: 0, outboxFailed: 0, webhookPending: 0, webhookFailed24h: 0, sharingProcessing: 0, transferProcessing: 0, reconPendingDiff: 0, paymentExceptionsOpen: 0 })
     .on('POST', '/api/payment/ops/events/7/redispatch', event);
 });
 

@@ -472,6 +472,31 @@ export const PAYMENT_APP_ENVIRONMENTS = ['production', 'sandbox'] as const;
 
 export type PaymentAppEnvironment = typeof PAYMENT_APP_ENVIRONMENTS[number];
 
+export const PAYMENT_EXCEPTION_STATUSES = ['open', 'resolved', 'ignored'] as const;
+
+export type PaymentExceptionStatus = typeof PAYMENT_EXCEPTION_STATUSES[number];
+
+export const PAYMENT_EXCEPTION_STATUS_LABELS: Record<PaymentExceptionStatus, string> = {
+  open: '待处理',
+  resolved: '已处理',
+  ignored: '已忽略',
+};
+
+export const PAYMENT_EXCEPTION_STATUS_OPTIONS = createLabelOptionsFromMap(PAYMENT_EXCEPTION_STATUS_LABELS);
+
+export const PAYMENT_EXCEPTION_TYPES = ['late_payment', 'amount_mismatch', 'refund_unknown', 'provider_error'] as const;
+
+export type PaymentExceptionType = typeof PAYMENT_EXCEPTION_TYPES[number];
+
+export const PAYMENT_EXCEPTION_TYPE_LABELS: Record<PaymentExceptionType, string> = {
+  late_payment: '迟到支付',
+  amount_mismatch: '金额不一致',
+  refund_unknown: '退款结果待确认',
+  provider_error: '渠道异常',
+};
+
+export const PAYMENT_EXCEPTION_TYPE_OPTIONS = createLabelOptionsFromMap(PAYMENT_EXCEPTION_TYPE_LABELS);
+
 export const PAYMENT_OUTBOX_EVENT_STATUSES = ['pending', 'running', 'retrying', 'succeeded', 'skipped', 'dead'] as const;
 
 export type PaymentOutboxEventStatus = typeof PAYMENT_OUTBOX_EVENT_STATUSES[number];

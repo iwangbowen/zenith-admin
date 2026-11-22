@@ -256,6 +256,13 @@ export default function PaymentLinkPublicPage() {
                     <Typography.Text type="tertiary">会话不存在、已失效或与当前收款链接不匹配。</Typography.Text>
                     <Button type="primary" icon={<RefreshCw size={16} />} onClick={clearSession}>重新发起支付</Button>
                   </div>
+                ) : sessionToken && !session && sessionQuery.isError ? (
+                  <div className="payment-cashier__state">
+                    <XCircle className="payment-cashier__state-icon payment-cashier__state-icon--danger" size={56} aria-hidden="true" />
+                    <Typography.Title heading={4}>支付会话加载失败</Typography.Title>
+                    <Typography.Text type="tertiary">网络暂时不可用，请重试；已支付订单不会因本页刷新而丢失。</Typography.Text>
+                    <Button type="primary" icon={<RefreshCw size={16} />} onClick={() => void sessionQuery.refetch()}>重试</Button>
+                  </div>
                 ) : sessionToken && !session ? (
                   <div className="payment-cashier__state">
                     <Spin spinning />
@@ -370,6 +377,13 @@ export default function PaymentLinkPublicPage() {
                     )}
                   </div>
                 )
+              ) : linkQuery.isError ? (
+                <div className="payment-cashier__state">
+                  <XCircle className="payment-cashier__state-icon" size={56} aria-hidden="true" />
+                  <Typography.Title heading={4}>收款链接加载失败</Typography.Title>
+                  <Typography.Text type="tertiary">网络暂时不可用，请稍后重试。</Typography.Text>
+                  <Button type="primary" icon={<RefreshCw size={16} />} onClick={() => void linkQuery.refetch()}>重试</Button>
+                </div>
               ) : (
                 <div className="payment-cashier__state">
                   <XCircle className="payment-cashier__state-icon" size={56} aria-hidden="true" />

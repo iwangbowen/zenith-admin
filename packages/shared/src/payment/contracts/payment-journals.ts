@@ -96,6 +96,24 @@ export const paymentActiveReservationAmountSchema = z.object({
 
 export type PaymentActiveReservationAmount = z.infer<typeof paymentActiveReservationAmountSchema>;
 
+/** 账户余额：balance 按科目正常余额方向展示，available = balance - 有效预占。 */
+export const paymentLedgerAccountBalanceSchema = z.object({
+  accountId: z.int(),
+  accountNo: z.string(),
+  name: z.string(),
+  code: z.enum(PAYMENT_LEDGER_ACCOUNT_CODES),
+  normalBalance: z.enum(PAYMENT_LEDGER_NORMAL_BALANCES),
+  currency: z.string(),
+  debitTotal: amountString,
+  creditTotal: amountString,
+  balance: z.string().meta({ description: '按正常余额方向的有符号十进制金额' }),
+  activeReservation: amountString,
+  available: z.string().meta({ description: '账面余额扣除有效预占后的可用金额' }),
+  asOf: z.string(),
+}).meta({ id: 'PaymentLedgerAccountBalance' });
+
+export type PaymentLedgerAccountBalance = z.infer<typeof paymentLedgerAccountBalanceSchema>;
+
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 
 const currencyQuery = z.string().regex(/^[A-Z]{3}$/).optional();
@@ -128,6 +146,7 @@ export const paymentJournalContract = defineContract('/api/payment/journals', {
   accounts: op.get('/accounts', { access: { permission: 'payment:ledger:list' }, query: paymentLedgerAccountListQuery, response: paginated(paymentLedgerAccountSchema), summary: '账本账户列表' }),
   createAccount: op.post('/accounts', { access: { permission: 'payment:ledger:account:create' }, audit: '创建支付账本账户', body: createPaymentLedgerAccountSchema, response: paymentLedgerAccountSchema, summary: '创建账本账户' }),
   activeReservation: op.get('/accounts/{id}/active-reservation', { access: { permission: 'payment:ledger:list' }, params: idParam, response: paymentActiveReservationAmountSchema, summary: '查询账户有效预占金额' }),
+  accountBalance: op.get('/accounts/{id}/balance', { access: { permission: 'payment:ledger:list' }, params: idParam, response: paymentLedgerAccountBalanceSchema, summary: '查询账户账面余额与可用余额' }),
   reservations: op.get('/reservations', { access: { permission: 'payment:ledger:list' }, query: paymentFundReservationListQuery, response: paginated(paymentFundReservationSchema), summary: '资金预占列表' }),
   createReservation: op.post('/reservations', { access: { permission: 'payment:ledger:reserve' }, audit: '创建支付资金预占', body: createPaymentFundReservationSchema, response: paymentFundReservationSchema, summary: '创建资金预占' }),
   captureReservation: op.post('/reservations/{id}/capture', { access: { permission: 'payment:ledger:reserve' }, audit: '核销支付资金预占', params: idParam, body: transitionPaymentFundReservationSchema, response: paymentFundReservationSchema, summary: '核销资金预占' }),

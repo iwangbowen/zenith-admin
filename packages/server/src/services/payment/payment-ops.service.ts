@@ -3,7 +3,7 @@ import type { QueryOutputOf } from '@zenith/shared/core';
 import { and, desc, eq, gte, inArray, like, or, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
-import { eventConsumerAttempts, eventConsumerDeliveries, eventOutbox, appWebhookDeliveries, paymentOrders, paymentReconCases, paymentSharingOrders, paymentTransfers } from '../../db/schema';
+import { eventConsumerAttempts, eventConsumerDeliveries, eventOutbox, appWebhookDeliveries, paymentExceptions, paymentOrders, paymentReconCases, paymentSharingOrders, paymentTransfers } from '../../db/schema';
 import { requireRow } from '../../lib/db-assert';
 import { currentUser } from '../../lib/context';
 import { getTenantScopeId, optionalExactTenantCondition, tenantCondition } from '../../lib/tenant';
@@ -43,7 +43,7 @@ function mapPaymentEventAttempt(row: typeof eventConsumerAttempts.$inferSelect):
 }
 
 export interface PaymentHealth { outboxPending: number; outboxFailed: number; webhookPending: number; webhookFailed24h: number;
-  sharingProcessing: number; transferProcessing: number; reconPendingDiff: number }
+  sharingProcessing: number; transferProcessing: number; reconPendingDiff: number; paymentExceptionsOpen: number }
 
 export async function getPaymentHealth(): Promise<PaymentHealth> {
   const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -52,16 +52,17 @@ export async function getPaymentHealth(): Promise<PaymentHealth> {
   const transferTenant = tenantCondition(paymentTransfers, user);
   const reconTenant = tenantCondition(paymentReconCases, user);
   const paymentWebhook = and(tenantCondition(appWebhookDeliveries, user), or(like(appWebhookDeliveries.eventType, 'payment.%'), like(appWebhookDeliveries.eventType, 'refund.%')));
-  const [eventHealth, webhookPending, webhookFailed24h, sharingProcessing, transferProcessing, reconPendingDiff] = await Promise.all([
+  const [eventHealth, webhookPending, webhookFailed24h, sharingProcessing, transferProcessing, reconPendingDiff, paymentExceptionsOpen] = await Promise.all([
     getPaymentEventHealth(getTenantScopeId(user)),
     db.$count(appWebhookDeliveries, and(paymentWebhook, inArray(appWebhookDeliveries.status, ['pending', 'retrying']))),
     db.$count(appWebhookDeliveries, and(paymentWebhook, eq(appWebhookDeliveries.status, 'failed'), gte(appWebhookDeliveries.finishedAt, since24h))),
     db.$count(paymentSharingOrders, buildWhere(eq(paymentSharingOrders.status, 'processing'), sharingTenant)),
     db.$count(paymentTransfers, buildWhere(inArray(paymentTransfers.status, ['processing', 'unknown']), transferTenant)),
     db.$count(paymentReconCases, buildWhere(inArray(paymentReconCases.status, ['open', 'investigating', 'suspended']), reconTenant)),
+    db.$count(paymentExceptions, buildWhere(eq(paymentExceptions.status, 'open'), tenantCondition(paymentExceptions, user))),
   ]);
   return { outboxPending: eventHealth.counts.pending + eventHealth.counts.running, outboxFailed: eventHealth.counts.dead ?? 0,
-    webhookPending, webhookFailed24h, sharingProcessing, transferProcessing, reconPendingDiff };
+    webhookPending, webhookFailed24h, sharingProcessing, transferProcessing, reconPendingDiff, paymentExceptionsOpen };
 }
 
 export async function listPaymentEvents(q: QueryOutputOf<typeof paymentOpsContract.events>) {

@@ -3,8 +3,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import { and, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { PAYMENT_LEDGER_STANDARD_ACCOUNTS, type SystemPaymentJournalInput, type CreatePaymentFundReservationInput, type CreatePaymentLedgerAccountInput, type PaymentActiveReservationAmount, type PaymentFundReservation, type PaymentJournal, type PaymentJournalLine, type PaymentLedgerAccount, type PaymentLedgerAccountCode, type PostPaymentJournalInput, type TransitionPaymentFundReservationInput, paymentJournalContract } from '@zenith/shared/payment';
-import { db } from '../../db';
+import { PAYMENT_LEDGER_STANDARD_ACCOUNTS, type SystemPaymentJournalInput, type CreatePaymentFundReservationInput, type CreatePaymentLedgerAccountInput, type PaymentActiveReservationAmount, type PaymentFundReservation, type PaymentJournal, type PaymentJournalLine, type PaymentLedgerAccount, type PaymentLedgerAccountBalance, type PaymentLedgerAccountCode, type PostPaymentJournalInput, type TransitionPaymentFundReservationInput, paymentJournalContract } from '@zenith/shared/payment';
+import { db, readSnapshot } from '../../db';
 import { buildListResult, listRows } from '../../lib/list-query';
 import { paymentApps, paymentChannelConfigs, paymentFundReservations, paymentJournalLines, paymentJournals, paymentLedgerAccounts, type PaymentFundReservationRow, type PaymentJournalRow, type PaymentLedgerAccountRow } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
@@ -127,6 +127,53 @@ export async function listLedgerAccounts(q: QueryOutputOf<typeof paymentJournalC
     where,
     orderBy: [desc(paymentLedgerAccounts.id)],
     map: mapLedgerAccount,
+  });
+}
+
+/** 账户余额视图：账面余额按正常余额方向展示，available 再扣除 active reservation。 */
+export async function getLedgerAccountBalance(id: number): Promise<PaymentLedgerAccountBalance> {
+  const user = currentUser();
+  return readSnapshot(async (tx) => {
+    const [account] = await tx
+      .select()
+      .from(paymentLedgerAccounts)
+      .where(and(eq(paymentLedgerAccounts.id, id), tenantCondition(paymentLedgerAccounts, user)))
+      .limit(1);
+    requireRow(account, '账本账户不存在');
+    const [totals] = await tx
+      .select({
+        debit: sql<string>`coalesce(sum(${paymentJournalLines.debitAmount}), 0)::text`,
+        credit: sql<string>`coalesce(sum(${paymentJournalLines.creditAmount}), 0)::text`,
+      })
+      .from(paymentJournalLines)
+      .where(eq(paymentJournalLines.accountId, id));
+    const [reserved] = await tx
+      .select({ amount: sql<string>`coalesce(sum(${paymentFundReservations.amount}), 0)::text` })
+      .from(paymentFundReservations)
+      .where(and(
+        eq(paymentFundReservations.accountId, id),
+        eq(paymentFundReservations.status, 'active'),
+        or(isNull(paymentFundReservations.expiresAt), gt(paymentFundReservations.expiresAt, new Date())),
+        exactTenantCondition(paymentFundReservations.tenantId, account.tenantId),
+      ));
+    const debit = BigInt(totals?.debit ?? '0');
+    const credit = BigInt(totals?.credit ?? '0');
+    const signed = account.normalBalance === 'debit' ? debit - credit : credit - debit;
+    const reservation = BigInt(reserved?.amount ?? '0');
+    return {
+      accountId: account.id,
+      accountNo: account.accountNo,
+      name: account.name,
+      code: account.code,
+      normalBalance: account.normalBalance,
+      currency: account.currency,
+      debitTotal: debit.toString(),
+      creditTotal: credit.toString(),
+      balance: signed.toString(),
+      activeReservation: reservation.toString(),
+      available: (signed - reservation).toString(),
+      asOf: formatDateTime(new Date()),
+    };
   });
 }
 

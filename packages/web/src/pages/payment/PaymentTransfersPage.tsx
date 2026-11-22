@@ -31,7 +31,8 @@ import type {
   PaymentTransferStatus,
 } from '@zenith/shared/payment';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
-import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
+import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
+import { formatDateTimeRangeForApi } from '@/utils/date';
 import { PaymentChannelTag } from './payment-display';
 import { useEnabledPaymentAppLookup } from './payment-app-options';
 import { PaymentAppField, PaymentCurrencyField } from './payment-form-fields';
@@ -41,8 +42,8 @@ const yuan = formatYuan;
 const STATUS_COLOR = { pending: 'grey', processing: 'blue', unknown: 'orange', success: 'green', failed: 'red' } as const satisfies Record<PaymentTransferStatus, string>;
 const APPROVAL_COLOR = { none: 'grey', pending: 'orange', approved: 'green', rejected: 'red' } as const satisfies Record<PaymentTransferApprovalStatus, string>;
 
-interface SearchParams { keyword: string; channel?: string; status?: string; approvalStatus?: string; }
-const defaultSearch: SearchParams = { keyword: '', channel: undefined, status: undefined, approvalStatus: undefined };
+interface SearchParams { keyword: string; channel?: string; status?: string; approvalStatus?: string; timeRange: [Date, Date] | null; }
+const defaultSearch: SearchParams = { keyword: '', channel: undefined, status: undefined, approvalStatus: undefined, timeRange: null };
 
 interface TransferFormValues {
   applicationId: number;
@@ -79,13 +80,14 @@ export default function PaymentTransfersPage() {
     channel: enumValueOf(PAYMENT_CHANNELS, submittedParams.channel),
     status: enumValueOf(PAYMENT_TRANSFER_STATUSES, submittedParams.status),
     approvalStatus: enumValueOf(PAYMENT_TRANSFER_APPROVAL_STATUSES, submittedParams.approvalStatus),
+    ...formatDateTimeRangeForApi(submittedParams.timeRange),
   });
   const listQuery = usePaymentTransferList({
     page,
     pageSize,
     ...filterQuery,
   });
-  const summaryQuery = usePaymentTransferSummary();
+  const summaryQuery = usePaymentTransferSummary(filterQuery);
   const summary = summaryQuery.data ?? null;
   const { appById, appOptions, isFetching: appsFetching } = useEnabledPaymentAppLookup();
   const createChannelOptions = useMemo(() => {
@@ -93,7 +95,7 @@ export default function PaymentTransfersPage() {
     return [
       ...(app?.wechatConfigId ? [{ value: 'wechat', label: '微信支付（零钱）' }] : []),
       ...(app?.alipayConfigId ? [{ value: 'alipay', label: '支付宝（账户）' }] : []),
-      ...(app?.unionpayConfigId ? [{ value: 'unionpay', label: '云闪付' }] : []),
+      // 云闪付适配器没有转账能力，不展示不可执行的选项。
     ];
   }, [appById, selectedAppId]);
   const createMutation = useCreatePaymentTransfer();
@@ -243,6 +245,7 @@ export default function PaymentTransfersPage() {
               {...bind('approvalStatus')}
               width={140}
             />
+            <DateRangeFilter placeholder={['创建开始', '创建结束']} {...bind('timeRange')} />
           </>
         )}
         onSearch={handleSearch}

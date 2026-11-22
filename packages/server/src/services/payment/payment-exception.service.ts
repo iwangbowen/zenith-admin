@@ -10,12 +10,15 @@
 import { createHash } from 'node:crypto';
 import { and, desc, eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import { paymentExceptionSchema, paymentOpsContract, type PaymentException } from '@zenith/shared/payment';
 import { db } from '../../db';
 import { paymentExceptions, type PaymentExceptionRow } from '../../db/schema';
 import { currentUser } from '../../lib/context';
 import { requireTenantScopeId, tenantCondition } from '../../lib/tenant';
 import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
 import { listRows } from '../../lib/list-query';
+import { pickEntity } from '../../lib/entity-map';
 
 export interface RecordPaymentExceptionInput {
   type: 'late_payment' | 'amount_mismatch' | 'refund_unknown' | 'provider_error';
@@ -64,15 +67,14 @@ export async function recordPaymentException(input: RecordPaymentExceptionInput)
     .onConflictDoNothing({ target: paymentExceptions.dedupeKey });
 }
 
-export type PaymentExceptionListQuery = {
-  page: number;
-  pageSize: number;
-  keyword?: string;
-  status?: 'open' | 'resolved' | 'ignored';
-  type?: string;
-  startTime?: string;
-  endTime?: string;
-};
+export type PaymentExceptionListQuery = QueryOutputOf<typeof paymentOpsContract.exceptions>;
+
+export function mapPaymentException(row: PaymentExceptionRow): PaymentException {
+  return pickEntity(paymentExceptionSchema, row, {
+    type: row.type as PaymentException['type'],
+    payload: row.payload as Record<string, unknown> | null,
+  });
+}
 
 export async function listPaymentExceptions(q: PaymentExceptionListQuery) {
   const where = buildWhere(
@@ -88,7 +90,7 @@ export async function listPaymentExceptions(q: PaymentExceptionListQuery) {
     table: paymentExceptions,
     where,
     orderBy: [desc(paymentExceptions.id)],
-    map: (row) => row,
+    map: mapPaymentException,
   });
 }
 
@@ -107,20 +109,20 @@ export async function resolvePaymentException(
   id: number,
   action: 'resolve' | 'ignore',
   remark?: string,
-): Promise<PaymentExceptionRow> {
+): Promise<PaymentException> {
   const user = currentUser();
   requireTenantScopeId(user);
   const row = await ensurePaymentException(id);
-  if (row.status !== 'open') return row;
+  if (row.status !== 'open') return mapPaymentException(row);
   const [updated] = await db
     .update(paymentExceptions)
     .set({
       status: action === 'resolve' ? 'resolved' : 'ignored',
       resolvedAt: new Date(),
       resolvedBy: user.userId,
-      message: remark?.trim() ? remark.trim().slice(0, 500) : row.message,
+      message: remark?.trim() || row.message,
     })
     .where(and(eq(paymentExceptions.id, id), eq(paymentExceptions.status, 'open'), tenantCondition(paymentExceptions, user)))
     .returning();
-  return updated ?? row;
+  return mapPaymentException(updated ?? row);
 }

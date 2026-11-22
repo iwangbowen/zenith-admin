@@ -43,6 +43,22 @@ async function transferApprovalThreshold(tenantId: number | null): Promise<numbe
   return Math.max(0, Math.trunc((await getSettings('payment', { tenantId })).transferApprovalThreshold));
 }
 
+/** 能力清单里的金额/实名限制必须在下单前执行，不能只靠适配器抛错。 */
+function assertTransferLimits(
+  capability: { limits?: { maxAmount?: number | null; receiverNameRequiredAtOrAbove?: number | null } | null } | null | undefined,
+  amount: number,
+  receiverName?: string | null,
+): void {
+  const maxAmount = capability?.limits?.maxAmount;
+  if (maxAmount != null && amount > maxAmount) {
+    throw new HTTPException(400, { message: `转账金额超过渠道单笔上限（最大 ${maxAmount} 分）` });
+  }
+  const nameThreshold = capability?.limits?.receiverNameRequiredAtOrAbove;
+  if (nameThreshold != null && amount >= nameThreshold && !receiverName?.trim()) {
+    throw new HTTPException(400, { message: `该金额转账必须填写收款人实名（阈值 ${nameThreshold} 分）` });
+  }
+}
+
 export function mapTransfer(row: PaymentTransferRow & { operatorName?: string | null }): PaymentTransfer {
   return pickEntity(paymentTransferSchema, row);
 }
@@ -259,7 +275,8 @@ export async function createTransfer(input: CreatePaymentTransferInput & { idemp
     channelConfigId: applicationRoute.channelConfigId,
     scope: tenantCondition(paymentChannelConfigs, user),
   });
-  await assertEffectivePaymentOperation({ configRow: config, operation: 'transfer.create', currency: input.currency });
+  const capability = await assertEffectivePaymentOperation({ configRow: config, operation: 'transfer.create', currency: input.currency });
+  assertTransferLimits(capability, input.amount, input.receiverName);
   const idempotencyKey = input.idempotencyKey.trim();
   if (!idempotencyKey) throw new HTTPException(400, { message: '转账请求必须提供 Idempotency-Key' });
   const requestHash = createHash('sha256').update(JSON.stringify({
@@ -359,7 +376,8 @@ export async function approveTransfer(id: number, input: ApprovePaymentTransferI
     channelConfigId: row.channelConfigId,
     scope: tenantCondition(paymentChannelConfigs, user),
   });
-  await assertEffectivePaymentOperation({ configRow: config, operation: 'transfer.create', currency: row.currency });
+  const capability = await assertEffectivePaymentOperation({ configRow: config, operation: 'transfer.create', currency: row.currency });
+  assertTransferLimits(capability, row.amount, row.receiverName);
 
   const maybeApproved = await casUpdateTransfer(db, row, {
     approvalStatus: 'approved',
@@ -583,7 +601,11 @@ export type PaymentTransferSummaryFilter = Omit<ListTransfersQuery, 'page' | 'pa
 
 export async function getTransferSummary(q: PaymentTransferSummaryFilter) {
   const where = buildWhere(
+    q.keyword ? keywordCondition(q.keyword, [paymentTransfers.transferNo, paymentTransfers.receiverAccount]) : undefined,
     q.channel ? eq(paymentTransfers.channel, q.channel) : undefined,
+    q.status ? eq(paymentTransfers.status, q.status) : undefined,
+    q.approvalStatus ? eq(paymentTransfers.approvalStatus, q.approvalStatus) : undefined,
+    ...dateRangeConditions(paymentTransfers.createdAt, q.startTime, q.endTime),
     tenantCondition(paymentTransfers, currentUser()),
   );
   const [row] = await db

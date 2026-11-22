@@ -22,8 +22,11 @@ function invalidateTransfer(qc: QueryClient, id?: number) {
 export const usePaymentTransferList = resource.useList;
 export const usePaymentTransferDetail = resource.useDetail;
 
-export function usePaymentTransferSummary(enabled = true) {
-  return useApiQuery(paymentTransferContract.summary, { query: {} }, { enabled });
+export function usePaymentTransferSummary(
+  params: NonNullable<QueryOf<typeof paymentTransferContract.summary>> = {},
+  enabled = true,
+) {
+  return useApiQuery(paymentTransferContract.summary, { query: params }, { enabled });
 }
 
 /** 发起转账：幂等键由页面按业务意图生成，放在输入的 headers 段 */
