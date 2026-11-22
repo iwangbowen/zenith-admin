@@ -345,6 +345,7 @@ export default withMermaid(defineConfig({
           { text: '业务接入', link: '/payment/integration' },
           { text: '业务接入实战示例', link: '/payment/integration-example' },
           { text: '异步通知与对账', link: '/payment/callback' },
+          { text: '生产对账操作', link: '/payment/reconciliation' },
           { text: '安全设计', link: '/payment/security' },
           { text: '后台管理页面', link: '/payment/admin' },
         ],

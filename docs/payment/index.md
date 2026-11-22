@@ -1,6 +1,6 @@
 # 支付中心总览
 
-支付中心是平台级统一支付网关：业务模块调用统一门面完成下单、查询、关单、退款、进阶交易与结果订阅，微信支付 / 支付宝 / 云闪付差异由适配器层封装。支付域同时提供双分录资金凭证、手续费、结算、分账、转账、对账、风控、交易投诉、签约代扣、预授权、支付链接、应用路由与 Open Platform Webhook。
+支付中心是平台级统一支付网关：业务模块调用统一门面完成下单、查询、关单、退款、进阶交易与结果订阅，微信支付 / 支付宝 / 云闪付差异由适配器层封装。支付域同时提供双分录资金凭证、手续费、结算、分账、转账、对账、风控、交易投诉、签约代扣、预授权、支付链接、应用路由与 Open Platform Webhook，并统一收口迟到支付、金额不一致与退款结果未知等异常。
 
 ## 文档导航
 
@@ -12,7 +12,7 @@
 | [异步通知与对账](./callback.md) | 渠道回调、Outbox、查单补偿、定时任务、Open Platform Webhook、账单获取与对账入口 |
 | [生产对账操作](./reconciliation.md) | 交易/资金/银行到账对账、证据、重试、差异案件与银行分配 |
 | [安全设计](./security.md) | 验签、密钥、幂等、资金一致性、规则中心风控、投诉分流、权限与审计 |
-| [后台管理页面](./admin.md) | `/payment/*` 下 19 个后台页面的功能清单与操作说明 |
+| [后台管理页面](./admin.md) | `/payment/*` 下 20 个后台页面的功能清单与操作说明 |
 
 ## 能力总览
 
@@ -47,16 +47,17 @@
 
 | 能力域 | 实现范围 |
 | --- | --- |
-| 基础交易 | 统一下单、查单、关单、退款；7 种收银台方式；退款审批阈值；超时关单 |
+| 基础交易 | 统一下单、查单、关单、退款；7 种收银台方式；退款审批阈值与四眼审批；超时关单 |
+| 异常收口 | 迟到支付、金额不一致、退款结果未知与渠道异常统一落 `payment_exceptions`；异常不自动改单，由异常中心人工确认入账、退款或挂账 |
 | 渠道适配 | 微信支付 v3、支付宝开放平台、云闪付/银联全渠道；统一适配器接口与沙箱模式 |
-| 资金运营 | 资金台账、手续费费率、退款手续费按比例冲销、渠道账户快照、结算、分账、转账 |
+| 资金运营 | 资金台账与账户余额、手续费费率与规则快照、退款手续费按比例冲销、渠道账户快照、结算、分账、转账 |
 | 对账 | 三渠道账单获取、资金与银行到账核验、可恢复任务、差异案件、审批调账与审计 |
 | 风控 | 规则中心 `payment_risk` 决策表优先裁决；原生规则提供名单、单笔、单日金额、单日笔数校验 |
 | 投诉 | `dispute_triage` 决策表分流，投诉回复/完结/退款，SLA 收紧与时间线留痕 |
 | 进阶交易 | 签约代扣、预授权、支付链接公开收银台、应用维度渠道路由 |
-| 可观测 | 回调日志、支付事件消费者回执、Open Platform Webhook 投递日志、支付链路健康指标 |
+| 可观测 | 回调日志、支付事件消费者回执、支付异常中心、Open Platform Webhook 投递日志、支付链路健康指标 |
 
-后台共 **19 个管理页面**，入口与操作见[后台管理页面](./admin.md)。
+后台共 **20 个管理页面**，入口与操作见[后台管理页面](./admin.md)。
 
 ## 关键工程决策
 
@@ -67,6 +68,10 @@
 | 适配器模式 | 渠道签名、报文、状态映射封装在 `packages/server/src/lib/payment/` |
 | 事件 Outbox | 支付/退款终态事实与状态更新同事务写入共享 `event_outbox`，各消费者独立回执、退避重试与死信，至少一次送达 |
 | 条件更新状态机 | 回调、查单、模拟支付、退款查询均通过条件 UPDATE 推进状态，重复触发无副作用 |
+| 条款与费率快照 | 签约时固化计划金额、周期、自定义天数与重试次数；支付成功时固化匹配费率规则。后续配置变更不影响既有协议与订单 |
+| 商户应收 | 退款、手续费、分账与对账调账允许将 `merchant_available` 借为负数，形成商户应收并由后续收款自动冲抵；转账与人工凭证仍强制余额守卫 |
+| 恢复优先 | 查单、关单、退款提交以 `recovery` 模式执行，支付方式停用或渠道配置停用不阻断存量单收敛；未知退款只允许查单，禁止盲目重发 |
+| 异常不改单 | 渠道已收款但本地订单已终态时只记录异常并保留原始报文，不静默改单、不重复履约 |
 | 密钥加密落库 | 渠道私钥/密钥用 `encryptField` 存储，API 只返回 `hasXxx` 布尔位 |
 | 规则中心决策 | 支付风控与交易投诉通过 `decide()` 接入规则中心，执行记录可在规则中心追溯 |
 | 沙箱模式 | 渠道配置可开启沙箱，不外呼真实渠道，返回模拟凭据并支持演示链路 |
@@ -80,13 +85,14 @@
 | 表 | 职责 |
 | --- | --- |
 | `payment_channel_configs` | 渠道配置；微信/支付宝/云闪付密钥加密存储，支持沙箱与默认配置 |
-| `payment_orders` | 支付订单；记录业务标识、金额、渠道、方式、应用、部门、手续费、净额与状态 |
-| `payment_refunds` | 退款单；记录可退余额校验、审批状态、渠道退款号与退款结果 |
+| `payment_orders` | 支付订单；记录业务标识、金额、渠道、方式、应用、部门、手续费、净额、费率快照与状态 |
+| `payment_refunds` | 退款单；记录可退余额校验、审批状态、渠道退款号、退款结果，以及提交/查单恢复字段（`channelSubmittedAt`、`submitAttempts`、`unknownSince`、`lastQueryAt`） |
 | `payment_notify_logs` | 渠道回调日志；记录原始报文、请求头、验签结果、来源 IP 与处理结果 |
+| `payment_exceptions` | 支付异常；记录迟到支付、金额不一致、退款结果未知与渠道异常，按去重键幂等落案，状态为 `open` / `resolved` / `ignored` |
 
 支付事件不再使用独立表，统一落在共享领域事件账本（`event_outbox` / `event_consumer_deliveries` / `event_consumer_attempts`），见[领域事件](../backend/domain-events.md)。
 
-关键索引：`payment_orders_channel_out_trade_no_uq`、`payment_orders_active_biz_uq`、`payment_journals_source_scope_uq`、`payment_fund_reservations_source_uq`。
+关键唯一约束与索引：`payment_orders_account_out_trade_no_uq`、`payment_orders_active_biz_uq`、`payment_refunds_out_refund_no_uq`、`payment_journals_source_scope_uq`、`payment_fund_reservations_source_scope_uq`、`payment_exceptions_dedupe_key_unique`、`payment_notify_logs_provider_event_uq`。
 
 ### 资金运营
 
@@ -115,7 +121,7 @@
 
 | 表 | 职责 |
 | --- | --- |
-| `payment_deduct_plans` / `payment_contracts` | 周期扣款计划与签约协议 |
+| `payment_deduct_plans` / `payment_contracts` | 周期扣款计划与签约协议；协议保存签约时的计划金额、周期、自定义天数与重试次数快照 |
 | `payment_preauths` | 预授权单：冻结、转支付、解冻 |
 | `payment_links` | 支付链接：公开 token 收银台，一码多付 |
 | `payment_apps` | 应用维度路由：绑定 OAuth2 client 与三渠道配置 |
@@ -136,6 +142,7 @@ pending ──(渠道下单成功)──▶ paying ──(回调/查单成功)�
 
 - `closeExpiredPaymentOrders` 先查单再关单，避免边界支付被误关。
 - `review` 风控命中会先生成挂起订单与审核单，渠道侧不下单；审核放行后用户重新发起支付时复用该订单继续渠道下单。
+- 订单进入 `closed` / `failed` 后渠道仍确认支付成功时，不改写终态、不重复履约，统一记录 `late_payment` 异常并保留原始报文。
 
 ## 渠道与支付方式
 
@@ -156,6 +163,8 @@ pending ──(渠道下单成功)──▶ paying ──(回调/查单成功)�
 | 预授权 | `wechat_preauth` / `alipay_preauth` | 冻结资金转支付单使用 |
 
 枚举事实来源为 `packages/shared/src/payment/constants.ts`。
+
+公开支付链接收银台只开放 `wechat_native`、`wechat_h5`、`alipay_page`、`alipay_wap`、`unionpay_qr`；微信 JSAPI、支付宝 APP 等需要应用内上下文的支付方式不进入公开链接。
 
 ## 与会员体系联动
 

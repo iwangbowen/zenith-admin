@@ -6,19 +6,23 @@
 
 | 风险 | 防线 |
 | --- | --- |
-| 伪造回调 | 微信平台证书、支付宝 RSA2/RSA、银联 SHA256+RSA 验签；验签失败只记日志并返回 401 |
+| 伪造回调 | 微信平台证书、支付宝 RSA2/RSA、银联 SHA256+RSA 验签；微信成功 API 响应统一验签；验签失败只记日志并返回 401 |
 | 重复回调 / 重复事件 | 订单/退款状态条件更新 + Outbox 至少一次投递 + 订阅者幂等 |
-| 重复提交 | 下单、退款、转账等写接口使用 `idempotencyGuard`；业务活跃单复用；唯一索引兜底 |
+| 重复提交 | 下单、退款、转账等写接口使用 `idempotencyGuard`；公开支付链接支持 `x-idempotency-key` 5 分钟回放；业务活跃单复用；唯一索引兜底 |
 | 并发超退 | 退款事务内锁单校验可退余额 |
+| 退款重复提交/重复出款 | 提交前持久化 `channelSubmittedAt`；未提交退款用原 `outRefundNo` 幂等重提；未知退款只查单不重发 |
 | 转账双付 | `(channel, out_transfer_no)` 唯一；只有渠道未受理且尝试次数未达上限的失败单可重试 |
 | 重复记账 | 台账唯一索引限制同订单收款/手续费、同退款退款/手续费冲销重复入账 |
 | 密钥泄露 | 渠道密钥 AES-256-GCM 加密落库，API 只返回 `hasXxx` 布尔位 |
-| 大额误退 | 退款审批阈值链路 |
+| 大额误退 | 退款审批阈值链路；申请人与审批人必须分离 |
+| 迟到支付 / 金额不一致 | 落 `payment_exceptions` 并保留原始报文；不自动改单、不重复履约 |
 | 欺诈交易 | `payment_risk` 决策表 + 原生名单/限额规则双层裁决 |
 | 投诉处理不一致 | `dispute_triage` 分流建议、SLA 收紧、时间线留痕；资金动作仍需人工确认 |
-| 越权操作 | 19 个支付页面权限码、服务端 `guard()`、数据权限与租户隔离 |
+| 越权操作 | 20 个支付页面权限码、服务端 `guard()`、数据权限与租户隔离 |
 | 争议无凭据 | 回调日志、渠道账单原件及摘要、解析器版本、标准明细行号、核对快照、案件历史、银行分配审计 |
 | 伪造账单/重放账单 | 官方下载地址白名单、渠道响应验签或摘要校验、文件大小/ZIP CRC/路径校验、商户身份和账期校验、版本幂等 |
+| 财务账单公开泄露 | 账单原件只写默认私有存储；公共读 ACL、公共读 Bucket 或公共 Bucket Policy 直接拒绝归档 |
+| 删除被引用数据 | 支付应用、分账接收方存在引用时删除返回 409，引导改用停用 |
 
 ## 密钥与证书存储
 
@@ -66,13 +70,16 @@ POST /api/public/payment/notify/{channel}
 
 - 金额全链路使用整数分。
 - 退款在事务内锁定订单并计算可退余额，审批中的退款不占用订单 `refunding` 状态。
-- 支付成功后内置订阅者写收款双分录凭证、计算手续费、回写 `feeAmount` / `netAmount`。
+- 支付成功后内置订阅者写收款双分录凭证、计算手续费、回写 `feeAmount` / `netAmount`；匹配到的费率规则同时固化到订单快照。
 - `refund.succeeded` 订阅者写退款双分录凭证，并按退款比例冲销手续费；全额退款末笔补差以消除舍入残差。
-- 订单 `feeAmount` 保持下单/成功时手续费快照；资金事实以台账流水为准。
+- 订单 `feeAmount` 保持支付成功时手续费快照；后续费率变更不影响已成功订单，资金事实以台账流水为准。
+- 退款、手续费、分账与对账调账允许将 `merchant_available` 借为负数，形成商户应收，由后续收款/结算冲抵；转账与人工凭证仍强制余额守卫。
 - Journal 是资金唯一事实来源；账户、凭证和 reservation 按应用/商户配置/币种隔离，所有资金流出通过版本化 reservation 防并发超支。
 - 银行到账必须通过显式多对多分配关联渠道结算；相同参考号或金额不会自动证明到账，分配使用 BigInt 累计限额与幂等校验。
 - 已被银行分配的账单版本禁止静默替换；更正版需经过独立更正处置。
 - 结算确认写 `type=settlement` 台账，将待结算划转到可用余额。
+- 退款、关单、查单使用 `recovery` 模式：支付方式停用、渠道配置停用或支付引擎关闭不阻断存量单收敛。
+- 渠道已收款但本地订单已终态时只记录 `payment_exceptions`，保留原始报文，不自动改单或重复履约。
 - 投诉退款复用统一退款链路与审批阈值，不由分流规则直接执行资金动作。
 
 ## 退款审批
@@ -81,7 +88,9 @@ POST /api/public/payment/notify/{channel}
 
 - `refundAmount ≥ 阈值` 的退款进入 `approvalStatus=pending`；
 - `payment:refund:approve` 权限可审批通过或驳回；
+- 申请人与审批人必须为不同用户，同一账号自审返回 403；
 - 审批通过后执行渠道退款；驳回置 `failed` 并记录 `refund.failed`；
+- 退款入口按订单数据权限校验，不能仅凭订单号越过部门/创建人范围；
 - 申请人、审批人、审批时间与意见留痕。
 
 ## 支付风控
@@ -144,7 +153,7 @@ decide({ kind: 'table', key: 'dispute_triage' }, facts, { caller: 'payment.dispu
 | 资金凭证与预占 | `payment:ledger:list`、`payment:ledger:post`、`payment:ledger:reverse`、`payment:ledger:reserve` |
 | Open Platform Webhook | `open-platform:webhook:list / manage` |
 | 支付 Webhook 视图 | `payment:webhook:list / manage` |
-| 支付事件 | `payment:ops:manage` |
+| 支付事件 / 异常中心 | `payment:ops:manage` |
 | 费率管理 | `payment:fee:list / create / update / delete` |
 | 结算管理 | `payment:settlement:list / generate / settle` |
 | 分账管理 | `payment:sharing:list / manage / dispatch` |
@@ -152,13 +161,14 @@ decide({ kind: 'table', key: 'dispute_triage' }, facts, { caller: 'payment.dispu
 | 风控中心 | `payment:risk:list / create / update / delete / review` |
 | 支付方式 | `payment:method:list / update` |
 | 财务报表 | `payment:report:view` |
-| 转账管理 | `payment:transfer:list / create` |
+| 转账管理 | `payment:transfer:list / create / approve` |
 | 应用管理 | `payment:app:list / manage` |
 | 签约代扣 | `payment:contract:list / manage / plan` |
 | 交易投诉 | `payment:dispute:list / handle` |
 | 预授权 | `payment:preauth:list / manage` |
 
 - 支付订单列表按部门与创建人的数据权限范围过滤。
+- 退款入口按订单数据权限前置校验，越权订单按不存在处理。
 - 支付表带 `tenant_id`，查询按租户隔离。
 - 渠道配置、支付/退款、关单、审批、调账、转账、差异处理、风控审核、投诉处理等敏感操作写操作日志。
 

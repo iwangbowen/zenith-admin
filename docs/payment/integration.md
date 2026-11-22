@@ -37,6 +37,7 @@ const { refundNo, status } = await refund({ orderNo, refundAmount: 500, reason: 
 | 风控前置 | `payment_risk` 决策表优先裁决；未裁决时执行原生规则；`block` 拦截，`review` 挂起订单进入人工审核 |
 | 业务防重 | 同一 `bizType + bizId` 的 pending/paying 订单可复用；参数变化时先查单再关闭旧单；`payment_orders_active_biz_uq` 兜底并发 |
 | 优惠券立减 | 会员侧可传 `memberCouponId + couponMemberId`：下单冻结券，实付金额至少 1 分，订单记录原价与优惠 |
+| 费率快照 | 支付成功时匹配并固化费率规则；手续费结算优先使用订单快照，后续规则变更不影响已成功订单 |
 | 渠道下单 | 生成 `PAY` 单号，渠道下单成功后 `pending → paying`；渠道失败置 `failed` 并记录 `payment.failed` 事件 |
 
 ### 风控返回语义
@@ -53,8 +54,14 @@ const { refundNo, status } = await refund({ orderNo, refundAmount: 500, reason: 
 - 可退余额在事务内锁单校验：实付金额 − 已成功退款 − 进行中退款。
 - 审批阈值来源：运行时设置 `payment.refundApprovalThreshold`（租户作用域，按订单所属租户解析，未覆盖继承平台值；见[运行时设置](../backend/settings.md)）；`0` 表示不启用审批。
 - `refundAmount ≥ 阈值` 时退款单进入 `approvalStatus=pending`，不占用订单 `refunding` 状态；通过后执行渠道退款，驳回置 `failed` 并记录 `refund.failed`。
+- 退款申请人、审批人必须为不同用户；同一账号自审返回 403。
+- 退款入口按订单数据权限校验，调用方不能仅凭订单号越过部门/创建人范围。
 - 免审批退款立即执行渠道退款。全额退完订单置 `refunded`，部分退款完成后订单回到 `success`。
+- 退款提交前持久化 `channelSubmittedAt`；未提交渠道的 `processing` 退款由恢复任务用原退款单号幂等重提，`unknown` 退款只允许查单收敛。
+- 退款、关单、查单使用 `recovery` 模式，支付方式或渠道配置停用不会阻断存量单处理。
 - 退款原因可选；投诉退款未传原因时使用「交易投诉退款（投诉单号）」作为默认原因。
+
+异常收口、退款提交恢复与健康指标见[异步通知与对账](./callback.md#异常收口)。
 
 ## 字段约定
 
@@ -84,6 +91,9 @@ const { refundNo, status } = await refund({ orderNo, refundAmount: 500, reason: 
 | GET | `/api/payment/refunds` / `/api/payment/refunds/{id}` | 退款列表 / 详情 |
 | POST | `/api/payment/refunds/{id}/query` | 主动同步退款 |
 | POST | `/api/payment/refunds/{id}/approve` / `/api/payment/refunds/{id}/reject` | 审批通过 / 驳回 |
+| GET | `/api/payment/journals/accounts/{id}/balance` | 账本账户账面/可用余额 |
+| GET | `/api/payment/ops/exceptions` | 支付异常列表 |
+| POST | `/api/payment/ops/exceptions/{id}/handle` | 标记异常已处理/忽略 |
 | GET | `/api/payment/stats` / `/api/payment/trend?days=N` | 统计概览 / 收款趋势 |
 
 会员前台充值接口 `POST /api/member/wallet/recharge` 是前台业务调用统一门面的内置范例。
@@ -123,7 +133,7 @@ case 'payment.succeeded':
 
 ## 进阶交易能力
 
-- **签约代扣**：`/api/payment/deduct-plans` 与 `/api/payment/contracts` 管理计划和协议；到期扣款生成 `payment_orders` 并复用支付事件。
+- **签约代扣**：`/api/payment/deduct-plans` 与 `/api/payment/contracts` 管理计划和协议；签约时固化金额、周期、自定义天数与重试次数快照，后续计划变更不影响已签协议；到期扣款生成 `payment_orders` 并复用支付事件。
 - **预授权**：`/api/payment/preauths` 支持冻结、转支付、解冻；转支付生成支付订单。
-- **支付链接**：`/api/payment/links` 创建后台链接，公开收银台使用 `/api/public/payment/link/{token}` 系列接口。
+- **支付链接**：`/api/payment/links` 创建后台链接，公开收银台使用 `/api/public/payment/link/{token}` 系列接口；公开下单建议携带 `x-idempotency-key`，同一 key 在 5 分钟内回放首次会话，避免双击重复下单。
 - **投诉退款**：`/api/payment/disputes/{id}/refund` 复用统一退款门面与审批阈值。

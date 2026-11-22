@@ -25,9 +25,9 @@ POST /api/public/payment/notify/{channel}    # channel: wechat | alipay | unionp
 
 要点：
 
-- 微信：平台证书 RSA 验签 + AES-256-GCM 回调解密，平台证书按 `Wechatpay-Serial` 自动下载并缓存 12h。
+- 微信：平台证书 RSA 验签 + AES-256-GCM 回调解密，平台证书按 `Wechatpay-Serial` 自动下载并缓存 12h；退款通知通常只带商户号，支付通知仍强校验 appid 与币种。
 - 支付宝：RSA2/RSA 验签。
-- 云闪付：银联全渠道 5.1.0 `signMethod=01`（SHA256+RSA）验签。
+- 云闪付：银联全渠道 5.1.0 `signMethod=01`（SHA256+RSA）验签；退款受理码 `03` 表示处理中，必须查单收敛。
 - 回调金额必须与本地订单金额一致。
 - `applyNotify` 使用条件更新推进订单/退款状态，重复通知无副作用。
 
@@ -67,13 +67,40 @@ POST /api/public/payment/notify/{channel}    # channel: wechat | alipay | unionp
 
 管理入口分为两个受控视图：`/payment/webhooks` 仅允许支付与退款事件，使用支付中心权限；`/open-platform/webhooks` 管理完整开放事件目录。两者复用同一订阅和投递表，不维护第二套 Webhook 状态机。
 
+## 异常收口
+
+渠道已发生资金事实但本地无法按正常状态机推进时，系统只记录异常，不改写订单终态、不重复履约。异常按去重键幂等写入 `payment_exceptions`；当前自动收口 `late_payment`，其余类型供业务或运维在核对时记录：
+
+| 类型 | 用途 | 处理边界 |
+| --- | --- | --- |
+| `late_payment` | 订单已 `closed` / `failed` 后渠道确认支付成功，或本地无法继续推进支付 | 保留原始回调报文；运营确认入账或原路退款 |
+| `amount_mismatch` | 回调/查单金额与本地订单不一致 | 不自动改单，先核对渠道与订单事实 |
+| `refund_unknown` | 退款结果未知且查单未能立即收敛 | 仅允许继续查单，禁止盲目重发 |
+| `provider_error` | 渠道明确异常但需要人工跟进 | 保留上下文，处置仍走订单/退款流程 |
+
+- 记录接口：`GET /api/payment/ops/exceptions`，支持关键字、状态、类型与时间范围筛选；
+- 处理接口：`POST /api/payment/ops/exceptions/{id}/handle`，`action=resolve` 标记已处理，`action=ignore` 标记忽略，需要 `payment:ops:manage`；
+- 处理动作只更新异常状态、处理人、处理时间与备注，不直接入账或退款；
+- 健康指标 `paymentExceptionsOpen` 统计待处理异常数量。
+
+## 退款恢复
+
+退款单在调用渠道前先持久化 `channelSubmittedAt`，并累计 `submitAttempts`；进程在提交前后崩溃时可以区分“从未提交”和“结果未知”。
+
+- `channelSubmittedAt IS NULL` 且已审批/免审批的 `processing` 退款，由 `retryUnsubmittedRefunds` 在创建 2 分钟后使用原 `outRefundNo` 重提，渠道幂等键保证不会重复退款；
+- `unknown` 退款记录 `unknownSince`，只能通过 `syncRefundStatus` 查单收敛，不允许原单重发；
+- 每次退款查单更新 `lastQueryAt`，避免重复扫描；
+- 退款、关单、查单使用 `recovery` 模式，支付方式停用、渠道配置停用或支付引擎关闭不阻断存量单收敛；
+- `retryUnsubmittedRefunds` 由 `paymentReconciliation` 定时任务调用。
+
 ## 查单补偿
 
 | 路径 | 说明 |
 | --- | --- |
-| `paymentReconciliation` cron | 每 10 分钟扫描 `paying` 且创建超过 2 分钟的订单，调用渠道查单同步终态 |
+| `paymentReconciliation` cron | 每 10 分钟扫描 `paying` 且创建超过 2 分钟的订单，调用渠道查单同步终态；同时恢复未提交渠道的退款 |
 | `POST /api/payment/orders/{id}/query` | 订单详情手动查单 |
 | `POST /api/payment/refunds/{id}/query` | 退款详情手动查单 |
+| `retryUnsubmittedRefunds` | 恢复已落库但从未提交渠道的退款，使用原退款单号幂等重提 |
 | `syncPaymentTransfers` cron | 每 5 分钟同步处理中转账单 |
 | `retryFailedSharing` cron | 重试渠道未受理且未达上限的分账单，并同步处理中分账单 |
 
@@ -86,7 +113,7 @@ POST /api/public/payment/notify/{channel}    # channel: wechat | alipay | unionp
 | handler | 频率 | 职责 |
 | --- | --- | --- |
 | `closeExpiredPaymentOrders` | 每 5 分钟 | 查单确认后关闭过期未支付订单 |
-| `paymentReconciliation` | 每 10 分钟 | 支付中订单查单补偿 |
+| `paymentReconciliation` | 每 10 分钟 | 支付中订单查单补偿，并恢复未提交渠道的退款 |
 | `retryFailedSharing` | 每 10 分钟 | 分账失败重试与处理中分账同步 |
 | `generateDailySettlements` | 每日 01:10 | T+1 生成昨日渠道 × 租户结算批次 |
 | `syncPaymentTransfers` | 每 5 分钟 | 同步处理中转账单 |
