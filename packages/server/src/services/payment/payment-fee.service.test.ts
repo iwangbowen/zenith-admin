@@ -170,6 +170,7 @@ interface OrderLike {
   appId: number | null;
   channelConfigId: number;
   currency: string;
+  feeRuleSnapshot?: unknown;
 }
 
 function makeOrder(overrides: Partial<OrderLike> = {}): OrderLike {
@@ -237,6 +238,20 @@ describe('settleOrderFee - 幂等结算', () => {
 
     expect(claimChain.set).toHaveBeenCalledWith({ feeAmount: 0, netAmount: 10000 });
     expect(journalMock).not.toHaveBeenCalled();
+  });
+
+  it('订单已有费率快照 → 按快照计费，不重新匹配当前规则', async () => {
+    const order = makeOrder({
+      feeRuleSnapshot: { id: 99, name: '签约费率', rateBps: 120, fixedFee: 0, minFee: null, maxFee: null },
+    });
+    dbMock.select.mockReturnValueOnce(createChain([order])); // 只查订单
+    const claimChain = createChain([{ feeAmount: 120 }]);
+    dbMock.update.mockReturnValueOnce(claimChain);
+
+    await settleOrderFee(order.orderNo);
+
+    expect(dbMock.select).toHaveBeenCalledTimes(1); // 不再查当前规则
+    expect(claimChain.set).toHaveBeenCalledWith({ feeAmount: 120, netAmount: 9880 });
   });
 
   it('并发竞争失败（claim 未命中）→ 读回真实费用，凭证用通用描述（重复投递不重复计费）', async () => {

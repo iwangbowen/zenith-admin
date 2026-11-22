@@ -10,6 +10,7 @@ import {
   PG_ERROR_CODES,
   getPgErrorCode,
   isPgError,
+  isPgForeignKeyViolation,
   isPgUniqueViolation,
   rethrowPgUniqueViolation,
 } from './db-errors';
@@ -57,6 +58,13 @@ describe('isPgError / isPgUniqueViolation', () => {
     expect(isPgUniqueViolation({ cause: { code: '23505' } })).toBe(true);
     expect(isPgUniqueViolation({ code: '23503' })).toBe(false);
     expect(isPgUniqueViolation(new Error('x'))).toBe(false);
+  });
+
+  it('外键删除保护同时识别 NO ACTION(23503) 与 RESTRICT(23001)', () => {
+    expect(isPgForeignKeyViolation({ code: '23503' })).toBe(true);
+    expect(isPgForeignKeyViolation({ cause: { code: '23001' } })).toBe(true);
+    expect(isPgForeignKeyViolation({ code: '23505' })).toBe(false);
+    expect(isPgForeignKeyViolation(new Error('x'))).toBe(false);
   });
 });
 

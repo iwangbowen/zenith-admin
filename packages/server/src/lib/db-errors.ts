@@ -3,6 +3,8 @@ import { HTTPException } from 'hono/http-exception';
 export const PG_ERROR_CODES = {
   uniqueViolation: '23505',
   foreignKeyViolation: '23503',
+  /** ON DELETE RESTRICT 抛 23001，与 NO ACTION 的 23503 不同，删除保护需同时识别。 */
+  restrictViolation: '23001',
 } as const;
 
 export function getPgErrorCode(error: unknown): string | undefined {
@@ -23,6 +25,12 @@ export function isPgError(error: unknown, code: string): boolean {
 
 export function isPgUniqueViolation(error: unknown): boolean {
   return isPgError(error, PG_ERROR_CODES.uniqueViolation);
+}
+
+/** 外键引用冲突：NO ACTION 为 23503，RESTRICT 为 23001，两者语义相同。 */
+export function isPgForeignKeyViolation(error: unknown): boolean {
+  const code = getPgErrorCode(error);
+  return code === PG_ERROR_CODES.foreignKeyViolation || code === PG_ERROR_CODES.restrictViolation;
 }
 
 /**

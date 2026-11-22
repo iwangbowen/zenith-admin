@@ -260,7 +260,7 @@ export default function PaymentLinkPublicPage() {
                   <div className="payment-cashier__state">
                     <XCircle className="payment-cashier__state-icon payment-cashier__state-icon--danger" size={56} aria-hidden="true" />
                     <Typography.Title heading={4}>支付会话加载失败</Typography.Title>
-                    <Typography.Text type="tertiary">网络暂时不可用，请重试；已支付订单不会因本页刷新而丢失。</Typography.Text>
+                    <Typography.Text type="tertiary">支付会话可能已失效或网络异常，请重试；已支付订单不会因本页刷新而丢失。</Typography.Text>
                     <Button type="primary" icon={<RefreshCw size={16} />} onClick={() => void sessionQuery.refetch()}>重试</Button>
                   </div>
                 ) : sessionToken && !session ? (
@@ -381,7 +381,7 @@ export default function PaymentLinkPublicPage() {
                 <div className="payment-cashier__state">
                   <XCircle className="payment-cashier__state-icon" size={56} aria-hidden="true" />
                   <Typography.Title heading={4}>收款链接加载失败</Typography.Title>
-                  <Typography.Text type="tertiary">网络暂时不可用，请稍后重试。</Typography.Text>
+                  <Typography.Text type="tertiary">链接可能已失效或网络异常，请确认链接后重试。</Typography.Text>
                   <Button type="primary" icon={<RefreshCw size={16} />} onClick={() => void linkQuery.refetch()}>重试</Button>
                 </div>
               ) : (
