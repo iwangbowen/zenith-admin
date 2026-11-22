@@ -142,6 +142,8 @@ export const paymentOrders = pgTable('payment_orders', {
   paidAmount: integer(),
   feeAmount: integer(),
   netAmount: integer(),
+  /** 支付成功时匹配到的费率规则快照；后续费率变更不影响本单。 */
+  feeRuleSnapshot: jsonb(),
   /** 优惠前原价（分）；null = 无优惠（等于 amount） */
   originalAmount: integer(),
   /** 优惠立减金额（分） */
@@ -814,6 +816,11 @@ export const paymentContracts = pgTable('payment_contracts', {
   appId: integer().notNull().references(() => paymentApps.id, { onDelete: 'restrict' }),
   currency: varchar({ length: 8 }).notNull().default('CNY'),
   planId: integer().notNull().references(() => paymentDeductPlans.id, { onDelete: 'restrict' }),
+  /** 签约时的计划条款快照；计划后续改价/改周期不影响已签约协议。 */
+  planAmountSnapshot: integer(),
+  planPeriodSnapshot: paymentDeductPeriodEnum(),
+  planCustomDaysSnapshot: integer(),
+  planMaxRetriesSnapshot: integer(),
   /** 签约账号（微信 openid / 支付宝账号 / 会员标识） */
   signerAccount: varchar({ length: 128 }).notNull(),
   signerName: varchar({ length: 64 }),

@@ -28,6 +28,7 @@ import type { CreatePaymentInput, CreatePaymentResult, CreateRefundInput, Paymen
 import { getAdapter } from '../../lib/payment';
 import type { AdapterContext, DecryptedSecrets, NotifyResult } from '../../lib/payment';
 import { recordEvent } from './payment-outbox.service';
+import { matchFeeRule } from './payment-fee.service';
 import { buildPaymentEventPayload } from './payment-events';
 import { assertMethodEnabled } from './payment-method.service';
 import { recordPaymentException } from './payment-exception.service';
@@ -614,6 +615,17 @@ export async function markOrderPaid(
   // 原子条件更新 + 领域事件同事务持久化：确保「标记成功 + 可靠发事件」exactly-once；
   // 提交后的公共 ledger worker 会持续领取，进程崩溃也不会漏履约。
   const eventId = await db.transaction(async (tx) => {
+    const rule = order.feeRuleSnapshot == null
+      ? await matchFeeRule(order.channel, order.payMethod, order.tenantId, tx)
+      : null;
+    const feeRuleSnapshot = order.feeRuleSnapshot ?? (rule ? {
+      id: rule.id,
+      name: rule.name,
+      rateBps: rule.rateBps,
+      fixedFee: rule.fixedFee,
+      minFee: rule.minFee,
+      maxFee: rule.maxFee,
+    } : null);
     const updated = await tx
       .update(paymentOrders)
       .set({
@@ -622,6 +634,7 @@ export async function markOrderPaid(
         paidAmount,
         paidAt: info.paidAt ?? new Date(),
         notifyData: info.notifyData ?? order.notifyData,
+        feeRuleSnapshot,
         errorMessage: null,
         version: sql`${paymentOrders.version} + 1`,
       })

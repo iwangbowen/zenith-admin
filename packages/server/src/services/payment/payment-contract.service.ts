@@ -69,9 +69,9 @@ export function mapDeductPlan(row: PaymentDeductPlanRow & { contractCount?: numb
 export function mapContract(row: PaymentContractRow & { plan?: Pick<PaymentDeductPlanRow, 'name' | 'period' | 'customDays' | 'amount'> | null }): PaymentContract {
   return pickEntity(paymentContractSchema, row, {
     planName: row.plan?.name ?? null,
-    planPeriod: row.plan?.period ?? null,
-    planCustomDays: row.plan?.customDays ?? null,
-    planAmount: row.plan?.amount ?? null,
+    planPeriod: row.planPeriodSnapshot ?? row.plan?.period ?? null,
+    planCustomDays: row.planCustomDaysSnapshot ?? row.plan?.customDays ?? null,
+    planAmount: row.planAmountSnapshot ?? row.plan?.amount ?? null,
   });
 }
 
@@ -368,6 +368,10 @@ export async function signContract(input: SignContractInput): Promise<SignContra
         appId: application.appId,
         currency: input.currency,
         planId: plan.id,
+        planAmountSnapshot: plan.amount,
+        planPeriodSnapshot: plan.period,
+        planCustomDaysSnapshot: plan.customDays,
+        planMaxRetriesSnapshot: plan.maxRetries,
         signerAccount: input.signerAccount,
         signerName: input.signerName ?? null,
         status: 'pending',
@@ -561,13 +565,15 @@ export async function recoverContract(id: number, applicationId: number): Promis
   }
   if (result.status === 'pending') return mapContract(row);
   if (result.status === 'signed' && operation === 'sign') {
-    const plan = requireRow(await db.query.paymentDeductPlans.findFirst({ where: and(
+    const plan = await db.query.paymentDeductPlans.findFirst({ where: and(
       eq(paymentDeductPlans.id, row.planId),
       exactTenantCondition(paymentDeductPlans.tenantId, row.tenantId),
-    ) }), '扣款计划不存在');
+    ) });
+    const period = row.planPeriodSnapshot ?? plan?.period;
+    const customDays = row.planCustomDaysSnapshot ?? plan?.customDays ?? null;
     const [signed] = await db.update(paymentContracts).set({
       status: 'signed', unknownOperation: null, channelContractNo: result.channelContractNo ?? row.channelContractNo,
-      signedAt: new Date(), nextDeductAt: plan ? advancePeriod(new Date(), plan) : null,
+      signedAt: new Date(), nextDeductAt: period ? advancePeriod(new Date(), { period, customDays }) : null,
       errorMessage: null, version: sql`${paymentContracts.version} + 1`,
     }).where(and(eq(paymentContracts.id, row.id), eq(paymentContracts.version, row.version), inArray(paymentContracts.status, ['pending', 'unknown']))).returning();
     return mapContract(signed ?? row);
@@ -641,6 +647,14 @@ export async function executeDeduction(input: PaymentContractRow): Promise<Deduc
     eq(paymentDeductPlans.id, row.planId),
     exactTenantCondition(paymentDeductPlans.tenantId, row.tenantId),
   ) }), '扣款计划不存在');
+  // 以签约时的条款为准；计划后续改价/改周期不能影响已签约协议。
+  const effectivePlan = {
+    ...plan,
+    amount: row.planAmountSnapshot ?? plan.amount,
+    period: row.planPeriodSnapshot ?? plan.period,
+    customDays: row.planCustomDaysSnapshot ?? plan.customDays,
+    maxRetries: row.planMaxRetriesSnapshot ?? plan.maxRetries,
+  };
 
   const contractConfig = await loadContractConfig(row);
   const applicationRoute = await resolveApplicationChannelConfig(row.appId, row.channel, row.tenantId ?? null);
@@ -676,7 +690,7 @@ export async function executeDeduction(input: PaymentContractRow): Promise<Deduc
       const stableOrderNo = await allocateBusinessNumber(tx, {
         scene: 'payment.deduction', tenantId: lockedContract.tenantId,
         allocationKey: `contract:${lockedContract.id}:period:${sequence}`,
-        context: { amount: plan.amount, currency: lockedContract.currency, appId: lockedContract.appId },
+        context: { amount: effectivePlan.amount, currency: lockedContract.currency, appId: lockedContract.appId },
       });
       const orderTenant = exactTenantCondition(paymentOrders.tenantId, lockedContract.tenantId);
       let [existingOrder] = await tx
@@ -692,7 +706,7 @@ export async function executeDeduction(input: PaymentContractRow): Promise<Deduc
       if (existingOrder) {
         const sameScope = existingOrder.bizType === lockedContract.bizType
           && existingOrder.bizId === lockedContract.bizId
-          && existingOrder.amount === plan.amount
+          && existingOrder.amount === effectivePlan.amount
           && existingOrder.currency === lockedContract.currency
           && existingOrder.channel === lockedContract.channel
           && existingOrder.channelConfigId === contractConfig.id
@@ -727,9 +741,9 @@ export async function executeDeduction(input: PaymentContractRow): Promise<Deduc
         outTradeNo: stableOrderNo,
         bizType: lockedContract.bizType,
         bizId: lockedContract.bizId,
-        subject: `${plan.name}（第 ${sequence} 期代扣）`,
+        subject: `${effectivePlan.name}（第 ${sequence} 期代扣）`,
         body: `签约协议 ${lockedContract.contractNo}`,
-        amount: plan.amount,
+        amount: effectivePlan.amount,
         currency: lockedContract.currency,
         channel: lockedContract.channel,
         channelConfigId: contractConfig.id,
@@ -782,11 +796,11 @@ export async function executeDeduction(input: PaymentContractRow): Promise<Deduc
     const res = await adapter.deductContract(buildAdapterContext(contractConfig), {
       channelContractNo: claimedContract.channelContractNo!,
       outTradeNo: orderNo,
-      amount: plan.amount,
-      subject: `${plan.name} 周期扣款`,
+      amount: effectivePlan.amount,
+      subject: `${effectivePlan.name} 周期扣款`,
     });
     if (res.status === 'success') {
-      await markOrderPaid(order, { channelTradeNo: res.channelTradeNo, paidAmount: plan.amount, paidAt: new Date() });
+      await markOrderPaid(order, { channelTradeNo: res.channelTradeNo, paidAmount: effectivePlan.amount, paidAt: new Date() });
       // outbox 订阅者是异步兜底（崩溃韧性），这里同步推进一次，让首次扣款成功体现
       // 在返回的 DTO 上；订阅者幂等，会安全重放同一转换。
       try {
@@ -806,7 +820,7 @@ export async function executeDeduction(input: PaymentContractRow): Promise<Deduc
     }
     const reason = res.failReason ?? '渠道扣款失败';
     await markDeductOrderFailed(order, reason);
-    await recordDeductFailure(claimedContract, plan, reason);
+    await recordDeductFailure(claimedContract, effectivePlan, reason);
     return { orderNo, deductStatus: 'failed', failReason: reason };
   } catch (err) {
     const reason = (err instanceof Error ? err.message : '渠道扣款请求失败').slice(0, 500);
@@ -887,9 +901,14 @@ export async function advanceContractOnPaidWithin(tx: DbTransaction, event: { or
     eq(paymentDeductPlans.id, row.planId),
     exactTenantCondition(paymentDeductPlans.tenantId, row.tenantId),
   ) });
-  if (!plan || plan.amount !== paidAmount) return;
+  const expectedAmount = row.planAmountSnapshot ?? plan?.amount;
+  if (expectedAmount == null || expectedAmount !== paidAmount) return;
   if (row.lastDeductAt && row.lastDeductAt >= paidAt) return;
-  const next = row.status === 'signed' ? advancePeriod(paidAt, plan) : null;
+  const periodPlan = {
+    period: row.planPeriodSnapshot ?? plan?.period ?? 'monthly',
+    customDays: row.planCustomDaysSnapshot ?? plan?.customDays ?? null,
+  };
+  const next = row.status === 'signed' ? advancePeriod(paidAt, periodPlan) : null;
   await tx.update(paymentContracts).set({
     nextDeductAt: next,
     lastDeductAt: paidAt,

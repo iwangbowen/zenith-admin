@@ -155,6 +155,13 @@
       "when": 1795353212621,
       "tag": "0021_tiresome_sentinels",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1795354414730,
+      "tag": "0022_perpetual_iron_fist",
+      "breakpoints": true
     }
   ]
 }

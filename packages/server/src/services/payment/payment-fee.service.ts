@@ -99,12 +99,31 @@ export const {
   remove: deleteFeeRule,
 } = paymentFeeRuleService;
 
+export interface FeeRuleSnapshot {
+  id?: number;
+  name?: string;
+  rateBps: number;
+  fixedFee: number;
+  minFee?: number | null;
+  maxFee?: number | null;
+}
+
+function computeFeeFromParts(parts: Pick<FeeRuleSnapshot, 'rateBps' | 'fixedFee' | 'minFee' | 'maxFee'>, amount: number): number {
+  let fee = Math.round((amount * parts.rateBps) / 10000) + parts.fixedFee;
+  if (parts.minFee != null) fee = Math.max(fee, parts.minFee);
+  if (parts.maxFee != null) fee = Math.min(fee, parts.maxFee);
+  return Math.max(0, Math.min(fee, amount));
+}
+
 /** 计算手续费（分）：rate*amount/10000 + fixed，clamp[min,max]。无匹配规则返回 0。 */
 export function computeFeeByRule(rule: PaymentFeeRuleRow, amount: number): number {
-  let fee = Math.round((amount * rule.rateBps) / 10000) + rule.fixedFee;
-  if (rule.minFee != null) fee = Math.max(fee, rule.minFee);
-  if (rule.maxFee != null) fee = Math.min(fee, rule.maxFee);
-  return Math.max(0, Math.min(fee, amount));
+  return computeFeeFromParts(rule, amount);
+}
+
+function isFeeRuleSnapshot(value: unknown): value is FeeRuleSnapshot {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<FeeRuleSnapshot>;
+  return typeof candidate.rateBps === 'number' && typeof candidate.fixedFee === 'number';
 }
 
 /** 匹配最优费率规则（按 tenant + channel + payMethod，优先 payMethod 精确，再按 priority 降序）。 */
@@ -134,8 +153,9 @@ export async function settleOrderFeeWithin(tx: DbTransaction, orderNo: string): 
   let fee = order.feeAmount;
 
   if (fee == null) {
-    const rule = await matchFeeRule(order.channel, order.payMethod, order.tenantId, tx);
-    fee = rule ? computeFeeByRule(rule, amount) : 0;
+    const snapshot = isFeeRuleSnapshot(order.feeRuleSnapshot) ? order.feeRuleSnapshot : null;
+    const rule = snapshot ? null : await matchFeeRule(order.channel, order.payMethod, order.tenantId, tx);
+    fee = snapshot ? computeFeeFromParts(snapshot, amount) : rule ? computeFeeByRule(rule, amount) : 0;
     const claimed = await tx
       .update(paymentOrders)
       .set({ feeAmount: fee, netAmount: amount - fee })
