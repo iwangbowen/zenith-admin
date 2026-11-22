@@ -4,6 +4,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WorkflowInstance } from '@zenith/shared/workflow';
+import { ACCESS_REQUEST_BIZ_TYPE } from '@zenith/shared/identity';
 
 const mocks = vi.hoisted(() => ({
   getInstanceDetail: vi.fn(),
@@ -164,6 +165,42 @@ describe('renderWorkflowInstancePdf', () => {
     mocks.resolveMaskDecisions.mockResolvedValue([]);
     await renderWorkflowInstancePdf(42);
     expect(spy.mock.lastCall![0].grid.cells.map((c) => c.v)).toContain('13812345678');
+    spy.mockRestore();
+  });
+
+  it('自定义业务表单按内置业务字段生成打印内容（权限申请含权限明细与标签文案）', async () => {
+    const spy = await captureRender();
+    mocks.getInstanceDetail.mockResolvedValue({
+      ...instance,
+      definitionName: '权限申请',
+      formData: {
+        targetUserName: '管理员',
+        requestType: 'temporary',
+        riskLabel: '普通',
+        validityMode: 'limited',
+        startsAt: '2026-09-11 09:00:00',
+        expiresAt: '2026-09-11 17:00:00',
+        approvalPolicy: 'none',
+        mfaRequired: false,
+        reason: '验证权限申请打印',
+        permissionItems: [
+          { permissionCode: 'system:user:list', permissionLabel: '查询用户', dataScope: 'self', deptScopeIds: [] },
+        ],
+      },
+      formSnapshot: {
+        formType: 'custom', formId: null, formName: null, fields: [], settings: null,
+        customForm: { businessType: ACCESS_REQUEST_BIZ_TYPE, createComponent: 'biz/access/AccessRequestWorkflowForm' },
+      },
+    });
+    await renderWorkflowInstancePdf(42);
+    const values = spy.mock.lastCall![0].grid.cells.map((c) => String(c.v ?? ''));
+    expect(values).toContain('权限明细');
+    expect(values).toContain('查询用户');
+    expect(values).toContain('system:user:list');
+    expect(values).toContain('仅本人数据权限');
+    expect(values).toContain('常规授权');
+    expect(values).toContain('限时有效');
+    expect(values).toContain('验证权限申请打印');
     spy.mockRestore();
   });
 });

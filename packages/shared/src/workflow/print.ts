@@ -16,7 +16,7 @@ import type { ReportPrintCell, ReportPrintCellStyle, ReportPrintContent, ReportP
 import type { ReportPrintDatasetRows } from '../report/types';
 import type { WorkflowInstance, WorkflowTask } from './contracts/instances';
 import type { WorkflowNodeActivation } from './contracts/approval-state';
-import type { WorkflowFormField } from './types';
+import type { WorkflowFormField, WorkflowCustomFormVariable, WorkflowInstanceFormSnapshot } from './types';
 import {
   WORKFLOW_APPROVE_METHOD_LABELS,
   WORKFLOW_INSTANCE_PRIORITY_LABELS,
@@ -375,6 +375,39 @@ export function formatWorkflowPrintValue(field: WorkflowFormField, value: unknow
 }
 
 // ─── 数据集构建 ───────────────────────────────────────────────────────────────
+
+/** 自定义业务表单变量 → 打印字段（未声明 printFields 时的兜底） */
+export function workflowCustomFormPrintFields(variables: readonly WorkflowCustomFormVariable[] | null | undefined): WorkflowFormField[] {
+  const types: Record<WorkflowCustomFormVariable['type'], WorkflowFormField['type']> = {
+    string: 'text', number: 'number', boolean: 'switch', date: 'date', user: 'userSelect', dept: 'deptSelect',
+  };
+  return (variables ?? []).map((variable) => {
+    const hasOptions = (variable.optionItems?.length ?? 0) > 0;
+    return {
+      key: variable.key,
+      label: variable.label,
+      // optionItems 需要映射为 select 才能打印标签而不是原始值（text 类型不参与选项转换）
+      type: hasOptions && variable.type === 'string' ? 'select' : types[variable.type],
+      ...(hasOptions ? { options: variable.optionItems!.map((item) => item.value), optionItems: variable.optionItems } : {}),
+    };
+  });
+}
+
+/**
+ * 解析实例的打印字段：
+ * designer 表单使用发起时冻结的表单字段；custom / external 表单依次取
+ * 快照 printFields → 调用方提供的业务字段 → variables 推断。
+ */
+export function resolveWorkflowPrintFields(
+  snapshot: WorkflowInstanceFormSnapshot | null | undefined,
+  businessFields?: readonly WorkflowFormField[],
+): WorkflowFormField[] {
+  if (!snapshot) return businessFields ? [...businessFields] : [];
+  if (snapshot.fields.length > 0) return snapshot.fields;
+  if (snapshot.customForm?.printFields?.length) return snapshot.customForm.printFields;
+  if (businessFields?.length) return [...businessFields];
+  return workflowCustomFormPrintFields(snapshot.customForm?.variables);
+}
 
 export interface WorkflowPrintDatasetInput {
   instance: WorkflowInstance;

@@ -1,6 +1,6 @@
 import type { WorkflowCustomFormConfig, WorkflowCustomFormVariable } from '../workflow/types';
-import { buildAccessApprovalTemplate } from '../identity/access-policy';
-import { ACCESS_APPROVAL_POLICY_LABELS } from '../identity/access-governance-constants';
+import { ACCESS_REQUEST_PRINT_FIELDS, buildAccessApprovalTemplate } from '../identity/access-policy';
+import { ACCESS_APPROVAL_POLICY_LABELS, ACCESS_REQUEST_TYPE_LABELS, ACCESS_VALIDITY_MODE_LABELS } from '../identity/access-governance-constants';
 import type { WorkflowCategory, WorkflowDataSource, WorkflowDefinition, WorkflowForm } from '../workflow/contracts';
 import { SEED_DATE } from './_base';
 
@@ -534,8 +534,8 @@ const ACCESS_REQUEST_VARIABLES: WorkflowCustomFormVariable[] = [
   { key: 'targetUserId', label: '目标用户', type: 'user' },
   { key: 'targetUserName', label: '受益人姓名', type: 'string' },
   { key: 'reason', label: '申请原因', type: 'string' },
-  { key: 'requestType', label: '申请类型', type: 'string' },
-  { key: 'validityMode', label: '有效期限', type: 'string' },
+  { key: 'requestType', label: '申请类型', type: 'string', optionItems: Object.entries(ACCESS_REQUEST_TYPE_LABELS).map(([value, label]) => ({ value, label })) },
+  { key: 'validityMode', label: '有效期限', type: 'string', optionItems: Object.entries(ACCESS_VALIDITY_MODE_LABELS).map(([value, label]) => ({ value, label })) },
   { key: 'approvalPolicy', label: '审批要求', type: 'string', optionItems: Object.entries(ACCESS_APPROVAL_POLICY_LABELS).map(([value, label]) => ({ value, label })) },
   { key: 'mfaRequired', label: '审批需要 MFA', type: 'boolean' },
   { key: 'startsAt', label: '生效时间', type: 'date' },
@@ -557,7 +557,7 @@ SEED_WORKFLOW_DEFINITIONS.push({
   initiatorScopeType: 'all',
   flowData: { ...ACCESS_REQUEST_FLOW },
   formType: 'custom',
-  customForm: { businessType: 'identity.access_request', createComponent: 'biz/access/AccessRequestWorkflowForm', viewComponent: 'biz/access/AccessRequestWorkflowForm', actionComponent: 'biz/access/AccessRequestApprovalForm', icon: 'ShieldCheck', variables: ACCESS_REQUEST_VARIABLES },
+  customForm: { businessType: 'identity.access_request', createComponent: 'biz/access/AccessRequestWorkflowForm', viewComponent: 'biz/access/AccessRequestWorkflowForm', actionComponent: 'biz/access/AccessRequestApprovalForm', icon: 'ShieldCheck', variables: ACCESS_REQUEST_VARIABLES, printFields: ACCESS_REQUEST_PRINT_FIELDS },
   status: 'published', version: 1, tenantId: null,
 });
 

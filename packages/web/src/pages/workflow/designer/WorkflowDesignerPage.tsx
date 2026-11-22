@@ -618,7 +618,10 @@ export default function WorkflowDesignerPage({
       Toast.warning('请先保存流程');
       return;
     }
-    const fields = formType === 'designer' ? localFormFields : [];
+    // 自定义业务表单优先使用声明的打印字段（含明细表）；未声明时退回变量推断的字段
+    const fields = formType === 'designer'
+      ? localFormFields
+      : (customForm?.printFields?.length ? customForm.printFields : availableFormFields);
     try {
       const saved = await createPrintTemplateMutation.mutateAsync({
         values: {

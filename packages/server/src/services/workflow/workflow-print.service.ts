@@ -17,6 +17,7 @@ import {
   flattenWorkflowPrintLeafFields,
   generateWorkflowPrintContent,
   normalizeWorkflowFormSnapshot,
+  resolveWorkflowPrintFields,
   WORKFLOW_INSTANCE_STATUS_LABELS,
   workflowInstanceContract,
   workflowPrintPageConfig,
@@ -35,7 +36,7 @@ import { resolveMaskDecisions } from '../../lib/data-mask/policies';
 import { FORM_FIELD_MASK_KINDS, WORKFLOW_FORM_SENSITIVE_REFS, workflowArchiveNeedsRedaction } from './workflow-print-access';
 import { readStoredFile } from '../../lib/file-storage';
 import logger from '../../lib/logger';
-import { SUPER_ADMIN_CODE } from '@zenith/shared/identity';
+import { ACCESS_REQUEST_BIZ_TYPE, ACCESS_REQUEST_PRINT_FIELDS, SUPER_ADMIN_CODE } from '@zenith/shared/identity';
 import { createSignedTokenCodec } from '../../lib/signed-token';
 import type { JwtPayload } from '../../middleware/auth';
 import { retainManagedFiles } from '../files/file-gc.service';
@@ -211,7 +212,11 @@ interface RenderDocumentOptions {
 export async function renderWorkflowInstancePrintDocument(id: number, options: RenderDocumentOptions = {}): Promise<WorkflowPrintDocument> {
   const instance = options.instance ?? await getInstanceDetail(id);
   const user = currentUser();
-  const fields = normalizeWorkflowFormSnapshot(instance.formSnapshot)?.fields ?? [];
+  const snapshot = normalizeWorkflowFormSnapshot(instance.formSnapshot);
+  const fields = resolveWorkflowPrintFields(
+    snapshot,
+    snapshot?.customForm?.businessType === ACCESS_REQUEST_BIZ_TYPE ? ACCESS_REQUEST_PRINT_FIELDS : undefined,
+  );
   const printedAt = currentDateTime();
   const definitionPrint = await loadDefinitionPrintConfig(instance.definitionId);
   if (!options.archive && definitionPrint.settings.onlyWhenApproved && instance.status !== 'approved') {

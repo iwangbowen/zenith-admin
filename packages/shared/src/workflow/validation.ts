@@ -323,6 +323,7 @@ export const workflowCustomFormConfigSchema = z.object({
   actionComponent: z.string().max(256).nullable().optional(),
   icon: z.string().max(64).nullable().optional(),
   variables: z.array(workflowCustomFormVariableSchema).optional(),
+  printFields: z.array(workflowFormFieldSchema).optional(),
 });
 
 export const createWorkflowDefinitionSchema = z.object({

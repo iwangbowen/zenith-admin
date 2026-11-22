@@ -824,6 +824,11 @@ export interface WorkflowCustomFormConfig {
   icon?: string | null;
   /** 暴露给流程的变量声明 */
   variables?: WorkflowCustomFormVariable[];
+  /**
+   * 审批单打印字段声明（可选）。自定义业务表单没有 designer 表单快照，
+   * 打印时优先使用该字段树生成版式；未声明时按 variables 推断。
+   */
+  printFields?: WorkflowFormField[];
 }
 
 /** 实例发起时冻结的表单快照 */

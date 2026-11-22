@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { reportPrintContentSchema } from '../report/validation';
 import { renderPrintContent } from '../report/print';
 import type { WorkflowInstance } from './contracts/instances';
-import type { WorkflowFormField } from './types';
+import type { WorkflowFormField, WorkflowInstanceFormSnapshot } from './types';
 import {
   buildWorkflowPrintDatasets,
   collectWorkflowPrintLookupIds,
@@ -14,6 +14,8 @@ import {
   formatWorkflowPrintNumber,
   formatWorkflowPrintValue,
   generateWorkflowPrintContent,
+  resolveWorkflowPrintFields,
+  workflowCustomFormPrintFields,
   workflowPrintDetailDatasetKey,
   workflowPrintDetailTextKey,
   workflowPrintDetailTotalKey,
@@ -368,6 +370,40 @@ describe('generateWorkflowPrintContent', () => {
     expect(values).toContain('请确认资质');
     expect(values).toContain('已回复');
     expect(values).toContain('待回复');
+  });
+});
+
+describe('resolveWorkflowPrintFields', () => {
+  const customSnapshot = (customForm: NonNullable<WorkflowInstanceFormSnapshot['customForm']>): WorkflowInstanceFormSnapshot => ({
+    formType: 'custom', formId: null, formName: null, fields: [], settings: null, customForm,
+  });
+
+  it('designer 表单使用发起时冻结的字段', () => {
+    const fields = [field({ key: 'amount', type: 'amount' })];
+    expect(resolveWorkflowPrintFields({ formType: 'designer', formId: 1, formName: '报销单', fields, settings: null, customForm: null }, [field({ key: 'fallback', type: 'text' })])).toBe(fields);
+  });
+
+  it('custom 表单依次取 printFields、业务字段、variables 推断', () => {
+    const printField = field({ key: 'printOnly', type: 'text' });
+    const variables = [{ key: 'mfaRequired', label: '审批需 MFA', type: 'boolean' as const }];
+    expect(resolveWorkflowPrintFields(customSnapshot({ createComponent: 'x', variables, printFields: [printField] }))).toEqual([printField]);
+
+    const businessFields = [field({ key: 'biz', type: 'text' })];
+    expect(resolveWorkflowPrintFields(customSnapshot({ createComponent: 'x', variables }), businessFields)).toEqual(businessFields);
+
+    expect(resolveWorkflowPrintFields(customSnapshot({ createComponent: 'x', variables }))).toEqual([
+      { key: 'mfaRequired', label: '审批需 MFA', type: 'switch' },
+    ]);
+  });
+
+  it('变量声明带选项时映射为 select，以便打印标签而不是原始值', () => {
+    expect(workflowCustomFormPrintFields([
+      { key: 'kind', label: '类型', type: 'string', optionItems: [{ value: 'a', label: '甲' }] },
+      { key: 'owner', label: '负责人', type: 'user' },
+    ])).toEqual([
+      { key: 'kind', label: '类型', type: 'select', options: ['a'], optionItems: [{ value: 'a', label: '甲' }] },
+      { key: 'owner', label: '负责人', type: 'userSelect' },
+    ]);
   });
 });
 
