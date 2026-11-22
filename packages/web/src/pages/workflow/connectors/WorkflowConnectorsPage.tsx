@@ -4,6 +4,7 @@ import { Form, Input, TextArea, Select, Spin, Toast, Row, Col, Typography, Tag, 
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import AppModal from '@/components/AppModal';
+import { StatCard, StatGrid } from '@/components/charts/StatCard';
 import { createdAtColumn, dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { WORKFLOW_CONNECTOR_BREAKER_STATE_LABELS, WORKFLOW_CONNECTOR_INVOCATION_SOURCE_LABELS, WORKFLOW_CONNECTOR_TYPE_LABELS, WORKFLOW_CONNECTOR_RUNTIME_TYPE_OPTIONS, WORKFLOW_CONNECTOR_HTTP_METHOD_OPTIONS, WORKFLOW_CONNECTOR_AUTH_OPTIONS, WORKFLOW_CONNECTOR_CONTENT_OPTIONS, isWorkflowHttpConnector, workflowConnectorConfigFields, workflowConnectorConfigFromFields, type WorkflowConnectorConfigFields, type WorkflowConnector, type WorkflowConnectorType, type WorkflowConnectorBreakerState, type WorkflowConnectorInvokeResult, type WorkflowConnectorHttpConfig, type WorkflowConnectorInvocation, workflowConnectorContract } from '@zenith/shared/workflow';
@@ -365,22 +366,13 @@ export default function WorkflowConnectorsPage() {
               optionList={[{ value: 7, label: '近 7 天' }, { value: 30, label: '近 30 天' }, { value: 90, label: '近 90 天' }]}
             />
           </div>
-          <Row gutter={12} style={{ marginBottom: 16 }}>
-            {([
-              { label: '调用总数', value: monitorStats?.total ?? 0, color: undefined },
-              { label: '成功', value: monitorStats?.success ?? 0, color: 'var(--semi-color-success)' },
-              { label: '失败', value: monitorStats?.failed ?? 0, color: 'var(--semi-color-danger)' },
-              { label: '成功率', value: `${Math.round((monitorStats?.successRate ?? 0) * 100)}%`, color: undefined },
-              { label: '平均耗时', value: `${monitorStats?.avgDurationMs ?? 0}ms`, color: undefined },
-            ] as const).map((s) => (
-              <Col span={Math.floor(24 / 5)} key={s.label}>
-                <div style={{ background: 'var(--semi-color-fill-0)', borderRadius: 'var(--semi-border-radius-medium)', padding: '10px 12px' }}>
-                  <Typography.Text type="tertiary" size="small" style={{ display: 'block' }}>{s.label}</Typography.Text>
-                  <Typography.Text strong style={{ fontSize: 18, color: s.color }}>{s.value}</Typography.Text>
-                </div>
-              </Col>
-            ))}
-          </Row>
+          <StatGrid minItemWidth={110} style={{ marginBottom: 16 }}>
+            <StatCard title="调用总数" value={monitorStats?.total ?? 0} />
+            <StatCard title="成功" value={monitorStats?.success ?? 0} accent="var(--semi-color-success)" />
+            <StatCard title="失败" value={monitorStats?.failed ?? 0} accent="var(--semi-color-danger)" />
+            <StatCard title="成功率" value={`${Math.round((monitorStats?.successRate ?? 0) * 100)}%`} />
+            <StatCard title="平均耗时" value={`${monitorStats?.avgDurationMs ?? 0}ms`} />
+          </StatGrid>
           <Typography.Text strong size="small" style={{ display: 'block', marginBottom: 8 }}>最近调用记录</Typography.Text>
           <Table<WorkflowConnectorInvocation>
             size="small"
