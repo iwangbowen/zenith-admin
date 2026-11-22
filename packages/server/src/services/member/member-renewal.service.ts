@@ -68,7 +68,7 @@ export async function getMyRenewal(memberId: number, applicationId: number): Pro
       exactTenantCondition(paymentContracts.tenantId, member.tenantId),
       sql`${paymentContracts.status} in ('pending', 'unknown', 'signed', 'paused')`,
     ),
-    with: { plan: { columns: { name: true, period: true, amount: true } } },
+    with: { plan: { columns: { name: true, period: true, customDays: true, amount: true } } },
   });
   const renewals = await db
     .select({
