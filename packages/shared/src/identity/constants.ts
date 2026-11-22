@@ -41,15 +41,6 @@ export const DATA_SCOPES = ['all', 'custom', 'dept_only', 'dept', 'self'] as con
 
 export type DataScope = (typeof DATA_SCOPES)[number];
 
-/** 数据权限范围文案（管理端选择器与审批单打印共用） */
-export const DATA_SCOPE_LABELS: Record<DataScope, string> = {
-  all: '全部数据权限',
-  custom: '指定部门数据权限',
-  dept_only: '本部门数据权限',
-  dept: '本部门及以下数据权限',
-  self: '仅本人数据权限',
-};
-
 /** 成员模式：static = 手工维护；dynamic = 按规则自动物化到成员表 */
 export const USER_GROUP_MEMBER_MODES = ['static', 'dynamic'] as const;
 

@@ -12,4 +12,5 @@ export * from './types';
 export * from './validation';
 export * from './access-governance-validation';
 export * from './access-policy';
+export * from './access-print';
 export * from './permissions';

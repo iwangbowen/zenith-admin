@@ -1,5 +1,6 @@
 import type { WorkflowCustomFormConfig, WorkflowCustomFormVariable } from '../workflow/types';
-import { ACCESS_REQUEST_PRINT_FIELDS, buildAccessApprovalTemplate } from '../identity/access-policy';
+import { ACCESS_REQUEST_PRINT_FIELDS } from '../identity/access-print';
+import { buildAccessApprovalTemplate } from '../identity/access-policy';
 import { ACCESS_APPROVAL_POLICY_LABELS, ACCESS_REQUEST_TYPE_LABELS, ACCESS_VALIDITY_MODE_LABELS } from '../identity/access-governance-constants';
 import type { WorkflowCategory, WorkflowDataSource, WorkflowDefinition, WorkflowForm } from '../workflow/contracts';
 import { SEED_DATE } from './_base';
