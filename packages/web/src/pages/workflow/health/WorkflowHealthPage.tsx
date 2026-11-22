@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Descriptions, Modal, Select, SideSheet, Tabs, TabPane, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Button, Card, Descriptions, Modal, Select, SideSheet, Table, Tabs, TabPane, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import { useNavigate } from 'react-router';
 import { usePagination } from '@/hooks/usePagination';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -12,7 +12,7 @@ import { useWorkflowHealthSummary, workflowHealthKeys } from '@/hooks/queries/wo
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
-import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, renderCodeEllipsis, renderEllipsis } from '@/utils/table-columns';
 import { useApiMutation } from '@/lib/contract-query';
 import { FilterSelect } from '@/components/search-filters';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
@@ -26,6 +26,13 @@ const THRESHOLD_OPTIONS = [
   { value: 240, label: '超过 4 小时' },
   { value: 1440, label: '超过 1 天' },
 ];
+
+/** 阈值分钟数 →「30 分钟 / 2 小时 / 1 天」，用于覆盖说明文案 */
+function formatThresholdMinutes(minutes: number): string {
+  if (minutes % 1440 === 0) return `${minutes / 1440} 天`;
+  if (minutes % 60 === 0) return `${minutes / 60} 小时`;
+  return `${minutes} 分钟`;
+}
 
 export default function WorkflowHealthPage() {
   const navigate = useNavigate();
@@ -127,7 +134,7 @@ export default function WorkflowHealthPage() {
   ];
 
   return (
-    <div className="page-container page-tabs-page">
+    <div className="page-container page-tabs-page zx-flat-panels">
       <Typography.Text type="tertiary">检查时刻：{data?.checkedAt ?? '—'} · 当前授权范围 · {data?.ruleVersion ?? '—'} · 覆盖 {data?.coverage.instances ?? '—'} 个运行实例 / {data?.coverage.tasks ?? '—'} 个任务</Typography.Text>
       {summaryQuery.isError && <div role="alert">巡检失败，请重试。<Button onClick={() => void summaryQuery.refetch()}>重新检查</Button></div>}
       <Tabs activeKey={activeTab} onChange={setActiveTab} type="line">
@@ -172,8 +179,28 @@ export default function WorkflowHealthPage() {
       />
       </TabPane>
       <TabPane itemKey="coverage" tab="规则与检查覆盖">
-        <Typography.Paragraph>结构异常、明确失败、外部结果未知和待修复工单立即检查；人工滞留使用所选阈值；SLA 超时使用任务冻结截止时间。摘要按完整授权范围计算，列表独立分页。</Typography.Paragraph>
-        {WORKFLOW_HEALTH_ISSUE_TYPE_OPTIONS.map(rule => <Typography.Paragraph key={rule.value}>{rule.label} · {rule.value}</Typography.Paragraph>)}
+        <Card
+          title="检查规则"
+          headerExtraContent={(
+            <Typography.Text type="tertiary" size="small">
+              {WORKFLOW_HEALTH_ISSUE_TYPE_OPTIONS.length} 项 · {data?.ruleVersion ?? '—'}
+            </Typography.Text>
+          )}
+        >
+          <Typography.Paragraph type="tertiary" size="small" style={{ marginBottom: 12 }}>
+            结构异常、明确失败、外部结果未知和待修复工单立即检查；人工滞留使用当前阈值（{formatThresholdMinutes(submittedParams.thresholdMinutes)}）；SLA 超时使用任务冻结截止时间。摘要按完整授权范围计算，列表独立分页。
+          </Typography.Paragraph>
+          <Table
+            size="small"
+            rowKey="value"
+            dataSource={WORKFLOW_HEALTH_ISSUE_TYPE_OPTIONS}
+            pagination={false}
+            columns={[
+              { title: '检查规则', dataIndex: 'label' },
+              { title: '标识', dataIndex: 'value', render: renderCodeEllipsis },
+            ]}
+          />
+        </Card>
       </TabPane>
       <TabPane itemKey="resolved" tab="恢复记录">
         <Typography.Paragraph>修复、恢复与终止记录保存在修复工单及作业执行历史，可追溯操作人、原因和处理结果。</Typography.Paragraph>
