@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { InputNumber, SideSheet, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import DateTimeText from '@/components/DateTimeText';
-import { EMPTY_PLACEHOLDER, createdAtColumn } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, createdAtColumn, renderCodeEllipsis, renderEllipsis } from '@/utils/table-columns';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import WorkflowInstanceCell from '@/components/workflow/WorkflowInstanceCell';
@@ -71,14 +71,15 @@ export default function WorkflowTriggerExecutionsPage() {
     {
       title: '节点',
       dataIndex: 'nodeName',
-      // 副行 nodeKey 为生成串（如 trigger_1787286640649_116），240 可完整展示典型长度
-      width: 240,
-      render: (_: unknown, r) => (
-        <span>
-          <Typography.Text>{r.nodeName || r.nodeKey}</Typography.Text>
-          <Typography.Text type="tertiary" size="small" style={{ display: 'block' }}>{r.nodeKey}</Typography.Text>
-        </span>
-      ),
+      width: 140,
+      render: (_: unknown, r) => renderEllipsis(r.nodeName || r.nodeKey),
+    },
+    {
+      title: '节点 Key',
+      dataIndex: 'nodeKey',
+      // 生成串（如 trigger_1787286640649_116）单行展示，超长省略并出 tooltip
+      width: 200,
+      render: renderCodeEllipsis,
     },
     {
       title: '触发类型',
