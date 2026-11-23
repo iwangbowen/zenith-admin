@@ -1,5 +1,5 @@
 import type { MaskType, SensitiveFieldRef } from '@zenith/shared/core';
-import { flattenWorkflowPrintLeafFields, normalizeWorkflowFormSnapshot } from '@zenith/shared/workflow';
+import { flattenWorkflowPrintLeafFields, normalizeWorkflowFormSnapshot, resolveWorkflowPrintFields } from '@zenith/shared/workflow';
 import type { DbExecutor } from '../../db/types';
 import { currentUser, hasPermission } from '../../lib/context';
 import { resolveMaskDecisions } from '../../lib/data-mask/policies';
@@ -25,7 +25,8 @@ export function createWorkflowArchiveRedactionCheck(executor?: DbExecutor) {
     if (hiddenWorkflowFieldKeys(row, userId).size > 0 && !(await (monitor ??= hasPermission('workflow:instance:monitor')))) return true;
     const kinds = new Set<string>();
     const add = (type: string) => { const entry = FORM_FIELD_MASK_KINDS[type]; if (entry) kinds.add(entry.field); };
-    for (const field of flattenWorkflowPrintLeafFields(normalizeWorkflowFormSnapshot(row.formSnapshot)?.fields ?? [])) {
+    const fields = resolveWorkflowPrintFields(normalizeWorkflowFormSnapshot(row.formSnapshot));
+    for (const field of flattenWorkflowPrintLeafFields(fields)) {
       if (field.type === 'detail') for (const child of field.children ?? []) add(child.type);
       else add(field.type);
     }

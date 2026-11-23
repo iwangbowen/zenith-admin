@@ -2,7 +2,7 @@ import { pinMockWorkflowNumbering } from '@/mocks/utils/workflow-numbering';
 import { fillPath } from '@zenith/shared/core';
 import { planWorkflowPath, selectWorkflowPathBranches, workflowAttachmentContract } from '@zenith/shared/workflow';
 import type { WorkflowDefinition, WorkflowDefinitionVersion, WorkflowInstance, WorkflowTask, WorkflowFormField, WorkflowInstanceFormSnapshot, WorkflowFlowData } from '@zenith/shared/workflow';
-import { SEED_WORKFLOW_DEFINITIONS, SEED_DATE } from '@zenith/shared/seed';
+import { SEED_ACCESS_REQUEST_PRINT_TEMPLATE, SEED_WORKFLOW_DEFINITIONS, SEED_DATE } from '@zenith/shared/seed';
 import { nextIdFrom } from '@/mocks/utils/handlers';
 import { mockUsers } from './users';
 import { mockWorkflowForms } from './workflow-forms';
@@ -67,6 +67,8 @@ const EXPENSE_FLOW_DATA = {
 };
 
 // External 定义与 DB seed 同源；1–6 是其它 Demo 定义，业务定义使用后续 ID。
+export const MOCK_ACCESS_REQUEST_PRINT_TEMPLATE_ID = 2;
+
 const mockBusinessDefinitions: WorkflowDefinition[] = SEED_WORKFLOW_DEFINITIONS.map((seed, index) => ({
   ...structuredClone(seed),
   id: 7 + index,
@@ -76,11 +78,19 @@ const mockBusinessDefinitions: WorkflowDefinition[] = SEED_WORKFLOW_DEFINITIONS.
   formId: null,
   formFields: null,
   tenantId: 1,
+  ...(seed.id === SEED_ACCESS_REQUEST_PRINT_TEMPLATE.entityRefId && {
+    printTemplateId: MOCK_ACCESS_REQUEST_PRINT_TEMPLATE_ID,
+    printTemplateName: SEED_ACCESS_REQUEST_PRINT_TEMPLATE.name,
+  }),
   createdBy: 1,
   createdByName: '张三',
   createdAt: SEED_DATE,
   updatedAt: SEED_DATE,
 }));
+export const mockAccessRequestDefinitionId = mockBusinessDefinitions.find(
+  definition => definition.printTemplateId === MOCK_ACCESS_REQUEST_PRINT_TEMPLATE_ID,
+)!.id;
+
 const bizLeaveDefinition = mockBusinessDefinitions.find((definition) => definition.name === '请假审批')!;
 const BIZ_LEAVE_CUSTOM_FORM = bizLeaveDefinition.customForm;
 

@@ -4,7 +4,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WorkflowInstance } from '@zenith/shared/workflow';
-import { ACCESS_REQUEST_BIZ_TYPE } from '@zenith/shared/identity';
+import { SEED_ACCESS_REQUEST_PRINT_TEMPLATE, SEED_WORKFLOW_DEFINITIONS } from '@zenith/shared/seed';
 
 const mocks = vi.hoisted(() => ({
   getInstanceDetail: vi.fn(),
@@ -168,10 +168,15 @@ describe('renderWorkflowInstancePdf', () => {
     spy.mockRestore();
   });
 
-  it('自定义业务表单按内置业务字段生成打印内容（权限申请含权限明细与标签文案）', async () => {
+  it('已绑定的预置权限申请模板通过实例字段快照渲染权限明细', async () => {
     const spy = await captureRender();
+    const definitionId = SEED_ACCESS_REQUEST_PRINT_TEMPLATE.entityRefId;
+    const definition = SEED_WORKFLOW_DEFINITIONS.find(item => item.id === definitionId)!;
+    mocks.definitionRow.printTemplateId = 7;
+    mocks.loadEntityPrintTemplate.mockResolvedValue({ id: 7, ...SEED_ACCESS_REQUEST_PRINT_TEMPLATE });
     mocks.getInstanceDetail.mockResolvedValue({
       ...instance,
+      definitionId,
       definitionName: '权限申请',
       formData: {
         targetUserName: '管理员',
@@ -189,10 +194,11 @@ describe('renderWorkflowInstancePdf', () => {
       },
       formSnapshot: {
         formType: 'custom', formId: null, formName: null, fields: [], settings: null,
-        customForm: { businessType: ACCESS_REQUEST_BIZ_TYPE, createComponent: 'biz/access/AccessRequestWorkflowForm' },
+        customForm: definition.customForm,
       },
     });
     await renderWorkflowInstancePdf(42);
+    expect(mocks.loadEntityPrintTemplate).toHaveBeenCalledWith(7, { entityKind: 'workflow_instance', tenantId: null });
     const values = spy.mock.lastCall![0].grid.cells.map((c) => String(c.v ?? ''));
     expect(values).toContain('权限明细');
     expect(values).toContain('查询用户');

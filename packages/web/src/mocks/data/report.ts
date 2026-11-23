@@ -3,9 +3,10 @@
  * 数据源 / 数据集 / 仪表盘直接复用 @zenith/shared 的 SEED_REPORT_* 常量（深拷贝，避免污染种子）。
  * 由于 Demo 无后端数据库，数据集取数返回「按 datasetId 预置」的静态结果，供图表/大屏渲染。
  */
-import { SEED_REPORT_DATASOURCES, SEED_REPORT_DATASETS, SEED_REPORT_DASHBOARDS } from '@zenith/shared/seed';
+import { SEED_ACCESS_REQUEST_PRINT_TEMPLATE, SEED_REPORT_DATASOURCES, SEED_REPORT_DATASETS, SEED_REPORT_DASHBOARDS } from '@zenith/shared/seed';
 import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
 import type { ReportDatasource, ReportDataset, ReportDashboard, ReportDataResult, ReportWidgetDataResult, ReportDashboardCategory, ReportAlertRule, ReportPrintTemplate, ReportDashboardSubscription, ReportDashboardComment, ReportDashboardVersion, ReportDashboardShare } from '@zenith/shared/report';
+import { MOCK_ACCESS_REQUEST_PRINT_TEMPLATE_ID, mockAccessRequestDefinitionId } from './workflow';
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 
@@ -97,6 +98,13 @@ export const mockReportPrintTemplates: ReportPrintTemplate[] = [
     },
     params: [], pageConfig: { paper: 'A4', orientation: 'portrait', header: '${name} 报表', footer: '第 {page}/{pages} 页' },
     status: 'enabled', remark: '示例打印模板', createdBy: 1, updatedBy: 1, createdAt: mockDateTime(), updatedAt: mockDateTime(),
+  },
+  {
+    ...clone(SEED_ACCESS_REQUEST_PRINT_TEMPLATE),
+    id: MOCK_ACCESS_REQUEST_PRINT_TEMPLATE_ID,
+    entityRefId: mockAccessRequestDefinitionId,
+    createdAt: mockDateTime(),
+    updatedAt: mockDateTime(),
   },
 ];
 

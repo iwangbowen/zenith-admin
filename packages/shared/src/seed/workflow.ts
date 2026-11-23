@@ -551,8 +551,10 @@ const ACCESS_REQUEST_VARIABLES: WorkflowCustomFormVariable[] = [
 
 const ACCESS_REQUEST_FLOW = buildAccessApprovalTemplate(TEMPLATE_SETTINGS);
 
+export const SEED_ACCESS_REQUEST_WORKFLOW_ID = 5;
+
 SEED_WORKFLOW_DEFINITIONS.push({
-  id: 5,
+  id: SEED_ACCESS_REQUEST_WORKFLOW_ID,
   name: '权限申请',
   description: '按有效权限策略生成独立审批计划，支持限时与永久授权；申请预览和实际流程使用同一审批图。',
   initiatorScopeType: 'all',

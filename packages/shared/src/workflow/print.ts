@@ -394,19 +394,15 @@ export function workflowCustomFormPrintFields(variables: readonly WorkflowCustom
 }
 
 /**
- * 解析实例的打印字段：
- * designer 表单使用发起时冻结的表单字段；custom / external 表单依次取
- * 快照 printFields → 调用方提供的业务字段 → variables 推断。
+ * 按表单字段、业务表单声明的 printFields、业务表单 variables 的顺序解析打印字段。
+ * 打印实例时传入实例的表单快照，编辑模板时传入流程定义的表单配置。
  */
 export function resolveWorkflowPrintFields(
-  snapshot: WorkflowInstanceFormSnapshot | null | undefined,
-  businessFields?: readonly WorkflowFormField[],
+  form: Pick<WorkflowInstanceFormSnapshot, 'fields' | 'customForm'> | null | undefined,
 ): WorkflowFormField[] {
-  if (!snapshot) return businessFields ? [...businessFields] : [];
-  if (snapshot.fields.length > 0) return snapshot.fields;
-  if (snapshot.customForm?.printFields?.length) return snapshot.customForm.printFields;
-  if (businessFields?.length) return [...businessFields];
-  return workflowCustomFormPrintFields(snapshot.customForm?.variables);
+  if (form?.fields.length) return form.fields;
+  if (form?.customForm?.printFields?.length) return form.customForm.printFields;
+  return workflowCustomFormPrintFields(form?.customForm?.variables);
 }
 
 export interface WorkflowPrintDatasetInput {

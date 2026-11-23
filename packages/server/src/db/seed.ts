@@ -1,5 +1,6 @@
 import { pinWorkflowNumbering } from '../services/workflow/workflow-numbering.service';
 import type { WorkflowFlowData } from '@zenith/shared/workflow';
+import { SEED_ACCESS_REQUEST_PRINT_TEMPLATE } from '@zenith/shared/seed';
 import { workflowDefinitionVersions } from './schema/workflow';
 import { captureCmsModelVersion } from '../services/cms/cms-design-versions.service';
 import { initializeCmsContentWorkingCopy, freezeCmsContentRevision, approveCmsRevision } from '../services/cms/cms-content-revisions.service';
@@ -7,7 +8,7 @@ import { cmsContentWorkingCopies } from './schema/cms-revisions';
 import { db } from './index';
 import { wikiSpaces, wikiSpaceMembers, wikiTags, wikiTemplates, wikiDocs, wikiDocVersions, wikiDocTags, wikiComments, wikiSearchLogs, users, menus, roles, roleMenus, userRoles, dicts, dictItems, fileStorageConfigs, departments, positions, userPositions, cronJobs, rateLimitRules, regions, tenants, tenantPackages, tenantPackageFeatures, emailTemplates, smsConfigs, smsTemplates, inAppTemplates, tags, dataMaskPolicies, monitorAlertRules, clientApps, memberLevels, memberTags, members, memberPointAccounts, memberPointTransactions, memberWallets, coupons, memberCoupons, checkinRules, checkinSettings, checkinMilestones, workflowCategories, workflowForms, workflowDataSources, workflowConnectors, workflowTemplates, workflowDefinitions, aiPromptTemplates, identityPermissionPolicies, paymentMethodConfigs, paymentDeductPlans, mpAccounts, mpTags, mpFans, mpMessages, mpAutoReplies, mpMenus, mpMaterials, mpDrafts, mpMessageTemplates, mpBroadcasts, mpQrcodes, mpKfAccounts, mpKfSessions, mpKfSessionEvents, mpKfRoutingConfigs, mpConditionalMenus, channels, channelQuickReplies, reportDatasources, reportDatasets, reportDashboards, apiScopes, ratePlans, reportPrintTemplates, ruleDecisionTables, ruleDecisionFlows, ruleLists, ruleListItems, ruleScorecards, reportFolders, reportEnvironments, reportMetrics, reportDqRules, reportQueryQuotas, reportSlaRules, reportAssetTemplates, reportFillTemplates, analyticsEventMeta, analyticsSites, asyncTaskItems, asyncTasks, cmsSites, cmsSiteInheritances, cmsModels, cmsModelFields, cmsChannels, cmsDistributionRules, cmsContents, cmsTags, cmsContentTags, cmsContentChannels, cmsContentRelations, cmsContentVersions, cmsFriendLinkGroups, cmsFriendLinks, cmsAdSlots, cmsAds, cmsAdEvents, cmsForms, cmsSensitiveWords, cmsErrorProneWords, cmsLinkWords, cmsComments, cmsSiteUsers, cmsChannelUsers, cmsInteractions, cmsInteractionQuestions, cmsInteractionResponses, cmsInteractionAnswers, cmsMemberSubscriptions, cmsResources, cmsResourceFolders, cmsResourceRefs, cmsSearchWords, cmsHotwordGroups, cmsHotwords, cmsCollectRules, cmsCollectItems, cmsWidgets, cmsWidgetRefs, cmsWidgetSourceRefs, cmsPages, cmsPageBlockAcls, cmsPublishArtifacts } from './schema';
 import { hashPassword } from '../lib/password';
-import { and, eq, isNull, inArray, sql } from 'drizzle-orm';
+import { and, eq, isNull, inArray, like, sql } from 'drizzle-orm';
 import { createRequire } from 'node:module';
 import logger from '../lib/logger';
 import { runAsUser } from '../lib/audit-context';
@@ -745,24 +746,6 @@ async function seedRest() {
   await db.execute(sql`SELECT setval('workflow_templates_id_seq', GREATEST((SELECT MAX(id) FROM workflow_templates), 1))`);
   logger.info('  ✔ Workflow templates seeded (onConflictDoNothing)');
 
-  // ── 业务系统主导流程（请假审批 / CMS 内容审核，共享最新初始化定义）───────────
-  await db.transaction(async tx => {
-    for (const seed of SEED_WORKFLOW_DEFINITIONS) {
-      const { id, name, description, initiatorScopeType, formType, customForm, status, version, tenantId } = seed;
-      const flowData = await pinWorkflowNumbering(tx, { id, tenantId, formId: null, formType, customForm, flowData: seed.flowData as unknown as WorkflowFlowData });
-      const [created] = await tx.insert(workflowDefinitions).overridingSystemValue().values({
-        id, name, description, initiatorScopeType, flowData, formType, customForm, status, version, tenantId,
-      }).onConflictDoNothing().returning({ id: workflowDefinitions.id });
-      if (created && status === 'published') {
-        await tx.insert(workflowDefinitionVersions).values({
-          definitionId: id, version, name, description, flowData, formId: null, formType, customForm, formSchema: null, tenantId,
-        });
-      }
-    }
-  });
-  await db.execute(sql`SELECT setval('workflow_definitions_id_seq', GREATEST((SELECT MAX(id) FROM workflow_definitions), 1))`);
-  logger.info('  ✔ Workflow definitions seeded (onConflictDoNothing)');
-
   // ── 演示会员（手机号 13800138000 / 密码 123456）────────────────────────
   const existingDemoMember = await db.select({ id: members.id }).from(members).where(eq(members.phone, '13800138000')).limit(1);
   if (existingDemoMember.length === 0) {
@@ -846,6 +829,47 @@ async function seedRest() {
     await db.update(reportPrintTemplates).set({ ownerId: adminUser.id, folderId: 5 })
       .where(and(inArray(reportPrintTemplates.id, SEED_REPORT_PRINT_TEMPLATES.map((row) => row.id)), isNull(reportPrintTemplates.ownerId), isNull(reportPrintTemplates.folderId)));
   }
+
+  // 先初始化示例报表的固定 ID，再用正常序列创建流程的实体打印模板。
+  await db.transaction(async tx => {
+    for (const seed of SEED_WORKFLOW_DEFINITIONS) {
+      const { id, name, description, initiatorScopeType, formType, customForm, status, version, tenantId } = seed;
+      const flowData = await pinWorkflowNumbering(tx, { id, tenantId, formId: null, formType, customForm, flowData: seed.flowData as unknown as WorkflowFlowData });
+      const [created] = await tx.insert(workflowDefinitions).overridingSystemValue().values({
+        id, name, description, initiatorScopeType, flowData, formType, customForm, status, version, tenantId,
+      }).onConflictDoNothing().returning({ id: workflowDefinitions.id });
+      if (!created) continue;
+
+      const printSeed = SEED_ACCESS_REQUEST_PRINT_TEMPLATE;
+      if (id === printSeed.entityRefId) {
+        const candidates = await tx.select().from(reportPrintTemplates)
+          .where(and(isNull(reportPrintTemplates.tenantId), like(reportPrintTemplates.name, `${printSeed.name}%`)));
+        const existing = candidates.find(template =>
+          template.name === printSeed.name && template.sourceType === printSeed.sourceType
+          && template.entityKind === printSeed.entityKind && template.entityRefId === id && template.status === 'enabled'
+          && (template.content.grid || template.content.sheets?.length),
+        );
+        let template = existing;
+        if (!template) {
+          const takenNames = new Set(candidates.map(candidate => candidate.name));
+          let templateName = printSeed.name;
+          for (let suffix = 1; takenNames.has(templateName); suffix += 1) {
+            templateName = `${printSeed.name}（内置 ${suffix}）`;
+          }
+          [template] = await tx.insert(reportPrintTemplates)
+            .values({ ...printSeed, name: templateName, ownerId: adminUser?.id ?? null }).returning();
+        }
+        await tx.update(workflowDefinitions).set({ printTemplateId: template.id }).where(eq(workflowDefinitions.id, id));
+      }
+      if (status === 'published') {
+        await tx.insert(workflowDefinitionVersions).values({
+          definitionId: id, version, name, description, flowData, formId: null, formType, customForm, formSchema: null, tenantId,
+        });
+      }
+    }
+  });
+  await db.execute(sql`SELECT setval('workflow_definitions_id_seq', GREATEST((SELECT MAX(id) FROM workflow_definitions), 1))`);
+  logger.info('  ✔ Workflow definitions seeded (onConflictDoNothing)');
 
   await db.insert(reportMetrics).overridingSystemValue().values(
     SEED_REPORT_METRICS.map(({ id, tenantId, folderId, code, name, description, type, datasetId, sourceField, formula, aggregate, dimensions, timeField, unit, format, caliber, lifecycleStatus, revision, publishedSnapshot, publishedAt, publishedBy, deprecatedAt, deprecatedBy, deprecationReason }) => ({

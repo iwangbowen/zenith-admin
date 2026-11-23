@@ -20,10 +20,9 @@ import { buildReportParamInitialValues } from '@/components/report-param-utils';
 import { printContentToUniver, univerToPrintContent } from './print-univer';
 import { buildEntityPrintCatalog, buildEntityTemplateDraft, entityDatasetKeys, findInvalidEntityDatasetRef } from './entity-print';
 import WorkflowPrintButton from '@/components/workflow/WorkflowPrintButton';
-import { useWorkflowDefinitionList } from '@/hooks/queries/workflow-definitions';
+import { useWorkflowDefinitionDetail, useWorkflowDefinitionOptions } from '@/hooks/queries/workflow-definitions';
 import { useApiQuery } from '@/lib/contract-query';
-import { workflowInstanceContract } from '@zenith/shared/workflow';
-import type { WorkflowFormField } from '@zenith/shared/workflow';
+import { resolveWorkflowPrintFields, workflowInstanceContract } from '@zenith/shared/workflow';
 import { useReportDesignerDatasets } from '@/hooks/queries/report-designer';
 import { reportDatasetKeys, useReportDatasetDetail } from '@/hooks/queries/report-datasets';
 import {
@@ -228,10 +227,15 @@ export default function PrintDesignerPage() {
 
   // ─── 实体模板（审批单）：字段目录来自参照流程的表单；样例实例用于预览 ────────────
   const isEntity = sourceType === 'entity';
-  const definitionsQuery = useWorkflowDefinitionList({ page: 1, pageSize: 200 }, isEntity);
-  const definitionOptions = (definitionsQuery.data?.list ?? []).map((d) => ({ value: d.id, label: d.name }));
-  const refDefinition = (definitionsQuery.data?.list ?? []).find((d) => d.id === entityRefId) ?? null;
-  const entityFormFields = useMemo<WorkflowFormField[]>(() => (refDefinition?.formFields ?? []) as WorkflowFormField[], [refDefinition]);
+  const definitionsQuery = useWorkflowDefinitionOptions(isEntity);
+  const definitionOptions = (definitionsQuery.data ?? []).map((d) => ({ value: d.id, label: d.name }));
+  const refDefinitionQuery = useWorkflowDefinitionDetail(entityRefId, isEntity);
+  const refDefinition = refDefinitionQuery.data;
+  const loadingReferenceFields = isEntity && entityRefId !== null && refDefinitionQuery.isPending;
+  const entityFormFields = useMemo(() => resolveWorkflowPrintFields(refDefinition && {
+    fields: refDefinition.formFields ?? [],
+    customForm: refDefinition.customForm,
+  }), [refDefinition]);
   const entityCatalog = useMemo(() => (isEntity && entityKind ? buildEntityPrintCatalog(entityKind, entityFormFields) : null), [entityFormFields, entityKind, isEntity]);
   const entityKeys = useMemo(() => (entityCatalog ? entityDatasetKeys(entityCatalog) : []), [entityCatalog]);
   const sampleInstancesQuery = useApiQuery(
@@ -815,7 +819,7 @@ export default function PrintDesignerPage() {
         <div style={{ flex: 1 }} />
         {isEntity && (
           <Tooltip content="按参照流程的表单快照生成审批单版式（基本信息 / 表单 / 明细 / 签名 / 审批记录），作为定制起点">
-            <Button icon={<Wand2 size={14} />} disabled={!entityRefId} onClick={handleGenerateFromForm}>从流程表单生成</Button>
+            <Button icon={<Wand2 size={14} />} disabled={!refDefinition} onClick={handleGenerateFromForm}>从流程表单生成</Button>
           </Tooltip>
         )}
         <Dropdown
@@ -836,7 +840,7 @@ export default function PrintDesignerPage() {
           <Button icon={<MoreHorizontal size={14} />}>更多</Button>
         </Dropdown>
         <Button icon={<Eye size={14} />} onClick={() => void handlePreview()}>预览</Button>
-        <Button type="primary" icon={<Save size={14} />} loading={saveMutation.isPending} disabled={!canSave} onClick={() => void saveTemplate()}>保存</Button>
+        <Button type="primary" icon={<Save size={14} />} loading={saveMutation.isPending} disabled={!canSave || loadingReferenceFields} onClick={() => void saveTemplate()}>保存</Button>
       </div>
 
       <div className="report-designer__main">

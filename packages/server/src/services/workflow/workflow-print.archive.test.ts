@@ -154,8 +154,17 @@ describe('renderWorkflowInstancePdf · 来源选择', () => {
     await expect(renderWorkflowInstancePdf(42)).rejects.toMatchObject({ status: 500 });
   });
 
-  it('查看者对表单存在脱敏字段：auto 回退实时打码渲染，显式 archive 拒绝 403', async () => {
-    mocks.getInstanceDetail.mockResolvedValue(archivedInstance);
+  it.each(['designer', 'custom'] as const)('查看者对 %s 表单存在脱敏字段：auto 回退实时渲染，显式 archive 拒绝 403', async (formType) => {
+    const snapshot = archivedInstance.formSnapshot!;
+    mocks.getInstanceDetail.mockResolvedValue({
+      ...archivedInstance,
+      formSnapshot: formType === 'custom'
+        ? {
+            formType, formId: null, formName: null, fields: [], settings: null,
+            customForm: { createComponent: 'biz/ExampleForm', printFields: snapshot.fields },
+          }
+        : snapshot,
+    });
     mocks.resolveMaskDecisions.mockResolvedValue([{ ref: { field: 'phone' }, decision: { maskType: 'phone' } }]);
     const live = await renderWorkflowInstancePdf(42);
     expect(live.source).toBe('live');

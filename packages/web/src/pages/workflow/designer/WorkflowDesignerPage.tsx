@@ -9,7 +9,7 @@ import { Button, Divider, Modal, RadioGroup, Radio, TextArea, Toast, Tooltip, Ty
 import PageLoading from '@/components/PageLoading';
 import { ArrowLeft, Check, Download, Eye, History, Minus, Play, Plus, Redo2, RotateCcw, Save, Send, Stethoscope, TriangleAlert, Undo2, Upload } from 'lucide-react';
 import type { WorkflowDefinition, WorkflowDefinitionSnapshot, WorkflowFlowData, WorkflowFormField, WorkflowFormType, WorkflowCustomFormConfig } from '@zenith/shared/workflow';
-import { WORKFLOW_FORM_TYPES, WORKFLOW_FORM_TYPE_LABELS, generateWorkflowPrintContent, resolveApproverDedupMode, workflowPrintPageConfig } from '@zenith/shared/workflow';
+import { WORKFLOW_FORM_TYPES, WORKFLOW_FORM_TYPE_LABELS, generateWorkflowPrintContent, resolveApproverDedupMode, resolveWorkflowPrintFields, workflowPrintPageConfig } from '@zenith/shared/workflow';
 import { useSaveReportPrintTemplate } from '@/hooks/queries/report-print';
 import { downloadBlob } from '@/utils/download';
 import { hasBusinessFormComponent } from '@/utils/business-form-registry';
@@ -618,10 +618,10 @@ export default function WorkflowDesignerPage({
       Toast.warning('请先保存流程');
       return;
     }
-    // 自定义业务表单优先使用声明的打印字段（含明细表）；未声明时退回变量推断的字段
-    const fields = formType === 'designer'
-      ? localFormFields
-      : (customForm?.printFields?.length ? customForm.printFields : availableFormFields);
+    const fields = resolveWorkflowPrintFields({
+      fields: formType === 'designer' ? localFormFields : [],
+      customForm: formType === 'designer' ? null : customForm,
+    });
     try {
       const saved = await createPrintTemplateMutation.mutateAsync({
         values: {

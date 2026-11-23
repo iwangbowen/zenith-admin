@@ -380,16 +380,13 @@ describe('resolveWorkflowPrintFields', () => {
 
   it('designer 表单使用发起时冻结的字段', () => {
     const fields = [field({ key: 'amount', type: 'amount' })];
-    expect(resolveWorkflowPrintFields({ formType: 'designer', formId: 1, formName: '报销单', fields, settings: null, customForm: null }, [field({ key: 'fallback', type: 'text' })])).toBe(fields);
+    expect(resolveWorkflowPrintFields({ fields, customForm: null })).toBe(fields);
   });
 
-  it('custom 表单依次取 printFields、业务字段、variables 推断', () => {
+  it('custom 表单优先使用 printFields，缺少声明时按变量推断', () => {
     const printField = field({ key: 'printOnly', type: 'text' });
     const variables = [{ key: 'mfaRequired', label: '审批需 MFA', type: 'boolean' as const }];
     expect(resolveWorkflowPrintFields(customSnapshot({ createComponent: 'x', variables, printFields: [printField] }))).toEqual([printField]);
-
-    const businessFields = [field({ key: 'biz', type: 'text' })];
-    expect(resolveWorkflowPrintFields(customSnapshot({ createComponent: 'x', variables }), businessFields)).toEqual(businessFields);
 
     expect(resolveWorkflowPrintFields(customSnapshot({ createComponent: 'x', variables }))).toEqual([
       { key: 'mfaRequired', label: '审批需 MFA', type: 'switch' },

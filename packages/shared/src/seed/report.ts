@@ -1,5 +1,8 @@
 import type { ReportAssetTemplate, ReportDashboard, ReportDataset, ReportDatasource, ReportDqRule, ReportEnvironment, ReportFillTemplate, ReportFolder, ReportMetric, ReportPrintTemplate, ReportQueryQuota, ReportSlaRule } from '../report/contracts';
+import { ACCESS_REQUEST_PRINT_FIELDS } from '../identity/access-print';
+import { generateWorkflowPrintContent, workflowPrintPageConfig } from '../workflow/print';
 import { SEED_DATE } from './_base';
+import { SEED_ACCESS_REQUEST_WORKFLOW_ID } from './workflow';
 
 // ─── 报表中心：示例数据源 / 数据集 / 仪表盘 ─────────────────────────────────────
 export const SEED_REPORT_DATASOURCES: ReportDatasource[] = [
@@ -230,6 +233,20 @@ export const SEED_REPORT_PRINT_TEMPLATES: ReportPrintTemplate[] = [
     updatedAt: SEED_DATE,
   },
 ];
+
+export const SEED_ACCESS_REQUEST_PRINT_TEMPLATE = {
+  name: '权限申请审批单',
+  sourceType: 'entity',
+  entityKind: 'workflow_instance',
+  entityRefId: SEED_ACCESS_REQUEST_WORKFLOW_ID,
+  content: generateWorkflowPrintContent(ACCESS_REQUEST_PRINT_FIELDS, {
+    includeCc: true, includeComments: true, includeConsults: true, includeVerifyQr: true,
+  }),
+  params: [],
+  pageConfig: workflowPrintPageConfig(),
+  status: 'enabled',
+  remark: '系统预置的权限申请审批单打印模板',
+} satisfies Omit<ReportPrintTemplate, 'id' | 'createdAt' | 'updatedAt'>;
 
 // ─── 报表中心 P2：治理、质量、容量、资产与填报基线 ─────────────────────────────
 export const SEED_REPORT_FOLDERS: ReportFolder[] = [
