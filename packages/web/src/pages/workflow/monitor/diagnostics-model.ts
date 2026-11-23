@@ -1,7 +1,6 @@
 import type { WorkflowAssigneeType, WorkflowFlowData, WorkflowNodeConfig, WorkflowRuntimeDiagnostics, WorkflowRuntimeIssue, WorkflowTask } from '@zenith/shared/workflow';
 import { WORKFLOW_APPROVE_METHOD_LABELS } from '@zenith/shared/workflow';
 import dayjs from 'dayjs';
-import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { formatSecondsBetween } from '@/utils/format';
 export type TagColor = 'amber' | 'blue' | 'cyan' | 'green' | 'grey' | 'indigo' | 'light-blue' | 'light-green' | 'lime' | 'orange' | 'pink' | 'purple' | 'red' | 'teal' | 'violet' | 'yellow' | 'white';
 
@@ -140,50 +139,21 @@ export function buildDiagNodes(
   });
 }
 
-type FocusSeverity = 'success' | 'info' | 'warning' | 'critical';
-
-export const FOCUS_SEVERITY_META: Record<FocusSeverity, { text: string; color: TagColor }> = {
-  success: { text: '正常', color: 'green' },
-  info: { text: '运行中', color: 'blue' },
-  warning: { text: '需关注', color: 'orange' },
-  critical: { text: '有风险', color: 'red' },
-};
-
-interface FocusMetric {
-  label: string;
-  value: string;
-  hint?: string;
-}
-
-interface FocusRiskTag {
-  label: string;
-  color: TagColor;
-}
-
 interface FocusDiagnosis {
-  severity: FocusSeverity;
   title: string;
-  description: string;
-  nextAction: string;
-  metrics: FocusMetric[];
-  riskTags: FocusRiskTag[];
+  description?: string;
+  nextAction?: string;
   activeTasks: WorkflowTask[];
+  risks: string[];
+  waitingRisk?: string;
+  failedEventCount: number;
+  assigneeSource?: string;
+  longestStay?: { taskId: number; nodeName: string; duration: string };
 }
 
 export function diffSeconds(start: string | null | undefined, end: string | null | undefined): number {
   if (!start || !end) return 0;
   return Math.max(0, dayjs(end).diff(dayjs(start), 'second'));
-}
-
-function uniqueTexts(values: Array<string | null | undefined>): string[] {
-  return [...new Set(values.map((value) => value?.trim()).filter((value): value is string => !!value))];
-}
-
-function summarizeNames(values: Array<string | null | undefined>, emptyText: string): string {
-  const names = uniqueTexts(values);
-  if (names.length === 0) return emptyText;
-  if (names.length <= 3) return names.join('、');
-  return `${names.slice(0, 3).join('、')} 等 ${names.length} 人`;
 }
 
 export function getTaskEndTime(task: WorkflowTask, generatedAt: string): string {
@@ -201,7 +171,6 @@ export function buildFocusDiagnosis(diagnostics: WorkflowRuntimeDiagnostics, dia
     .sort((a, b) => b.seconds - a.seconds)[0];
 
   const criticalIssues = diagnostics.issues.filter((issue) => issue.severity === 'critical');
-  const warningIssues = diagnostics.issues.filter((issue) => issue.severity === 'warning');
   const activeTaskIds = new Set(activeTasks.map(task => task.id));
   const failedTriggers = diagnostics.triggerExecutions.filter((item) => item.status === 'failed' && item.taskId != null && activeTaskIds.has(item.taskId));
   const retryingTriggers = diagnostics.triggerExecutions.filter((item) => item.status === 'retrying' || item.status === 'running');
@@ -214,42 +183,34 @@ export function buildFocusDiagnosis(diagnostics: WorkflowRuntimeDiagnostics, dia
   const longWaitingCritical = longestActiveWaitingSec >= 72 * 3600;
   const longWaitingWarning = longestActiveWaitingSec >= 24 * 3600;
 
-  const riskTags: FocusRiskTag[] = [];
-  if (criticalIssues.length > 0) riskTags.push({ label: `严重 ${criticalIssues.length}`, color: 'red' });
-  if (warningIssues.length > 0) riskTags.push({ label: `警告 ${warningIssues.length}`, color: 'orange' });
-  if (failedTriggers.length > 0) riskTags.push({ label: `触发器失败 ${failedTriggers.length}`, color: 'red' });
-  if (failedOutbox.length > 0) riskTags.push({ label: `事件派发失败 ${failedOutbox.length}`, color: 'red' });
-  if (externalFailedTasks.length > 0) riskTags.push({ label: `外部分派失败 ${externalFailedTasks.length}`, color: 'red' });
-  if (triggerFailedTasks.length > 0) riskTags.push({ label: `任务触发失败 ${triggerFailedTasks.length}`, color: 'red' });
-  if (retryingTriggers.length > 0) riskTags.push({ label: `触发器重试中 ${retryingTriggers.length}`, color: 'orange' });
-  if (pendingOutbox.length > 0) riskTags.push({ label: `事件派发待处理 ${pendingOutbox.length}`, color: 'orange' });
-  if (emptyAssigneeTasks.length > 0) riskTags.push({ label: `处理人为空 ${emptyAssigneeTasks.length}`, color: 'orange' });
-  if (longWaitingCritical) riskTags.push({ label: '等待超3天', color: 'red' });
-  else if (longWaitingWarning) riskTags.push({ label: '等待超24小时', color: 'orange' });
-  if (activeTasks.length > 0) riskTags.push({ label: `活动任务 ${activeTasks.length}`, color: 'light-blue' });
-  if (riskTags.length === 0) riskTags.push({ label: '未发现阻断项', color: 'green' });
+  const risks: string[] = [];
+  if (failedTriggers.length > 0) risks.push(`触发器失败 ${failedTriggers.length}`);
+  if (failedOutbox.length > 0) risks.push(`事件派发失败 ${failedOutbox.length}`);
+  if (externalFailedTasks.length > 0) risks.push(`外部分派失败 ${externalFailedTasks.length}`);
+  if (triggerFailedTasks.length > 0) risks.push(`任务触发失败 ${triggerFailedTasks.length}`);
+  if (retryingTriggers.length > 0) risks.push(`触发器重试中 ${retryingTriggers.length}`);
+  if (pendingOutbox.length > 0) risks.push(`事件派发待处理 ${pendingOutbox.length}`);
+  if (emptyAssigneeTasks.length > 0) risks.push(`处理人为空 ${emptyAssigneeTasks.length}`);
+  const waitingRisk = longWaitingCritical ? '超过 3 天' : longWaitingWarning ? '超过 24 小时' : undefined;
 
-  const hasCriticalRisk = criticalIssues.length > 0 || failedTriggers.length > 0 || failedOutbox.length > 0 || externalFailedTasks.length > 0 || triggerFailedTasks.length > 0 || longWaitingCritical;
-  const hasWarningRisk = warningIssues.length > 0 || retryingTriggers.length > 0 || pendingOutbox.length > 0 || emptyAssigneeTasks.length > 0 || longWaitingWarning;
   const running = RUNNING_STATUSES.has(inst.status);
-  const severity: FocusSeverity = hasCriticalRisk ? 'critical' : hasWarningRisk || (running && activeTasks.length === 0) ? 'warning' : running ? 'info' : 'success';
-
-  const activeNodeText = oldestActiveTask ? (oldestActiveTask.nodeName || oldestActiveTask.nodeKey) : EMPTY_PLACEHOLDER;
-  const assigneeText = summarizeNames(activeTasks.map((task) => task.assigneeName), '未指定处理人');
-  const waitText = oldestActiveTask ? formatSecondsBetween(oldestActiveTask.createdAt, diagnostics.generatedAt) : EMPTY_PLACEHOLDER;
-  const assigneeSource = oldestActiveNode?.config.assigneeType ? ASSIGNEE_TYPE_LABEL[oldestActiveNode.config.assigneeType] ?? oldestActiveNode.config.assigneeType : EMPTY_PLACEHOLDER;
-  const longestStayText = longestTask && longestTask.seconds > 0
-    ? `${longestTask.task.nodeName || longestTask.task.nodeKey} ${formatSecondsBetween(longestTask.task.createdAt, getTaskEndTime(longestTask.task, diagnostics.generatedAt))}`
-    : EMPTY_PLACEHOLDER;
+  const assigneeType = oldestActiveNode?.config.assigneeType;
+  const assigneeSource = assigneeType ? ASSIGNEE_TYPE_LABEL[assigneeType] ?? assigneeType : undefined;
+  const longestStay = longestTask && longestTask.seconds > 0
+    ? {
+        taskId: longestTask.task.id,
+        nodeName: longestTask.task.nodeName || longestTask.task.nodeKey,
+        duration: formatSecondsBetween(longestTask.task.createdAt, getTaskEndTime(longestTask.task, diagnostics.generatedAt)),
+      }
+    : undefined;
 
   let title = '流程已结束';
-  let description = '该实例没有活动任务，可在任务、表单数据和定义快照中核对历史执行依据。';
-  let nextAction = '确认终态和历史审批记录即可；如结果异常，优先查看任务列表和定义快照。';
+  let description: string | undefined;
+  let nextAction: string | undefined;
 
   if (running && oldestActiveTask) {
-    title = `当前卡在「${activeNodeText}」`;
-    description = `最早活动任务 #${oldestActiveTask.id} 已等待 ${waitText}，当前处理人：${assigneeText}。`;
-    nextAction = '联系当前处理人继续审批；若处理人不合适，可使用改派处理人或强制跳转。';
+    title = oldestActiveTask.nodeName || oldestActiveTask.nodeKey;
+    nextAction = '联系当前处理人继续审批，必要时改派处理人或强制跳转。';
     if (oldestActiveTask.nodeType === 'delay') {
       title = '等待计划唤醒'; nextAction = '核对延时唤醒作业与计划时刻，到期后由系统推进。';
     } else if (oldestActiveTask.nodeType === 'subProcess') {
@@ -258,8 +219,9 @@ export function buildFocusDiagnosis(diagnostics: WorkflowRuntimeDiagnostics, dia
       title = '等待自动执行'; nextAction = '查看触发器执行记录和作业状态。';
     } else if (oldestActiveTask.status === 'waiting' || oldestActiveTask.externalCallbackId) {
       nextAction = '该任务正在等待外部系统回调，优先检查外部分派状态、回调地址和外部系统处理结果。';
-
     }
+  } else if (inst.status === 'draft') {
+    title = '草稿待提交';
   } else if (running) {
     title = '运行中但无活动任务';
     description = '实例仍处于运行态，但诊断接口未返回 pending / waiting 任务，可能需要检查流程推进或任务生成逻辑。';
@@ -269,21 +231,18 @@ export function buildFocusDiagnosis(diagnostics: WorkflowRuntimeDiagnostics, dia
   if (failedOutbox.length > 0) nextAction = '优先打开“事件派发”标签查看失败事件、错误信息和下次重试时间，必要时检查订阅地址或重试投递。';
   if (failedTriggers.length > 0) nextAction = '优先打开“触发器”标签查看失败请求、HTTP 状态、响应体和最近错误。';
   if (externalFailedTasks.length > 0) nextAction = '优先检查外部分派配置和外部系统回调；若无法恢复，可改派到人工处理。';
-  if (criticalIssues.length > 0) nextAction = '优先处理诊断结论中的严重项，再回到节点和任务列表确认流程是否恢复。';
+  if (criticalIssues.length > 0) nextAction = '优先处理下方标记为严重的问题，再到节点和任务页签确认流程是否恢复。';
 
   return {
-    severity,
     title,
     description,
     nextAction,
     activeTasks,
-    riskTags,
-    metrics: [
-      { label: '当前等待', value: waitText, hint: oldestActiveTask ? `task #${oldestActiveTask.id}` : '无活动任务' },
-      { label: '处理人', value: assigneeText, hint: assigneeSource !== EMPTY_PLACEHOLDER ? `来源：${assigneeSource}` : undefined },
-      { label: '最久停留', value: longestStayText, hint: longestTask ? `task #${longestTask.task.id}` : undefined },
-      { label: '外部事件', value: `${diagnostics.triggerExecutions.length} 触发器 · ${diagnostics.outboxEvents.length} 事件派发`, hint: `${failedTriggers.length + failedOutbox.length} 个失败` },
-    ],
+    risks,
+    waitingRisk,
+    failedEventCount: failedTriggers.length + failedOutbox.length,
+    assigneeSource,
+    longestStay,
   };
 }
 

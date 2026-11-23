@@ -1,0 +1,114 @@
+.workflow-diagnostics-summary {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--semi-color-text-0);
+}
+
+.semi-sidesheet-title:has(> .workflow-diagnostics-summary__drawer-title) {
+  flex: 1;
+  min-width: 0;
+}
+
+.workflow-diagnostics-summary__drawer-title,
+.workflow-diagnostics-summary__title,
+.workflow-diagnostics-summary__facts,
+.workflow-diagnostics-summary__person {
+  display: flex;
+  align-items: center;
+}
+
+.workflow-diagnostics-summary__drawer-title {
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.workflow-diagnostics-summary__title {
+  gap: 8px;
+  min-width: 0;
+}
+
+.workflow-diagnostics-summary__title h3 {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 26px;
+}
+
+.workflow-diagnostics-summary__title .semi-tag,
+.workflow-diagnostics-summary__drawer-title > .semi-button {
+  flex-shrink: 0;
+}
+
+.workflow-diagnostics-summary__facts {
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.workflow-diagnostics-summary__person {
+  gap: 6px;
+  min-width: 0;
+}
+
+.workflow-diagnostics-summary__instance {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 24px;
+  margin: 0;
+}
+
+.workflow-diagnostics-summary__instance > div {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.workflow-diagnostics-summary__instance dt {
+  flex-shrink: 0;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.workflow-diagnostics-summary__muted,
+.workflow-diagnostics-summary__instance dt {
+  color: var(--semi-color-text-2);
+}
+
+.workflow-diagnostics-summary__instance dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.workflow-diagnostics-summary__diagnosis {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding-top: 10px;
+  overflow-wrap: anywhere;
+  border-top: 1px solid var(--semi-color-border);
+}
+
+.workflow-diagnostics-summary__diagnosis h4 {
+  margin: 0;
+  font-size: inherit;
+  font-weight: 600;
+  line-height: inherit;
+}
+
+.workflow-diagnostics-summary__diagnosis p {
+  margin: 0;
+}
+
+.workflow-diagnostics-summary__issue {
+  display: grid;
+  gap: 2px;
+}

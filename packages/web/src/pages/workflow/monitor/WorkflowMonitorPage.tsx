@@ -1,16 +1,15 @@
-import { RUNNING_STATUSES, ISSUE_SOURCE_MAP, NODE_STATE_MAP, NODE_STATE_TIMELINE_TYPE, FOCUS_SEVERITY_META, buildDiagNodes, getNodeConfigItems, buildFocusDiagnosis, type TagColor, type DiagNode } from './diagnostics-model';
+import { RUNNING_STATUSES, NODE_STATE_MAP, NODE_STATE_TIMELINE_TYPE, buildDiagNodes, getNodeConfigItems, type DiagNode } from './diagnostics-model';
 import { lazy, Suspense, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, Form, Input, JsonViewer, Modal, SideSheet, Space, Spin, Tabs, TabPane, Tag, Timeline, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Download, FileText, UserRoundCog } from 'lucide-react';
+import { Download, UserRoundCog } from 'lucide-react';
 import dayjs from 'dayjs';
 import { WORKFLOW_INSTANCE_PRIORITIES, WORKFLOW_INSTANCE_STATUSES, WORKFLOW_JOB_STATUSES, type WorkflowCategory, type WorkflowExecutionToken, type WorkflowInstanceListItem, type WorkflowJobStatus, type WorkflowRuntimeOutboxEvent, type WorkflowTask, type WorkflowTriggerExecution } from '@zenith/shared/workflow';
 import { enumValueOf } from '@zenith/shared/core';
 import { workflowInstanceOpsContract } from '@zenith/shared/workflow';
 import { api } from '@/lib/contract-query';
-import { WORKFLOW_ISSUE_SEVERITY_META as ISSUE_SEVERITY_MAP } from './constants';
 import { downloadBlob } from '@/utils/download';
 import { formatSecondsBetween } from '@/utils/format';
 import { UserAvatar } from '@/components/UserAvatar';
@@ -27,7 +26,7 @@ import { useListDeepLink } from '@/hooks/useListDeepLink';
 import { usePermission } from '@/hooks/usePermission';
 import WorkflowInstanceDetailPanel from '@/components/workflow/WorkflowInstanceDetailPanel';
 import WorkflowGraphView from '@/components/workflow/WorkflowGraphView';
-import { NODE_RT_STATUS_COLOR, NODE_RT_STATUS_LABEL, INSTANCE_STATUS_MAP, nodeStatusDisplay } from '@/components/workflow/workflow-runtime';
+import { INSTANCE_STATUS_MAP, nodeStatusDisplay } from '@/components/workflow/workflow-runtime';
 import { resolveWorkflowFlowData, resolveWorkflowFormFields } from '@/utils/workflow-snapshot';
 import WorkflowAnalyticsView from './WorkflowAnalyticsView';
 import WorkflowTasksMonitorView from './WorkflowTasksMonitorView';
@@ -37,6 +36,7 @@ import {
 } from '@/components/workflow/workflow-task-columns';
 import WorkflowHandoverModal from './WorkflowHandoverModal';
 import WorkflowEngineDiagnosticsView from './WorkflowEngineDiagnosticsView';
+import WorkflowDiagnosticsSummary from './WorkflowDiagnosticsSummary';
 import WorkflowJobsView from './WorkflowJobsView';
 import WorkflowCompensationsView from './WorkflowCompensationsView';
 import WorkflowEngineTraceView from './WorkflowEngineTraceView';
@@ -408,13 +408,6 @@ export default function WorkflowMonitorPage() {
     const inst = diagnostics.instance;
     const flowData = resolveWorkflowFlowData(inst, null);
     const diagNodes = buildDiagNodes(flowData, diagnostics.tasks, inst.currentNodeKeys ?? []);
-    const nodeNameByKey = new Map(diagNodes.map((n) => [n.key, n.name]));
-    const statusMeta = INSTANCE_STATUS_MAP[inst.status] ?? { text: inst.status, color: 'grey' as TagColor };
-    const currentNodeText = inst.currentNodeNames && inst.currentNodeNames.length > 0
-      ? inst.currentNodeNames.join('、')
-      : (inst.currentNodeName || EMPTY_PLACEHOLDER);
-    const focusDiagnosis = buildFocusDiagnosis(diagnostics, diagNodes);
-    const focusMeta = FOCUS_SEVERITY_META[focusDiagnosis.severity];
 
     const renderNodeConfigSummary = (node: DiagNode) => {
       const items = getNodeConfigItems(node.config);
@@ -495,115 +488,10 @@ export default function WorkflowMonitorPage() {
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-          <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(150px, 100%), 1fr))', gap: 12 }}>
-            <div><Typography.Text type="tertiary" size="small">流程名称</Typography.Text><div>{inst.definitionName || EMPTY_PLACEHOLDER}</div></div>
-            <div><Typography.Text type="tertiary" size="small">状态</Typography.Text><div><Tag color={statusMeta.color}>{statusMeta.text}</Tag></div></div>
-            <div><Typography.Text type="tertiary" size="small">当前节点</Typography.Text><div>{currentNodeText}</div></div>
-            <div><Typography.Text type="tertiary" size="small">实例 ID</Typography.Text><div>#{inst.id}</div></div>
-            <div><Typography.Text type="tertiary" size="small">定义 ID</Typography.Text><div>#{inst.definitionId}</div></div>
-            <div>
-              <Typography.Text type="tertiary" size="small">发起人</Typography.Text>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
-                {inst.initiatorName ? <UserAvatar name={inst.initiatorName} avatar={inst.initiatorAvatar} size={20} /> : null}
-                <span>{inst.initiatorName || EMPTY_PLACEHOLDER}</span>
-              </div>
-            </div>
-            <div><Typography.Text type="tertiary" size="small">Business Key</Typography.Text><div>{inst.bizType && inst.bizId ? `${inst.bizType}:${inst.bizId}` : EMPTY_PLACEHOLDER}</div></div>
-            <div><Typography.Text type="tertiary" size="small">节点 / 任务</Typography.Text><div>{diagNodes.length} 节点 · {diagnostics.tasks.length} 任务（{diagnostics.activeTasks.length} 活动）</div></div>
-            <div><Typography.Text type="tertiary" size="small">生成时间</Typography.Text><div>{diagnostics.generatedAt}</div></div>
-          </div>
-          <Tooltip content="查看该实例发起时的完整流程定义快照（基本信息 / 表单设计 / 流程图 / 节点配置 / 高级设置），即实例实际执行依据，而非最新版本。">
-            <Button
-              theme="borderless"
-              size="small"
-              icon={<FileText size={14} />}
-              onClick={() => setDefSnapshotVisible(true)}
-            >
-              查看流程定义
-            </Button>
-          </Tooltip>
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <Space spacing={8} wrap align="center">
-            <Tag color={focusMeta.color}>{focusMeta.text}</Tag>
-            <Typography.Text strong>{focusDiagnosis.title}</Typography.Text>
-            {focusDiagnosis.riskTags.map((tag) => (
-              <Tag key={tag.label} size="small" color={tag.color}>{tag.label}</Tag>
-            ))}
-          </Space>
-          <Typography.Text type="tertiary" size="small">{focusDiagnosis.description}</Typography.Text>
-
-          <StatGrid minItemWidth={150} gap={10}>
-            {focusDiagnosis.metrics.map((metric) => (
-              <StatCard key={metric.label} title={metric.label} value={metric.value} sub={metric.hint} />
-            ))}
-          </StatGrid>
-
-          {focusDiagnosis.activeTasks.length > 0 && (
-            <div>
-              <Typography.Text type="tertiary" size="small">当前活动任务</Typography.Text>
-              <Space vertical align="start" spacing={6} style={{ width: '100%', marginTop: 6 }}>
-                {focusDiagnosis.activeTasks.slice(0, 3).map((task) => (
-                  <div
-                    key={task.id}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 10,
-                      flexWrap: 'wrap',
-                      width: '100%',
-                      padding: '4px 0',
-                    }}
-                  >
-                    <Typography.Text type="tertiary" size="small">#{task.id}</Typography.Text>
-                    <Tag size="small" color={NODE_RT_STATUS_COLOR[task.status]}>{NODE_RT_STATUS_LABEL[task.status]}</Tag>
-                    <Typography.Text strong size="small">{task.nodeName || task.nodeKey}</Typography.Text>
-                    <Space spacing={6}>
-                      <UserAvatar name={task.assigneeName || '未指定'} avatar={task.assigneeAvatar} size={20} />
-                      <Typography.Text size="small">{task.assigneeName || '未指定'}</Typography.Text>
-                    </Space>
-                    <Typography.Text type="tertiary" size="small">
-                      等待 {formatSecondsBetween(task.createdAt, diagnostics.generatedAt)}
-                    </Typography.Text>
-                  </div>
-                ))}
-                {focusDiagnosis.activeTasks.length > 3 && (
-                  <Typography.Text type="tertiary" size="small">
-                    还有 {focusDiagnosis.activeTasks.length - 3} 个活动任务，可在“任务”标签查看全部。
-                  </Typography.Text>
-                )}
-              </Space>
-            </div>
-          )}
-
-          <div style={{ marginTop: 4 }}>
-            <Typography.Text type="tertiary" size="small">建议动作：</Typography.Text>
-            <Typography.Text size="small">{focusDiagnosis.nextAction}</Typography.Text>
-          </div>
-        </div>
-
-        <div>
-          <Typography.Title heading={6}>诊断结论</Typography.Title>
-          <Space vertical align="start" spacing={8} style={{ width: '100%' }}>
-            {diagnostics.issues.map((issue, index) => {
-              const meta = ISSUE_SEVERITY_MAP[issue.severity];
-              return (
-                <div key={`${issue.source}-${issue.title}-${index}`} style={{ width: '100%' }}>
-                  <Space spacing={8} wrap>
-                    <Tag color={meta.color}>{meta.text}</Tag>
-                    <Tag color="grey">{ISSUE_SOURCE_MAP[issue.source]}</Tag>
-                    {issue.taskId != null && <Typography.Text type="tertiary">task #{issue.taskId}</Typography.Text>}
-                    {issue.nodeKey && <Typography.Text type="tertiary">{nodeNameByKey.get(issue.nodeKey) ?? issue.nodeKey}</Typography.Text>}
-                  </Space>
-                  <div style={{ marginTop: 6 }}><Typography.Text strong>{issue.title}</Typography.Text></div>
-                  <Typography.Text type="tertiary" size="small">{issue.description}</Typography.Text>
-                </div>
-              );
-            })}
-          </Space>
-        </div>
+        <WorkflowDiagnosticsSummary
+          diagnostics={diagnostics}
+          nodes={diagNodes}
+        />
 
         <Tabs collapsible="auto" type="line" activeKey={diagnosticsTab} onChange={setDiagnosticsTab}>
           <TabPane tab="引擎轨迹" itemKey="trace">
@@ -914,7 +802,20 @@ export default function WorkflowMonitorPage() {
       </SideSheet>
 
       <SideSheet
-        title="运行时诊断"
+        aria-label="运行时诊断"
+        title={(
+          <div className="workflow-diagnostics-summary__drawer-title">
+            <span>运行时诊断</span>
+            {diagnostics && !diagnosticsQuery.isError && (
+              <Tooltip content="查看该实例发起时的流程定义快照">
+                <Button theme="borderless" size="small" onClick={() => setDefSnapshotVisible(true)}>
+                  查看流程定义
+                </Button>
+              </Tooltip>
+            )}
+          </div>
+        )}
+        headerStyle={{ gap: 8 }}
         visible={diagnosticsVisible}
         onCancel={() => { setDiagnosticsVisible(false); setDiagnosticsId(undefined); setDefSnapshotVisible(false); }}
         width={980}
