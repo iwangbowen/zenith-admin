@@ -1,6 +1,6 @@
 import { FormPasswordInput } from '@/components/PasswordInput';
 import { useEffect, useState } from 'react';
-import { Button, Col, Form, Radio, Row, Select, Switch, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Button, Col, Form, Radio, Row, Select, Switch, Tag, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import { PlugZap } from 'lucide-react';
 import { fileStorageConfigContract, type CreateFileStorageConfigInput, type FileAccessStrategy, type FileBucketAccessInfo, type FileBucketAcl, type FileObjectAcl, type FileStorageConfig, type FileStorageProvider, type UpdateFileStorageConfigInput } from '@zenith/shared/platform';
 import { FILE_ACCESS_STRATEGY_LABELS, FILE_ACCESS_STRATEGY_OPTIONS, FILE_BUCKET_ACCESS_SUPPORT, FILE_DIRECT_UPLOAD_SUPPORT, FILE_OBJECT_ACL_LABELS, FILE_OBJECT_ACL_SUPPORT, FILE_STORAGE_PROVIDER_LABELS, FILE_STORAGE_PROVIDER_OPTIONS, FILE_UPLOAD_MODE_OPTIONS, PRESIGNED_EXPIRY_DEFAULT_SECONDS, PRESIGNED_EXPIRY_MAX_SECONDS, PRESIGNED_EXPIRY_MIN_SECONDS } from '@zenith/shared/platform';
@@ -629,7 +629,8 @@ export default function FileStorageConfigsPage() {
     {
       title: '访问策略',
       dataIndex: 'accessStrategy',
-      width: 120,
+      // 最长标签「公开直链（自定义域名 / CDN）」约 180px，列宽按完整文案预留；缩窄时标签省略并悬停看全文
+      width: 220,
       align: 'center',
       render: (value: FileAccessStrategy | undefined) => {
         const strategy = value ?? 'proxy';
@@ -640,7 +641,12 @@ export default function FileStorageConfigsPage() {
           'public-bucket': 'orange',
           'public-domain': 'cyan',
         };
-        return <Tag color={colorMap[strategy]} size="small">{FILE_ACCESS_STRATEGY_LABELS[strategy]}</Tag>;
+        const label = FILE_ACCESS_STRATEGY_LABELS[strategy];
+        return (
+          <Tooltip content={label}>
+            <Tag color={colorMap[strategy]} size="small" style={{ maxWidth: '100%' }}>{label}</Tag>
+          </Tooltip>
+        );
       },
     },
     dateTimeColumn('更新时间', 'updatedAt'),
