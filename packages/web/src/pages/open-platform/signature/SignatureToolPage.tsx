@@ -72,15 +72,13 @@ export default function SignatureToolPage() {
                 <Tag color="blue">算法：{doc.algorithm}</Tag>
                 <Tag color="orange">时间戳窗口：±{doc.timestampWindow}s</Tag>
               </Space>
-              <Paragraph spacing="extended">
+              <Space spacing={8} wrap style={{ marginBottom: 12 }}>
                 <Text strong>请求头：</Text>
-                <Space wrap style={{ marginLeft: 8 }}>
-                  <Tag>{doc.headers.appKey}</Tag>
-                  <Tag>{doc.headers.timestamp}</Tag>
-                  <Tag>{doc.headers.nonce}</Tag>
-                  <Tag>{doc.headers.signature}</Tag>
-                </Space>
-              </Paragraph>
+                <Tag>{doc.headers.appKey}</Tag>
+                <Tag>{doc.headers.timestamp}</Tag>
+                <Tag>{doc.headers.nonce}</Tag>
+                <Tag>{doc.headers.signature}</Tag>
+              </Space>
               <Paragraph><Text strong>待签名串格式：</Text></Paragraph>
               <div style={codeBlockStyle}>{doc.stringToSignFormat}</div>
               <ol style={{ margin: '12px 0 0', paddingLeft: 20, lineHeight: 1.9 }}>
