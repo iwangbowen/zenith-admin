@@ -282,8 +282,8 @@ export default function StorageFileBrowser({ config, onClose }: Readonly<Storage
     if (!config) return;
     try {
       const access = await api(fileContract.storageObjectAccessUrl, {
-        // 预览内容由浏览器 fetch 后转 blob；对象存储通常未对本站开放 CORS，改走同源服务端代理
-        query: { storageConfigId: config.id, key: entry.key, purpose, proxy: purpose === 'preview' },
+        // 预览要 fetch 后转 blob、下载要避免新标签页，二者都走同源服务端代理
+        query: { storageConfigId: config.id, key: entry.key, purpose, proxy: true },
       }, { silent: true });
       if (purpose === 'preview') {
         await preview.handlePreview({
@@ -295,9 +295,8 @@ export default function StorageFileBrowser({ config, onClose }: Readonly<Storage
         return;
       }
       const anchor = document.createElement('a');
-      anchor.href = access.url;
-      anchor.target = '_blank';
-      anchor.rel = 'noopener noreferrer';
+      anchor.href = getFileFullUrl(access.url);
+      anchor.download = entry.name;
       anchor.click();
     } catch (error) {
       Toast.error(error instanceof Error ? error.message : '获取文件访问地址失败');
