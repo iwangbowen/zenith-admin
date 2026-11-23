@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeQuery, keywordQuery, paginated, paginationQuery, queryEnum, requiredIdQuery } from '../../core/api-schemas';
+import { dateRangeQuery, keywordQuery, paginated, paginationQuery, queryBool, queryEnum, requiredIdQuery } from '../../core/api-schemas';
 import { defineContract, fileField, multipart, op } from '../../core/contract';
 import {
   FILE_ACCESS_PURPOSES,
@@ -179,6 +179,8 @@ export const storageObjectAccessQuery = z.object({
   storageConfigId: requiredIdQuery('存储配置 ID'),
   key: z.string().min(1).max(1024),
   purpose: queryEnum(FILE_ACCESS_PURPOSES),
+  /** 浏览器预览需要同源地址：强制走服务端代理，避免对象存储未配置 CORS 时 fetch 失败 */
+  proxy: queryBool('是否强制服务端代理读取'),
 });
 
 /** 代理下载令牌：content 路由为公开接口，只接受服务端签发的短时令牌 */

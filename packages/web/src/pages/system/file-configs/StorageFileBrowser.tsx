@@ -282,7 +282,8 @@ export default function StorageFileBrowser({ config, onClose }: Readonly<Storage
     if (!config) return;
     try {
       const access = await api(fileContract.storageObjectAccessUrl, {
-        query: { storageConfigId: config.id, key: entry.key, purpose },
+        // 预览内容由浏览器 fetch 后转 blob；对象存储通常未对本站开放 CORS，改走同源服务端代理
+        query: { storageConfigId: config.id, key: entry.key, purpose, proxy: purpose === 'preview' },
       }, { silent: true });
       if (purpose === 'preview') {
         await preview.handlePreview({

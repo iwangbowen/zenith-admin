@@ -302,7 +302,8 @@ export async function getStorageObjectAccessUrl(query: AccessQuery) {
   const config = await getConfig(query.storageConfigId);
   const key = assertKeyInScope(config, query.key);
   const disposition = query.purpose === 'download' ? attachmentDisposition(path.basename(key)) : undefined;
-  const direct = await resolveStorageObjectDirectUrl(config, key, disposition);
+  // 浏览器预览由前端 fetch 后转 blob，跨域直链会被对象存储 CORS 拦截；预览强制同源代理
+  const direct = query.proxy ? null : await resolveStorageObjectDirectUrl(config, key, disposition);
   if (direct) {
     return {
       url: direct.url,
