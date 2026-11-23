@@ -354,7 +354,7 @@ export default function WorkflowMonitorPage() {
     ];
     const outboxColumns: ColumnProps<WorkflowRuntimeOutboxEvent>[] = [
       { title: 'ID', dataIndex: 'id', width: 70 },
-      { title: '事件', dataIndex: 'eventType', width: 170 },
+      { title: '事件', dataIndex: 'eventType', width: 360, render: renderEllipsis },
       { title: '任务', dataIndex: 'taskId', width: 80, render: (v: number | null) => v ? `#${v}` : EMPTY_PLACEHOLDER },
       { title: '状态', dataIndex: 'status', width: 130 },
       { title: '尝试', dataIndex: 'attempts', width: 70 },
