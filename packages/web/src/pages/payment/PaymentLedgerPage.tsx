@@ -549,10 +549,11 @@ export default function PaymentLedgerPage() {
     { title: '商户配置', dataIndex: 'channelConfigId', width: 220, render: (value: number) => renderEllipsis(merchantNameById.get(value) ?? `配置 #${value}`) },
     { title: '币种', dataIndex: 'currency', width: 80 },
     {
+      key: 'debitAmount',
       title: '借贷金额', dataIndex: 'lines', width: 150, align: 'right',
       render: (lines: PaymentJournalLine[], record) => formatMinorAmount(amountTotal(lines, 'debitAmount').toString(), record.currency),
     },
-    { title: '分录数', dataIndex: 'lines', width: 90, align: 'right', render: (lines: PaymentJournalLine[]) => lines.length },
+    { key: 'lineCount', title: '分录数', dataIndex: 'lines', width: 90, align: 'right', render: (lines: PaymentJournalLine[]) => lines.length },
     {
       title: '凭证类型', dataIndex: 'reversalOfJournalId', width: 100,
       render: (_value: number | null | undefined, record: PaymentJournal) => (

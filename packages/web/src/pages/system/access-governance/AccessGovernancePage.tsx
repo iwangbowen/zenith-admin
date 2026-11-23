@@ -369,8 +369,8 @@ function GrantsTab() {
     { title: '用户', dataIndex: 'userName', minWidth: 120, render: (value) => value || EMPTY_PLACEHOLDER },
     { title: '风险等级', dataIndex: 'riskLevel', width: 100, render: (value: AccessGrant['riskLevel']) => <RiskTag value={value} /> },
     { title: '状态', dataIndex: 'status', width: 100, render: (value: AccessGrant['status']) => value === 'active' ? <Tag color="green" size="small">{GRANT_STATUS_LABELS[value]}</Tag> : GRANT_STATUS_LABELS[value] },
-    { title: '授权情况', dataIndex: 'items', minWidth: 230, render: (items: AccessGrant['items']) => Object.entries(GRANT_STATUS_LABELS).map(([status, label]) => label + ' ' + items.filter(item => item.status === status).length).join(' · ') },
-    { title: '数据范围', dataIndex: 'items', width: 170, render: (items: AccessGrant['items']) => [...new Set(items.map(item => dataScopeLabel(item.dataScope)))].join('、') },
+    { key: 'grantStatusSummary', title: '授权情况', dataIndex: 'items', minWidth: 230, render: (items: AccessGrant['items']) => Object.entries(GRANT_STATUS_LABELS).map(([status, label]) => label + ' ' + items.filter(item => item.status === status).length).join(' · ') },
+    { key: 'grantDataScopes', title: '数据范围', dataIndex: 'items', width: 170, render: (items: AccessGrant['items']) => [...new Set(items.map(item => dataScopeLabel(item.dataScope)))].join('、') },
     dateTimeColumn('生效时间', 'startsAt'),
     dateTimeColumn('失效时间', 'expiresAt', { empty: '永久有效' }),
     createOperationColumn<AccessGrant>({ width: 210, actions: (row) => [
