@@ -461,8 +461,8 @@ export default function StorageFileBrowser({ config, onClose }: Readonly<Storage
       >
         <div className="storage-browser__toolbar">
           <Space spacing={4} style={{ flexShrink: 0 }}>
-            <Button size="small" theme="borderless" type="tertiary" icon={<ChevronLeft size={15} />} disabled={historyIndex === 0} onClick={goBack} />
-            <Button size="small" theme="borderless" type="tertiary" icon={<ChevronRight size={15} />} disabled={historyIndex >= historyStack.length - 1} onClick={goForward} />
+            <Button size="small" theme="borderless" type="tertiary" icon={<ChevronLeft size={15} />} disabled={historyIndex === 0} onClick={goBack} aria-label="后退" title="后退" />
+            <Button size="small" theme="borderless" type="tertiary" icon={<ChevronRight size={15} />} disabled={historyIndex >= historyStack.length - 1} onClick={goForward} aria-label="前进" title="前进" />
           </Space>
           <Breadcrumb className="storage-browser__breadcrumb">
             <Breadcrumb.Item
@@ -555,7 +555,14 @@ export default function StorageFileBrowser({ config, onClose }: Readonly<Storage
                 size="small"
                 pagination={false}
                 onRow={(row) => row?.kind === 'folder'
-                  ? { onClick: () => navigateToFolder(row.folder), style: { cursor: 'pointer' } }
+                  ? {
+                      // 文件名 / 操作列按钮自己处理导航；行点击只兜底空白区域，避免一次点击写入两条历史
+                      onClick: (event) => {
+                        if ((event.target as HTMLElement).closest('button, a, input, select, textarea, [role="button"]')) return;
+                        navigateToFolder(row.folder);
+                      },
+                      style: { cursor: 'pointer' },
+                    }
                   : {}}
               />
             )}
