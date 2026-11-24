@@ -65,7 +65,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   resetAdminSubjectCache();
   vi.mocked(getTokenRevocation).mockResolvedValue(null);
-  vi.mocked(getUserPermissions).mockResolvedValue(['system:api-catalog:view']);
+  vi.mocked(getUserPermissions).mockResolvedValue(['system:access-catalog:view']);
   vi.mocked(loadSubjectRow).mockResolvedValue({
     id: 1,
     username: 'catalog-reader',
@@ -96,7 +96,7 @@ describe('GET /api/api-catalog conditional responses', () => {
     expect(body.data.items.length).toBeGreaterThan(0);
     expect(body.data.items).toContainEqual(expect.objectContaining({
       fullPath: apiCatalogContract.get.fullPath,
-      permissions: ['system:api-catalog:view'],
+      permissions: ['system:access-catalog:view'],
     }));
   });
 

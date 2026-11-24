@@ -45,7 +45,7 @@ export const IDENTITY_PERMISSIONS = definePermissions({
   'system:access-governance:revoke': { label: '撤销审批授权', menu: 'SystemAccessGovernance', riskLevel: 'high', approvalPolicy: 'manager_security', reviewIntervalDays: 90, selfRequestable: false },
   'system:access-governance:review': { label: '权限复核', menu: 'SystemAccessGovernance', riskLevel: 'high', approvalPolicy: 'manager_security', reviewIntervalDays: 90, selfRequestable: false },
   'system:access-governance:policy': { label: '策略配置', menu: 'SystemAccessGovernance', riskLevel: 'critical', approvalPolicy: 'two_person', reviewIntervalDays: 30, selfRequestable: false },
-  'system:api-catalog:view': { label: '查询', menu: 'SystemApiCatalog' },
+  'system:access-catalog:view': { label: '查询', menu: 'SystemAccessCatalog' },
   'system:tenant:list': { label: '查询', menu: 'SystemTenants' },
   'system:tenant:export-raw': { label: '明文导出', menu: 'SystemTenants', riskLevel: 'critical', approvalPolicy: 'two_person', reviewIntervalDays: 30 },
   'system:tenant:create': { label: '新增租户', menu: 'SystemTenants', uiOnly: true },

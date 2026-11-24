@@ -16,7 +16,7 @@ export const PAGE_READ_PERMISSION_BY_NAME: Readonly<Record<string, string>> = {
   SystemTenants: 'system:tenant:list',
   SystemTenantPackages: 'system:tenant-package:list',
   SystemRegions: 'system:region:list',
-  SystemApiCatalog: 'system:api-catalog:view',
+  SystemAccessCatalog: 'system:access-catalog:view',
   SystemNumberingRules: 'system:numbering:list',
   SystemIdentitySecurity: 'system:login-risk:list',
   SystemFileConfigs: 'system:file:config',

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({
   findUser: vi.fn(), cache: new Map<string, string>(), bus: 'listening' as 'listening' | 'degraded',
-  navigation: [{ id: 1, parentId: 0, permission: null, status: 'enabled' }, { id: 2, parentId: 1, permission: 'system:user:list', status: 'enabled' }],
+  navigation: [{ id: 1, parentId: 0, permission: null, status: 'enabled', type: 'directory' }, { id: 2, parentId: 1, permission: 'system:user:list', status: 'enabled', type: 'menu' }],
   handlers: new Map<string, (message: { key?: string }) => void>(),
 }));
 vi.mock('../db', () => ({ db: { query: { users: { findFirst: state.findUser } }, select: () => ({ from: async () => state.navigation }) } }));
@@ -35,7 +35,7 @@ function item(permissionCode: string, from: number, until: number | null) {
 beforeEach(async () => {
   vi.useRealTimers(); vi.clearAllMocks(); state.cache.clear(); state.bus = 'listening';
   state.findUser.mockReset();
-  state.navigation = [{ id: 1, parentId: 0, permission: null, status: 'enabled' }, { id: 2, parentId: 1, permission: 'system:user:list', status: 'enabled' }];
+  state.navigation = [{ id: 1, parentId: 0, permission: null, status: 'enabled', type: 'directory' }, { id: 2, parentId: 1, permission: 'system:user:list', status: 'enabled', type: 'menu' }];
   await clearUserPermissionCache();
 });
 
@@ -53,16 +53,15 @@ describe('permission source aggregation', () => {
     }));
     expect(await getUserPermissions(7)).toEqual(['system:dict:list', 'system:role:list', 'system:user:list', 'system:user:update']);
   });
-  it('navigation bindings and changed menu metadata cannot mint operation permissions', async () => {
-    state.findUser.mockResolvedValue(user({ userRoles: [role(['system:user:list'])], userMenus: [{ menu: { id: 9, permission: 'system:user:assign', status: 'enabled' } }] }));
-    state.navigation[1].permission = 'system:user:assign';
-    expect(await getUserPermissions(7)).toEqual(['system:user:list']);
-    expect(await getUserMenuIds(7)).toEqual([]);
+  it('explicit page grants add the page read permission, not arbitrary operation permissions', async () => {
+    state.findUser.mockResolvedValue(user({ userRoles: [role(['system:user:list'])], userMenus: [{ menu: { id: 9, permission: 'system:user:assign', status: 'enabled', type: 'menu' } }] }));
+    expect(await getUserPermissions(7)).toEqual(['system:user:assign', 'system:user:list']);
+    expect(await getUserMenuIds(7)).toEqual([9]);
   });
-  it('projects declared permissions into menus with ancestors and ignores unknown codes', async () => {
+  it('operation permissions do not project menus unless the page is explicitly granted', async () => {
     state.findUser.mockResolvedValue(user({ userRoles: [role(['system:user:list', 'unregistered:capability'])] }));
     expect(await getUserPermissions(7)).toEqual(['system:user:list']);
-    expect(await getUserMenuIds(7)).toEqual([2, 1]);
+    expect(await getUserMenuIds(7)).toEqual([]);
   });
   it('re-evaluates both activation and expiry at the exact time boundary', async () => {
     vi.useFakeTimers(); vi.setSystemTime(now);

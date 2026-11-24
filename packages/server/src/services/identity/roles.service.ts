@@ -180,9 +180,9 @@ async function ensureRoleBelongsToTenant(id: number): Promise<{ tenantId: number
   return { tenantId: role.tenantId, code: role.code };
 }
 
-export async function assignRoleMenus(id: number, menuIds: number[]) {
+export async function assignRoleMenus(id: number, menuIds: number[], permissionCodes: string[] = []) {
   const { tenantId: roleTenantId } = await ensureRoleBelongsToTenant(id);
-  // 多租户：角色所属租户绑定套餐时，分配的菜单必须落在套餐功能范围内。
+  // 多租户：角色所属租户绑定套餐时，分配的菜单和权限都必须落在套餐功能范围内。
   const featureSet = await getTenantPackageFeatureSet(roleTenantId);
   if (featureSet && menuIds.length > 0) {
     const rows = await db.select({ featureKey: menus.featureKey }).from(menus).where(inArray(menus.id, menuIds));
@@ -191,7 +191,7 @@ export async function assignRoleMenus(id: number, menuIds: number[]) {
     }
   }
   await db.transaction(async (tx) => {
-    await replaceRolePermissions(tx, id, menuIds, roleTenantId);
+    await replaceRolePermissions(tx, id, menuIds, permissionCodes, roleTenantId);
   });
   await clearUserPermissionCache();
 }

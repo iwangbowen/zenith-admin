@@ -169,6 +169,13 @@
       "when": 1795433355474,
       "tag": "0023_access_request_print_template",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1795530221179,
+      "tag": "0024_overconfident_the_fury",
+      "breakpoints": true
     }
   ]
 }

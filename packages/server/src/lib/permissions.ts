@@ -3,10 +3,10 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import type { DbExecutor } from '../db/types';
 import { SUPER_ADMIN_CODE } from '@zenith/shared/identity';
 import { db } from '../db';
-import { users, identityAccessGrants, identityAccessGrantItems } from '../db/schema';
+import { users, identityAccessGrants, identityAccessGrantItems, identityAccessGrantMenus } from '../db/schema';
 import { onInvalidate, onInvalidationReset, invalidationBusState } from './invalidation-bus';
 import { sendToUser } from './ws-manager';
-import { availablePermissionCodes, navigationForPermissions } from '../services/identity/permission-catalog.service';
+import { availablePermissionCodes } from '../services/identity/permission-catalog.service';
 import { enabledGroupRolesWith, extractEnabledGroupRoles } from './user-group-access';
 import { config } from '../config';
 import redis from './redis';
@@ -115,13 +115,19 @@ async function fetchUserPermissionData(userId: number, executor: DbExecutor = db
   const user = await executor.query.users.findFirst({
     where: eq(users.id, userId), columns: { tenantId: true, status: true },
     with: {
-      userRoles: { with: { role: { columns: { permissionCodes: true, status: true }, with: { roleMenus: { with: { menu: { columns: { id: true, permission: true, status: true } } } } } } } },
+      userRoles: { with: { role: { columns: { permissionCodes: true, status: true }, with: { roleMenus: { with: { menu: { columns: { id: true, permission: true, status: true, type: true } } } } } } } },
       directPermissions: { columns: { permissionCode: true } },
-      userMenus: { with: { menu: { columns: { id: true, permission: true, status: true } } } },
-      userGroupMembers: enabledGroupRolesWith({ columns: { permissionCodes: true, status: true } }),
+      userMenus: { with: { menu: { columns: { id: true, permission: true, status: true, type: true } } } },
+      userGroupMembers: enabledGroupRolesWith({
+        columns: { permissionCodes: true, status: true },
+        with: { roleMenus: { with: { menu: { columns: { id: true, permission: true, status: true, type: true } } } } },
+      }),
       accessGrants: {
         where: inArray(identityAccessGrants.status, ['scheduled', 'active']),
-        with: { items: { where: inArray(identityAccessGrantItems.status, ['scheduled', 'active']) } },
+        with: {
+          items: { where: inArray(identityAccessGrantItems.status, ['scheduled', 'active']) },
+          menus: { with: { menu: { columns: { id: true, permission: true, status: true, type: true } } } },
+        },
       },
     },
   });
@@ -130,17 +136,29 @@ async function fetchUserPermissionData(userId: number, executor: DbExecutor = db
   const active = granted.filter(item => item.startsAt <= now && (!item.expiresAt || item.expiresAt > now));
   const nextPermissionBoundaryAt = granted.flatMap(item => [item.startsAt, item.expiresAt]).filter((date): date is Date => date !== null && date > now)
     .reduce<number | null>((boundary, date) => boundary === null ? date.getTime() : Math.min(boundary, date.getTime()), null);
+  const activeGrantMenus = user.accessGrants
+    .filter(grant => grant.status === 'active' && grant.startsAt <= now && (!grant.expiresAt || grant.expiresAt > now))
+    .flatMap(grant => grant.menus);
+  const groupRoles = extractEnabledGroupRoles(user.userGroupMembers).roles;
+  const roleMenus = user.userRoles.filter(({ role }) => role.status === 'enabled').flatMap(({ role }) => role.roleMenus);
+  const groupRoleMenus = groupRoles.flatMap(role => role.roleMenus ?? []);
+  const navigationBindings = [...user.userMenus, ...roleMenus, ...groupRoleMenus, ...activeGrantMenus]
+    .filter(({ menu }) => menu.status === 'enabled' && menu.type !== 'button');
+  const pageReadCodes = navigationBindings
+    .map(({ menu }) => menu.permission)
+    .filter((code): code is string => typeof code === 'string' && code.length > 0);
   const codes = [
     ...user.userRoles.filter(({ role }) => role.status === 'enabled').flatMap(({ role }) => role.permissionCodes),
-    ...extractEnabledGroupRoles(user.userGroupMembers).roles.flatMap(role => role.permissionCodes),
+    ...groupRoles.flatMap(role => role.permissionCodes),
+    ...pageReadCodes,
     ...user.directPermissions.map(item => item.permissionCode), ...active.map(item => item.permissionCode),
   ];
   const permissions = await availablePermissionCodes(codes, user.tenantId, executor);
-  const menuIds = await navigationForPermissions(permissions, executor);
-  // Explicit navigation-only grants cannot introduce any operation permission.
-  const navigationBindings = [...user.userMenus, ...user.userRoles.filter(binding => binding.role.status === 'enabled').flatMap(binding => binding.role.roleMenus)];
-  const navigation = navigationBindings.filter(({ menu }) => menu.status === 'enabled' && !menu.permission).map(({ menu }) => menu.id);
-  return { permissions, menuIds: [...new Set([...menuIds, ...navigation])], nextPermissionBoundaryAt };
+  const permissionSet = new Set(permissions);
+  const explicitMenus = navigationBindings
+    .filter(({ menu }) => !menu.permission || permissionSet.has(menu.permission))
+    .map(({ menu }) => menu.id);
+  return { permissions, menuIds: [...new Set(explicitMenus)], nextPermissionBoundaryAt };
 }
 
 /**
@@ -159,6 +177,11 @@ function invalidateUserEntry(key?: string | null): void {
 
 onInvalidate('identity_access_grants', message => invalidateUserEntry(message.key));
 onInvalidate('identity_access_grant_items', message => {
+  const grantId = Number(message.key);
+  if (Number.isSafeInteger(grantId) && grantId > 0) void db.query.identityAccessGrants.findFirst({ where: eq(identityAccessGrants.id, grantId), columns: { userId: true } })
+    .then(grant => { if (grant) invalidateUserEntry(String(grant.userId)); }).catch(() => {});
+});
+onInvalidate('identity_access_grant_menus', message => {
   const grantId = Number(message.key);
   if (Number.isSafeInteger(grantId) && grantId > 0) void db.query.identityAccessGrants.findFirst({ where: eq(identityAccessGrants.id, grantId), columns: { userId: true } })
     .then(grant => { if (grant) invalidateUserEntry(String(grant.userId)); }).catch(() => {});

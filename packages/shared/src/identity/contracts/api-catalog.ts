@@ -41,7 +41,7 @@ export type ApiCatalog = z.infer<typeof apiCatalogSchema>;
  */
 export const apiCatalogContract = defineContract('/api/api-catalog', {
   get: op.get('/', {
-    access: { permission: 'system:api-catalog:view' },
+    access: { permission: 'system:access-catalog:view' },
     response: apiCatalogSchema,
     summary: '接口目录：全部契约操作的地址 / 方法 / 认证 / 权限码 / 审计 / 功能门控',
   }),
@@ -82,14 +82,39 @@ export type UserPermissionSet = z.infer<typeof userPermissionSetSchema>;
  * 权限矩阵数据面：目录（哪个接口要哪些权限）由 `apiCatalogContract` 提供，这里只提供
  * 「主体持有哪些权限码」两个只读端点；不落任何新表。
  */
+/** 权限目录：能力定义、形态和绑定页面；无页面的 API-only 权限也在这里出现 */
+export const permissionCatalogItemSchema = z.object({
+  code: z.string(),
+  label: z.string(),
+  surface: z.enum(['page', 'button', 'api']).meta({ description: 'page 页面读权限 / button 操作权限 / api 仅接口权限' }),
+  pageId: z.int().nullable(),
+  pageTitle: z.string().nullable(),
+  path: z.string().nullable(),
+  uiOnly: z.boolean().default(false),
+}).meta({ id: 'PermissionCatalogItem' });
+
+export const permissionCatalogSchema = z.object({
+  items: z.array(permissionCatalogItemSchema),
+}).meta({ id: 'PermissionCatalog' });
+
+export type PermissionCatalog = z.infer<typeof permissionCatalogSchema>;
+
+export const permissionCatalogContract = defineContract('/api/api-catalog', {
+  list: op.get('/permissions', {
+    access: { permission: 'system:access-catalog:view' },
+    response: permissionCatalogSchema,
+    summary: '权限目录：能力形态、绑定页面、API-only 权限',
+  }),
+}, { tags: ['PermissionCatalog'] });
+
 export const permissionMatrixContract = defineContract('/api/permission-matrix', {
   roles: op.get('/roles', {
-    access: { permission: 'system:api-catalog:view' },
+    access: { permission: 'system:access-catalog:view' },
     response: z.array(rolePermissionSetSchema),
     summary: '各角色生效的权限码（当前租户视角）',
   }),
   user: op.get('/users/{id}', {
-    access: { permission: 'system:api-catalog:view' },
+    access: { permission: 'system:access-catalog:view' },
     params: idParam,
     response: userPermissionSetSchema,
     summary: '用户生效的权限码（角色 / 直授 / 用户组合并）',

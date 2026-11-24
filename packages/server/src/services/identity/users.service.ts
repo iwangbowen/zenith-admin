@@ -24,7 +24,6 @@ import type { AlertRecipientUser, User, CreateUserInput, UpdateUserInput } from 
 import { canOverridePreference, getPreferenceValue, preferenceDefinitions, readUserPreferencesDocument, type UserPreferencesDocument } from '@zenith/shared/preferences';
 import { accessScopeKey, mostPermissiveDataScope, userContract, createUserSchema, updateUserSchema, manageUserSchema } from '@zenith/shared/identity';
 import type { QueryOutputOf } from '@zenith/shared/core';
-import { navigationForPermissions } from './permission-catalog.service';
 import { currentUser } from '../../lib/context';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
@@ -607,11 +606,12 @@ export async function getUserMenuPermissions(userId: number) {
     columns: {},
     with: {
       userMenus: { columns: { menuId: true } },
+      directPermissions: { columns: { permissionCode: true } },
       userRoles: {
         columns: {},
         with: {
           role: {
-            columns: {},
+            columns: { permissionCodes: true },
             with: { roleMenus: { columns: { menuId: true } } },
           },
         },
@@ -620,7 +620,9 @@ export async function getUserMenuPermissions(userId: number) {
   }), '用户不存在');
   const directMenuIds = user.userMenus.map((m) => m.menuId);
   const roleMenuIds = [...new Set(user.userRoles.flatMap((ur) => ur.role.roleMenus.map((rm) => rm.menuId)))];
-  return { directMenuIds, roleMenuIds };
+  const directPermissionCodes = user.directPermissions.map((item) => item.permissionCode);
+  const rolePermissionCodes = [...new Set(user.userRoles.flatMap((ur) => ur.role.permissionCodes))];
+  return { directMenuIds, roleMenuIds, directPermissionCodes, rolePermissionCodes };
 }
 
 export async function getUserMenuPermissionsBeforeAudit(userId: number) {
@@ -634,11 +636,11 @@ export async function getUserMenuPermissionsBeforeAudit(userId: number) {
   };
 }
 
-export async function assignUserMenus(userId: number, menuIds: number[]) {
+export async function assignUserMenus(userId: number, menuIds: number[], permissionCodes: string[] = []) {
   const target = await ensureUserManageable(userId);
   const uniqueMenuIds = Array.from(new Set(menuIds));
 
-  // 多租户：直授菜单必须落在目标用户所属租户的套餐功能范围内（与角色分配菜单同一口径）
+  // 多租户：直授页面/能力必须落在目标用户所属租户的套餐功能范围内（与角色分配同一口径）
   const featureSet = await getTenantPackageFeatureSet(target.tenantId);
   if (featureSet && uniqueMenuIds.length > 0) {
     const rows = await db.select({ featureKey: menus.featureKey }).from(menus).where(inArray(menus.id, uniqueMenuIds));
@@ -647,7 +649,7 @@ export async function assignUserMenus(userId: number, menuIds: number[]) {
     }
   }
   await db.transaction(async (tx) => {
-    await replaceDirectPermissions(tx, userId, uniqueMenuIds, target.tenantId);
+    await replaceDirectPermissions(tx, userId, uniqueMenuIds, permissionCodes, target.tenantId);
     await tx.delete(userMenus).where(eq(userMenus.userId, userId));
     if (uniqueMenuIds.length > 0) {
       await tx.insert(userMenus).values(uniqueMenuIds.map((menuId) => ({ userId, menuId })));
@@ -801,7 +803,7 @@ export async function getUserEffectivePermissions(userId: number) {
         columns: {},
         with: {
           role: {
-            columns: { name: true, code: true, dataScope: true, status: true },
+            columns: { name: true, code: true, dataScope: true, status: true, permissionCodes: true },
             with: {
               roleMenus: { columns: { menuId: true } },
               deptScopes: { columns: { deptId: true } },
@@ -810,11 +812,13 @@ export async function getUserEffectivePermissions(userId: number) {
         },
       },
       userGroupMembers: groupRolesWith,
-      accessGrants: { where: inArray(identityAccessGrants.status, ['scheduled', 'active']), columns: { id: true, status: true, startsAt: true, expiresAt: true }, with: { items: true } },
+      accessGrants: { where: inArray(identityAccessGrants.status, ['scheduled', 'active']), columns: { id: true, status: true, startsAt: true, expiresAt: true }, with: { items: true, menus: true } },
     },
   }), '用户不存在');
   const activeRoles = user.userRoles.filter(binding => binding.role.status === 'enabled');
-  const activeItems = user.accessGrants.filter(grant => grant.startsAt <= now && (!grant.expiresAt || grant.expiresAt > now)).flatMap(grant => grant.items.filter(item => ['scheduled', 'active'].includes(item.status) && item.startsAt <= now && (!item.expiresAt || item.expiresAt > now)).map(item => ({ ...item, grantId: grant.id })));
+  const activeGrants = user.accessGrants.filter(grant => grant.startsAt <= now && (!grant.expiresAt || grant.expiresAt > now));
+  const activeItems = activeGrants.flatMap(grant => grant.items.filter(item => ['scheduled', 'active'].includes(item.status) && item.startsAt <= now && (!item.expiresAt || item.expiresAt > now)).map(item => ({ ...item, grantId: grant.id })));
+  const activeGrantMenus = activeGrants.flatMap(grant => grant.menus.map(menu => ({ ...menu, grantId: grant.id })));
 
   const { groupMenuIds, groupDataScope, groupDeptScopeIds, groups, inheritedRoles } = extractGroupInheritance(user.userGroupMembers ?? []);
 
@@ -824,7 +828,7 @@ export async function getUserEffectivePermissions(userId: number) {
   const effective = new Set(effectiveMenuIds);
   const permissionCodes = await getUserPermissions(userId);
   const allowedCodes = new Set(permissionCodes);
-  const temporaryMenuIds = await navigationForPermissions(activeItems.filter(item => allowedCodes.has(item.permissionCode)).map(item => item.permissionCode));
+  const temporaryMenuIds = [...new Set(activeGrantMenus.map(menu => menu.menuId))];
   const temporaryScopes = activeItems.filter(item => allowedCodes.has(item.permissionCode)).map(item => ({ grantId: item.grantId, grantItemId: item.id, permissionCode: item.permissionCode, dataScope: item.dataScope, deptScopeIds: item.deptScopeIds, expiresAt: item.expiresAt ? formatDateTime(item.expiresAt) : null }));
   const menuSources = new Map<number, Set<string>>();
   const permissionSources: Record<string, string[]> = {};
@@ -843,7 +847,7 @@ export async function getUserEffectivePermissions(userId: number) {
   for (const userRole of activeRoles) {
     for (const roleMenu of userRole.role.roleMenus) addMenuSource(roleMenu.menuId, `角色：${userRole.role.name}`);
   }
-  for (const item of activeItems) if (allowedCodes.has(item.permissionCode)) for (const menuId of await navigationForPermissions([item.permissionCode])) addMenuSource(menuId, `审批授权 #${item.grantId} · ${item.dataScope} · ${item.expiresAt ? `至 ${formatDateTime(item.expiresAt)}` : '永久有效'}`);
+  for (const menu of activeGrantMenus) addMenuSource(menu.menuId, `审批授权 #${menu.grantId} · 页面访问`);
   for (const membership of user.userGroupMembers ?? []) {
     if (membership.group.status !== 'enabled') continue;
     for (const groupRole of membership.group.groupRoles) {
@@ -872,11 +876,17 @@ export async function getUserEffectivePermissions(userId: number) {
     ? [...new Set([...(userDataScope === 'custom' ? userDeptScopeIds : []), ...roleDeptScopeIds, ...groupDeptScopeIds])]
     : [];
 
+  const directPermissionCodes = (authoritative?.directPermissions ?? []).map(item => item.permissionCode);
+  const rolePermissionCodes = [...new Set(activeRoles.flatMap(role => role.role.permissionCodes))];
+  const groupPermissionCodes = [...new Set(extractEnabledGroupRoles(authoritative?.userGroupMembers).roles.flatMap(role => role.permissionCodes))];
   return {
     directMenuIds,
     roleMenuIds,
     groupMenuIds,
     effectiveMenuIds,
+    directPermissionCodes,
+    rolePermissionCodes,
+    groupPermissionCodes,
     permissionCodes, permissionSources,
     temporaryMenuIds,
     temporaryScopes,

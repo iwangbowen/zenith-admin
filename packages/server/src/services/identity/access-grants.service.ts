@@ -63,7 +63,7 @@ export async function revokeAccessGrantItemInTransaction(executor: DbExecutor, i
 }
 
 async function readGrant(grantId: number) {
-  return formatAccessGrant(requireRow(await db.query.identityAccessGrants.findFirst({ where: and(eq(identityAccessGrants.id, grantId), tenantCondition(identityAccessGrants, currentUser())), with: { user: true, approver: true, revoker: true, items: true } }), '临时授权不存在'));
+  return formatAccessGrant(requireRow(await db.query.identityAccessGrants.findFirst({ where: and(eq(identityAccessGrants.id, grantId), tenantCondition(identityAccessGrants, currentUser())), with: { user: true, approver: true, revoker: true, items: true, menus: { with: { menu: true } } } }), '临时授权不存在'));
 }
 
 export async function revokeAccessGrantItem(id: number, input: RevokeAccessGrantInput) {
@@ -112,7 +112,7 @@ export async function retryAccessRequestProvision(id: number) {
     await retrySystemTaskInTransaction(tx, task);
     await tx.update(identityAccessRequests).set({ provisionStatus: 'pending', failureReason: null }).where(where);
   });
-  return formatAccessRequest(requireRow(await db.query.identityAccessRequests.findFirst({ where: and(eq(identityAccessRequests.id, id), tenantCondition(identityAccessRequests, caller)), with: { applicant: true, target: true, items: true } }), '权限申请不存在'));
+  return formatAccessRequest(requireRow(await db.query.identityAccessRequests.findFirst({ where: and(eq(identityAccessRequests.id, id), tenantCondition(identityAccessRequests, caller)), with: { applicant: true, target: true, items: true, menus: { with: { menu: true } } } }), '权限申请不存在'));
 }
 
 /** 实际鉴权依据时间窗口；该任务维护展示状态、通知和跨节点刷新。 */

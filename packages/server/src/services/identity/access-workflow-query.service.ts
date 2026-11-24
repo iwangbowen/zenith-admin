@@ -23,14 +23,14 @@ export async function getAccessWorkflowResult(instanceId: number) {
   const user = currentUser();
   const request = requireRow(await db.query.identityAccessRequests.findFirst({
     where: buildWhere(eq(identityAccessRequests.workflowInstanceId, instanceId), tenantCondition(identityAccessRequests, user)),
-    with: { applicant: true, target: true, items: true, workflowInstance: { columns: { title: true, serialNo: true } } },
+    with: { applicant: true, target: true, items: true, menus: { with: { menu: true } }, workflowInstance: { columns: { title: true, serialNo: true } } },
   }), '权限申请不存在');
   if (!(await hasPermission('system:access-governance:view'))) {
     await requireAccessWorkflowViewer(instanceId, ACCESS_REQUEST_BIZ_TYPE, String(request.id));
   }
   const grant = await db.query.identityAccessGrants.findFirst({
     where: buildWhere(eq(identityAccessGrants.requestId, request.id), tenantCondition(identityAccessGrants, user)),
-    with: { user: true, approver: true, revoker: true, items: true, request: { columns: { workflowInstanceId: true } } },
+    with: { user: true, approver: true, revoker: true, items: true, menus: { with: { menu: true } }, request: { columns: { workflowInstanceId: true } } },
   });
   return { request: formatAccessRequest(request), grant: grant ? formatAccessGrant(grant) : null };
 }

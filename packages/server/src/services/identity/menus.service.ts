@@ -7,6 +7,7 @@ import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../lib/context';
 import { getEffectiveTenantId, isPlatformAdmin } from '../../lib/tenant';
 import { SETTINGS_MODULES } from '@zenith/shared/settings';
+import { ALL_PERMISSIONS } from '@zenith/shared/permissions';
 import { config } from '../../config';
 import { getTenantPackageFeatureSet } from '../../lib/tenant-package';
 import { isSuperAdmin, getUserMenuIds } from '../../lib/permissions';
@@ -127,8 +128,8 @@ export async function listUserMenuTree(): Promise<Menu[]> {
     return buildMenuTree(allMenus.map(mapMenu));
   }
 
-  // 菜单显示与操作权限解耦：仅分配了按钮（如「查询」）不会带出其所属页面；
-  // 祖先补全只从已分配的目录/页面节点出发，用于侧边栏分组路径完整。
+  // 页面导航只来自显式页面授权；权限码不反推页面。
+  // 隐藏页面仅在其父页面/目录已授权时注册，避免所有登录用户都拿到编辑页路由。
   const assignedIds = await getUserMenuIds(user.userId);
   const idToMenu = new Map(allMenus.map((m) => [m.id, m]));
   const allowedMenuIds = new Set(assignedIds.filter((id) => idToMenu.has(id)));
@@ -141,7 +142,8 @@ export async function listUserMenuTree(): Promise<Menu[]> {
     }
   }
 
-  const filtered = allMenus.filter((m) => allowedMenuIds.has(m.id) || !m.visible);
+  const filtered = allMenus.filter((m) => allowedMenuIds.has(m.id)
+    || (!m.visible && m.parentId !== 0 && allowedMenuIds.has(m.parentId)));
   return buildMenuTree(filtered.map(mapMenu));
 }
 
@@ -158,7 +160,24 @@ export async function listMenusFlat(): Promise<Omit<Menu, 'children'>[]> {
   return list.map(mapMenu);
 }
 
+async function assertMenuPermission(input: CreateMenuInput, currentId?: number) {
+  const type = input.type ?? 'menu';
+  const permission = input.permission?.trim() || null;
+  if (type === 'directory' && permission) throw new HTTPException(400, { message: '目录不能携带权限码' });
+  if (type === 'button' && !permission) throw new HTTPException(400, { message: '按钮必须填写权限码' });
+  if (permission && !ALL_PERMISSIONS[permission]) throw new HTTPException(400, { message: `权限目录未登记 ${permission}` });
+  if (type === 'button') {
+    const parent = await db.query.menus.findFirst({ where: eq(menus.id, input.parentId ?? 0), columns: { type: true } });
+    if (!parent || parent.type !== 'menu') throw new HTTPException(400, { message: '按钮只能挂在页面节点下' });
+  }
+  if (currentId !== undefined && input.parentId !== undefined && type === 'button') {
+    const parent = await db.query.menus.findFirst({ where: eq(menus.id, input.parentId), columns: { type: true } });
+    if (!parent || parent.type !== 'menu') throw new HTTPException(400, { message: '按钮只能挂在页面节点下' });
+  }
+}
+
 export async function createMenu(input: CreateMenuInput): Promise<Omit<Menu, 'children'>> {
+  await assertMenuPermission(input);
   await ensureMenuParentValid(input.parentId ?? 0);
   const [row] = await db
     .insert(menus)
@@ -184,6 +203,8 @@ export async function createMenu(input: CreateMenuInput): Promise<Omit<Menu, 'ch
 }
 
 export async function updateMenu(id: number, input: UpdateMenuInput): Promise<Omit<Menu, 'children'>> {
+  const current = requireRow(await db.query.menus.findFirst({ where: eq(menus.id, id) }), '菜单不存在');
+  await assertMenuPermission({ ...current, ...input } as CreateMenuInput, id);
   if (input.parentId !== undefined) {
     await ensureMenuParentValid(input.parentId, id);
   }

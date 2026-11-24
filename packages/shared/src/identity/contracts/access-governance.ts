@@ -42,6 +42,14 @@ export const accessRequestItemSchema = z.object({
   snapshot: z.record(z.string(), z.unknown()),
 }).meta({ id: 'IdentityAccessRequestItem' });
 
+export const accessMenuRefSchema = z.object({
+  menuId: z.int(),
+  title: z.string(),
+  path: z.string().nullable().optional(),
+}).meta({ id: 'IdentityAccessMenuRef' });
+
+export type AccessMenuRef = z.infer<typeof accessMenuRefSchema>;
+
 export const accessRequestSchema = z.object({
   id: z.int(),
   tenantId: z.int().nullable().optional(),
@@ -67,6 +75,7 @@ export const accessRequestSchema = z.object({
   approvalPlan: accessApprovalPlanSchema,
   approvalEvidence: z.array(accessApprovalEvidenceSchema),
   items: z.array(accessRequestItemSchema),
+  menus: z.array(accessMenuRefSchema).default([]),
   ...auditFieldsSchema,
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -101,6 +110,7 @@ export const accessGrantSchema = z.object({
   revokedAt: z.string().nullable().optional(),
   revokeReason: z.string().nullable().optional(),
   items: z.array(accessGrantItemSchema),
+  menus: z.array(accessMenuRefSchema).default([]),
   ...auditFieldsSchema,
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -139,7 +149,7 @@ export type AccessReviewCampaign = z.infer<typeof accessReviewCampaignSchema>;
 
 const accessPolicySummaryFields = { riskLevel: z.enum(ACCESS_RISK_LEVELS), approvalPolicy: z.enum(ACCESS_APPROVAL_POLICIES), maxDurationMinutes: z.int().positive().nullable(), mfaRequired: z.boolean(), permanentAllowed: z.boolean(), emergencyAllowed: z.boolean(), maxEmergencyMinutes: z.int() };
 export const accessWorkflowOptionsSchema = z.object({
-  roles: z.array(z.object({ id: z.int(), name: z.string(), code: z.string(), description: z.string().nullable().optional(), dataScope: z.enum(DATA_SCOPES), version: z.int(), permissionCount: z.int(), permissionCodes: z.array(z.string()), ...accessPolicySummaryFields })),
+  roles: z.array(z.object({ id: z.int(), name: z.string(), code: z.string(), description: z.string().nullable().optional(), dataScope: z.enum(DATA_SCOPES), version: z.int(), permissionCount: z.int(), permissionCodes: z.array(z.string()), menuIds: z.array(z.int()), ...accessPolicySummaryFields })),
   menus: z.array(z.object({ id: z.int(), parentId: z.int(), title: z.string(), name: z.string().nullable().optional(), type: z.enum(['directory', 'menu', 'button']), permission: z.string().nullable().optional(), permissionLabel: z.string().nullable().optional(), requestable: z.boolean(), path: z.array(z.string()), ...accessPolicySummaryFields })),
 }).meta({ id: 'IdentityAccessWorkflowOptions' });
 
@@ -148,7 +158,7 @@ export type AccessWorkflowOptions = z.infer<typeof accessWorkflowOptionsSchema>;
 export const accessWorkflowPreviewSchema = z.discriminatedUnion('status', [
   z.object({ status: z.literal('selection_required'), message: z.string() }),
   z.object({ status: z.literal('blocked'), message: z.string() }),
-  z.object({ status: z.literal('ready'), fingerprint: z.string(), permissionCount: z.int(), grantItemCount: z.int(), approvalPlan: accessApprovalPlanSchema, policies: z.array(accessPolicySnapshotSchema) }),
+  z.object({ status: z.literal('ready'), fingerprint: z.string(), permissionCount: z.int(), grantItemCount: z.int(), menuCount: z.int(), approvalPlan: accessApprovalPlanSchema, policies: z.array(accessPolicySnapshotSchema) }),
 ]);
 export type AccessWorkflowPreview = z.infer<typeof accessWorkflowPreviewSchema>;
 

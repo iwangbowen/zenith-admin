@@ -21,6 +21,8 @@ const accessWorkflowFieldsSchema = z.strictObject({
   requestType: z.enum(ACCESS_REQUEST_TYPES).default('temporary'),
   roleSelections: z.array(z.strictObject({ roleId: z.int().positive(), version: z.int().positive() })).max(50).default([]),
   permissionCodes: z.array(z.string().min(1).max(128)).max(200).default([]),
+  /** 页面访问授权；与权限能力分开，页面不会从权限码反推 */
+  menuIds: z.array(z.int().positive()).max(200).default([]),
   previewFingerprint: z.string().max(128).optional(),
   reason: z.string().trim().min(5, '申请原因至少 5 个字').max(1000),
   startMode: z.enum(ACCESS_START_MODES).default('immediate'),
@@ -35,8 +37,8 @@ export const accessWorkflowInputSchema = accessWorkflowFieldsSchema.superRefine(
   if (value.validityMode === 'limited' && !value.expiresAt) ctx.addIssue({ code: 'custom', path: ['expiresAt'], message: '限时授权必须填写失效时间' });
   if (value.validityMode === 'permanent' && value.expiresAt !== null) ctx.addIssue({ code: 'custom', path: ['expiresAt'], message: '永久授权不应填写失效时间' });
   if (value.startMode === 'scheduled' && !value.startsAt) ctx.addIssue({ code: 'custom', path: ['startsAt'], message: '预约生效必须填写生效时间' });
-  if (value.roleSelections.length === 0 && value.permissionCodes.length === 0) {
-    ctx.addIssue({ code: 'custom', path: ['permissionCodes'], message: '至少申请一项角色包或操作权限' });
+  if (value.roleSelections.length === 0 && value.permissionCodes.length === 0 && value.menuIds.length === 0) {
+    ctx.addIssue({ code: 'custom', path: ['permissionCodes'], message: '至少申请一项页面、角色包或操作权限' });
   }
 });
 

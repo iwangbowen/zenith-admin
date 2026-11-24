@@ -1,11 +1,14 @@
 import { permissionPolicySchema, accessPolicyBaseline, type AccessPolicySnapshot, accessRequestSchema, accessRequestItemSchema, accessGrantSchema, accessGrantItemSchema, accessReviewCampaignSchema, accessReviewItemSchema } from '@zenith/shared/identity';
 import { ALL_PERMISSIONS } from '@zenith/shared/permissions';
-import type { identityPermissionPolicies, identityAccessRequests, identityAccessRequestItems, identityAccessGrants, identityAccessGrantItems, identityAccessReviewCampaigns, identityAccessReviewItems, users } from '../../db/schema';
+import type { identityPermissionPolicies, identityAccessRequests, identityAccessRequestItems, identityAccessRequestMenus, identityAccessGrants, identityAccessGrantItems, identityAccessGrantMenus, identityAccessReviewCampaigns, identityAccessReviewItems, users } from '../../db/schema';
 import { entityMapper, pickEntity } from '../../lib/entity-map';
 
 type DisplayUser = Pick<typeof users.$inferSelect, 'id' | 'username' | 'nickname'>;
-type RequestRow = typeof identityAccessRequests.$inferSelect & { applicant?: DisplayUser; target?: DisplayUser; workflowInstance?: { title: string; serialNo: string | null } | null; items?: (typeof identityAccessRequestItems.$inferSelect)[] };
-type GrantRow = typeof identityAccessGrants.$inferSelect & { user?: DisplayUser; request?: { workflowInstanceId: number | null } | null; approver?: DisplayUser | null; revoker?: DisplayUser | null; items?: (typeof identityAccessGrantItems.$inferSelect)[] };
+type MenuDisplay = { title: string; path: string | null };
+type RequestMenuRow = typeof identityAccessRequestMenus.$inferSelect & { menu?: MenuDisplay | null };
+type GrantMenuRow = typeof identityAccessGrantMenus.$inferSelect & { menu?: MenuDisplay | null };
+type RequestRow = typeof identityAccessRequests.$inferSelect & { applicant?: DisplayUser; target?: DisplayUser; workflowInstance?: { title: string; serialNo: string | null } | null; items?: (typeof identityAccessRequestItems.$inferSelect)[]; menus?: RequestMenuRow[] };
+type GrantRow = typeof identityAccessGrants.$inferSelect & { user?: DisplayUser; request?: { workflowInstanceId: number | null } | null; approver?: DisplayUser | null; revoker?: DisplayUser | null; items?: (typeof identityAccessGrantItems.$inferSelect)[]; menus?: GrantMenuRow[] };
 type CampaignRow = typeof identityAccessReviewCampaigns.$inferSelect & { reviewer?: DisplayUser; itemCount?: number; pendingCount?: number };
 type ReviewRow = typeof identityAccessReviewItems.$inferSelect & { user?: DisplayUser; reviewer?: DisplayUser };
 
@@ -29,6 +32,7 @@ export const formatAccessRequest = entityMapper(accessRequestSchema, (row: Reque
   applicantName: row.applicant ? row.applicant.nickname || row.applicant.username : null,
   targetUserName: row.target ? row.target.nickname || row.target.username : null,
   items: (row.items ?? []).map(item => pickEntity(accessRequestItemSchema, item)),
+  menus: (row.menus ?? []).map(menu => ({ menuId: menu.menuId, title: menu.menu?.title ?? `#${menu.menuId}`, path: menu.menu?.path ?? null })),
 }));
 
 export const formatAccessGrant = entityMapper(accessGrantSchema, (row: GrantRow) => ({
@@ -37,6 +41,7 @@ export const formatAccessGrant = entityMapper(accessGrantSchema, (row: GrantRow)
   approvedByName: row.approver ? row.approver.nickname || row.approver.username : null,
   status: effectiveStatus(row),
   items: (row.items ?? []).map(item => pickEntity(accessGrantItemSchema, item, { status: effectiveStatus(item) })),
+  menus: (row.menus ?? []).map(menu => ({ menuId: menu.menuId, title: menu.menu?.title ?? `#${menu.menuId}`, path: menu.menu?.path ?? null })),
 }));
 
 export const formatReviewCampaign = entityMapper(accessReviewCampaignSchema, (row: CampaignRow) => ({

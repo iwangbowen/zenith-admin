@@ -64,13 +64,17 @@ export async function assertAutomaticRolesAllowed(tx: DbExecutor, roleIds: reado
   return rows;
 }
 
-export async function assertAuthorityGrant(tx: DbExecutor, input: { tenantId: number | null; permission: Permission; beneficiaryIds?: readonly number[]; roleIds?: readonly number[]; menuIds?: readonly number[] }) {
+export async function assertAuthorityGrant(tx: DbExecutor, input: { tenantId: number | null; permission: Permission; beneficiaryIds?: readonly number[]; roleIds?: readonly number[]; menuIds?: readonly number[]; permissionCodes?: readonly string[] }) {
   const actor = await assertAuthorityActor(tx, input.tenantId, input.permission, input.beneficiaryIds);
   const roleRows = await assertGrantableRoles(tx, input.roleIds ?? [], input.tenantId);
   const ids = [...new Set(input.menuIds ?? [])];
   const menuRows = ids.length ? await tx.select().from(menus).where(inArray(menus.id, ids)) : [];
   if (menuRows.length !== ids.length || menuRows.some(menu => menu.status !== 'enabled')) throw new HTTPException(400, { message: '存在无效或停用的菜单' });
-  const codes = [...new Set([...menuRows.flatMap(menu => menu.permission ? [menu.permission] : []), ...roleRows.flatMap(role => role.permissionCodes)])];
+  const codes = [...new Set([
+    ...menuRows.flatMap(menu => menu.permission ? [menu.permission] : []),
+    ...(input.permissionCodes ?? []),
+    ...roleRows.flatMap(role => role.permissionCodes),
+  ])];
   for (const code of codes) if (!ALL_PERMISSIONS[code]) throw new HTTPException(400, { message: `权限目录未登记 ${code}` });
   const policies = await loadEffectiveAccessPolicies(codes, input.tenantId, tx);
   if (!actor.platform) {
@@ -110,35 +114,39 @@ export async function replaceUserRoles(tx: DbExecutor, userId: number, roleIds: 
   if (added.length) await tx.insert(userRoles).values([...new Set(added)].map(roleId => ({ userId, roleId })));
 }
 
-export async function replaceRolePermissions(tx: DbExecutor, roleId: number, menuIds: readonly number[], tenantId: number | null) {
-  await assertAuthorityGrant(tx, { tenantId, permission: 'system:role:assign', beneficiaryIds: await roleBeneficiaries(tx, roleId), menuIds });
+export async function replaceRolePermissions(tx: DbExecutor, roleId: number, menuIds: readonly number[], permissionCodes: readonly string[], tenantId: number | null) {
+  await assertAuthorityGrant(tx, { tenantId, permission: 'system:role:assign', beneficiaryIds: await roleBeneficiaries(tx, roleId), menuIds, permissionCodes });
+  const rows = menuIds.length ? await tx.select({ id: menus.id, type: menus.type, permission: menus.permission }).from(menus).where(inArray(menus.id, [...menuIds])) : [];
+  if (rows.some(row => row.type === 'button')) throw new HTTPException(400, { message: '角色页面授权不能包含按钮节点' });
+  const codes = [...new Set([...rows.flatMap(row => row.permission ? [row.permission] : []), ...permissionCodes])].sort();
   await tx.delete(roleMenus).where(eq(roleMenus.roleId, roleId));
   if (menuIds.length) await tx.insert(roleMenus).values([...new Set(menuIds)].map(menuId => ({ roleId, menuId })));
-  const rows = menuIds.length ? await tx.select({ code: menus.permission }).from(menus).where(inArray(menus.id, [...menuIds])) : [];
-  await publishRoleVersion(tx, roleId, tenantId, rows.flatMap(row => row.code ? [row.code] : []));
+  await publishRoleVersion(tx, roleId, tenantId, codes, menuIds);
 }
 
-export async function publishRoleVersion(tx: DbExecutor, roleId: number, tenantId: number | null, codes?: readonly string[]) {
+export async function publishRoleVersion(tx: DbExecutor, roleId: number, tenantId: number | null, codes?: readonly string[], menuIds?: readonly number[]) {
   await lockIdentityAuthority(tx, tenantId);
   const where = and(eq(roles.id, roleId), exactTenantCondition(roles.tenantId, tenantId));
-  const role = await tx.query.roles.findFirst({ where, with: { deptScopes: true } });
+  const role = await tx.query.roles.findFirst({ where, with: { deptScopes: true, roleMenus: { columns: { menuId: true } } } });
   if (!role) throw new HTTPException(404, { message: '角色不存在' });
   const permissionCodes = [...new Set(codes ?? role.permissionCodes)].sort();
+  const navigation = [...new Set(menuIds ?? role.roleMenus.map(item => item.menuId))].sort((a, b) => a - b);
   const deptScopeIds = role.deptScopes.map(item => item.deptId).sort((a, b) => a - b);
   accessScopeKey(role.dataScope, deptScopeIds);
   const old = await tx.query.identityRoleVersions.findFirst({ where: and(eq(identityRoleVersions.roleId, roleId), eq(identityRoleVersions.version, role.permissionVersion)) });
-  const snapshot = { permissionCodes, dataScope: role.dataScope, deptScopeIds };
-  const changed = old && JSON.stringify({ permissionCodes: old.permissionCodes, dataScope: old.dataScope, deptScopeIds: old.deptScopeIds }) !== JSON.stringify(snapshot);
+  const snapshot = { permissionCodes, menuIds: navigation, dataScope: role.dataScope, deptScopeIds };
+  const changed = old && JSON.stringify({ permissionCodes: old.permissionCodes, menuIds: old.menuIds, dataScope: old.dataScope, deptScopeIds: old.deptScopeIds }) !== JSON.stringify(snapshot);
   const version = role.permissionVersion + (changed ? 1 : 0);
   await tx.insert(identityRoleVersions).values({ roleId, version, ...snapshot }).onConflictDoNothing();
   const [published] = await tx.update(roles).set({ permissionCodes, permissionVersion: version }).where(where).returning();
   return published;
 }
 
-export async function replaceDirectPermissions(tx: DbExecutor, userId: number, menuIds: readonly number[], tenantId: number | null) {
-  await assertAuthorityGrant(tx, { tenantId, permission: 'system:user:assign', beneficiaryIds: [userId], menuIds });
-  const rows = menuIds.length ? await tx.select({ code: menus.permission }).from(menus).where(inArray(menus.id, [...menuIds])) : [];
-  const codes = [...new Set(rows.flatMap(row => row.code ? [row.code] : []))];
+export async function replaceDirectPermissions(tx: DbExecutor, userId: number, menuIds: readonly number[], permissionCodes: readonly string[], tenantId: number | null) {
+  await assertAuthorityGrant(tx, { tenantId, permission: 'system:user:assign', beneficiaryIds: [userId], menuIds, permissionCodes });
+  const rows = menuIds.length ? await tx.select({ id: menus.id, type: menus.type, permission: menus.permission }).from(menus).where(inArray(menus.id, [...menuIds])) : [];
+  if (rows.some(row => row.type === 'button')) throw new HTTPException(400, { message: '用户页面授权不能包含按钮节点' });
+  const codes = [...new Set([...rows.flatMap(row => row.permission ? [row.permission] : []), ...permissionCodes])];
   const existing = await tx.query.identityUserPermissions.findMany({ where: eq(identityUserPermissions.userId, userId) });
   const removed = existing.filter(item => !codes.includes(item.permissionCode)).map(item => item.id);
   const added = codes.filter(code => !existing.some(item => item.permissionCode === code));

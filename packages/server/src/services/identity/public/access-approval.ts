@@ -8,7 +8,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { ACCESS_REQUEST_BIZ_TYPE } from '@zenith/shared/identity';
 import type { DbTransaction } from '../../../db/types';
-import { identityAccessRequestItems, identityAccessRequests } from '../../../db/schema';
+import { identityAccessRequestItems, identityAccessRequestMenus, identityAccessRequests } from '../../../db/schema';
 import { exactTenantCondition } from '../../../lib/tenant';
 import { parseDateTimeInput } from '../../../lib/datetime';
 import { persistSystemAsyncTask } from '../../../lib/task-center';
@@ -54,6 +54,9 @@ export async function attachAccessRequestToWorkflow(executor: DbTransaction, ins
     workflowInstanceId: instance.id,
   }).returning({ id: identityAccessRequests.id });
   await executor.insert(identityAccessRequestItems).values(form.permissionItems.map((item) => ({ requestId: request.id, ...item })));
+  if ((form.menuIds?.length ?? 0) > 0) {
+    await executor.insert(identityAccessRequestMenus).values(form.menuIds.map((menuId) => ({ requestId: request.id, menuId })));
+  }
   await notifyWithin(executor, 'identity.access.requested', {
     recipients: [{ type: 'user', id: instance.initiatorId }], vars: { requestId: request.id, applicantName: form.targetUserName, targetName: form.targetUserName, riskLevel: form.riskLabel },
     tenantId: instance.tenantId, link: `/workflow/instance/${instance.id}`, dedupeKey: `identity-access-requested:${request.id}`,

@@ -11,7 +11,7 @@ import { domainEventSubjects, domainEvents, entityRelationEdges } from './entity
 import { businessFiles, fileStorageConfigs, managedFiles, uploadChunks, uploadSessions } from './files';
 import { asyncTaskItems, asyncTaskSubjects, asyncTasks, exportJobDownloads, exportJobs } from './tasks';
 import { cronJobLogs, cronJobs, userFeedbacks, systemSettings, systemSettingsRevisions } from './system';
-import { identityRoleVersions, identityUserPermissions, identityAccessGrantItems, identityAccessGrants, identityAccessRequestItems, identityAccessRequests, identityAccessReviewCampaigns, identityAccessReviewItems, identityPermissionPolicies } from './identity-access';
+import { identityRoleVersions, identityUserPermissions, identityAccessGrantItems, identityAccessGrantMenus, identityAccessGrants, identityAccessRequestItems, identityAccessRequestMenus, identityAccessRequests, identityAccessReviewCampaigns, identityAccessReviewItems, identityPermissionPolicies } from './identity-access';
 import { loginRiskEvents, passwordResetTokens, userApiTokens, userSignatures, userMfaFactors, userOauthAccounts, userTrustedDevices } from './auth';
 import { identityProviderSyncLogs, tenantIdentityProviders, userIdentityAccounts } from './identity-providers';
 import { directorySyncConflicts, directorySyncDeptLinks, directorySyncRunItems, directorySyncRuns, directorySyncSources, directorySyncUserLinks } from './directory-sync';
@@ -101,12 +101,18 @@ export const identityAccessRequestsRelations = relations(identityAccessRequests,
   target: one(users, { fields: [identityAccessRequests.targetUserId], references: [users.id], relationName: 'accessRequestTarget' }),
   workflowInstance: one(workflowInstances, { fields: [identityAccessRequests.workflowInstanceId], references: [workflowInstances.id] }),
   items: many(identityAccessRequestItems),
+  menus: many(identityAccessRequestMenus),
   grants: many(identityAccessGrants),
 }));
 
 export const identityAccessRequestItemsRelations = relations(identityAccessRequestItems, ({ one }) => ({
   request: one(identityAccessRequests, { fields: [identityAccessRequestItems.requestId], references: [identityAccessRequests.id] }),
   role: one(roles, { fields: [identityAccessRequestItems.roleId], references: [roles.id] }),
+}));
+
+export const identityAccessRequestMenusRelations = relations(identityAccessRequestMenus, ({ one }) => ({
+  request: one(identityAccessRequests, { fields: [identityAccessRequestMenus.requestId], references: [identityAccessRequests.id] }),
+  menu: one(menus, { fields: [identityAccessRequestMenus.menuId], references: [menus.id] }),
 }));
 
 export const identityAccessGrantsRelations = relations(identityAccessGrants, ({ one, many }) => ({
@@ -116,10 +122,16 @@ export const identityAccessGrantsRelations = relations(identityAccessGrants, ({ 
   approver: one(users, { fields: [identityAccessGrants.approvedBy], references: [users.id], relationName: 'accessGrantApprover' }),
   revoker: one(users, { fields: [identityAccessGrants.revokedBy], references: [users.id], relationName: 'accessGrantRevoker' }),
   items: many(identityAccessGrantItems),
+  menus: many(identityAccessGrantMenus),
 }));
 
 export const identityAccessGrantItemsRelations = relations(identityAccessGrantItems, ({ one }) => ({
   grant: one(identityAccessGrants, { fields: [identityAccessGrantItems.grantId], references: [identityAccessGrants.id] }),
+}));
+
+export const identityAccessGrantMenusRelations = relations(identityAccessGrantMenus, ({ one }) => ({
+  grant: one(identityAccessGrants, { fields: [identityAccessGrantMenus.grantId], references: [identityAccessGrants.id] }),
+  menu: one(menus, { fields: [identityAccessGrantMenus.menuId], references: [menus.id] }),
 }));
 
 export const identityAccessReviewCampaignsRelations = relations(identityAccessReviewCampaigns, ({ one, many }) => ({

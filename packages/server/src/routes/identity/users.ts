@@ -120,10 +120,10 @@ const getUserMenusRoute = defineContractRoute(userContract.menus, {
 const assignUserMenusRoute = defineContractRoute(userContract.assignMenus, {
   handler: async (c) => {
     const { id } = c.req.valid('param');
-    const { menuIds } = c.req.valid('json');
+    const { menuIds, permissionCodes } = c.req.valid('json');
     const before = await getUserMenuPermissionsBeforeAudit(id);
     if (before) setAuditBeforeData(c, before);
-    await assignUserMenus(id, menuIds);
+    await assignUserMenus(id, menuIds, permissionCodes);
     const after = await getUserMenuPermissionsBeforeAudit(id);
     if (after) setAuditAfterData(c, after);
     return c.json(okBody(null, '保存成功'), 200);

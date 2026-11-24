@@ -1,7 +1,7 @@
 import { pgEnum, pgTable, integer, varchar, boolean, jsonb, index, unique, uniqueIndex } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { ACCESS_PROVISION_STATUSES, ACCESS_APPROVAL_POLICIES, ACCESS_GRANT_SOURCES, ACCESS_GRANT_STATUSES, ACCESS_REQUEST_ITEM_TYPES, ACCESS_REQUEST_STATUSES, ACCESS_REQUEST_TYPES, ACCESS_REVIEW_DECISIONS, ACCESS_REVIEW_SCOPE_TYPES, ACCESS_REVIEW_STATUSES, ACCESS_REVIEW_SOURCE_TYPES, ACCESS_RISK_LEVELS } from '@zenith/shared/identity';
-import { auditColumns, dataScopeEnum, roles, tenantIdColumn, users } from './core';
+import { auditColumns, dataScopeEnum, menus, roles, tenantIdColumn, users } from './core';
 import { idColumn, timestamptz, timestampColumns } from './common';
 import { workflowInstances } from './workflow';
 import type { AccessPolicySnapshot, AccessApprovalPlan, AccessApprovalEvidence, AccessReviewHistory } from '@zenith/shared/identity';
@@ -99,6 +99,20 @@ export const identityAccessRequestItems = pgTable('identity_access_request_items
 export type IdentityAccessRequestItemRow = typeof identityAccessRequestItems.$inferSelect;
 export type NewIdentityAccessRequestItem = typeof identityAccessRequestItems.$inferInsert;
 
+/** 权限申请的页面访问项：页面授权与权限能力分开，页面不会从权限码反推 */
+export const identityAccessRequestMenus = pgTable('identity_access_request_menus', {
+  id: idColumn(),
+  requestId: integer().notNull().references(() => identityAccessRequests.id, { onDelete: 'cascade' }),
+  menuId: integer().notNull().references(() => menus.id, { onDelete: 'cascade' }),
+  createdAt: timestamptz().defaultNow().notNull(),
+}, (t) => [
+  unique('identity_access_request_menus_unique').on(t.requestId, t.menuId),
+  index('identity_access_request_menus_request_idx').on(t.requestId),
+  index('identity_access_request_menus_menu_idx').on(t.menuId),
+]);
+
+export type IdentityAccessRequestMenuRow = typeof identityAccessRequestMenus.$inferSelect;
+
 export const identityAccessGrants = pgTable('identity_access_grants', {
   id: idColumn(),
   tenantId: tenantIdColumn(),
@@ -154,6 +168,20 @@ export const identityAccessGrantItems = pgTable('identity_access_grant_items', {
 
 export type IdentityAccessGrantItemRow = typeof identityAccessGrantItems.$inferSelect;
 export type NewIdentityAccessGrantItem = typeof identityAccessGrantItems.$inferInsert;
+
+/** 权限授权的页面访问项；与 grant 同生命周期，页面不因任何权限码被自动推导 */
+export const identityAccessGrantMenus = pgTable('identity_access_grant_menus', {
+  id: idColumn(),
+  grantId: integer().notNull().references(() => identityAccessGrants.id, { onDelete: 'cascade' }),
+  menuId: integer().notNull().references(() => menus.id, { onDelete: 'cascade' }),
+  createdAt: timestamptz().defaultNow().notNull(),
+}, (t) => [
+  unique('identity_access_grant_menus_unique').on(t.grantId, t.menuId),
+  index('identity_access_grant_menus_grant_idx').on(t.grantId),
+  index('identity_access_grant_menus_menu_idx').on(t.menuId),
+]);
+
+export type IdentityAccessGrantMenuRow = typeof identityAccessGrantMenus.$inferSelect;
 
 export const identityAccessReviewCampaigns = pgTable('identity_access_review_campaigns', {
   id: idColumn(),
@@ -229,6 +257,8 @@ export const identityUserPermissions = pgTable('identity_user_permissions', {
 export const identityRoleVersions = pgTable('identity_role_versions', {
   id: idColumn(), roleId: integer().notNull().references(() => roles.id, { onDelete: 'cascade' }),
   version: integer().notNull(), permissionCodes: jsonb().$type<string[]>().notNull(),
+  /** 角色页面访问包：审批角色包必须固定页面范围，不能只看权限码 */
+  menuIds: jsonb().$type<number[]>().notNull().default([]),
   dataScope: dataScopeEnum().notNull(), deptScopeIds: jsonb().$type<number[]>().notNull().default([]),
   ...auditColumns(), createdAt: timestamptz().defaultNow().notNull(),
 }, t => [unique('identity_role_versions_number_unique').on(t.roleId, t.version)]);

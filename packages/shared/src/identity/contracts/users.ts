@@ -69,8 +69,10 @@ export const alertRecipientUserSchema = z.object({
 export type AlertRecipientUser = z.infer<typeof alertRecipientUserSchema>;
 
 export const userMenuPermissionsSchema = z.object({
-  directMenuIds: z.array(z.int()).meta({ description: '用户直接授权菜单 ID 列表' }),
-  roleMenuIds: z.array(z.int()).meta({ description: '角色继承菜单 ID 列表' }),
+  directMenuIds: z.array(z.int()).meta({ description: '用户直接授权页面 ID 列表' }),
+  roleMenuIds: z.array(z.int()).meta({ description: '角色继承页面 ID 列表' }),
+  directPermissionCodes: z.array(z.string()).meta({ description: '用户直接授权能力码' }),
+  rolePermissionCodes: z.array(z.string()).meta({ description: '角色继承能力码' }),
 }).meta({ id: 'UserMenuPermissions' });
 
 export type UserMenuPermissions = z.infer<typeof userMenuPermissionsSchema>;
@@ -102,6 +104,9 @@ export const userEffectivePermissionsSchema = z.object({
   groupMenuIds: z.array(z.int()).meta({ description: '用户组继承的菜单 ID 列表' }),
   effectiveMenuIds: z.array(z.int()),
   temporaryMenuIds: z.array(z.int()),
+  directPermissionCodes: z.array(z.string()),
+  rolePermissionCodes: z.array(z.string()),
+  groupPermissionCodes: z.array(z.string()),
   permissionCodes: z.array(z.string()),
   permissionSources: z.record(z.string(), z.array(z.string())),
   temporaryScopes: z.array(z.object({ grantId: z.int(), grantItemId: z.int(), permissionCode: z.string(), dataScope: z.enum(DATA_SCOPES), deptScopeIds: z.array(z.int()), expiresAt: z.string().nullable() })),
