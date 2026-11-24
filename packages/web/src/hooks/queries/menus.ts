@@ -15,6 +15,7 @@ export const menuKeys = {
   tree: contractKey(menuContract.tree),
   /** 当前登录用户可见菜单树（侧边栏与动态路由注册的数据源） */
   userTree: contractKey(menuContract.userTree),
+  paths: contractKey(menuContract.paths),
   detail: (id: number | undefined) => contractKey(menuContract.detail, { params: { id: id ?? 0 } }),
 };
 
@@ -38,6 +39,11 @@ export function userMenuTreeQueryOptions() {
 /** 当前用户可见菜单树；失败静默，由 App 渲染显式重试页（空菜单不得伪装成正常态） */
 export function useCurrentUserMenuTree() {
   return useApiQuery(menuContract.userTree, { staleTime: LOOKUP_STALE_TIME, requestOptions: silent });
+}
+
+/** 全部页面路径：任何登录用户可读的轻量目录，仅用于 403/404 判别。 */
+export function useMenuPaths() {
+  return useApiQuery(menuContract.paths, { staleTime: LOOKUP_STALE_TIME, requestOptions: silent });
 }
 
 export function useMenuDetail(id: number | undefined, enabled = true) {

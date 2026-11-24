@@ -47,6 +47,7 @@ export const menuSchema: z.ZodType<Menu> = menuFieldsSchema
 
 export const menuContract = defineContract('/api/menus', {
   userTree: op.get('/user', { access: 'authenticated', response: z.array(menuSchema), summary: '当前用户可见菜单树' }),
+  paths: op.get('/paths', { access: 'authenticated', response: z.array(z.string()), summary: '全部启用页面路径（用于 403/404 判别，不暴露权限与按钮）' }),
   tree: op.get('/', { access: { permission: 'system:menu:list' }, response: z.array(menuSchema), summary: '菜单树（管理用）' }),
   flat: op.get('/flat', { access: { permission: 'system:menu:list' }, response: z.array(menuSchema), summary: '平铺菜单列表' }),
   detail: op.get('/{id}', { access: { permission: 'system:menu:list' }, params: idParam, response: menuSchema, summary: '获取菜单详情' }),

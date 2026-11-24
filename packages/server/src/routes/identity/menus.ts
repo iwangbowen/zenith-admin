@@ -5,6 +5,7 @@ import { defineContractRoute } from '../../lib/contract-route';
 import { validationHook, conflictResponse, okBody } from '../../lib/openapi-schemas';
 import {
   listUserMenuTree,
+  listMenuPaths,
   listMenuTree,
   listMenusFlat,
   getMenu,
@@ -20,6 +21,10 @@ const menusRouter = new OpenAPIHono({ defaultHook: validationHook });
 
 const userMenuRoute = defineContractRoute(menuContract.userTree, {
   handler: async (c) => c.json(okBody(await listUserMenuTree()), 200),
+});
+
+const pathsRoute = defineContractRoute(menuContract.paths, {
+  handler: async (c) => c.json(okBody(await listMenuPaths()), 200),
 });
 
 const listRoute = defineContractRoute(menuContract.tree, {
@@ -56,7 +61,7 @@ const deleteMenuRoute = defineContractRoute(menuContract.remove, {
 mountCrud(menusRouter, menuContract,
   { get: getMenu },
   { exclude: ['create', 'update', 'remove'] },
-  [userMenuRoute, listRoute, flatRoute, createMenuRoute, updateMenuRoute, deleteMenuRoute],
+  [userMenuRoute, pathsRoute, listRoute, flatRoute, createMenuRoute, updateMenuRoute, deleteMenuRoute],
 );
 
 export default menusRouter;

@@ -16,7 +16,7 @@ import { ThemeProvider } from '@/providers/ThemeProvider';
 import { useQueryClient } from '@tanstack/react-query';
 import { maintenanceKeys, usePublicMaintenanceStatus, useMaintenanceAccess } from '@/hooks/queries/maintenance';
 import { lazyPageComponent } from '@/utils/page-registry';
-import { useCurrentUserMenuTree, useMenuTree } from '@/hooks/queries/menus';
+import { useCurrentUserMenuTree, useMenuPaths } from '@/hooks/queries/menus';
 import type { Menu, User } from '@zenith/shared/identity';
 import PageLoading from '@/components/PageLoading';
 // 布局内页面的 Suspense 边界：占位 → 内容的揭示与路由切换共用 ViewTransition（体积极小，不会拖入 AdminLayout）
@@ -135,10 +135,10 @@ function RedirectFromLogin() {
 function NotFoundOrForbidden({ userMenuPaths }: Readonly<{ userMenuPaths: Set<string> }>) {
   const location = useLocation();
   const path = location.pathname;
-  const allMenusQuery = useMenuTree();
-  const allMenuPaths = useMemo(() => buildAllMenuPaths(allMenusQuery.data ?? []), [allMenusQuery.data]);
-  // 树未到达前不下结论：直接渲染 404 会对「有页面但无权限」的路径闪一下错误结论
-  if (allMenusQuery.isPending) return <PageLoading />;
+  const allPathsQuery = useMenuPaths();
+  const allMenuPaths = useMemo(() => new Set(allPathsQuery.data ?? []), [allPathsQuery.data]);
+  // 路径目录未到达前不下结论：直接渲染 404 会对「有页面但无权限」的路径闪一下错误结论
+  if (allPathsQuery.isPending) return <PageLoading />;
 
   // 精确匹配或前缀匹配（如 /system/users/123 匹配 /system/users）
   const segments = path.split('/').filter(Boolean);

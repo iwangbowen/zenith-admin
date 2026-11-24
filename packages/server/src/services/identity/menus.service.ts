@@ -1,5 +1,5 @@
 import { requireRow } from '../../lib/db-assert';
-import { eq, and, ne, asc, inArray, countDistinct } from 'drizzle-orm';
+import { eq, and, ne, asc, inArray, countDistinct, isNotNull } from 'drizzle-orm';
 import { db } from '../../db';
 import { menus, roleMenus, userMenus, roles } from '../../db/schema';
 import type { Menu } from '@zenith/shared/identity';
@@ -113,6 +113,13 @@ async function ensureMenuParentValid(parentId: number, currentId?: number) {
 }
 
 // ─── 业务方法 ─────────────────────────────────────────────────────────────────
+
+/** 全部启用页面路径；只暴露路径，用于 403/404 判别，不暴露权限码、按钮和组件。 */
+export async function listMenuPaths(): Promise<string[]> {
+  const rows = await db.select({ path: menus.path }).from(menus)
+    .where(and(eq(menus.type, 'menu'), eq(menus.status, 'enabled'), isNotNull(menus.path)));
+  return [...new Set(rows.flatMap(row => row.path ? [row.path] : []))];
+}
 
 /** 当前登录用户可见的菜单树 */
 export async function listUserMenuTree(): Promise<Menu[]> {

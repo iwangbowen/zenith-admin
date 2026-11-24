@@ -3,7 +3,7 @@
  * 页面读权限在页面已选中时自动视为授予，避免页面和读权限漏配；操作权限不会带出页面。
  */
 import { useMemo, useState } from 'react';
-import { Banner, Checkbox, Input, Spin, Tag, Typography } from '@douyinfe/semi-ui';
+import { Banner, Button, Checkbox, Input, Space, Spin, Tag, Typography } from '@douyinfe/semi-ui';
 import { usePermissionCatalog } from '@/hooks/queries/permission-matrix';
 
 type CapabilityItem = {
@@ -44,6 +44,7 @@ export function CapabilityPanel({
 }: CapabilityPanelProps) {
   const catalogQuery = usePermissionCatalog();
   const [keyword, setKeyword] = useState('');
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set());
   const selected = useMemo(() => new Set(selectedPermissionCodes), [selectedPermissionCodes]);
   const pageSet = useMemo(() => new Set(selectedPageIds), [selectedPageIds]);
   const grouped = useMemo(() => {
@@ -85,12 +86,29 @@ export function CapabilityPanel({
         showClear
         style={{ marginBottom: 8 }}
       />
+      <Space style={{ marginBottom: 8 }}>
+        <Button size="small" theme="borderless" onClick={() => setExpandedGroups(new Set(grouped.map(([group]) => group)))}>展开全部</Button>
+        <Button size="small" theme="borderless" onClick={() => setExpandedGroups(new Set())}>折叠全部</Button>
+      </Space>
       <div style={{ maxHeight: 420, overflow: 'auto', paddingRight: 4 }}>
         {grouped.length === 0 && <Typography.Text type="tertiary">没有匹配的权限</Typography.Text>}
-        {grouped.map(([group, items]) => (
+        {grouped.map(([group, items]) => {
+          const expanded = keyword.trim().length > 0 || expandedGroups.has(group);
+          return (
           <div key={group} style={{ marginBottom: 12 }}>
-            <Typography.Text strong size="small" style={{ display: 'block', marginBottom: 6 }}>{group}</Typography.Text>
-            <div style={{ display: 'grid', gap: 6 }}>
+            <Button
+              size="small"
+              theme="borderless"
+              style={{ display: 'block', paddingLeft: 0, marginBottom: 6 }}
+              onClick={() => setExpandedGroups(prev => {
+                const next = new Set(prev);
+                if (next.has(group)) next.delete(group); else next.add(group);
+                return next;
+              })}
+            >
+              {expanded ? '▾' : '▸'} {group}（{items.length}）
+            </Button>
+            {expanded && <div style={{ display: 'grid', gap: 6 }}>
               {items.map((item) => {
                 const autoGranted = item.surface === 'page' && item.pageId !== null && pageSet.has(item.pageId);
                 const checked = autoGranted || selected.has(item.code);
@@ -109,9 +127,10 @@ export function CapabilityPanel({
                   </div>
                 );
               })}
-            </div>
+            </div>}
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

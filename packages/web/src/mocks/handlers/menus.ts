@@ -15,6 +15,10 @@ export const menusHandlers = [
     return ok(buildMenuTree(mockMenus.filter((m) => m.status === 'enabled' && m.type !== 'button')));
   }),
 
+  mock(menuContract.paths, ({ ok }) => {
+    return ok([...new Set(mockMenus.filter((m) => m.type === 'menu' && m.status === 'enabled' && m.path).map((m) => m.path!))]);
+  }),
+
   mock(menuContract.flat, ({ ok }) => {
     return ok(mockMenus);
   }),
