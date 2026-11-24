@@ -8,6 +8,7 @@ import { mockMenus } from '@/mocks/data/menus';
 
 // In-memory store for user-level menu/data permissions
 const userMenuMap: Record<number, number[]> = {};
+const userPermissionMap: Record<number, string[]> = {};
 const userDataScopeMap: Record<number, DataScope | null> = {};
 const userDeptScopeMap: Record<number, number[]> = {};
 
@@ -50,6 +51,13 @@ function getUserRoles(roleIds: number[]) {
   return mockRoles.filter((r) => roleIds.includes(r.id));
 }
 
+function permissionCodesOfMenus(menuIds: readonly number[]): string[] {
+  return [...new Set(menuIds.flatMap(id => {
+    const menu = mockMenus.find(item => item.id === id);
+    return menu?.permission ? [menu.permission] : [];
+  }))];
+}
+
 export const userPermissionsHandlers = [
   // 用户菜单权限
   mock(userContract.menus, ({ params, ok }) => {
@@ -61,11 +69,17 @@ export const userPermissionsHandlers = [
     for (const role of getUserRoles(user.roles.map((r) => r.id))) {
       for (const id of (role.menuIds ?? [])) roleMenuIdSet.add(id);
     }
-    return ok({ directMenuIds, roleMenuIds: [...roleMenuIdSet] });
+    return ok({
+      directMenuIds,
+      roleMenuIds: [...roleMenuIdSet],
+      directPermissionCodes: userPermissionMap[userId] ?? [],
+      rolePermissionCodes: permissionCodesOfMenus([...roleMenuIdSet]),
+    });
   }),
 
   mock(userContract.assignMenus, ({ params, body, ok }) => {
     userMenuMap[params.id] = body.menuIds;
+    userPermissionMap[params.id] = body.permissionCodes;
     return ok(null, '保存成功');
   }),
 
@@ -153,6 +167,9 @@ export const userPermissionsHandlers = [
       roleMenuIds,
       groupMenuIds,
       effectiveMenuIds,
+      directPermissionCodes: userPermissionMap[userId] ?? [],
+      rolePermissionCodes: permissionCodesOfMenus(roleMenuIds),
+      groupPermissionCodes: permissionCodesOfMenus(groupMenuIds),
       permissionCodes: Object.keys(permissionSources),
       permissionSources,
       temporaryMenuIds: [],

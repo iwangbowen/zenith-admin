@@ -148,6 +148,11 @@ function RequestDetailSheet({ record: suppliedRecord, visible = suppliedRecord !
             { key: '申请原因', value: <Text style={{ whiteSpace: 'pre-wrap' }}>{record.reason}</Text>, span: 2 },
           ]}
         />
+        <Divider align="left" style={{ margin: '16px 0 10px' }}>申请页面（{record.menus.length} 个）</Divider>
+        <Table dataSource={record.menus} rowKey="menuId" size="small" pagination={false} empty="暂无页面访问项" columns={[
+          { title: '页面', dataIndex: 'title' },
+          { title: '路径', dataIndex: 'path', render: (path: string | null) => path ?? EMPTY_PLACEHOLDER },
+        ]} />
         <Divider align="left" style={{ margin: '16px 0 10px' }}>申请权限（{accessPermissionCount(record.items)} 项 · {record.items.length} 条范围）</Divider>
         <Table columns={singleLineColumns(itemColumns)} dataSource={record.items} rowKey="id" size="small" pagination={false} empty="暂无权限项" />
       </>}
@@ -222,6 +227,11 @@ function GrantDetailSheet({ record: suppliedRecord, visible = suppliedRecord !==
             { key: '撤销原因', value: record.revokeReason ? <Text style={{ whiteSpace: 'pre-wrap' }}>{record.revokeReason}</Text> : EMPTY_PLACEHOLDER, span: 2 },
           ]}
         />
+        <Divider align="left" style={{ margin: '16px 0 10px' }}>页面访问（{record.menus.length} 个）</Divider>
+        <Table dataSource={record.menus} rowKey="menuId" size="small" pagination={false} empty="暂无页面访问项" columns={[
+          { title: '页面', dataIndex: 'title' },
+          { title: '路径', dataIndex: 'path', render: (path: string | null) => path ?? EMPTY_PLACEHOLDER },
+        ]} />
         <Divider align="left" style={{ margin: '16px 0 10px' }}>授权权限（{accessPermissionCount(record.items)} 项 · {record.items.length} 条范围）</Divider>
         <Table columns={singleLineColumns(menuColumns)} dataSource={record.items} rowKey="id" size="small" pagination={false} scroll={{ x: 1240 }} empty="暂无权限项" />
       </>}

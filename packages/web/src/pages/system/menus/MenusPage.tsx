@@ -431,9 +431,14 @@ export default function MenusPage() {
               </Form.RadioGroup>
             </Col>
           )}
-          {menuType === 'button' && (
+          {(menuType === 'menu' || menuType === 'button') && (
             <Col span={12}>
-              <Form.Input field="permission" label="权限标识" placeholder="如：system:user:list" rules={[{ required: true, message: '请输入权限标识' }]} />
+              <Form.Input
+                field="permission"
+                label={menuType === 'menu' ? '页面读权限' : '操作权限'}
+                placeholder={menuType === 'menu' ? '如：system:user:list' : '如：system:user:create'}
+                rules={menuType === 'button' ? [{ required: true, message: '请输入操作权限码' }] : undefined}
+              />
             </Col>
           )}
           <Col span={12}>

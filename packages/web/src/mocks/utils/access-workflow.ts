@@ -18,7 +18,7 @@ export function mockAccessOptions(): AccessWorkflowOptions {
   return {
     roles: mockRoles.filter(role => !['super_admin', 'tenant_admin', 'security_admin'].includes(role.code) && (role.permissionCodes ?? []).length).map(role => ({
       id: role.id, name: role.name, code: role.code, dataScope: role.dataScope ?? 'self', version: role.permissionVersion ?? 1,
-      permissionCount: (role.permissionCodes ?? []).length, permissionCodes: role.permissionCodes ?? [], ...aggregateAccessPolicies((role.permissionCodes ?? []).map(mockAccessPolicy)),
+      permissionCount: (role.permissionCodes ?? []).length, permissionCodes: role.permissionCodes ?? [], menuIds: role.menuIds ?? [], ...aggregateAccessPolicies((role.permissionCodes ?? []).map(mockAccessPolicy)),
     })),
     menus: mockMenus.map(menu => {
       const policy = menu.permission && ALL_PERMISSIONS[menu.permission] ? mockAccessPolicy(menu.permission) : null;
@@ -33,8 +33,15 @@ export function mockAccessOptions(): AccessWorkflowOptions {
 
 export function evaluateMockAccess(raw: Record<string, unknown>, actorId: number): AccessWorkflowPreview {
   const roles = Array.isArray(raw.roleSelections) ? raw.roleSelections as { roleId: number }[] : [];
-  const codes = [...new Set([...(Array.isArray(raw.permissionCodes) ? raw.permissionCodes as string[] : []), ...roles.flatMap(selection => mockRoles.find(role => role.id === selection.roleId)?.permissionCodes ?? [])])];
-  if (!codes.length) return { status: 'selection_required', message: '请选择角色包或操作权限' };
+  const menuIds = Array.isArray(raw.menuIds) ? raw.menuIds as number[] : [];
+  const pageCodes = menuIds.flatMap(id => {
+    const menu = mockMenus.find(item => item.id === id);
+    return menu?.permission ? [menu.permission] : [];
+  });
+  const roleMenuIds = roles.flatMap(selection => mockRoles.find(role => role.id === selection.roleId)?.menuIds ?? []);
+  const pageIds = [...new Set([...menuIds, ...roleMenuIds])];
+  const codes = [...new Set([...(Array.isArray(raw.permissionCodes) ? raw.permissionCodes as string[] : []), ...pageCodes, ...roles.flatMap(selection => mockRoles.find(role => role.id === selection.roleId)?.permissionCodes ?? [])])];
+  if (!codes.length && !pageIds.length) return { status: 'selection_required', message: '请选择页面、角色包或操作权限' };
   if (codes.some(code => !ALL_PERMISSIONS[code] || !mockAccessPolicy(code).enabled)) return { status: 'blocked', message: '所选权限不可自助申请' };
   const policies = codes.map(mockAccessPolicy);
   const policy = aggregateAccessPolicies(policies);
@@ -42,8 +49,8 @@ export function evaluateMockAccess(raw: Record<string, unknown>, actorId: number
   const definitions = ACCESS_APPROVAL_STEPS[policy.approvalPolicy];
   const count = definitions.length;
   if (people.length < count) return { status: 'blocked', message: '演示审批人不足' };
-  return { status: 'ready', fingerprint: JSON.stringify([codes.sort(), policies.map(item => item.version), raw.startMode, raw.expiresAt]),
-    permissionCount: codes.length, grantItemCount: codes.length, policies,
+  return { status: 'ready', fingerprint: JSON.stringify([codes.sort(), pageIds.sort((a, b) => a - b), policies.map(item => item.version), raw.startMode, raw.expiresAt]),
+    permissionCount: codes.length, grantItemCount: codes.length, menuCount: pageIds.length, policies,
     approvalPlan: { approvalPolicy: policy.approvalPolicy, mfaRequired: policy.mfaRequired, steps: people.slice(0, count).map((person, index) => ({ nodeKey: definitions[index].nodeKey, label: definitions[index].label, userId: person.id, userName: person.nickname || person.username, reason: '演示策略审批人' })) } };
 }
 
@@ -57,8 +64,18 @@ export function prepareMockAccess(def: WorkflowDefinition, raw: Record<string, u
     return (role?.permissionCodes ?? []).map(permissionCode => ({ permissionCode, permissionLabel: ALL_PERMISSIONS[permissionCode]?.label ?? permissionCode, dataScope: role?.dataScope ?? 'self' as const,
       deptScopeIds: [], sourceRefs: [{ kind: 'role' as const, roleId: role!.id, roleVersion: role!.permissionVersion ?? 1, label: role!.name }] }));
   });
-  const directItems = (Array.isArray(raw.permissionCodes) ? raw.permissionCodes as string[] : []).map(permissionCode => ({ permissionCode, permissionLabel: ALL_PERMISSIONS[permissionCode]?.label ?? permissionCode, dataScope: 'self' as const, deptScopeIds: [], sourceRefs: [{ kind: 'direct' as const, label: '直接申请' }] }));
-  return { flowData: buildAccessApprovalFlow(preview.approvalPlan, def.flowData?.settings), formData: { ...raw,
+  const menuIds = [...new Set([...(Array.isArray(raw.menuIds) ? raw.menuIds as number[] : []), ...selections.flatMap(selection => mockRoles.find(role => role.id === selection.roleId)?.menuIds ?? [])])];
+  const menus = menuIds.flatMap(id => {
+    const menu = mockMenus.find(item => item.id === id);
+    return menu ? [{ menuId: menu.id, title: menu.title, path: menu.path ?? null }] : [];
+  });
+  const pageCodes = menus.flatMap(menu => {
+    const code = mockMenus.find(item => item.id === menu.menuId)?.permission;
+    return code ? [code] : [];
+  });
+  const directItems = [...new Set([...(Array.isArray(raw.permissionCodes) ? raw.permissionCodes as string[] : []), ...pageCodes])]
+    .map(permissionCode => ({ permissionCode, permissionLabel: ALL_PERMISSIONS[permissionCode]?.label ?? permissionCode, dataScope: 'self' as const, deptScopeIds: [], sourceRefs: [{ kind: 'direct' as const, label: pageCodes.includes(permissionCode) ? '页面访问' : '直接申请' }] }));
+  return { flowData: buildAccessApprovalFlow(preview.approvalPlan, def.flowData?.settings), formData: { ...raw, menuIds, menus,
     startsAt: raw.startMode === 'scheduled' ? raw.startsAt : mockDateTime(), targetUserId: actorId,
     targetUserName: mockUsers.find(user => user.id === actorId)?.nickname ?? String(actorId),
     policySnapshot: preview.policies, approvalPlan: preview.approvalPlan, mfaRequired: preview.approvalPlan.mfaRequired,
@@ -76,6 +93,7 @@ export function syncMockAccess(instance: WorkflowInstance): void {
     sourceType: value.requestType === 'emergency' ? 'emergency' : 'request', status: 'active', riskLevel: value.riskLevel as AccessRequest['riskLevel'], startsAt: String(value.startsAt), expiresAt: typeof value.expiresAt === 'string' ? value.expiresAt : null,
     items: items.map(item => ({ id: instance.id * 1000 + item.id, scopeKey: item.scopeKey, sourceRefs: item.sourceRefs, permissionCode: item.permissionCode, permissionLabel: item.permissionLabel ?? null, status: 'active', dataScope: item.dataScope ?? 'self', deptScopeIds: item.deptScopeIds,
       startsAt: String(value.startsAt), expiresAt: typeof value.expiresAt === 'string' ? value.expiresAt : null, nextReviewAt: null, revokedAt: null, revokedBy: null, revokeReason: null, policySnapshot: policies.find(policy => policy.permissionCode === item.permissionCode)! })),
+    menus: Array.isArray(value.menus) ? value.menus as AccessGrant['menus'] : [],
     createdAt: mockDateTime(), updatedAt: mockDateTime(), tenantId: instance.tenantId,
   });
 }
@@ -90,7 +108,9 @@ export function mockAccessResult(instance: WorkflowInstance) {
     reason: String(value.reason ?? ''), startsAt: String(value.startsAt ?? instance.createdAt), expiresAt: typeof value.expiresAt === 'string' ? value.expiresAt : null,
     riskLevel: value.riskLevel as AccessRequest['riskLevel'], requestType: value.requestType === 'emergency' ? 'emergency' : 'temporary',
     policySnapshot: value.policySnapshot as AccessRequest['policySnapshot'], approvalPlan: value.approvalPlan as AccessRequest['approvalPlan'], approvalEvidence: [],
-    items: value.permissionItems as AccessRequest['items'], appliedAt: instance.status === 'approved' ? instance.updatedAt : null, createdAt: instance.createdAt, updatedAt: instance.updatedAt,
+    items: value.permissionItems as AccessRequest['items'],
+    menus: Array.isArray(value.menus) ? value.menus as AccessRequest['menus'] : [],
+    appliedAt: instance.status === 'approved' ? instance.updatedAt : null, createdAt: instance.createdAt, updatedAt: instance.updatedAt,
   };
   const grant = mockAccessGrants.get(instance.id) ?? null;
   if (grant) for (const item of grant.items) if (item.status !== 'revoked') item.status = item.expiresAt && item.expiresAt <= mockDateTime() ? 'expired' : item.startsAt > mockDateTime() ? 'scheduled' : 'active';

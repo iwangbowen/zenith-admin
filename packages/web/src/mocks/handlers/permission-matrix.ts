@@ -1,6 +1,7 @@
-import { apiCatalogContract, permissionMatrixContract, type ApiCatalog, type RolePermissionSet, type UserPermissionSet } from '@zenith/shared/identity';
+import { apiCatalogContract, permissionCatalogContract, permissionMatrixContract, type ApiCatalog, type PermissionCatalog, type RolePermissionSet, type UserPermissionSet } from '@zenith/shared/identity';
 import { buildApiCatalog } from '@zenith/shared/permission-catalog';
 import { SEED_MENUS } from '@zenith/shared/seed';
+import { ALL_PERMISSIONS } from '@zenith/shared/permissions';
 import { mock } from '@/mocks/utils/contract';
 import { requireItem } from '@/mocks/utils/crud';
 import { mockRoles } from '@/mocks/data/roles';
@@ -31,8 +32,29 @@ function toRoleSet(role: typeof mockRoles[number]): RolePermissionSet {
   };
 }
 
+function buildPermissionCatalog(): PermissionCatalog {
+  const pages = SEED_MENUS.filter(menu => menu.type === 'menu');
+  const pageById = new Map(pages.map(page => [page.id, page]));
+  const buttons = SEED_MENUS.filter(menu => menu.type === 'button');
+  return {
+    items: Object.entries(ALL_PERMISSIONS).map(([code, meta]) => {
+      const page = pages.find(item => item.permission === code);
+      if (page) return { code, label: meta.label, surface: 'page' as const, pageId: page.id, pageTitle: page.title, path: page.path ?? null, uiOnly: meta.uiOnly ?? false };
+      const button = buttons.find(item => item.permission === code);
+      if (button) {
+        const parent = pageById.get(button.parentId);
+        return { code, label: meta.label, surface: 'button' as const, pageId: parent?.id ?? null, pageTitle: parent?.title ?? null, path: parent?.path ?? null, uiOnly: meta.uiOnly ?? false };
+      }
+      return { code, label: meta.label, surface: 'api' as const, pageId: null, pageTitle: null, path: null, uiOnly: meta.uiOnly ?? false };
+    }),
+  };
+}
+
+let cachedPermissionCatalog: PermissionCatalog | null = null;
+
 export const permissionMatrixHandlers = [
   mock(apiCatalogContract.get, ({ ok }) => ok(cachedCatalog ??= buildApiCatalog())),
+  mock(permissionCatalogContract.list, ({ ok }) => ok(cachedPermissionCatalog ??= buildPermissionCatalog())),
   mock(permissionMatrixContract.roles, ({ ok }) => ok(mockRoles.map(toRoleSet))),
   mock(permissionMatrixContract.user, ({ params, ok }) => {
     const user = requireItem(mockUsers, params.id, '用户不存在', { status: 404 });

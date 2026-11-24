@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Form, Toast, Spin, SideSheet } from '@douyinfe/semi-ui';
+import { Form, Toast, Spin, SideSheet, Tabs, TabPane } from '@douyinfe/semi-ui';
 import { DATA_SCOPES, type CreateRoleInput, type Role, type Department, roleContract } from '@zenith/shared/identity';
 import { enumValueOf } from '@zenith/shared/core';
 import { UserTransferSelect } from '@/components/UserTransferSelect';
@@ -13,6 +13,7 @@ import { useDictItems } from '@/hooks/useDictItems';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 import { MenuPermissionPanel } from '@/components/permissions/MenuPermissionPanel';
+import { CapabilityPanel } from '@/components/permissions/CapabilityPanel';
 import { DataScopePanel } from '@/components/permissions/DataScopePanel';
 import { departmentTreeToTreeData, useDepartmentTree } from '@/hooks/queries/departments';
 import { useMenuTree } from '@/hooks/queries/menus';
@@ -46,6 +47,8 @@ export default function RolesPage() {
   const [menuModalVisible, setMenuModalVisible] = useState(false);
   const [menuRole, setMenuRole] = useState<Role | null>(null);
   const [checkedMenuIds, setCheckedMenuIds] = useState<number[]>([]);
+  const [checkedPermissionCodes, setCheckedPermissionCodes] = useState<string[]>([]);
+  const [accessTab, setAccessTab] = useState('pages');
   const [userModalVisible, setUserModalVisible] = useState(false);
   const [userRole, setUserRole] = useState<Role | null>(null);
   const [assignedUserIds, setAssignedUserIds] = useState<number[]>([]);
@@ -85,8 +88,15 @@ export default function RolesPage() {
   });
 
   useEffect(() => {
-    if (menuModalVisible) setCheckedMenuIds(menuRoleDetailQuery.data?.menuIds ?? []);
+    if (!menuModalVisible) return;
+    setActiveTabSafe('pages');
+    setCheckedMenuIds(menuRoleDetailQuery.data?.menuIds ?? []);
+    setCheckedPermissionCodes(menuRoleDetailQuery.data?.permissionCodes ?? []);
   }, [menuModalVisible, menuRoleDetailQuery.data]);
+
+  function setActiveTabSafe(tab: string) {
+    setAccessTab(tab);
+  }
 
   useEffect(() => {
     if (userModalVisible) setAssignedUserIds((roleUsersQuery.data ?? []).map((u) => u.id));
@@ -105,8 +115,8 @@ export default function RolesPage() {
 
   const handleAssignMenus = async () => {
     if (!menuRole) return;
-    await assignMenusMutation.mutateAsync({ params: { id: menuRole.id }, body: { menuIds: checkedMenuIds } });
-    Toast.success('菜单权限已更新');
+    await assignMenusMutation.mutateAsync({ params: { id: menuRole.id }, body: { menuIds: checkedMenuIds, permissionCodes: checkedPermissionCodes } });
+    Toast.success('页面与能力权限已更新');
     setMenuModalVisible(false);
   };
 
@@ -172,7 +182,7 @@ export default function RolesPage() {
     extraBetween: (row) => [
       {
         key: 'menu',
-        label: '菜单权限',
+        label: '页面与能力',
         hidden: !hasPermission('system:role:assign'),
         onClick: () => openMenuModal(row),
       },
@@ -260,21 +270,33 @@ export default function RolesPage() {
         />
       </EditFormModal>
 
-      {/* 菜单权限 Modal */}
+      {/* 页面与能力授权 Modal */}
       <AppModal
-        title={`分配菜单权限 — ${menuRole?.name}`}
+        title={`页面与能力 — ${menuRole?.name}`}
         visible={menuModalVisible}
         onCancel={() => setMenuModalVisible(false)}
         onOk={handleAssignMenus}
         okButtonProps={{ disabled: !menuRoleDetailQuery.isSuccess, loading: assignMenusMutation.isPending }}
-        width={640}
+        width={760}
       >
-        <MenuPermissionPanel
-          allMenus={menuTreeQuery.data ?? []}
-          checkedMenuIds={checkedMenuIds}
-          onChange={setCheckedMenuIds}
-          loading={menuTreeQuery.isFetching || menuRoleDetailQuery.isFetching}
-        />
+        <Tabs collapsible="auto" activeKey={accessTab} onChange={setAccessTab}>
+          <TabPane tab="页面访问" itemKey="pages">
+            <MenuPermissionPanel
+              allMenus={menuTreeQuery.data ?? []}
+              checkedMenuIds={checkedMenuIds}
+              onChange={setCheckedMenuIds}
+              loading={menuTreeQuery.isFetching || menuRoleDetailQuery.isFetching}
+              pagesOnly
+            />
+          </TabPane>
+          <TabPane tab="接口能力" itemKey="capabilities">
+            <CapabilityPanel
+              selectedPermissionCodes={checkedPermissionCodes}
+              onChange={setCheckedPermissionCodes}
+              selectedPageIds={checkedMenuIds}
+            />
+          </TabPane>
+        </Tabs>
       </AppModal>
 
       {/* 数据权限 Modal */}

@@ -1,14 +1,16 @@
 /**
- * 用户菜单权限弹窗
+ * 用户页面与能力授权弹窗
  *
  * Tabs：
- *  1. 直接授权   — 可编辑，显示用户直接授权的菜单
- *  2. 最终有效权限 — 只读，显示角色继承 ∪ 用户组继承 ∪ 直接授权，并用 Tag 标注来源
+ *  1. 页面访问 — 可编辑，只选择导航页面
+ *  2. 接口能力 — 可编辑，选择页面读/按钮操作/API-only 权限码
+ *  3. 最终有效权限 — 只读，显示角色继承 ∪ 用户组继承 ∪ 直接授权，并用 Tag 标注来源
  */
 import { useState, useEffect } from 'react';
 import { Tabs, TabPane, Toast, Tag, Space } from '@douyinfe/semi-ui';
 import AppModal from '@/components/AppModal';
 import { MenuPermissionPanel } from '@/components/permissions/MenuPermissionPanel';
+import { CapabilityPanel } from '@/components/permissions/CapabilityPanel';
 import { useMenuTree } from '@/hooks/queries/menus';
 import ModalFooter from '@/components/ModalFooter';
 import { useSaveUserMenus, useUserEffectivePermissions } from '@/hooks/queries/users';
@@ -22,6 +24,7 @@ type Props = Readonly<{
 
 export function UserMenuPermissionModal({ userId, userName, visible, onClose }: Props) {
   const [directMenuIds, setDirectMenuIds] = useState<number[]>([]);
+  const [directPermissionCodes, setDirectPermissionCodes] = useState<string[]>([]);
   const [roleMenuIds, setRoleMenuIds] = useState<number[]>([]);
   const [groupMenuIds, setGroupMenuIds] = useState<number[]>([]);
   const [groups, setGroups] = useState<Array<{ id: number; name: string }>>([]);
@@ -39,6 +42,7 @@ export function UserMenuPermissionModal({ userId, userName, visible, onClose }: 
   useEffect(() => {
     if (!visible || !permissionsQuery.data) return;
     setDirectMenuIds(permissionsQuery.data.directMenuIds);
+    setDirectPermissionCodes(permissionsQuery.data.directPermissionCodes);
     setRoleMenuIds(permissionsQuery.data.roleMenuIds);
     setGroupMenuIds(permissionsQuery.data.groupMenuIds ?? []);
     setGroups(permissionsQuery.data.groups ?? []);
@@ -46,8 +50,8 @@ export function UserMenuPermissionModal({ userId, userName, visible, onClose }: 
   }, [visible, permissionsQuery.data]);
 
   const handleSave = async () => {
-    await saveMenusMutation.mutateAsync({ params: { id: userId }, body: { menuIds: directMenuIds } });
-    Toast.success('菜单权限已更新');
+    await saveMenusMutation.mutateAsync({ params: { id: userId }, body: { menuIds: directMenuIds, permissionCodes: directPermissionCodes } });
+    Toast.success('页面与能力权限已更新');
     const effectiveSet = new Set([...directMenuIds, ...roleMenuIds, ...groupMenuIds]);
     setEffectiveMenuIds([...effectiveSet]);
     onClose();
@@ -75,7 +79,7 @@ export function UserMenuPermissionModal({ userId, userName, visible, onClose }: 
 
   return (
     <AppModal
-      title={`菜单权限 — ${userName}`}
+      title={`页面与能力 — ${userName}`}
       visible={visible}
       onCancel={onClose}
       footer={activeTab === 'effective' ? null : (
@@ -87,15 +91,23 @@ export function UserMenuPermissionModal({ userId, userName, visible, onClose }: 
           disabled={!permissionsQuery.isSuccess}
         />
       )}
-      width={640}
+      width={760}
     >
       <Tabs collapsible="auto" activeKey={activeTab} onChange={setActiveTab}>
-        <TabPane tab="直接授权" itemKey="direct">
+        <TabPane tab="页面访问" itemKey="direct">
           <MenuPermissionPanel
             allMenus={menuTreeQuery.data ?? []}
             checkedMenuIds={directMenuIds}
             onChange={setDirectMenuIds}
             loading={menuTreeQuery.isFetching || permissionsQuery.isFetching}
+            pagesOnly
+          />
+        </TabPane>
+        <TabPane tab="接口能力" itemKey="capabilities">
+          <CapabilityPanel
+            selectedPermissionCodes={directPermissionCodes}
+            onChange={setDirectPermissionCodes}
+            selectedPageIds={directMenuIds}
           />
         </TabPane>
         <TabPane tab="最终有效权限" itemKey="effective">
@@ -129,7 +141,13 @@ export function UserMenuPermissionModal({ userId, userName, visible, onClose }: 
             checkedMenuIds={effectiveMenuIds}
             loading={menuTreeQuery.isFetching || permissionsQuery.isFetching}
             readonly
+            pagesOnly
             labelSuffix={buildLabelSuffix()}
+          />
+          <CapabilityPanel
+            selectedPermissionCodes={permissionsQuery.data?.permissionCodes ?? []}
+            selectedPageIds={effectiveMenuIds}
+            readonly
           />
         </TabPane>
       </Tabs>

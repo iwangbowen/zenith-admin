@@ -1,9 +1,13 @@
 import type { Role } from '@zenith/shared/identity';
 import { SEED_ROLES } from '@zenith/shared/seed';
+import { SEED_MENUS } from '@zenith/shared/seed/menus';
 import { nextIdFrom } from '@/mocks/utils/handlers';
 
 export const mockRoles: Role[] = SEED_ROLES.map((r) => ({
   ...r,
+  permissionCodes: r.id === 1
+    ? undefined
+    : [...new Set((r.menuIds ?? []).flatMap(id => SEED_MENUS.find(menu => menu.id === id)?.permission ? [SEED_MENUS.find(menu => menu.id === id)!.permission!] : []))],
   userCount: r.code === 'super_admin' ? 3 : 5,
   userPreview: r.code === 'super_admin'
     ? [

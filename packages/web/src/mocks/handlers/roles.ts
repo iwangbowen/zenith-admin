@@ -4,6 +4,7 @@ import { requireItem, removeByIds } from '@/mocks/utils/crud';
 import { badRequest, conflict } from '@/mocks/utils/handlers';
 import { mockRoles, getNextRoleId } from '@/mocks/data/roles';
 import { mockUsers } from '@/mocks/data/users';
+import { mockMenus } from '@/mocks/data/menus';
 import { mockDateTime } from '@/mocks/utils/date';
 import { mockResource } from '@/mocks/utils/resource';
 
@@ -72,8 +73,15 @@ export const rolesHandlers = [
   mock(roleContract.assignMenus, ({ params, body, ok }) => {
     const role = requireItem(mockRoles, params.id, '角色不存在', { status: 404 });
     role.menuIds = body.menuIds;
+    role.permissionCodes = [...new Set([
+      ...body.permissionCodes,
+      ...body.menuIds.flatMap(id => {
+        const menu = mockMenus.find(item => item.id === id);
+        return menu?.permission ? [menu.permission] : [];
+      }),
+    ])];
     role.updatedAt = mockDateTime();
-    return ok(null, '菜单权限更新成功');
+    return ok(null, '页面与能力权限更新成功');
   }),
 
   mock(roleContract.users, ({ params, ok }) => {

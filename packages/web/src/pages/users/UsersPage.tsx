@@ -579,7 +579,7 @@ export default function UsersPage() {
           },
           {
             key: 'menu-permission',
-            label: '菜单权限',
+            label: '页面与能力',
             hidden: !hasPermission('system:user:assign'),
             onClick: () => {
               setMenuPermUser(record);

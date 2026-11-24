@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState, useTransition } from 'react';
-import { Banner, Radio, RadioGroup, Select, Tag, Typography } from '@douyinfe/semi-ui';
+import { Banner, Radio, RadioGroup, Select, TabPane, Tabs, Tag, Typography } from '@douyinfe/semi-ui';
 import { CircleCheck, CircleSlash, Fingerprint, Globe, KeyRound, Layers, Lock, ShieldCheck } from 'lucide-react';
 import { judgeOperation, type OperationVerdict, type PermissionSubject } from '@zenith/shared/permission-catalog-core';
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
@@ -12,6 +12,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { usePinyinReady } from '@/hooks/usePinyinReady';
 import { ApiCatalogSearchBar, ApiCatalogTable, type PermissionLabels } from './ApiCatalogTable';
 import ApiOperationSheet from './ApiOperationSheet';
+import PermissionDirectoryTab from './PermissionDirectoryTab';
 import {
   EMPTY_FILTERS,
   VERDICT_LABELS,
@@ -57,8 +58,9 @@ const VERDICT_OPTIONS = (Object.keys(VERDICT_LABELS) as OperationVerdict[]).map(
  * 选择「查看主体」（角色 / 用户）后叠加每个接口的判定：默认只列它可调用的接口，
  * 统计卡切到「无权限」「仅平台超管」或全部；服务端只提供主体持有的权限码，判定在浏览器内完成。
  */
-export default function ApiCatalogPage() {
+export default function AccessCatalogPage() {
   const { hasPermission } = usePermission();
+  const [activeTab, setActiveTab] = useState('interfaces');
   const [subjectKind, setSubjectKind] = useState<SubjectKind>('role');
   const [roleId, setRoleId] = useState<number | null>(null);
   const [userId, setUserId] = useState<number | null>(null);
@@ -166,6 +168,8 @@ export default function ApiCatalogPage() {
 
   return (
     <div className="page-container">
+      <Tabs collapsible="auto" activeKey={activeTab} onChange={setActiveTab}>
+        <TabPane tab="接口目录" itemKey="interfaces">
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
         <Typography.Text strong>查看主体</Typography.Text>
         <RadioGroup type="button" value={subjectKind} onChange={(e) => switchSubjectKind(e.target.value as SubjectKind)}>
@@ -243,6 +247,11 @@ export default function ApiCatalogPage() {
         verdictOf={verdictOf}
       />
       <ApiOperationSheet row={selected} permissionLabels={permissionLabels} byPermission={byPermission} onClose={() => setSelected(null)} onOpen={setSelected} />
+        </TabPane>
+        <TabPane tab="权限目录" itemKey="permissions">
+          <PermissionDirectoryTab />
+        </TabPane>
+      </Tabs>
     </div>
   );
 }

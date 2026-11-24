@@ -19,6 +19,10 @@ export default function AccessWorkflowResult({ instanceId, requestClient }: { re
       { key: '实际发放', value: <DateTimeText value={request.appliedAt} empty="尚未发放" mode="absolute" /> },
       { key: '授权情况', value: grant ? '以每项权限的当前状态及有效期为准' : request.status === 'approved' ? '审批已通过，权限在发放成功后可用' : '尚未产生授权' },
     ]} />
+    {grant && grant.menus.length > 0 ? <Table rowKey="menuId" dataSource={grant.menus} pagination={false} size="small" columns={[
+      { title: '页面访问', dataIndex: 'title', width: 240 },
+      { title: '路径', dataIndex: 'path', render: path => path ?? '—' },
+    ]} /> : null}
     {grant ? <Table rowKey="id" dataSource={grant.items} pagination={false} size="small" scroll={{ x: 1000 }} columns={[
       { title: '权限', dataIndex: 'permissionLabel', width: 200, render: (label, row: AccessGrantItem) => label ?? row.permissionCode },
       { title: '数据范围', dataIndex: 'dataScope', width: 130, render: scope => DATA_SCOPE_OPTIONS.find(item => item.value === scope)?.label ?? scope },

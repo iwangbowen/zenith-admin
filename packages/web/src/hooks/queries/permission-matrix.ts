@@ -1,9 +1,10 @@
-import { apiCatalogContract, permissionMatrixContract } from '@zenith/shared/identity';
+import { apiCatalogContract, permissionCatalogContract, permissionMatrixContract } from '@zenith/shared/identity';
 import { contractKey, useApiQuery } from '@/lib/contract-query';
 import { LOOKUP_STALE_TIME } from '@/lib/query';
 
 export const apiCatalogKeys = {
   catalog: contractKey(apiCatalogContract.get),
+  permissions: contractKey(permissionCatalogContract.list),
 };
 
 /**
@@ -12,6 +13,11 @@ export const apiCatalogKeys = {
  */
 export function useApiCatalog() {
   return useApiQuery(apiCatalogContract.get, { staleTime: Infinity });
+}
+
+/** 权限目录：能力定义、形态和页面绑定；API-only 权限也包含在内。 */
+export function usePermissionCatalog() {
+  return useApiQuery(permissionCatalogContract.list, { staleTime: Infinity });
 }
 
 /**

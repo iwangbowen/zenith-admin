@@ -21,9 +21,19 @@ type MenuPermissionPanelProps = Readonly<{
   onChange?: (ids: number[]) => void;
   loading?: boolean;
   readonly?: boolean;
+  /** 只展示目录/页面，用于页面访问授权；按钮能力由 CapabilityPanel 单独授权 */
+  pagesOnly?: boolean;
   /** key(menuId 字符串) -> 额外渲染的 ReactNode（如来源 Tag）*/
   labelSuffix?: Record<string, React.ReactNode>;
 }>;
+
+function visibleMenus(items: Menu[], pagesOnly: boolean): Menu[] {
+  return items.flatMap((m) => {
+    if (pagesOnly && m.type === 'button') return [];
+    const children = m.children ? visibleMenus(m.children, pagesOnly) : undefined;
+    return [{ ...m, children }];
+  });
+}
 
 function menusToTreeData(items: Menu[], labelSuffix?: Record<string, React.ReactNode>): object[] {
   return items.map((m) => ({
@@ -72,10 +82,12 @@ export function MenuPermissionPanel({
   onChange,
   loading = false,
   readonly = false,
+  pagesOnly = false,
   labelSuffix,
 }: MenuPermissionPanelProps) {
   // 默认折叠（菜单树节点较多，全展开列表过长）；可用「展开全部」按钮展开
   const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
+  const displayMenus = useMemo(() => visibleMenus(allMenus, pagesOnly), [allMenus, pagesOnly]);
   const menuIndex = useMemo(() => flattenMenus(allMenus), [allMenus]);
   // 拼音词典就绪后重渲染，补上已输入关键字的拼音命中
   usePinyinReady();
@@ -88,15 +100,18 @@ export function MenuPermissionPanel({
     );
   }
 
-  // 父子不联动（精确授权）：新勾选页面/目录时自动带上其「查询」按钮；取消勾选不级联
+  // 父子不联动（精确授权）。页面模式下只写页面 ID，读权限由服务端按页面自动补齐；
+  // 旧的「查询」按钮自动勾选仅保留给仍带子查询按钮的页面。
   const handleChange = (keys: string[]) => {
     const next = new Set(keys.map(Number));
     const prev = new Set(checkedMenuIds);
-    for (const id of next) {
-      if (prev.has(id)) continue;
-      const node = menuIndex.get(id);
-      if (node && node.type !== 'button') {
-        for (const qid of queryButtonIdsOf(node)) next.add(qid);
+    if (!pagesOnly) {
+      for (const id of next) {
+        if (prev.has(id)) continue;
+        const node = menuIndex.get(id);
+        if (node && node.type !== 'button') {
+          for (const qid of queryButtonIdsOf(node)) next.add(qid);
+        }
       }
     }
     onChange?.([...next]);
@@ -110,22 +125,24 @@ export function MenuPermissionPanel({
             type="info"
             closeIcon={null}
             style={{ marginBottom: 8 }}
-            description="菜单仅控制页面可见性，操作能力（含查询）由按钮权限决定；勾选按钮不会带出所属页面。勾选页面时已自动带上「查询」按钮。"
+            description={pagesOnly
+              ? '页面访问只控制导航；页面读权限随页面自动授予。操作能力请在「接口能力」中单独选择，不会隐藏或带出页面。'
+              : '页面与按钮分别授权；页面承担导航和读权限，按钮只承载操作能力。'}
           />
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
             <Space>
-              <Button size="small" theme="borderless" onClick={() => onChange?.(getAllMenuIds(allMenus))}>全选</Button>
+              <Button size="small" theme="borderless" onClick={() => onChange?.(getAllMenuIds(displayMenus))}>全选</Button>
               <Button size="small" theme="borderless" onClick={() => onChange?.([])}>全不选</Button>
             </Space>
             <Space>
-              <Button size="small" theme="borderless" onClick={() => setExpandedKeys(getAllMenuKeys(allMenus))}>展开全部</Button>
+              <Button size="small" theme="borderless" onClick={() => setExpandedKeys(getAllMenuKeys(displayMenus))}>展开全部</Button>
               <Button size="small" theme="borderless" onClick={() => setExpandedKeys([])}>折叠全部</Button>
             </Space>
           </div>
         </>
       )}
       <Tree
-        treeData={menusToTreeData(allMenus, labelSuffix)}
+        treeData={menusToTreeData(displayMenus, labelSuffix)}
         multiple
         autoMergeValue={false}
         checkRelation="unRelated"

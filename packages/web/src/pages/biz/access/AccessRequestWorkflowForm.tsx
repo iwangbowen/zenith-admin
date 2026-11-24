@@ -2,13 +2,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDebouncedValue } from '@tanstack/react-pacer';
 import { Banner, Descriptions, Form, Space, Spin, Table, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
-import { createLabelOptionsFromMap, stableStringify, type BodyOf } from '@zenith/shared/core';
+import { buildTree, createLabelOptionsFromMap, stableStringify, type BodyOf } from '@zenith/shared/core';
 import {
   ACCESS_APPROVAL_POLICY_LABELS, ACCESS_REQUEST_TYPE_LABELS, ACCESS_RISK_LABELS, ACCESS_START_MODE_LABELS, ACCESS_VALIDITY_MODE_LABELS,
   accessApprovalPlanSchema, higherAccessRisk, stricterAccessApproval,
   accessGovernanceContract,
   accessSourceLabel, accessSourceRefSchema,
-  type AccessApprovalPolicy, type AccessRiskLevel, type AccessWorkflowInput, type AccessWorkflowOptions,
+  type AccessApprovalPolicy, type AccessRiskLevel, type AccessWorkflowInput, type AccessWorkflowOptions, type Menu,
 } from '@zenith/shared/identity';
 import DateTimeText from '@/components/DateTimeText';
 import { DATA_SCOPE_OPTIONS } from '@/components/permissions/DataScopePanel';
@@ -18,6 +18,7 @@ import { abortSubmit } from '@/lib/abort-submit';
 import { formatDateTimeForApi, parseDateTimeParam } from '@/utils/date';
 import { singleLineColumns } from '@/utils/table-columns';
 import { FormAccessPermissionPicker } from './AccessPermissionPicker';
+import { MenuPermissionPanel } from '@/components/permissions/MenuPermissionPanel';
 import AccessWorkflowResult from './AccessWorkflowResult';
 
 const { Text } = Typography;
@@ -39,6 +40,7 @@ function initialValues(value: Record<string, unknown>): FormValues {
     validityMode: value.validityMode === 'permanent' ? 'permanent' : 'limited',
     roleIds: Array.isArray(value.roleSelections) ? (value.roleSelections as AccessWorkflowInput['roleSelections']).map(role => role.roleId) : [],
     permissionCodes: Array.isArray(value.permissionCodes) ? value.permissionCodes as string[] : [],
+    menuIds: Array.isArray(value.menuIds) ? value.menuIds as number[] : [],
     startsAt: typeof value.startsAt === 'string' ? parseDateTimeParam(value.startsAt) : null,
     expiresAt: typeof value.expiresAt === 'string' ? parseDateTimeParam(value.expiresAt) : new Date(Date.now() + 480 * 60_000),
     reason: typeof value.reason === 'string' ? value.reason : '',
@@ -53,6 +55,7 @@ function serialize(values: FormValues, roles: AccessWorkflowOptions['roles']): B
 function ReadonlyAccessRequest({ value }: Readonly<{ value: Record<string, unknown> }>) {
   const risk = typeof value.riskLevel === 'string' && value.riskLevel in ACCESS_RISK_LABELS ? value.riskLevel as AccessRiskLevel : null;
   const items = Array.isArray(value.permissionItems) ? value.permissionItems as Array<Record<string, unknown>> : [];
+  const pages = Array.isArray(value.menus) ? value.menus as Array<Record<string, unknown>> : [];
   const plan = accessApprovalPlanSchema.safeParse(value.approvalPlan);
   return <div>
     <Descriptions column={2} align="plain" data={[
@@ -65,6 +68,13 @@ function ReadonlyAccessRequest({ value }: Readonly<{ value: Record<string, unkno
       { key: '申请原因', value: <Text style={{ whiteSpace: 'pre-wrap' }}>{String(value.reason ?? '—')}</Text>, span: 2 },
     ]} />
     {plan.success && plan.data.steps.length > 0 && <div style={{ margin: '16px 0' }}><Text strong>实际审批计划</Text><div style={{ marginTop: 8 }}>{plan.data.steps.map(step => `${step.label}：${step.userName}`).join(' → ')}</div></div>}
+    {pages.length > 0 && <div style={{ marginTop: 16 }}>
+      <Text strong>页面访问</Text>
+      <Table dataSource={pages.map((page, index) => ({ ...page, key: index }))} rowKey="key" pagination={false} size="small" columns={singleLineColumns([
+        { title: '页面', dataIndex: 'title' },
+        { title: '路径', dataIndex: 'path', render: (path: unknown) => String(path ?? '—') },
+      ])} />
+    </div>}
     <Table dataSource={items.map((item, index) => ({ ...item, key: index }))} rowKey="key" pagination={false} size="small" empty="暂无权限项" columns={singleLineColumns([
       { title: '权限名称', dataIndex: 'permissionLabel', render: (label: unknown, row: Record<string, unknown>) => String(label ?? row.permissionCode ?? '—') },
       { title: '权限码', dataIndex: 'permissionCode' },
@@ -79,11 +89,20 @@ export default function AccessRequestWorkflowForm({ mode, value, instanceId, biz
   const formApi = useRef<FormApi | null>(null);
   const [defaults] = useState(() => initialValues(value));
   const [values, setValues] = useState(defaults);
+  const menuIdsRef = useRef<number[]>(defaults.menuIds ?? []);
   const roles = optionsQuery.data?.roles ?? [];
   const menus = optionsQuery.data?.menus ?? [];
+  const pageMenus = useMemo(() => {
+    const flat = (optionsQuery.data?.menus ?? [])
+      .filter(menu => menu.type !== 'button')
+      .map(menu => ({ ...menu, path: menu.path.join(' / ') }));
+    return buildTree(flat as unknown as Menu[]) as unknown as Menu[];
+  }, [optionsQuery.data?.menus]);
   const selectedRoles = roles.filter(role => values.roleIds.includes(role.id));
   const coveredPermissionCodes = useMemo(() => [...new Set((optionsQuery.data?.roles ?? []).filter(role => values.roleIds.includes(role.id)).flatMap(role => role.permissionCodes))], [optionsQuery.data?.roles, values.roleIds]);
-  const selectedMenus = menus.filter(menu => !!menu.permission && values.permissionCodes.includes(menu.permission) && menu.requestable);
+  const selectedMenus = menus.filter(menu => !!menu.permission
+    && (values.permissionCodes.includes(menu.permission) || values.menuIds.includes(menu.id))
+    && menu.requestable);
   const selection = [...selectedRoles, ...selectedMenus];
   const risk = selection.reduce<AccessRiskLevel>((level, item) => higherAccessRisk(level, item.riskLevel), 'low');
   const approval = selection.reduce<AccessApprovalPolicy>((policy, item) => stricterAccessApproval(policy, item.approvalPolicy), 'none');
@@ -116,14 +135,15 @@ export default function AccessRequestWorkflowForm({ mode, value, instanceId, biz
 
   const registerApi = (api: FormApi) => {
     formApi.current = api;
+    const withMenuIds = (current: FormValues): FormValues => ({ ...current, menuIds: menuIdsRef.current });
     getFormApi?.({
-      isPreviewReady: () => { const current = api.getValues() as FormValues; return !!(current.roleIds?.length || current.permissionCodes?.length); },
-      getValues: () => serialize(api.getValues() as FormValues, latestPreview.current.roles),
+      isPreviewReady: () => { const current = withMenuIds(api.getValues() as FormValues); return !!(current.roleIds?.length || current.permissionCodes?.length || current.menuIds?.length); },
+      getValues: () => serialize(withMenuIds(api.getValues() as FormValues), latestPreview.current.roles),
       validate: async () => {
-        const current = await api.validate() as FormValues;
+        const current = withMenuIds(await api.validate() as FormValues);
         const fail = (message: string): never => { Toast.warning(message); return abortSubmit('invalid_access_request'); };
         const { preview: evaluated, roles: currentRoles, maxMinutes: currentLimit } = latestPreview.current;
-        if (!(current.roleIds?.length || current.permissionCodes?.length)) fail('请选择至少一项角色或操作权限');
+        if (!(current.roleIds?.length || current.permissionCodes?.length || current.menuIds?.length)) fail('请选择至少一项页面、角色或操作权限');
         if (current.roleIds.some(id => !currentRoles.some(role => role.id === id)) || current.permissionCodes.some(code => !menus.some(menu => menu.permission === code && menu.requestable))) fail('所选角色或权限已不可申请，请重新选择');
         const start = (current.startMode === 'scheduled' ? pickerTime(current.startsAt) : Date.now()) ?? Number.NaN;
         const end = pickerTime(current.expiresAt) ?? Number.NaN;
@@ -147,6 +167,18 @@ export default function AccessRequestWorkflowForm({ mode, value, instanceId, biz
       maxTagCount={2} showRestTagsPopover
       optionList={roles.map(role => ({ value: role.id, label: `${role.name} · ${role.permissionCount} 项 · ${ACCESS_RISK_LABELS[role.riskLevel]}` }))} placeholder="可选，按需申请完整角色权限包"
       extraText="角色包按角色配置的数据范围授权。只需要少量权限时，优先在下方逐项选择。" />
+    <Form.Slot label={{ text: '页面访问' }}>
+      <MenuPermissionPanel
+        allMenus={pageMenus}
+        checkedMenuIds={values.menuIds}
+        pagesOnly
+        onChange={(ids) => {
+          menuIdsRef.current = ids;
+          formApi.current?.setValue('menuIds', ids);
+          setValues(prev => ({ ...prev, menuIds: ids }));
+        }}
+      />
+    </Form.Slot>
     <FormAccessPermissionPicker field="permissionCodes" label="操作权限" menus={menus} coveredPermissionCodes={coveredPermissionCodes} />
     <Form.RadioGroup field="startMode" name="access-start-mode" label="生效方式" options={START_OPTIONS} />
     {values.startMode === 'scheduled' && <Form.DatePicker field="startsAt" label="生效时间" type="dateTime" format="yyyy-MM-dd HH:mm:ss" style={{ width: '100%' }} rules={[{ required: true, message: '请选择预约生效时间' }]} />}
@@ -160,7 +192,7 @@ export default function AccessRequestWorkflowForm({ mode, value, instanceId, biz
     {selection.length > 0 && <section aria-label="提交前确认" style={{ margin: '16px 0', padding: 12, backgroundColor: 'var(--semi-color-fill-0)', borderRadius: 'var(--semi-border-radius-small)' }}>
       <Text strong style={{ display: 'block', marginBottom: 8 }}>提交前确认</Text>
       {preview?.status === 'ready' && <div style={{ marginBottom: 8 }}>
-        <Text>{preview.permissionCount} 项权限 · {preview.grantItemCount} 条授权范围</Text>
+        <Text>{preview.menuCount} 个页面 · {preview.permissionCount} 项权限 · {preview.grantItemCount} 条授权范围</Text>
         <div><Text>{preview.approvalPlan.steps.length ? preview.approvalPlan.steps.map(step => `${step.label}：${step.userName}`).join(' → ') : '当前策略免人工审批，提交后自动发放'}</Text></div>
       </div>}
       <Space wrap><Tag color={RISK_COLORS[risk]}>{ACCESS_RISK_LABELS[risk]}</Tag><Text>{ACCESS_APPROVAL_POLICY_LABELS[approval]}</Text><Text>{values.validityMode === 'permanent' ? '永久有效' : '限时有效'}</Text>{mfaRequired && <Tag color="orange">审批需 MFA</Tag>}</Space>
