@@ -307,7 +307,11 @@ export default function UsersPage() {
       },
       isPending: startImpersonationMutation.isPending,
     },
-    toValues: () => DEFAULT_IMPERSONATE_VALUES,
+    // 默认时长取 30 分钟，但不越过当前策略上限（上限更低时用上限值）
+    toValues: () => ({
+      ...DEFAULT_IMPERSONATE_VALUES,
+      durationMinutes: Math.min(DEFAULT_IMPERSONATE_VALUES.durationMinutes, mySettingsQuery.data?.identitySecurity.impersonation.maxMinutes ?? DEFAULT_IMPERSONATE_VALUES.durationMinutes),
+    }),
     successMessage: () => null,
   });
   const openImpersonate = impersonateModal.openEdit;

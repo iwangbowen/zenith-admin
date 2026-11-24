@@ -126,8 +126,18 @@ export const IMPERSONATION_STATUS_LABELS: Record<ImpersonationStatus, string> = 
 export const IMPERSONATION_STATUS_OPTIONS: Array<{ value: ImpersonationStatus; label: string }> =
   createLabelOptions(IMPERSONATION_STATUSES, IMPERSONATION_STATUS_LABELS);
 
-/** 模拟会话时长选项（分钟），实际上限由身份安全设置 `impersonation.maxMinutes` 决定 */
-export const IMPERSONATION_DURATION_OPTIONS = [5, 15, 30, 60] as const;
+/** 模拟会话时长选项（分钟），实际上限由身份安全设置 `impersonation.maxMinutes` 决定；超出上限的选项不会展示 */
+export const IMPERSONATION_DURATION_OPTIONS = [1, 5, 10, 15, 30, 45, 60, 90, 120] as const;
+
+/** 模拟登录常用原因：发起弹窗点击填入，均满足「至少 5 个字」的校验，用户可在此基础上补充工单号等细节 */
+export const IMPERSONATION_REASON_PRESETS = [
+  '用户反馈问题排查',
+  '处理工单，复现用户问题',
+  '核对菜单与按钮权限',
+  '核对页面数据异常',
+  '排查流程审批卡点',
+  '功能培训与演示',
+] as const;
 
 export const LOGIN_EVENT_TYPE_OPTIONS: Array<{ value: LoginEventType; label: string }> =
   createLabelOptions(LOGIN_EVENT_TYPES, LOGIN_EVENT_TYPE_LABELS);

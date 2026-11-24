@@ -1,10 +1,12 @@
 import { FormPasswordInput } from '@/components/PasswordInput';
 import { useMemo } from 'react';
-import { Banner, Descriptions, Form, Tag, Typography } from '@douyinfe/semi-ui';
-import { IMPERSONATION_DURATION_OPTIONS, type User } from '@zenith/shared/identity';
+import { useNavigate } from 'react-router-dom';
+import { Banner, Button, Descriptions, Form, Tag, Typography } from '@douyinfe/semi-ui';
+import { IMPERSONATION_DURATION_OPTIONS, IMPERSONATION_REASON_PRESETS, type User } from '@zenith/shared/identity';
 import { EditFormModal } from '@/components/EditFormModal';
 import { useMySettings } from '@/hooks/queries/settings-projections';
 import type { UseEditModalReturn } from '@/hooks/useEditModal';
+import { usePermission } from '@/hooks/usePermission';
 import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 
 /** 发起「以用户身份登录」的确认弹窗：目标信息 + 原因 + 模式 + 时长 + 操作者本人密码二次验证 */
@@ -13,6 +15,14 @@ export function ImpersonateModal({ modal }: Readonly<{ modal: UseEditModalReturn
   const maxMinutes = policy?.maxMinutes ?? 30;
   const allowWrite = policy?.allowWrite ?? false;
   const target = modal.editing;
+  const navigate = useNavigate();
+  const { hasPermission } = usePermission();
+  const canManagePolicy = hasPermission('system:identity-security:manage');
+
+  const openPolicySettings = () => {
+    modal.close();
+    navigate('/system/identity-security');
+  };
 
   const durationOptions = useMemo(() => {
     const presets = IMPERSONATION_DURATION_OPTIONS.filter((m) => m <= maxMinutes);
@@ -59,10 +69,35 @@ export function ImpersonateModal({ modal }: Readonly<{ modal: UseEditModalReturn
           { validator: (_rule, value: string) => (value ?? '').trim().length >= 5, message: '原因至少 5 个字' },
         ]}
       />
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: -8, marginBottom: 16 }}>
+        <Typography.Text type="tertiary" size="small">常用原因</Typography.Text>
+        {IMPERSONATION_REASON_PRESETS.map((preset) => (
+          <Button
+            key={preset}
+            size="small"
+            theme="borderless"
+            type="tertiary"
+            onClick={() => modal.formApi.current?.setValue('reason', preset)}
+          >
+            {preset}
+          </Button>
+        ))}
+      </div>
       <Form.RadioGroup
         field="mode"
         label="模式"
-        extraText={allowWrite ? '可操作模式下仍禁止改密、MFA、API Token 等账号安全操作' : '当前安全策略只允许只读模拟'}
+        extraText={allowWrite ? (
+          '可操作模式下仍禁止改密、MFA、API Token 等账号安全操作'
+        ) : (
+          <span>
+            当前安全策略只允许只读模拟。
+            {canManagePolicy ? (
+              <>
+                可在 <Typography.Text link onClick={openPolicySettings}>身份安全设置</Typography.Text> 中开启「允许可操作模式」。
+              </>
+            ) : '如需可操作模式，请联系管理员在身份安全设置中开启。'}
+          </span>
+        )}
       >
         <Form.Radio value="readonly">只读（推荐）</Form.Radio>
         <Form.Radio value="write" disabled={!allowWrite}>可操作</Form.Radio>
