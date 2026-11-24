@@ -132,7 +132,7 @@ DELETE 的 `afterData` 通常为 null（响应 `data` 为 null），前端 diff 
 
 ### 响应 `data=null` 的分配类接口
 
-成员分配、角色 / 菜单权限分配、数据权限设置等接口返回 `okBody(null, '保存成功')`，
+成员分配、页面访问 / 能力授权、数据权限设置等接口返回 `okBody(null, '保存成功')`，
 只设 `beforeData` 会导致 diff 缺少变更后快照，**必须**在写操作后补 `setAuditAfterData`：
 
 ```ts

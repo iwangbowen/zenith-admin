@@ -28,7 +28,7 @@ Zenith Skill 位于 `.agents/skills/zenith/`，是本项目开发流程、代码
 | `references/query-cache.md` | 数据获取、缓存一致性与 query key | 写域 hooks 时 |
 | `references/crud-frontend.md` | Step 8 标准列表页模板 | 写前端时 |
 | `references/ui-patterns.md` | 多 Tab、左右分栏、统计卡、栅格、虚拟化表格 | 页面结构超出标准列表页时 |
-| `references/seed-config.md` | Step 9-10 菜单权限与种子数据 | 配菜单 / seed 时 |
+| `references/seed-config.md` | Step 9-10 页面读权限、操作权限与种子数据 | 配菜单 / 权限 / seed 时 |
 | `references/crud-mock.md` | Step 11 MSW Mock | 需要 Demo 模式时 |
 | `references/async-tasks.md` | 任务中心接入与设施选型 | 大数据量、长耗时或需进度 / 重试 / 取消时 |
 | `references/notifications.md` | 通知中心接入、事件注册与 `notify()` 调用 | 发送通知或新增通知事件时 |

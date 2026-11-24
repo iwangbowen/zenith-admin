@@ -23,11 +23,12 @@
 模块的 License 分类与目录登记步骤见 [功能授权](../../../../docs/backend/licensing.md)；
 新菜单继承所在授权 / 核心根，新顶层入口需显式归类。未归类、重复根、重叠授权根或失效菜单引用会在种子装配时报错。
 
-显示与操作解耦（`directory` / `menu` 不带权限码、权限码全部挂 `button`、首个按钮为「查询」）由此产生的授权行为：
+页面 / 按钮 / API-only 的授权语义：
 
-- 勾选按钮**不会**带出所属页面（后端 `listUserMenuTree` 祖先补全只从目录 / 页面节点出发）；
-  授权面板勾选页面时自动带上其「查询」按钮
-- 只授予「查询」按钮 = 仅 API 可用（跨页面下拉等），页面不可见
+- `menu` 节点的 `permission` 是页面读权限；授权页面时自动携带，不需要单独创建「查询」按钮
+- `button` 节点只承载操作权限；勾选按钮不会带出页面
+- 只授予页面读权限 = 仅 API 可用，页面不可见
+- 没有页面的纯 API 权限省略 `menu`，只在权限目录中出现
 
 ---
 
@@ -42,12 +43,12 @@
 分片文件**只写 `directory` / `menu` 节点**，不写 `button`：
 
 ```ts
-// 一级目录 = 新 1000 段的基数，纯显示资源，不带 permission
+// 一级目录 = 新 1000 段的基数，纯分组资源，不带 permission
 { id: <段基数>, parentId: 0, title: 'XXX模块', name: 'XxxModule', icon: 'Layers',
   type: 'directory', sort: 99, status: 'enabled', visible: true,
   createdAt: SEED_DATE, updatedAt: SEED_DATE },
 
-// 可导航页面（纯显示资源，列表权限码放在「查询」按钮上）
+// 可导航页面：页面读权限写到 page-permissions.ts，不在这里手写 permission
 { id: <10的倍数槽位>, parentId: <父目录ID>, title: 'XXX管理', name: 'SystemXxx',
   path: '/system/xxxs',
   component: 'xxxs/XxxPage',        // ← 相对 packages/web/src/pages/ 的路径，无扩展名
@@ -56,19 +57,30 @@
   createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ```
 
+页面读权限在 `seed/menus/page-permissions.ts` 的 `PAGE_READ_PERMISSION_BY_NAME` 中声明：
+
+```ts
+SystemXxx: 'system:xxx:list',
+```
+
+生成器会把该权限写入页面节点，并跳过该权限的同名按钮。页面没有读权限时不要加入此表。
+
 ### 9b：权限码（`shared/src/{业务域}/permissions.ts`）
 
-权限码在整个仓库只声明一次——各域的 `definePermissions()` 注册表；button 节点由 `seed/menus.ts` 的
-`expandPermissionButtons()` 按 `menu`（页面 `name`）生成，`Permission` 联合类型随之更新，
-契约操作 `access.permission`、服务端 `hasPermission()`、前端 `hasPermission` / `permission=` 的字面量拼错即编译报错：
+权限码在整个仓库只声明一次——各域的 `definePermissions()` 注册表；页面读权限由
+`seed/menus.ts` 的 `expandPermissionButtons()` 写入页面节点，其余权限生成 button 节点。
+`Permission` 联合类型随之更新，契约操作 `access.permission`、服务端 `hasPermission()`、
+前端 `hasPermission` / `permission=` 的字面量拼错即编译报错：
 
 ```ts
 export const XXX_PERMISSIONS = definePermissions({
-  'system:xxx:list':   { label: '查询',    menu: 'SystemXxx' },   // 首个即「查询」，sort 按声明顺序
-  'system:xxx:create': { label: '新增XXX', menu: 'SystemXxx' },
+  'system:xxx:list':   { label: '查询',    menu: 'SystemXxx' },   // 页面读权限：写入页面节点
+  'system:xxx:create': { label: '新增XXX', menu: 'SystemXxx' },   // 操作权限：生成 button
   'system:xxx:update': { label: '编辑XXX', menu: 'SystemXxx' },
   'system:xxx:delete': { label: '删除XXX', menu: 'SystemXxx' },
-  // 同一权限挂多个页面：menu 传数组；需要固定历史 id / sort 时逐位覆盖
+  // 无页面的纯 API 权限省略 menu，只出现在权限目录
+  'open:data:read':    { label: '读取数据' },
+  // 同一权限挂多个页面：menu 传数组；需要固定 id / sort 时逐位覆盖
   'system:xxx:print':  { label: '打印', menu: ['SystemXxx', 'SystemYyy'], id: [undefined, 1234] },
   // 服务端没有接口检查、只做前端门控的码必须标 uiOnly（permission-registry.test 守住两个方向）
 });
@@ -94,8 +106,8 @@ export const XXX_PERMISSIONS = definePermissions({
   icon: 'Building2', type: 'menu', sort: 2, status: 'enabled', visible: true,
   createdAt: SEED_DATE, updatedAt: SEED_DATE },
 // identity/permissions.ts
-'system:department:list':   { label: '查询',     menu: 'SystemDepartments' },   // → button 1021
-'system:department:create': { label: '新增部门', menu: 'SystemDepartments' },   // → button 1022
+'system:department:list':   { label: '查询',     menu: 'SystemDepartments' },   // → 页面 1020.permission
+'system:department:create': { label: '新增部门', menu: 'SystemDepartments' },   // → button 1021
 ```
 
 ---

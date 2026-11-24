@@ -73,6 +73,8 @@ lazyPageComponent(m.component)（utils/page-registry.ts）解析懒加载组件
 
 完整菜单树（`useMenuTree()` → `GET /api/menus`）不在启动链路上：只有命中 catch-all 的 `NotFoundOrForbidden` 才会请求它，用于 403 / 404 判别。
 
+页面节点承载导航和读权限，按钮只承载操作权限。`getUserMenuIds()` 只返回显式页面授权；只授予读/操作权限时页面不注册（API-only）。页面授权缺少读权限时由服务端 fail-closed，前端不自行从权限码推导页面。
+
 ### 菜单数据的加载失败语义
 
 - **用户菜单树失败**：渲染整页「导航菜单加载失败」重试页，并提供退出登录入口

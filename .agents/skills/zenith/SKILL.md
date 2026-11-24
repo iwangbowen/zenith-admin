@@ -92,7 +92,7 @@ Zenith Admin 是基于 **Hono + React + Drizzle ORM** 的全栈后台管理系�
 
 | Step | 任务 | 文件 | 条件 |
 | --- | --- | --- | --- |
-| 9 | 菜单 / 权限配置 | `packages/shared/src/seed/menus/{段}.ts` | 总是 |
+| 9 | 页面 / 权限配置 | `packages/shared/src/seed/menus/{段}.ts` + `menus/page-permissions.ts` | 总是 |
 | 10 | 种子数据 | `packages/shared/src/seed/{业务域}.ts` + `packages/server/src/db/seed.ts` | 总是 |
 | 11 | MSW Mock（`mock(op, resolver)`） | `packages/web/src/mocks/data/xxxs.ts` + `handlers/xxxs.ts` | 仅 Step 0 确认需要时 |
 

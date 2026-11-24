@@ -56,7 +56,7 @@ API 的方法、参数和响应以共享契约及运行中的 `/api/docs`、`/ap
 | 缓存管理 | `/system/cache` |
 | License 授权 | `/system/license` |
 
-菜单与按钮权限的来源是 `packages\shared\src\seed\menus\system.ts` 和 `settings.ts`；运行态与规则页面分别从[系统运维](../ops/index.md)和[规则中心](../rules/index.md)继续查阅。
+页面读权限与操作权限的来源是各域 `permissions.ts` 注册表和 `packages\shared\src\seed\menus`（含 `page-permissions.ts`）；运行态与规则页面分别从[系统运维](../ops/index.md)和[规则中心](../rules/index.md)继续查阅。
 
 ## 访问与运行边界
 

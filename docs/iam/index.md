@@ -23,10 +23,11 @@
 | --- | --- |
 | `users` | 管理端用户；用户名、昵称、邮箱、手机号、部门、租户、状态、偏好、收藏菜单、用户级数据权限、密码更新时间、最近登录时间 |
 | `roles` | 角色；包含 `code`、`status`、`dataScope`、`tenantId` |
-| `menus` | 菜单/按钮树；`type` 为 `directory`、`menu`、`button`，按钮节点通过 `permission` 承载权限码，`featureKey` 参与套餐/License 功能过滤 |
+| `menus` | 菜单/按钮树；`type` 为 `directory`、`menu`、`button`。页面节点承载导航和读权限，按钮节点只承载操作权限，目录不携带权限；`featureKey` 参与套餐/License 功能过滤 |
 | `user_roles` | 用户直接角色 |
-| `role_menus` | 角色授权菜单/按钮 |
-| `user_menus` | 用户直接菜单/按钮授权 |
+| `role_menus` | 角色页面访问授权 |
+| `user_menus` | 用户直接页面访问授权 |
+| `identity_access_request_menus` / `identity_access_grant_menus` | 权限申请的页面访问项 / 批准后的页面访问项 |
 | `user_groups` | 用户组；`memberMode` 为 `static` 或 `dynamic`，动态组用 `memberRule` 计算成员 |
 | `user_group_members` | 用户组成员物化表 |
 | `user_group_roles` | 用户组绑定角色，组内成员自动继承角色权限 |
@@ -37,12 +38,13 @@
 
 `packages\server\src\lib\permissions.ts` 是权限解析入口：
 
-1. 读取用户直接角色、用户直接菜单、用户组继承角色。
-2. 仅启用角色与启用菜单参与授权。
-3. 多租户模式下，菜单 `featureKey` 与租户套餐功能集取交集；`featureKey = null` 的核心菜单保留。
-4. 输出去重后的 `permissions` 与 `menuIds`。
-5. 结果以 Redis 键 `{prefix}perm:{userId}` 缓存 300 秒，Redis 不可用时退化为进程内缓存。
-6. 用户、角色、菜单、用户组授权变更后调用 `clearUserPermissionCache()` 清除缓存。
+1. 读取用户直接角色、用户直接页面、用户组继承角色、直接权限码和审批授权页面/权限。
+2. 仅启用角色与启用菜单参与授权；页面导航只来自显式页面授权，权限码不反推页面。
+3. 页面授权自动把页面节点的读权限并入 `permissions`；操作权限“`button`”不产生导航。
+4. 多租户模式下，菜单 `featureKey` 与租户套餐功能集取交集；`featureKey = null` 的核心菜单保留。
+5. 输出去重后的 `permissions` 与 `menuIds`；缺失读权限的页面不注册，操作权限可以为 API-only。
+6. 结果以 Redis 键 `{prefix}perm:{userId}` 缓存 300 秒，Redis 不可用时退化为进程内缓存。
+7. 用户、角色、菜单、用户组、审批授权变更后调用 `clearUserPermissionCache()` 清除缓存。
 
 平台超管判定必须同时满足角色 code 为 `super_admin` 且角色 `tenantId` 为 `null`，避免租户自建同名角色获得平台级权限。
 
@@ -68,6 +70,15 @@
 | 在线用户 | `/system/sessions` | `system/sessions/OnlineSessionsPage` | `system:session:list`、`system:session:forceLogout` |
 
 `GET /api/menus/user` 返回当前用户可见菜单。后台菜单管理的写操作在多租户模式下还经过 `platformAdminOnly`，即只有平台管理员可维护全局菜单。
+
+### 页面、按钮与 API-only 权限
+
+- **页面节点**：`type = menu`，`permission` 是页面最小读权限；页面授权自动携带该权限，页面读权限也可以单独授予形成 API-only。
+- **按钮节点**：`type = button`，`permission` 是操作权限；按钮授权不产生页面，也不能带出页面。
+- **目录节点**：`type = directory`，只做分组，不允许携带权限码。
+- **权限目录**：权限码由代码注册表和 `ALL_PERMISSIONS` 提供；没有页面的纯 API 权限省略 `menu`，只出现在权限目录。
+- **页面读权限映射**：`packages/shared/src/seed/menus/page-permissions.ts` 的 `PAGE_READ_PERMISSION_BY_NAME` 声明页面 → 读权限；生成器写入页面节点并跳过同名查询按钮。
+- **授权入口**：角色/用户授权分为「页面访问」与「接口能力」；审批申请同时写入页面项和权限项，运行时零推导。
 
 ## 数据权限
 
@@ -300,6 +311,7 @@ MFA 当前落库类型包括 `totp`、`passkey`、`recovery_code`，接口实现
 | `/api/users` | 用户列表、详情、创建、更新、删除、批量删除、批量状态、密码重置、解锁、导入、导入模板、授权、数据权限、有效权限 |
 | `/api/roles` | 角色全量/分页/详情、创建、更新、删除、分配菜单、读取/设置角色用户 |
 | `/api/menus` | 当前用户菜单、管理菜单树、平铺菜单、详情、创建、更新、删除 |
+| `/api/api-catalog/permissions` | 权限目录：权限码、形态、页面绑定与 API-only 能力 |
 | `/api/departments` | 部门树、平铺列表、详情、创建、更新、删除 |
 | `/api/positions` | 岗位全量/分页/详情、创建、更新、批量删除、成员读取与设置 |
 | `/api/user-groups` | 用户组全量/分页/详情、创建、更新、批量删除、成员维护、角色绑定、动态规则预览与同步 |
@@ -316,7 +328,8 @@ MFA 当前落库类型包括 `totp`、`passkey`、`recovery_code`，接口实现
 
 ## 维护要求
 
-- 权限码、菜单、按钮与页面入口以 `packages\shared\src\seed\menus` 为唯一种子来源。
+- 权限码以各域 `permissions.ts` 注册表为唯一来源；菜单/按钮由 `packages\shared\src\seed\menus` 和
+  `page-permissions.ts` 生成，页面读权限与操作权限不再重复授权。
 - 权限/数据权限行为以 `permissions.ts`、`data-scope.ts`、`user-group-access.ts` 为准。
 - 企业身份源与通讯录同步的字段、枚举、API 以 `packages\shared\src\identity` 与对应路由为准。
 - 文档只描述当前状态，不记录版本演进。
