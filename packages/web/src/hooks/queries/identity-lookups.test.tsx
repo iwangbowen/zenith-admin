@@ -77,7 +77,7 @@ describe('useAssignRoleMenus —— 菜单只存在于角色详情', () => {
     const fetches = observeFetches(qc);
     api.resetCalls();
 
-    await result.current.assignMenus.mutateAsync({ params: { id: 1 }, body: { menuIds: [1, 2, 3] } });
+    await result.current.assignMenus.mutateAsync({ params: { id: 1 }, body: { menuIds: [1, 2, 3], permissionCodes: [] } });
     await waitFor(() => expect(fetches.countOf(roleKeys.detail(1))).toBe(1));
 
     expect(fetches.countOf(roleKeys.lists)).toBe(0);

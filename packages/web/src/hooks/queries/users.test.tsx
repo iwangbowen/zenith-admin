@@ -180,7 +180,7 @@ describe('权限类写操作只影响各自的权限查询', () => {
     });
 
     const fetches = observeFetches(qc);
-    await result.current.saveMenus.mutateAsync({ params: { id: 1 }, body: { menuIds: [1, 2] } });
+    await result.current.saveMenus.mutateAsync({ params: { id: 1 }, body: { menuIds: [1, 2], permissionCodes: [] } });
     await waitFor(() => expect(fetches.countOf(userKeys.effectivePermissions(1))).toBe(1));
 
     expect(fetches.countOf(userKeys.lists)).toBe(0);

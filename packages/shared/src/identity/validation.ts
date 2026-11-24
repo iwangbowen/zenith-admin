@@ -170,7 +170,7 @@ export const updateRoleSchema = partialForUpdate(createRoleSchema);
 
 export const assignRoleMenusSchema = z.object({
   menuIds: z.array(z.number().int()),
-  permissionCodes: z.array(z.string().min(1).max(128)).default([]),
+  permissionCodes: z.array(z.string().min(1).max(128)),
 });
 
 
@@ -635,7 +635,7 @@ export const batchUpdateUserStatusSchema = z.object({
 
 export const assignUserMenusSchema = z.object({
   menuIds: z.array(z.number().int()),
-  permissionCodes: z.array(z.string().min(1).max(128)).default([]),
+  permissionCodes: z.array(z.string().min(1).max(128)),
 });
 
 export const updateUserDataPermissionSchema = z.object({

@@ -143,7 +143,7 @@ describe('invalidateCurrentUserAccess —— 权限来源变更联动', () => {
     const fetches = observeFetches(qc);
     api.resetCalls();
 
-    await result.current.assign.mutateAsync({ params: { id: 1 }, body: { menuIds: [2590] } });
+    await result.current.assign.mutateAsync({ params: { id: 1 }, body: { menuIds: [2590], permissionCodes: [] } });
     await waitFor(() => expect(fetches.countOf(menuKeys.userTree)).toBe(1));
     expect(api.countOf('GET', '/api/menus/user')).toBe(1);
 
