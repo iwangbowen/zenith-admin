@@ -13,7 +13,7 @@ import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 export function ImpersonateModal({ modal }: Readonly<{ modal: UseEditModalReturn<User> }>) {
   const policy = useMySettings().data?.identitySecurity.impersonation;
   const maxMinutes = policy?.maxMinutes ?? 30;
-  const allowWrite = policy?.allowWrite ?? false;
+  const allowWrite = policy?.allowWrite ?? true;
   const target = modal.editing;
   const navigate = useNavigate();
   const { hasPermission } = usePermission();

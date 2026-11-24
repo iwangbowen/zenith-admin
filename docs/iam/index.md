@@ -176,7 +176,7 @@
 | `risk.enabled` / `risk.newDeviceAction` | 新设备风险策略；动作支持 `allow`、`challenge` |
 | `impersonation.enabled` | 是否允许模拟登录（关闭后持有权限的管理员也无法发起） |
 | `impersonation.maxMinutes` | 单次模拟时长上限（分钟，≤ 120），到期自动失效不可续期 |
-| `impersonation.allowWrite` | 是否允许可操作模式；关闭时只能只读模拟 |
+| `impersonation.allowWrite` | 是否允许可操作模式（默认开启）；关闭时只能只读模拟 |
 | `impersonation.notifyTarget` | 开始模拟时是否通知被模拟用户 |
 
 密码规则（`password`）是匿名可见字段：登录 / 注册 / 改密页通过 `GET /api/settings/public` 与 `/api/settings/me` 读取并做前端提示。模拟登录参数（`impersonation`）与会话并发策略（`session`）对登录用户可见（`/api/settings/me`），分别供发起弹窗读取时长上限与模式开关、供「我的设备」说明当前规则。
