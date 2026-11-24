@@ -23,7 +23,7 @@ async function call(path: string, token?: string, body?: unknown) {
 
 beforeEach(() => {
   mockUsers[1].tenantId = 1;
-  mockUsers[1].roles = [{ ...mockUsers[1].roles[0], menuIds: [2022] }];
+  mockUsers[1].roles = [{ ...mockUsers[1].roles[0], menuIds: [2020] }];
 });
 afterEach(() => { mockUsers.splice(0, mockUsers.length, ...originals.map((user) => ({ ...user, roles: [...user.roles] }))); });
 
