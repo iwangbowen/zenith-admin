@@ -62,7 +62,15 @@ export function LoginLogsTable({
       width: 110,
       render: (eventType: LoginLog['eventType']) => <LoginEventTypeTag eventType={eventType} />,
     },
-    { title: '事件信息', dataIndex: 'message', minWidth: 160, render: (v: string | null) => v ?? '-' },
+    // 事件信息列加宽并固定单行省略：消息不换行，容器不足时以 tooltip 查看完整内容
+    {
+      title: '事件信息',
+      dataIndex: 'message',
+      minWidth: 240,
+      ellipsis: { showTitle: true },
+      onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
+      render: (v: string | null) => v ?? '-',
+    },
     { title: 'IP 地址', dataIndex: 'ip', width: 150, render: (v: string | null) => v ?? '-' },
     { title: '地点', dataIndex: 'location', width: 180, render: (v: string | null) => v ?? '-' },
     { title: '浏览器', dataIndex: 'browser', width: 150, render: (v: string | null) => renderEllipsis(v ?? '-') },
