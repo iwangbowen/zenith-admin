@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PERMISSION_REGISTRY_BY_DOMAIN, ALL_PERMISSIONS } from './permissions';
 import { CMS_PERMISSIONS } from './cms/permissions';
 import { SEED_MENUS } from './seed/menus';
+import { PAGE_READ_PERMISSION_BY_NAME } from './seed/menus/page-permissions';
 
 describe('权限码注册表', () => {
   it('权限码跨域唯一', () => {
@@ -39,22 +40,40 @@ describe('权限码注册表', () => {
 
   it('menu / id / sort 数组按位置对应', () => {
     for (const [code, meta] of Object.entries(ALL_PERMISSIONS)) {
-      const menus = typeof meta.menu === 'string' ? [meta.menu] : meta.menu;
-      expect(menus.length, code).toBeGreaterThan(0);
+      const menus = typeof meta.menu === 'string' ? [meta.menu] : meta.menu ?? [];
+      if (menus.length === 0) continue; // 纯 API 权限只存在于权限目录
       expect(new Set(menus).size, `${code} 重复挂到同一页面`).toBe(menus.length);
       if (Array.isArray(meta.id)) expect(meta.id.length, code).toBe(menus.length);
       if (Array.isArray(meta.sort)) expect(meta.sort.length, code).toBe(menus.length);
     }
   });
 
-  it('每个权限码都生成了 button 节点，且 button 只来自注册表', () => {
+  it('权限码落在页面节点或 button 节点上，button 只来自注册表', () => {
     const buttons = SEED_MENUS.filter((m) => m.type === 'button');
-    const generatedCodes = new Set(buttons.map((b) => b.permission));
-    for (const code of Object.keys(ALL_PERMISSIONS)) expect(generatedCodes.has(code), code).toBe(true);
+    const pageCodes = new Set(SEED_MENUS.filter((m) => m.type === 'menu' && m.permission).map((m) => m.permission));
+    const generatedCodes = new Set([...buttons.map((b) => b.permission), ...pageCodes]);
+    for (const [code, meta] of Object.entries(ALL_PERMISSIONS)) {
+      if (!meta.menu) continue; // API-only 权限允许没有菜单节点
+      expect(generatedCodes.has(code), code).toBe(true);
+    }
     for (const b of buttons) expect(ALL_PERMISSIONS[b.permission ?? ''], `按钮 ${b.id} 的权限码 ${b.permission} 不在注册表`).toBeDefined();
-    // 每个按钮的父级都是已声明的页面
-    const pageIds = new Set(SEED_MENUS.filter((m) => m.type !== 'button').map((m) => m.id));
+    for (const page of SEED_MENUS.filter((m) => m.type === 'menu' && m.permission)) {
+      expect(ALL_PERMISSIONS[page.permission ?? ''], `页面 ${page.id} 的权限码 ${page.permission} 不在注册表`).toBeDefined();
+    }
+    // 每个按钮的父级都是页面节点
+    const pageIds = new Set(SEED_MENUS.filter((m) => m.type === 'menu').map((m) => m.id));
     for (const b of buttons) expect(pageIds.has(b.parentId), `按钮 ${b.id} 父级 ${b.parentId}`).toBe(true);
+  });
+
+  it('页面读权限映射只引用页面，且生成后落在页面节点上', () => {
+    const pages = new Map(SEED_MENUS.filter((m) => m.type === 'menu').map((m) => [m.name, m]));
+    for (const [name, code] of Object.entries(PAGE_READ_PERMISSION_BY_NAME)) {
+      const page = pages.get(name);
+      expect(page, `页面读权限映射引用了不存在的页面 ${name}`).toBeDefined();
+      expect(page?.permission, `页面 ${name} 未写入读权限`).toBe(code);
+      expect(ALL_PERMISSIONS[code], `页面读权限 ${code} 未在注册表登记`).toBeDefined();
+      expect(SEED_MENUS.some((m) => m.type === 'button' && m.parentId === page?.id && m.permission === code), `页面读权限 ${code} 不应再生成同名按钮`).toBe(false);
+    }
   });
 
   it('菜单 id 全局唯一且 button 不越入手工菜单 id 区间', () => {

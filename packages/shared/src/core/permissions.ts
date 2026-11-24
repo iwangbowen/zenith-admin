@@ -9,10 +9,11 @@ export interface PermissionMeta {
   /** 按钮标题（角色管理菜单树 / 权限矩阵展示） */
   readonly label: string;
   /**
-   * 所属页面菜单的 `name`（`SEED_MENUS` 中 type 为 menu / directory 的行）；同一权限挂多个页面时传数组。
-   * 无页面的纯 API 权限挂到虚拟隐藏目录 `ApiOnlyPermissions`。
+   * 所属页面菜单的 `name`（`SEED_MENUS` 中 type 为 menu 的行）；同一权限挂多个页面时传数组。
+   * 页面读权限仍填写所属页面，但生成器会把它写入页面节点而不是生成按钮。
+   * 无页面的纯 API 权限省略该字段，只存在于权限目录。
    */
-  readonly menu: string | readonly string[];
+  readonly menu?: string | readonly string[];
   /** 覆盖生成的 button id（缺省 = 页面 id + 1 + 在该页面的序号）；与 `menu` 数组一一对应 */
   readonly id?: number | readonly (number | undefined)[];
   /** 覆盖生成的排序值（缺省 = 在该页面的序号）；与 `menu` 数组一一对应 */

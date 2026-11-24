@@ -27,7 +27,7 @@ export const PLATFORM_PERMISSIONS = definePermissions({
   'system:region:update': { label: '编辑地区', menu: 'SystemRegions', id: 1103, sort: 2 },
   'system:region:delete': { label: '删除地区', menu: 'SystemRegions', id: 1104, sort: 3 },
   'system:region:export': { label: '导出地区', menu: 'SystemRegions', id: 1105, sort: 4 },
-  'system:file:list': { label: '查询', menu: ['SystemFiles', 'SystemFileList'] },
+  'system:file:list': { label: '查询', menu: 'SystemFileList' },
   'system:file:config': { label: '查询', menu: 'SystemFileConfigs' },
   'system:file:config:create': { label: '新增配置', menu: 'SystemFileConfigs' },
   'system:file:config:update': { label: '编辑配置', menu: 'SystemFileConfigs' },

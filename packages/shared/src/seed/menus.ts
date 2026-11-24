@@ -3,6 +3,7 @@ import { applyMenuFeatureKeys } from '../licensing/feature-catalog';
 import { ALL_PERMISSIONS } from '../permissions';
 import type { PermissionMeta } from '../core/permissions';
 import { SEED_DATE } from './_base';
+import { PAGE_READ_PERMISSION_BY_NAME } from './menus/page-permissions';
 import { SEED_MENUS_COMMON } from './menus/common';
 import { SEED_MENUS_SYSTEM } from './menus/system';
 import { SEED_MENUS_SETTINGS } from './menus/settings';
@@ -69,15 +70,30 @@ function attachmentAt<T>(value: T | readonly (T | undefined)[] | undefined, inde
  */
 export function expandPermissionButtons(pages: Menu[], registry: Readonly<Record<string, PermissionMeta>>): Menu[] {
   const pageByName = new Map<string, Menu>();
-  for (const page of pages) if (page.name) pageByName.set(page.name, page);
+  const pageReadCodes = new Map<number, string>();
+  for (const page of pages) {
+    if (!page.name) continue;
+    const code = PAGE_READ_PERMISSION_BY_NAME[page.name];
+    if (!code) continue;
+    const meta = registry[code];
+    if (!meta) throw new Error(`页面 ${page.name} 的读权限 ${code} 未在权限注册表登记`);
+    const menuNames = typeof meta.menu === 'string' ? [meta.menu] : meta.menu ?? [];
+    if (!menuNames.includes(page.name)) throw new Error(`页面 ${page.name} 的读权限 ${code} 未声明绑定该页面`);
+    pageReadCodes.set(page.id, code);
+  }
+  const nextPages = pages.map(page => pageReadCodes.has(page.id) ? { ...page, permission: pageReadCodes.get(page.id) } : page);
+  for (const page of nextPages) if (page.name) pageByName.set(page.name, page);
 
   const buttonsByPage = new Map<number, Menu[]>();
   const seenIds = new Set(pages.map((p) => p.id));
   for (const [code, meta] of Object.entries(registry)) {
-    const menus = typeof meta.menu === 'string' ? [meta.menu] : meta.menu;
+    const menus = typeof meta.menu === 'string' ? [meta.menu] : meta.menu ?? [];
     menus.forEach((menuName, position) => {
       const page = pageByName.get(menuName);
       if (!page) throw new Error(`权限码 ${code} 引用了不存在的菜单页面 ${menuName}`);
+      if (page.type !== 'menu') throw new Error(`权限码 ${code} 只能绑定页面菜单，当前绑定到 ${menuName}（${page.type}）`);
+      // 页面读权限写在页面节点上，不再生成「查询」按钮，避免同一权限出现两个授权点。
+      if (pageReadCodes.get(page.id) === code) return;
       const list = buttonsByPage.get(page.id) ?? [];
       const idx = list.length;
       const id = attachmentAt(meta.id, position) ?? page.id + 1 + idx;
@@ -99,7 +115,7 @@ export function expandPermissionButtons(pages: Menu[], registry: Readonly<Record
     });
   }
 
-  return pages.flatMap((page) => [page, ...(buttonsByPage.get(page.id) ?? [])]);
+  return nextPages.flatMap((page) => [page, ...(buttonsByPage.get(page.id) ?? [])]);
 }
 
 // ─── 菜单派生工具（基于 SEED_MENUS 结构化推导，避免硬编码 ID 漂移）───────────────
