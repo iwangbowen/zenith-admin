@@ -47,7 +47,7 @@ export default function PermissionDirectoryTab() {
     { title: '名称', dataIndex: 'label', width: 160 },
     { title: '形态', dataIndex: 'surface', width: 100, render: (value: Surface) => <Tag size="small" color={SURFACE_COLORS[value]}>{SURFACE_LABELS[value]}</Tag> },
     { title: '绑定页面', dataIndex: 'pageBindings', width: 240, render: (value: Item['pageBindings']) => value.length ? value.map(page => page.title).join('、') : '—' },
-    { title: '路径', dataIndex: 'pageBindings', render: (value: Item['pageBindings']) => value.length ? value.map(page => page.path ?? '—').join('、') : '—' },
+    { title: '路径', dataIndex: 'path', render: (_value: string | null, item: Item) => item.pageBindings.length ? item.pageBindings.map(page => page.path ?? '—').join('、') : '—' },
     { title: '备注', dataIndex: 'uiOnly', width: 100, render: (value: boolean) => value ? <Tag size="small" color="orange">仅前端</Tag> : '—' },
   ];
   return <div>
