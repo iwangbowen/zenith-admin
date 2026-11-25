@@ -1,27 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDebouncedValue } from '@tanstack/react-pacer';
-import { Banner, Button, Descriptions, Form, SideSheet, Space, Spin, TabPane, Table, Tabs, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Banner, Button, Descriptions, Form, Space, Spin, Table, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
-import { buildTree, createLabelOptionsFromMap, stableStringify, type BodyOf } from '@zenith/shared/core';
+import { createLabelOptionsFromMap, stableStringify, type BodyOf } from '@zenith/shared/core';
 import {
   ACCESS_APPROVAL_POLICY_LABELS, ACCESS_REQUEST_TYPE_LABELS, ACCESS_RISK_LABELS, ACCESS_START_MODE_LABELS, ACCESS_VALIDITY_MODE_LABELS,
   accessApprovalPlanSchema, higherAccessRisk, stricterAccessApproval,
   accessGovernanceContract,
   accessSourceLabel, accessSourceRefSchema,
-  type AccessApprovalPolicy, type AccessRiskLevel, type AccessWorkflowInput, type AccessWorkflowOptions, type Menu,
+  type AccessApprovalPolicy, type AccessRiskLevel, type AccessWorkflowInput, type AccessWorkflowOptions,
 } from '@zenith/shared/identity';
 import DateTimeText from '@/components/DateTimeText';
-import { ModalFooter } from '@/components/ModalFooter';
 import { DATA_SCOPE_OPTIONS } from '@/components/permissions/DataScopePanel';
+import { PermissionScopeDrawer } from '@/components/permissions/PermissionScopeDrawer';
+import { createAccessScopeData } from '@/components/permissions/scope-adapters';
+import type { PermissionScopeValue } from '@/components/permissions/scope-types';
 import type { WorkflowBusinessFormApi, WorkflowBusinessFormProps } from '@/components/workflow/BusinessFormHost';
 import { useAccessWorkflowOptions, useAccessWorkflowPreview } from '@/hooks/queries/identity-access-governance';
 import { abortSubmit } from '@/lib/abort-submit';
 import { formatDateTimeForApi, parseDateTimeParam } from '@/utils/date';
 import { singleLineColumns } from '@/utils/table-columns';
-import { useMediaQuery } from '@/hooks/useMediaQuery';
-import { mediaDown } from '@/lib/breakpoints';
-import { AccessPermissionPicker } from './AccessPermissionPicker';
-import { MenuPermissionPanel } from '@/components/permissions/MenuPermissionPanel';
 import AccessWorkflowResult from './AccessWorkflowResult';
 
 const { Text } = Typography;
@@ -89,32 +87,15 @@ function ReadonlyAccessRequest({ value }: Readonly<{ value: Record<string, unkno
 
 export default function AccessRequestWorkflowForm({ mode, value, instanceId, bizId, requestClient, getFormApi, onValuesChange }: Readonly<WorkflowBusinessFormProps>) {
   const optionsQuery = useAccessWorkflowOptions(mode === 'create', requestClient);
-  const compactScope = useMediaQuery(mediaDown('lg'));
   const formApi = useRef<FormApi | null>(null);
   const [defaults] = useState(() => initialValues(value));
   const [values, setValues] = useState(defaults);
   const menuIdsRef = useRef<number[]>(defaults.menuIds ?? []);
   const permissionCodesRef = useRef<string[]>(defaults.permissionCodes ?? []);
   const [scopeVisible, setScopeVisible] = useState(false);
-  const [scopeTab, setScopeTab] = useState('pages');
-  const [scopeMenuIds, setScopeMenuIds] = useState<number[]>([]);
-  const [scopePermissionCodes, setScopePermissionCodes] = useState<string[]>([]);
-  const [scopePanelHeight, setScopePanelHeight] = useState(520);
   const roles = optionsQuery.data?.roles ?? [];
   const menus = useMemo(() => optionsQuery.data?.menus ?? [], [optionsQuery.data?.menus]);
-  const pageMenus = useMemo(() => {
-    const flat = (optionsQuery.data?.menus ?? [])
-      .filter(menu => menu.type === 'directory' || menu.type === 'menu')
-      .map(menu => ({ ...menu, path: menu.path.join(' / ') }));
-    return buildTree(flat as unknown as Menu[]) as unknown as Menu[];
-  }, [optionsQuery.data?.menus]);
-  useEffect(() => {
-    if (!scopeVisible) return;
-    const syncHeight = () => setScopePanelHeight(Math.max(320, Math.min(640, window.innerHeight - 320)));
-    syncHeight();
-    window.addEventListener('resize', syncHeight);
-    return () => window.removeEventListener('resize', syncHeight);
-  }, [scopeVisible]);
+  const scopeData = useMemo(() => createAccessScopeData(optionsQuery.data?.menus ?? []), [optionsQuery.data?.menus]);
   const pageTitleById = useMemo(() => new Map(menus.map(menu => [menu.id, menu.title])), [menus]);
   const permissionLabelByCode = useMemo(() => {
     const map = new Map<string, string>();
@@ -187,43 +168,16 @@ export default function AccessRequestWorkflowForm({ mode, value, instanceId, biz
     } satisfies WorkflowBusinessFormApi);
   };
 
-  const openScope = () => {
-    setScopeMenuIds([...menuIdsRef.current]);
-    setScopePermissionCodes([...permissionCodesRef.current]);
-    setScopeTab(menuIdsRef.current.length || permissionCodesRef.current.length === 0 ? 'pages' : 'permissions');
-    setScopeVisible(true);
-  };
+  const openScope = () => setScopeVisible(true);
   const closeScope = () => setScopeVisible(false);
-  const applyScope = () => {
-    const nextMenuIds = [...scopeMenuIds];
-    const nextPermissionCodes = [...scopePermissionCodes];
-    menuIdsRef.current = nextMenuIds;
-    permissionCodesRef.current = nextPermissionCodes;
-    formApi.current?.setValue('menuIds', nextMenuIds);
-    formApi.current?.setValue('permissionCodes', nextPermissionCodes);
-    setValues(prev => ({ ...prev, menuIds: nextMenuIds, permissionCodes: nextPermissionCodes }));
+  const applyScope = (next: PermissionScopeValue) => {
+    menuIdsRef.current = next.pageIds;
+    permissionCodesRef.current = next.permissionCodes;
+    formApi.current?.setValue('menuIds', next.pageIds);
+    formApi.current?.setValue('permissionCodes', next.permissionCodes);
+    setValues(prev => ({ ...prev, menuIds: next.pageIds, permissionCodes: next.permissionCodes }));
     setScopeVisible(false);
   };
-  const scopePagePicker = (
-    <MenuPermissionPanel
-      allMenus={pageMenus}
-      checkedMenuIds={scopeMenuIds}
-      hideBanner
-      height={scopePanelHeight}
-      onChange={setScopeMenuIds}
-    />
-  );
-  const scopePermissionPicker = (
-    <AccessPermissionPicker
-      menus={menus}
-      coveredPermissionCodes={coveredPermissionCodes}
-      value={scopePermissionCodes}
-      hideBanner
-      compact={compactScope}
-      height={scopePanelHeight}
-      onChange={setScopePermissionCodes}
-    />
-  );
   return <><Form getFormApi={registerApi} initValues={defaults} onValueChange={next => { setValues(next as FormValues); onValuesChange?.(); }} labelPosition="left" labelWidth={110} style={{ width: '100%' }}>
     <Form.RadioGroup field="requestType" name="access-request-type" label="申请类型" options={TYPE_OPTIONS.map(option => ({ ...option, disabled: option.value === 'emergency' && !emergencyAllowed }))} type="button"
       extraText={values.requestType === 'emergency' ? '用于故障处置等紧急任务，将以紧急授权留痕；仍须按所选权限风险完成全部审批与 MFA 验证。' : '用于日常业务任务，可选择限时或永久有效；审批链由所选权限中最严格的策略决定。'} />
@@ -296,31 +250,14 @@ export default function AccessRequestWorkflowForm({ mode, value, instanceId, biz
     </section>}
     <Text type="tertiary" size="small">风险、审批人与授权范围以服务端校验结果为准。直接申请的操作权限默认仅作用于本人数据。</Text>
   </Form>
-  <SideSheet
-    title="选择授权范围"
+  <PermissionScopeDrawer
     visible={scopeVisible}
+    data={scopeData}
+    initialValue={{ pageIds: menuIdsRef.current, permissionCodes: permissionCodesRef.current }}
+    coveredPermissionCodes={coveredPermissionCodes}
+    loading={optionsQuery.isLoading}
     onCancel={closeScope}
-    width={compactScope ? '100%' : 'min(1440px, 96vw)'}
-    bodyStyle={{ padding: 0, overflow: 'hidden' }}
-    footer={<ModalFooter onCancel={closeScope} onOk={applyScope} okText="应用选择" />}
-  >
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', gap: 12, padding: 16, overflow: 'hidden' }}>
-      <Banner
-        type="info"
-        closeIcon={null}
-        description="页面访问和操作权限独立授权。页面访问负责导航并自动携带页面读权限；操作权限按业务模块选择，不会隐藏或带出页面。"
-      />
-      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
-        <Typography.Text strong>已选</Typography.Text>
-        <Tag color="blue" size="small">页面 {scopeMenuIds.length}</Tag>
-        <Tag color="green" size="small">操作权限 {scopePermissionCodes.length}</Tag>
-        {coveredPermissionCodes.length > 0 && <Typography.Text type="tertiary" size="small">角色覆盖 {coveredPermissionCodes.length} 项</Typography.Text>}
-      </div>
-      <Tabs activeKey={scopeTab} onChange={setScopeTab} collapsible="auto">
-        <TabPane tab={`页面访问 ${scopeMenuIds.length}`} itemKey="pages">{scopePagePicker}</TabPane>
-        <TabPane tab={`操作权限 ${scopePermissionCodes.length}`} itemKey="permissions">{scopePermissionPicker}</TabPane>
-      </Tabs>
-    </div>
-  </SideSheet>
+    onApply={applyScope}
+  />
   </>;
 }

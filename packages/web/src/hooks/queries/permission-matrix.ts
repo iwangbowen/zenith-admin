@@ -16,8 +16,8 @@ export function useApiCatalog() {
 }
 
 /** 权限目录：能力定义、形态和页面绑定；API-only 权限也包含在内。 */
-export function usePermissionCatalog() {
-  return useApiQuery(permissionCatalogContract.directory, { staleTime: Infinity });
+export function usePermissionCatalog(enabled = true) {
+  return useApiQuery(permissionCatalogContract.directory, { enabled, staleTime: Infinity });
 }
 
 /**

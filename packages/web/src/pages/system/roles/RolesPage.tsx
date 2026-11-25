@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Form, Toast, Spin, SideSheet, Tabs, TabPane } from '@douyinfe/semi-ui';
+import { Form, Toast, Spin, SideSheet } from '@douyinfe/semi-ui';
 import { DATA_SCOPES, type CreateRoleInput, type Role, type Department, roleContract } from '@zenith/shared/identity';
 import { enumValueOf } from '@zenith/shared/core';
 import { UserTransferSelect } from '@/components/UserTransferSelect';
@@ -12,9 +12,10 @@ import { usePermission } from '@/hooks/usePermission';
 import { useDictItems } from '@/hooks/useDictItems';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
-import { MenuPermissionPanel } from '@/components/permissions/MenuPermissionPanel';
-import { CapabilityPanel } from '@/components/permissions/CapabilityPanel';
 import { DataScopePanel } from '@/components/permissions/DataScopePanel';
+import { PermissionScopeWorkspace } from '@/components/permissions/PermissionScopeWorkspace';
+import { createAdminScopeData } from '@/components/permissions/scope-adapters';
+import { usePermissionCatalog } from '@/hooks/queries/permission-matrix';
 import { departmentTreeToTreeData, useDepartmentTree } from '@/hooks/queries/departments';
 import { useMenuTree } from '@/hooks/queries/menus';
 import { useAllUsers } from '@/hooks/queries/users';
@@ -48,7 +49,6 @@ export default function RolesPage() {
   const [menuRole, setMenuRole] = useState<Role | null>(null);
   const [checkedMenuIds, setCheckedMenuIds] = useState<number[]>([]);
   const [checkedPermissionCodes, setCheckedPermissionCodes] = useState<string[]>([]);
-  const [accessTab, setAccessTab] = useState('pages');
   const [userModalVisible, setUserModalVisible] = useState(false);
   const [userRole, setUserRole] = useState<Role | null>(null);
   const [assignedUserIds, setAssignedUserIds] = useState<number[]>([]);
@@ -58,6 +58,7 @@ export default function RolesPage() {
   const [selectedDeptScopeIds, setSelectedDeptScopeIds] = useState<number[]>([]);
 
   const menuTreeQuery = useMenuTree({ enabled: menuModalVisible });
+  const permissionCatalogQuery = usePermissionCatalog(menuModalVisible);
   const menuRoleDetailQuery = useRoleDetail(menuRole?.id, menuModalVisible);
   const allUsersQuery = useAllUsers({ enabled: userModalVisible });
   const roleUsersQuery = useRoleUsers(userRole?.id, userModalVisible);
@@ -89,14 +90,14 @@ export default function RolesPage() {
 
   useEffect(() => {
     if (!menuModalVisible) return;
-    setActiveTabSafe('pages');
     setCheckedMenuIds(menuRoleDetailQuery.data?.menuIds ?? []);
     setCheckedPermissionCodes(menuRoleDetailQuery.data?.permissionCodes ?? []);
   }, [menuModalVisible, menuRoleDetailQuery.data]);
 
-  function setActiveTabSafe(tab: string) {
-    setAccessTab(tab);
-  }
+  const scopeData = useMemo(
+    () => createAdminScopeData(menuTreeQuery.data ?? [], permissionCatalogQuery.data ?? { items: [] }),
+    [menuTreeQuery.data, permissionCatalogQuery.data],
+  );
 
   useEffect(() => {
     if (userModalVisible) setAssignedUserIds((roleUsersQuery.data ?? []).map((u) => u.id));
@@ -271,32 +272,33 @@ export default function RolesPage() {
       </EditFormModal>
 
       {/* 页面与权限授权 Modal */}
-      <AppModal
-        title={`页面与权限 — ${menuRole?.name}`}
+      <SideSheet
+        title={`页面与权限 — ${menuRole?.name ?? ''}`}
         visible={menuModalVisible}
         onCancel={() => setMenuModalVisible(false)}
-        onOk={handleAssignMenus}
-        okButtonProps={{ disabled: !menuRoleDetailQuery.isSuccess, loading: assignMenusMutation.isPending }}
-        width={760}
+        width="min(1120px, 94vw)"
+        bodyStyle={{ padding: 16, overflow: 'auto' }}
+        footer={(
+          <ModalFooter
+            onCancel={() => setMenuModalVisible(false)}
+            onOk={handleAssignMenus}
+            okText="保存"
+            loading={assignMenusMutation.isPending}
+            disabled={!menuRoleDetailQuery.isSuccess}
+          />
+        )}
       >
-        <Tabs collapsible="auto" activeKey={accessTab} onChange={setAccessTab}>
-          <TabPane tab="页面访问" itemKey="pages">
-            <MenuPermissionPanel
-              allMenus={menuTreeQuery.data ?? []}
-              checkedMenuIds={checkedMenuIds}
-              onChange={setCheckedMenuIds}
-              loading={menuTreeQuery.isFetching || menuRoleDetailQuery.isFetching}
-            />
-          </TabPane>
-          <TabPane tab="接口权限" itemKey="capabilities">
-            <CapabilityPanel
-              selectedPermissionCodes={checkedPermissionCodes}
-              onChange={setCheckedPermissionCodes}
-              selectedPageIds={checkedMenuIds}
-            />
-          </TabPane>
-        </Tabs>
-      </AppModal>
+        <PermissionScopeWorkspace
+          data={scopeData}
+          value={{ pageIds: checkedMenuIds, permissionCodes: checkedPermissionCodes }}
+          onChange={(next) => {
+            setCheckedMenuIds(next.pageIds);
+            setCheckedPermissionCodes(next.permissionCodes);
+          }}
+          loading={menuTreeQuery.isFetching || menuRoleDetailQuery.isFetching || permissionCatalogQuery.isLoading}
+          height={520}
+        />
+      </SideSheet>
 
       {/* 数据权限 Modal */}
       <AppModal
