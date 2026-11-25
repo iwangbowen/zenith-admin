@@ -1,8 +1,11 @@
 /** 权限目录：能力定义、形态和绑定页面；页面读、按钮操作与 API-only 权限统一查看。 */
-import { useMemo, useState } from 'react';
-import { Input, Select, Table, Tag, Typography } from '@douyinfe/semi-ui';
+import { useMemo } from 'react';
+import { Button, Input, Select, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { usePermissionCatalog } from '@/hooks/queries/permission-matrix';
+import ConfigurableTable from '@/components/ConfigurableTable';
+import { DESKTOP_PAGINATION_PROPS } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
+import { apiCatalogKeys, usePermissionCatalog } from '@/hooks/queries/permission-matrix';
 
 type Surface = 'page' | 'button' | 'api';
 type Item = NonNullable<ReturnType<typeof usePermissionCatalog>['data']>['items'][number];
@@ -10,15 +13,33 @@ type Item = NonNullable<ReturnType<typeof usePermissionCatalog>['data']>['items'
 const SURFACE_LABELS: Record<Surface, string> = { page: '页面读', button: '操作', api: '仅接口' };
 const SURFACE_COLORS: Record<Surface, 'blue' | 'green' | 'grey'> = { page: 'blue', button: 'green', api: 'grey' };
 
+type PermissionFilters = { keyword: string; surface: Surface | undefined };
+const EMPTY_FILTERS: PermissionFilters = { keyword: '', surface: undefined };
+
 export default function PermissionDirectoryTab() {
   const query = usePermissionCatalog();
-  const [keyword, setKeyword] = useState('');
-  const [surface, setSurface] = useState<Surface | undefined>();
+  const search = useListSearch<PermissionFilters>({
+    defaults: EMPTY_FILTERS,
+    listKey: apiCatalogKeys.permissions,
+    refetchOnSearch: false,
+  });
+  const { submittedParams, handleSearch, handleReset, page, pageSize, buildPagination } = search;
+  const keywordField = search.bind('keyword');
+  const surfaceField = search.bind('surface', (value: Surface | Surface[] | undefined) => Array.isArray(value) ? value[0] : value);
   const rows = useMemo(() => (query.data?.items ?? []).filter(item => {
-    if (surface && item.surface !== surface) return false;
+    if (submittedParams.surface && item.surface !== submittedParams.surface) return false;
+    const keyword = submittedParams.keyword.trim().toLowerCase();
     const text = `${item.code} ${item.label} ${item.pageTitle ?? ''} ${item.path ?? ''}`.toLowerCase();
-    return !keyword.trim() || text.includes(keyword.trim().toLowerCase());
-  }), [query.data?.items, keyword, surface]);
+    return !keyword || text.includes(keyword);
+  }), [query.data?.items, submittedParams]);
+  const pageRows = useMemo(
+    () => rows.slice((page - 1) * pageSize, page * pageSize),
+    [rows, page, pageSize],
+  );
+  const pagination = useMemo(
+    () => ({ ...DESKTOP_PAGINATION_PROPS, ...buildPagination(rows.length) }),
+    [buildPagination, rows.length],
+  );
   const columns: ColumnProps<Item>[] = [
     { title: '权限码', dataIndex: 'code', width: 260, render: (code: string) => <Typography.Text code>{code}</Typography.Text> },
     { title: '名称', dataIndex: 'label', width: 160 },
@@ -29,11 +50,24 @@ export default function PermissionDirectoryTab() {
   ];
   return <div>
     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
-      <Input value={keyword} onChange={setKeyword} placeholder="搜索权限码、名称或页面" showClear style={{ width: 300 }} />
-      <Select value={surface} onChange={value => setSurface(value as Surface | undefined)} placeholder="全部形态" showClear style={{ width: 150 }}
-        optionList={Object.entries(SURFACE_LABELS).map(([value, label]) => ({ value, label }))} />
-      <Typography.Text type="tertiary" style={{ alignSelf: 'center' }}>共 {rows.length} 项能力</Typography.Text>
+      <Input
+        {...keywordField}
+        onEnterPress={handleSearch}
+        placeholder="搜索权限码、名称或页面"
+        showClear
+        style={{ width: 300 }}
+      />
+      <Select
+        {...surfaceField}
+        placeholder="全部形态"
+        showClear
+        style={{ width: 150 }}
+        optionList={Object.entries(SURFACE_LABELS).map(([value, label]) => ({ value, label }))}
+      />
+      <Button onClick={handleSearch}>查询</Button>
+      <Button onClick={handleReset}>重置</Button>
+      <Typography.Text type="tertiary" style={{ alignSelf: 'center' }}>共 {rows.length} 项权限</Typography.Text>
     </div>
-    <Table rowKey="code" dataSource={rows} columns={columns} loading={query.isFetching} pagination={{ pageSize: 20 }} size="small" />
+    <ConfigurableTable<Item> rowKey="code" dataSource={pageRows} columns={columns} loading={query.isFetching} pagination={pagination} size="small" />
   </div>;
 }
