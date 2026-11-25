@@ -1,8 +1,8 @@
 import { definePermissions } from '../core/permissions';
 
 /**
- * identity 域权限码注册表：code → 按钮标题 / 所属页面（菜单 name）。
- * 种子 button 节点由此生成（@zenith/shared/seed），契约操作 / 路由门禁 / 前端按钮以 `Permission` 类型引用。
+ * identity 域权限码注册表：code → 权限标题 / 所属页面（菜单 name）。
+ * 操作权限只存在于本注册表；契约操作 / 路由门禁 / 前端按钮以 `Permission` 类型引用。
  * `uiOnly` = 服务端没有任何接口检查该码（纯前端门控或待清理）。
  */
 export const IDENTITY_PERMISSIONS = definePermissions({
@@ -15,9 +15,9 @@ export const IDENTITY_PERMISSIONS = definePermissions({
   'system:user:export-raw': { label: '明文导出', menu: 'SystemUsers', riskLevel: 'critical', approvalPolicy: 'two_person', reviewIntervalDays: 30 },
   'system:user:assign': { label: '用户授权', menu: 'SystemUsers', riskLevel: 'high', approvalPolicy: 'manager_security', reviewIntervalDays: 90, selfRequestable: false },
   'system:user:impersonate': { label: '模拟登录', menu: 'SystemUsers', riskLevel: 'critical', approvalPolicy: 'two_person', reviewIntervalDays: 30 },
-  'system:user:organization': { label: '调整组织归属', menu: 'SystemUsers', id: 99901, riskLevel: 'high', approvalPolicy: 'manager_security', selfRequestable: false },
-  'system:user:status': { label: '启停账号', menu: 'SystemUsers', id: 99902, riskLevel: 'high', approvalPolicy: 'manager_security', selfRequestable: false },
-  'system:user:credentials': { label: '管理账号凭据', menu: 'SystemUsers', id: 99903, riskLevel: 'critical', approvalPolicy: 'two_person', selfRequestable: false },
+  'system:user:organization': { label: '调整组织归属', menu: 'SystemUsers', riskLevel: 'high', approvalPolicy: 'manager_security', selfRequestable: false },
+  'system:user:status': { label: '启停账号', menu: 'SystemUsers', riskLevel: 'high', approvalPolicy: 'manager_security', selfRequestable: false },
+  'system:user:credentials': { label: '管理账号凭据', menu: 'SystemUsers', riskLevel: 'critical', approvalPolicy: 'two_person', selfRequestable: false },
   'system:department:list': { label: '查询', menu: 'SystemDepartments', approvalPolicy: 'none', permanentAllowed: true, emergencyAllowed: true },
   'system:department:create': { label: '新增部门', menu: 'SystemDepartments', selfRequestable: false, riskLevel: 'high', approvalPolicy: 'manager_security', reviewIntervalDays: 90 },
   'system:department:update': { label: '编辑部门', menu: 'SystemDepartments', selfRequestable: false, riskLevel: 'high', approvalPolicy: 'manager_security', reviewIntervalDays: 90 },
@@ -56,9 +56,9 @@ export const IDENTITY_PERMISSIONS = definePermissions({
   'system:tenant-package:update': { label: '编辑套餐', menu: 'SystemTenantPackages', uiOnly: true },
   'system:tenant-package:delete': { label: '删除套餐', menu: 'SystemTenantPackages', uiOnly: true },
   'system:tenant-package:assign': { label: '分配功能', menu: 'SystemTenantPackages', uiOnly: true },
-  'system:identity-security:manage': { label: '管理策略', menu: 'SystemIdentitySecurity', sort: 1, riskLevel: 'critical', approvalPolicy: 'two_person', selfRequestable: false },
-  'system:login-risk:list': { label: '查询风险事件', menu: 'SystemIdentitySecurity', sort: 0 },
-  'system:identity-provider:manage': { label: '管理身份源', menu: 'SystemIdentityProviders', sort: 1, selfRequestable: false, riskLevel: 'high', approvalPolicy: 'manager_security', reviewIntervalDays: 90 },
+  'system:identity-security:manage': { label: '管理策略', menu: 'SystemIdentitySecurity', riskLevel: 'critical', approvalPolicy: 'two_person', selfRequestable: false },
+  'system:login-risk:list': { label: '查询风险事件', menu: 'SystemIdentitySecurity' },
+  'system:identity-provider:manage': { label: '管理身份源', menu: 'SystemIdentityProviders', selfRequestable: false, riskLevel: 'high', approvalPolicy: 'manager_security', reviewIntervalDays: 90 },
   'system:dirsync-source:list': { label: '查询', menu: 'DirectorySyncSources' },
   'system:dirsync-source:create': { label: '新增源', menu: 'DirectorySyncSources', selfRequestable: false, riskLevel: 'high', approvalPolicy: 'manager_security', reviewIntervalDays: 90 },
   'system:dirsync-source:edit': { label: '编辑源', menu: 'DirectorySyncSources', selfRequestable: false, riskLevel: 'high', approvalPolicy: 'manager_security', reviewIntervalDays: 90 },

@@ -7,7 +7,10 @@ export const mockRoles: Role[] = SEED_ROLES.map((r) => ({
   ...r,
   permissionCodes: r.id === 1
     ? undefined
-    : [...new Set((r.menuIds ?? []).flatMap(id => SEED_MENUS.find(menu => menu.id === id)?.permission ? [SEED_MENUS.find(menu => menu.id === id)!.permission!] : []))],
+    : [...new Set([
+        ...(r.permissionCodes ?? []),
+        ...(r.menuIds ?? []).flatMap(id => SEED_MENUS.find(menu => menu.id === id)?.permission ? [SEED_MENUS.find(menu => menu.id === id)!.permission!] : []),
+      ])],
   userCount: r.code === 'super_admin' ? 3 : 5,
   userPreview: r.code === 'super_admin'
     ? [

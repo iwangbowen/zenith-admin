@@ -9,7 +9,7 @@ import { usePermissionCatalog } from '@/hooks/queries/permission-matrix';
 type CapabilityItem = {
   code: string;
   label: string;
-  surface: 'page' | 'button' | 'api';
+  surface: 'page' | 'operation' | 'api';
   pageId: number | null;
   pageTitle: string | null;
   path: string | null;
@@ -18,13 +18,13 @@ type CapabilityItem = {
 
 const SURFACE_LABELS: Record<CapabilityItem['surface'], string> = {
   page: '页面读',
-  button: '操作',
+  operation: '操作',
   api: '仅接口',
 };
 
 const SURFACE_COLORS: Record<CapabilityItem['surface'], 'blue' | 'green' | 'grey'> = {
   page: 'blue',
-  button: 'green',
+  operation: 'green',
   api: 'grey',
 };
 
@@ -141,7 +141,7 @@ export function CapabilityPanel({
               {items.map((item) => {
                 const autoGranted = item.surface === 'page' && item.pageId !== null && pageSet.has(item.pageId);
                 const checked = autoGranted || selected.has(item.code);
-                const showSurfaceTag = !readonly || item.surface !== 'button';
+                const showSurfaceTag = !readonly || item.surface !== 'operation';
                 return (
                   <div key={item.code} style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, padding: '1px 0' }}>
                     {readonly ? (
@@ -154,7 +154,7 @@ export function CapabilityPanel({
                           flexShrink: 0,
                           background: item.surface === 'page'
                             ? 'var(--semi-color-primary)'
-                            : item.surface === 'button'
+                            : item.surface === 'operation'
                               ? 'var(--semi-color-success)'
                               : 'var(--semi-color-text-2)',
                         }}

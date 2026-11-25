@@ -286,7 +286,6 @@ export default function RolesPage() {
               checkedMenuIds={checkedMenuIds}
               onChange={setCheckedMenuIds}
               loading={menuTreeQuery.isFetching || menuRoleDetailQuery.isFetching}
-              pagesOnly
             />
           </TabPane>
           <TabPane tab="接口权限" itemKey="capabilities">

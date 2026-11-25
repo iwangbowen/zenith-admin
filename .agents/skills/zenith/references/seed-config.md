@@ -15,18 +15,17 @@
 
 - 新增**一级目录**：取当前最大段基数 + 1000，新建分片
 - 新增**页面**：在目标段内找到最后一个节点，从其后最近的 10 倍数槽位开始
-- **按钮不手写 id**：由权限码注册表生成，第 idx 个按钮 `id = 页面 id + 1 + idx`；一个页面预计超过 9 个权限时，
-  下一个页面从更远的 10 倍数槽位开始（报表段按 30 间隔）
+- **菜单不生成权限节点**：操作权限只存在于注册表/权限目录，不占用菜单 id，也不写入 `SEED_MENUS`
 
 ## 授权语义
 
 模块的 License 分类与目录登记步骤见 [功能授权](../../../../docs/backend/licensing.md)；
 新菜单继承所在授权 / 核心根，新顶层入口需显式归类。未归类、重复根、重叠授权根或失效菜单引用会在种子装配时报错。
 
-页面 / 按钮 / API-only 的授权语义：
+页面 / API-only 的授权语义：
 
-- `menu` 节点的 `permission` 是页面读权限；授权页面时自动携带，不需要单独创建「查询」按钮
-- `button` 节点只承载操作权限；勾选按钮不会带出页面
+- `menu` 节点的 `permission` 是页面读权限；授权页面时自动携带
+- 操作权限只存在于注册表和权限目录，不生成菜单节点
 - 只授予页面读权限 = 仅 API 可用，页面不可见
 - 没有页面的纯 API 权限省略 `menu`，只在权限目录中出现
 
@@ -63,25 +62,25 @@
 SystemXxx: 'system:xxx:list',
 ```
 
-生成器会把该权限写入页面节点，并跳过该权限的同名按钮。页面没有读权限时不要加入此表。
+生成器会把该权限写入页面节点。页面没有读权限时不要加入此表；操作权限不写入菜单种子。
 
 ### 9b：权限码（`shared/src/{业务域}/permissions.ts`）
 
 权限码在整个仓库只声明一次——各域的 `definePermissions()` 注册表；页面读权限由
-`seed/menus.ts` 的 `expandPermissionButtons()` 写入页面节点，其余权限生成 button 节点。
+`seed/menus.ts` 的 `expandPagePermissions()` 写入页面节点；操作权限只保留在注册表/权限目录。
 `Permission` 联合类型随之更新，契约操作 `access.permission`、服务端 `hasPermission()`、
 前端 `hasPermission` / `permission=` 的字面量拼错即编译报错：
 
 ```ts
 export const XXX_PERMISSIONS = definePermissions({
   'system:xxx:list':   { label: '查询',    menu: 'SystemXxx' },   // 页面读权限：写入页面节点
-  'system:xxx:create': { label: '新增XXX', menu: 'SystemXxx' },   // 操作权限：生成 button
+  'system:xxx:create': { label: '新增XXX', menu: 'SystemXxx' },   // 操作权限：只留在注册表
   'system:xxx:update': { label: '编辑XXX', menu: 'SystemXxx' },
   'system:xxx:delete': { label: '删除XXX', menu: 'SystemXxx' },
   // 无页面的纯 API 权限省略 menu，只出现在权限目录
   'open:data:read':    { label: '读取数据' },
-  // 同一权限挂多个页面：menu 传数组；需要固定 id / sort 时逐位覆盖
-  'system:xxx:print':  { label: '打印', menu: ['SystemXxx', 'SystemYyy'], id: [undefined, 1234] },
+  // 同一权限挂多个页面：menu 传数组
+  'system:xxx:print':  { label: '打印', menu: ['SystemXxx', 'SystemYyy'] },
   // 服务端没有接口检查、只做前端门控的码必须标 uiOnly（permission-registry.test 守住两个方向）
 });
 ```
@@ -94,7 +93,7 @@ export const XXX_PERMISSIONS = definePermissions({
 | 字段 | 规则 |
 | --- | --- |
 | `component` | 相对 `packages/web/src/pages/` 的路径，**无 `.tsx` 扩展名**；前端用 `React.lazy` + 动态 import 按该路径加载。例：`'users/UsersPage'` → `pages/users/UsersPage.tsx` |
-| `name` | 一级目录 `XxxModule`；系统管理下的菜单 `SystemXxx`；独立模块菜单 `XxxManagement`；注册表以它定位按钮归属，页面节点**必须有** |
+| `name` | 一级目录 `XxxModule`；系统管理下的菜单 `SystemXxx`；独立模块菜单 `XxxManagement`；注册表以它绑定页面，页面节点**必须有** |
 | `icon` | lucide-react 图标名（大驼峰），如 `CircleDot`、`LayoutList`、`BookOpen`，可在 <https://lucide.dev/icons/> 搜索 |
 
 实际写法参考（系统管理 = 1000 段，具体 ID 以源文件为准）：
@@ -107,7 +106,7 @@ export const XXX_PERMISSIONS = definePermissions({
   createdAt: SEED_DATE, updatedAt: SEED_DATE },
 // identity/permissions.ts
 'system:department:list':   { label: '查询',     menu: 'SystemDepartments' },   // → 页面 1020.permission
-'system:department:create': { label: '新增部门', menu: 'SystemDepartments' },   // → button 1021
+'system:department:create': { label: '新增部门', menu: 'SystemDepartments' },   // 操作权限，只进权限目录
 ```
 
 ---

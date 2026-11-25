@@ -84,7 +84,6 @@ export function UserMenuPermissionModal({ userId, userName, visible, onClose }: 
             checkedMenuIds={directMenuIds}
             onChange={setDirectMenuIds}
             loading={menuTreeQuery.isFetching || permissionsQuery.isFetching}
-            pagesOnly
           />
         </TabPane>
         <TabPane tab="接口权限（直接）" itemKey="capabilities">

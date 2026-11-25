@@ -17,7 +17,7 @@ interface MenuItemProps {
 function MenuItem({ item, onNavigate, depth = 0 }: Readonly<MenuItemProps>) {
   const closeAll = useContext(CloseAllContext);
   const visibleChildren = (item.children ?? []).filter(
-    (c) => c.visible && c.status === 'enabled' && c.type !== 'button',
+    (c) => c.visible && c.status === 'enabled',
   );
   const isDirectory = item.type === 'directory' && visibleChildren.length > 0;
 

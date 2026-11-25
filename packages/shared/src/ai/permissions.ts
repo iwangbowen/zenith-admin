@@ -1,8 +1,8 @@
 import { definePermissions } from '../core/permissions';
 
 /**
- * ai 域权限码注册表：code → 按钮标题 / 所属页面（菜单 name）。
- * 种子 button 节点由此生成（@zenith/shared/seed），契约操作 / 路由门禁 / 前端按钮以 `Permission` 类型引用。
+ * ai 域权限码注册表：code → 权限标题 / 所属页面（菜单 name）。
+ * 操作权限只存在于本注册表；契约操作 / 路由门禁 / 前端按钮以 `Permission` 类型引用。
  * `uiOnly` = 服务端没有任何接口检查该码（纯前端门控或待清理）。
  */
 export const AI_PERMISSIONS = definePermissions({
@@ -22,7 +22,7 @@ export const AI_PERMISSIONS = definePermissions({
   'ai:kb:create': { label: '新增', menu: 'AiKnowledge' },
   'ai:kb:edit': { label: '编辑', menu: 'AiKnowledge' },
   'ai:kb:delete': { label: '删除', menu: 'AiKnowledge' },
-  'ai:studio:access': { label: 'Studio 接入', menu: 'AiAgents', sort: 1 },
+  'ai:studio:access': { label: 'Studio 接入', menu: 'AiAgents' },
   'ai:tool:list': { label: '查询', menu: 'AiTools' },
   'ai:tool:manage': { label: '管理', menu: 'AiTools' },
   'ai:eval:list': { label: '查询', menu: 'AiEval' },

@@ -300,19 +300,19 @@
 
 - **权限码只在注册表声明一次**：每个业务域的 `shared/src/{域}/permissions.ts` 用 `definePermissions()` 登记
   `code → { label, menu }`，域 `index.ts` 导出它并加入 `shared/src/permissions.ts` 的 `PERMISSION_REGISTRY_BY_DOMAIN`；
-  页面读权限、操作按钮由 `expandPermissionButtons()` 生成，**禁止**在 `seed/menus/*.ts` 手写 `button` 行。
+  页面读权限由 `expandPagePermissions()` 写入页面节点；操作权限只留在注册表，**严禁**生成或手写 `button` 菜单行。
   契约操作的 `access.permission`、服务端 `hasPermission()`、前端 `hasPermission()` /
   `permission=` 属性的参数类型都是 `Permission`（`@zenith/shared/core`），不在注册表的码编译报错；
   **禁止**用 `as Permission` 绕过（仅数据库配置等真正动态的码可在边界处断言，并在保存时按注册表校验）。
   服务端没有接口检查的码必须标 `uiOnly: true`（`permission-registry.test.ts` 双向守住）
-- **页面 = 导航 + 读权限**：`menu` 节点的 `permission` 是该页面的最小读权限（可空）；`button` 节点只放操作权限；
+- **页面 = 导航 + 读权限**：`menu` 节点的 `permission` 是该页面的最小读权限（可空）；
   `directory` 节点禁止携带 `permission`。页面读权限由 `seed/menus/page-permissions.ts` 的
-  `PAGE_READ_PERMISSION_BY_NAME` 映射；生成器把它写入页面节点，并跳过同名查询按钮，避免同一权限出现两个授权点。
+  `PAGE_READ_PERMISSION_BY_NAME` 映射；生成器把它写入页面节点。
+- **菜单里没有 button**：菜单表只存 `directory` / `menu`。操作权限只存在于注册表和权限目录，不生成任何菜单节点；
+  菜单管理只能新增/编辑目录和页面，操作权限统一在「接口与权限 → 权限目录」只读查看。
 - **授权语义**：显式页面授权产生导航，并自动携带页面读权限；操作权限和页面读权限都可独立授予但**不反推页面**。
   只授予页面读权限 / 操作权限时是 API-only；没有读权限的页面不注册。`menu` 无页面的纯 API 权限省略 `menu`，只在权限目录出现。
-- **菜单管理边界**：菜单管理只维护目录与页面；`button` 是操作权限码的内部挂载锚点，不在菜单管理中新增、编辑或展示，操作权限统一在「接口与权限 → 权限目录」只读查看。
-- **菜单 ID 分段**：每个一级目录独占 1000 段（系统管理 = 1000、系统设置 = 2000…）；
-  页面落 10 的倍数槽位，按钮 id 由生成器按父菜单 ID 顺延 +1..+n（注册表 `id` / `sort` 可逐位覆盖以保持历史 id）。
+- **菜单 ID 分段**：每个一级目录独占 1000 段（系统管理 = 1000、系统设置 = 2000…）；页面落 10 的倍数槽位。
   **分配页面 id 前必读 `SEED_MENUS` 源文件确认段内分布**，**严禁**依据任何文档记录的「当前最大 ID」分配
 - **菜单种子只新增不更新**：seed.ts 对 `menus` 按 id `onConflictDoNothing`，`SEED_MENUS` 只决定新菜单的初始定义；
   已存在的行（含管理后台的改名 / 图标 / 排序 / 禁用 / 隐藏 / 换父级）不会被 seed 回写。

@@ -151,7 +151,7 @@ export const xxxContract = defineContract('/api/xxxs', {
 
 - `contracts/index.ts` 里 `export * from './xxxs'`；域 `index.ts` 已 `export * from './contracts'`
 - 权限码先在 `shared/src/{业务域}/permissions.ts` 登记（见 [seed-config.md](./seed-config.md)），`access.permission` 只接受注册表里的码；
-  页面读权限放在页面节点（`seed/menus/page-permissions.ts`），操作权限生成按钮，纯 API 权限省略 `menu`
+  页面读权限放在页面节点（`seed/menus/page-permissions.ts`），操作权限只留在注册表/权限目录，纯 API 权限省略 `menu`
 - `access` 形态：`{ permission }`（数组 = 任一即可；`platformOnly: true` 始终平台超管 / `'multi-tenant'` 仅多租户模式）、
   `{ platformOnly: true }`（不看权限码）、`'authenticated'`（登录即可，归属 / 租户校验在 service）
 - `audit`：字符串即 description；请求体含密码 / 密钥或响应含一次性凭证时用对象 `{ description, recordBody: false, recordResponseBody: false }`
@@ -347,7 +347,7 @@ export default xxxRouter;
 - 写操作不需要成功提示（对话式创建等）传 `messages: { create: null }`。
 - 契约上有标准操作却仍显式书写的，须在 `exclude` 里给出，并在 `routes/_crud-explicit.ts` 登记「文件 → 契约 → 操作 → 理由」；
   `crud-coverage.test.ts` 守住两条：未登记的显式块直接失败，已派生的块必须从登记表删除（表只准缩小）。
-- 权限码必须先在 `packages/shared/src/{业务域}/permissions.ts` 注册（种子按钮由此生成；`permission-audit` / `contract-access` 测试对账契约 `access` ↔ 注册表 ↔ 种子）。
+- 权限码必须先在 `packages/shared/src/{业务域}/permissions.ts` 注册（操作权限只在注册表/权限目录，不生成菜单节点；`permission-audit` / `contract-access` 测试对账契约 `access` ↔ 注册表）。
 
 ## Step 7：注册路由（`routes/{业务域}/index.ts`）
 

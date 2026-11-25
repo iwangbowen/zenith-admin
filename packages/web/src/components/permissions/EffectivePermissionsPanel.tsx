@@ -87,7 +87,6 @@ export function EffectivePermissionsPanel({
       checkedMenuIds={pageIds}
       loading={loading}
       readonly
-      pagesOnly
       defaultExpandAll
       showExpandControls
       height={400}

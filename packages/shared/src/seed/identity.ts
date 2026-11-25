@@ -1,22 +1,19 @@
 import type { Department, DirectorySyncSource, Position, Role, Tenant, TenantPackage } from '../identity/contracts';
-import { CMS_RAW_EXPORT_MENU_IDS, CMS_ROOT_MENU_ID, DRIVE_ROOT_MENU_ID, DRIVE_WORKBENCH_MENU_ID, SEED_MENUS, WIKI_DOC_CENTER_MENU_ID, WIKI_ROOT_MENU_ID, collectMenuSubtreeIds } from './menus';
+import { CMS_RAW_EXPORT_PERMISSIONS, CMS_ROOT_MENU_ID, DRIVE_ROOT_MENU_ID, DRIVE_WORKBENCH_MENU_ID, SEED_MENUS, WIKI_DOC_CENTER_MENU_ID, WIKI_ROOT_MENU_ID, collectMenuSubtreeIds, permissionCodesForPageIds } from './menus';
 import { SEED_DATE } from './_base';
+import { ALL_PERMISSIONS } from '../permissions';
 
 /**
- * 知识中心「只读」菜单集：文档中心子树的页面节点 + 仅「查询」权限按钮。
+ * 知识中心「只读」菜单集：文档中心子树的页面节点。
  * 写权限（新增/编辑/删除/发布/移动）由管理员按需显式分配，空间成员角色是服务端兜底。
  */
 const WIKI_READONLY_MENU_IDS: number[] = [
   WIKI_ROOT_MENU_ID,
-  ...collectMenuSubtreeIds(WIKI_DOC_CENTER_MENU_ID).filter((id) => {
-    const menu = SEED_MENUS.find((m) => m.id === id);
-    if (!menu) return false;
-    return menu.type !== 'button' || menu.permission === 'wiki:doc:list';
-  }),
+  ...collectMenuSubtreeIds(WIKI_DOC_CENTER_MENU_ID),
 ];
 
 /**
- * 企业网盘「个人使用」菜单集：工作台页面 + 查询 / 上传 / 下载 / 编辑 / 删除 / 协作授权 / 回收站查看与还原。
+ * 企业网盘「个人使用」菜单集：工作台页面 + 个人空间操作权限。
  * 外链分享、彻底删除、协作空间创建与治理权限由管理员按需显式分配，节点 ACL 仍是服务端兜底。
  */
 const DRIVE_PERSONAL_PERMISSIONS: readonly string[] = [
@@ -25,16 +22,13 @@ const DRIVE_PERSONAL_PERMISSIONS: readonly string[] = [
 ];
 const DRIVE_PERSONAL_MENU_IDS: number[] = [
   DRIVE_ROOT_MENU_ID,
-  ...collectMenuSubtreeIds(DRIVE_WORKBENCH_MENU_ID).filter((id) => {
-    const menu = SEED_MENUS.find((m) => m.id === id);
-    if (!menu) return false;
-    return menu.type !== 'button' || (menu.permission !== undefined && DRIVE_PERSONAL_PERMISSIONS.includes(menu.permission));
-  }),
+  ...collectMenuSubtreeIds(DRIVE_WORKBENCH_MENU_ID),
 ];
 
 const WORKFLOW_SELF_MENU_NAMES = new Set(['Workflow', 'WorkflowApprovalCenter', 'WorkflowLaunchpad', 'MyApplications', 'WorkflowCcToMe']);
 const WORKFLOW_SELF_PERMISSIONS = new Set(['workflow:instance:create', 'workflow:instance:list']);
-const WORKFLOW_SELF_MENU_IDS = SEED_MENUS.filter(menu => WORKFLOW_SELF_MENU_NAMES.has(menu.name ?? '') || (menu.type === 'button' && WORKFLOW_SELF_PERMISSIONS.has(menu.permission ?? ''))).map(menu => menu.id);
+const WORKFLOW_SELF_MENU_IDS = SEED_MENUS.filter(menu => WORKFLOW_SELF_MENU_NAMES.has(menu.name ?? '')).map(menu => menu.id);
+const CMS_PAGE_IDS = collectMenuSubtreeIds(CMS_ROOT_MENU_ID);
 
 // ─── 角色 ─────────────────────────────────────────────────────────────────────
 
@@ -49,6 +43,7 @@ export const SEED_ROLES: Role[] = [
     createdAt: SEED_DATE,
     updatedAt: SEED_DATE,
     menuIds: SEED_MENUS.map((m) => m.id),
+    permissionCodes: Object.keys(ALL_PERMISSIONS),
   },
   {
     id: 2,
@@ -59,11 +54,15 @@ export const SEED_ROLES: Role[] = [
     status: 'enabled',
     createdAt: SEED_DATE,
     updatedAt: SEED_DATE,
-    // 首页 / 个人中心 / 公告中心 / 站内信 + 会话中心（页面与其按钮权限分离，按钮需显式分配：
-    // 5001 = 导出聊天记录，由 chat 注册表经 expandPermissionButtons 生成）
-    // + 知识中心只读（查询按钮 + 页面；写权限由管理员显式分配，空间角色仍是服务端兜底）
+    // 首页 / 个人中心 / 公告中心 / 站内信 + 会话中心
+    // + 知识中心只读（写权限由管理员显式分配，空间角色仍是服务端兜底）
     // + 企业网盘个人使用（个人空间完整可用；外链 / 彻底删除 / 协作空间由管理员显式分配）
-    menuIds: [1, 11, 12, 13, 5000, 5001, ...WORKFLOW_SELF_MENU_IDS, ...WIKI_READONLY_MENU_IDS, ...DRIVE_PERSONAL_MENU_IDS],
+    menuIds: [1, 11, 12, 13, 5000, ...WORKFLOW_SELF_MENU_IDS, ...WIKI_READONLY_MENU_IDS, ...DRIVE_PERSONAL_MENU_IDS],
+    permissionCodes: [
+      'chat:message:export',
+      ...WORKFLOW_SELF_PERMISSIONS,
+      ...DRIVE_PERSONAL_PERMISSIONS,
+    ],
   },
   {
     id: 3,
@@ -75,8 +74,8 @@ export const SEED_ROLES: Role[] = [
     createdAt: SEED_DATE,
     updatedAt: SEED_DATE,
     // 首页 + CMS 子树 + 个人中心（改密码）+ 公告中心 / 站内信（收公告与审稿 / 退回通知）
-    menuIds: [1, 11, 12, 13, ...collectMenuSubtreeIds(CMS_ROOT_MENU_ID)
-      .filter((id) => !CMS_RAW_EXPORT_MENU_IDS.includes(id))],
+    menuIds: [1, 11, 12, 13, ...CMS_PAGE_IDS],
+    permissionCodes: permissionCodesForPageIds(CMS_PAGE_IDS, CMS_RAW_EXPORT_PERMISSIONS),
   },
 ];
 

@@ -2,7 +2,7 @@
  * 接口目录：由契约派生的只读视图。服务端据此提供 `GET /api/api-catalog`（前端不直接 import 契约聚合，
  * 见 `permission-catalog-core.ts` 的说明）；「角色 / 用户各自持有哪些权限码」由权限矩阵端点补充。
  *
- * 没有任何新表：接口需要什么权限 = 契约声明；谁拥有什么权限 = 角色 / 用户 / 用户组绑定的按钮菜单。
+ * 没有任何新表：接口需要什么权限 = 契约声明；谁拥有什么权限 = 角色 / 用户 / 用户组绑定的页面与权限码。
  */
 import { accessPermissions, accessPlatformOnly, type AnyOperation, type OperationAccess, type SecurityScheme } from './core/contract';
 import type { Permission } from './core/permissions';

@@ -66,7 +66,7 @@ License 门控在 `feature`。`defineContractRoute` 据此装配 `authMiddleware
 「系统管理 → 接口与权限」（`/system/access-catalog`，权限 `system:access-catalog:view`）包含两个只读 Tab：
 
 - **接口目录**：全部契约操作的模块、方法、地址、认证方式、访问要求、审计与功能门控，并可按角色/用户查看接口判定。
-- **权限目录**：权限码、形态（页面读 / 按钮操作 / API-only）、绑定页面、路径、是否仅前端门控。
+- **权限目录**：权限码、形态（页面读 / 操作权限 / API-only）、绑定页面、路径、是否仅前端门控。
 
 数据面：
 

@@ -1,1 +1,0 @@
-ALTER TABLE "file_storage_configs" ADD COLUMN "bucket_account_block_public_access" boolean;

@@ -3,7 +3,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import type { DbExecutor } from '../db/types';
 import { SUPER_ADMIN_CODE } from '@zenith/shared/identity';
 import { db } from '../db';
-import { users, identityAccessGrants, identityAccessGrantItems, identityAccessGrantMenus } from '../db/schema';
+import { users, identityAccessGrants, identityAccessGrantItems } from '../db/schema';
 import { onInvalidate, onInvalidationReset, invalidationBusState } from './invalidation-bus';
 import { sendToUser } from './ws-manager';
 import { availablePermissionCodes } from '../services/identity/permission-catalog.service';
@@ -143,7 +143,7 @@ async function fetchUserPermissionData(userId: number, executor: DbExecutor = db
   const roleMenus = user.userRoles.filter(({ role }) => role.status === 'enabled').flatMap(({ role }) => role.roleMenus);
   const groupRoleMenus = groupRoles.flatMap(role => role.roleMenus ?? []);
   const navigationBindings = [...user.userMenus, ...roleMenus, ...groupRoleMenus, ...activeGrantMenus]
-    .filter(({ menu }) => menu.status === 'enabled' && menu.type !== 'button');
+    .filter(({ menu }) => menu.status === 'enabled');
   const pageReadCodes = navigationBindings
     .map(({ menu }) => menu.permission)
     .filter((code): code is string => typeof code === 'string' && code.length > 0);

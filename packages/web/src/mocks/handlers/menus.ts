@@ -12,7 +12,7 @@ export const menusHandlers = [
   // 当前用户的菜单树（用于渲染侧边栏）
   mock(menuContract.userTree, ({ ok }) => {
     // 与真实后端对齐：禁用菜单对所有人不可见；按钮为纯权限点，不参与页面展示
-    return ok(buildMenuTree(mockMenus.filter((m) => m.status === 'enabled' && m.type !== 'button')));
+    return ok(buildMenuTree(mockMenus.filter((m) => m.status === 'enabled')));
   }),
 
   mock(menuContract.paths, ({ ok }) => {

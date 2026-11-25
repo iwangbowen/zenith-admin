@@ -7,7 +7,7 @@ describe('真实菜单的功能归类', () => {
   it.each([['growth', 17000], ['iot', 18000]] as const)('%s 的全部页面与按钮继承功能授权', (feature, rootId) => {
     const subtree = new Set(collectMenuSubtreeIds(rootId));
     const menus = SEED_MENUS.filter((menu) => subtree.has(menu.id));
-    expect(menus.some((menu) => menu.type === 'button')).toBe(true);
+    expect(menus.every((menu) => menu.type === 'directory' || menu.type === 'menu')).toBe(true);
     expect(menus.every((menu) => menu.featureKey === feature)).toBe(true);
   });
 

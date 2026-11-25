@@ -117,7 +117,6 @@ export async function replaceUserRoles(tx: DbExecutor, userId: number, roleIds: 
 export async function replaceRolePermissions(tx: DbExecutor, roleId: number, menuIds: readonly number[], permissionCodes: readonly string[], tenantId: number | null) {
   await assertAuthorityGrant(tx, { tenantId, permission: 'system:role:assign', beneficiaryIds: await roleBeneficiaries(tx, roleId), menuIds, permissionCodes });
   const rows = menuIds.length ? await tx.select({ id: menus.id, type: menus.type, permission: menus.permission }).from(menus).where(inArray(menus.id, [...menuIds])) : [];
-  if (rows.some(row => row.type === 'button')) throw new HTTPException(400, { message: '角色页面授权不能包含按钮节点' });
   const codes = [...new Set([...rows.flatMap(row => row.permission ? [row.permission] : []), ...permissionCodes])].sort();
   await tx.delete(roleMenus).where(eq(roleMenus.roleId, roleId));
   if (menuIds.length) await tx.insert(roleMenus).values([...new Set(menuIds)].map(menuId => ({ roleId, menuId })));
@@ -145,7 +144,6 @@ export async function publishRoleVersion(tx: DbExecutor, roleId: number, tenantI
 export async function replaceDirectPermissions(tx: DbExecutor, userId: number, menuIds: readonly number[], permissionCodes: readonly string[], tenantId: number | null) {
   await assertAuthorityGrant(tx, { tenantId, permission: 'system:user:assign', beneficiaryIds: [userId], menuIds, permissionCodes });
   const rows = menuIds.length ? await tx.select({ id: menus.id, type: menus.type, permission: menus.permission }).from(menus).where(inArray(menus.id, [...menuIds])) : [];
-  if (rows.some(row => row.type === 'button')) throw new HTTPException(400, { message: '用户页面授权不能包含按钮节点' });
   const codes = [...new Set([...rows.flatMap(row => row.permission ? [row.permission] : []), ...permissionCodes])];
   const existing = await tx.query.identityUserPermissions.findMany({ where: eq(identityUserPermissions.userId, userId) });
   const removed = existing.filter(item => !codes.includes(item.permissionCode)).map(item => item.id);

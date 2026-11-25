@@ -10,7 +10,7 @@ import { mockUsers } from '@/mocks/data/users';
 /** Demo 模式与服务端同源：直接从契约派生目录（mocks 只进 Demo 构建，不影响生产分包） */
 let cachedCatalog: ApiCatalog | null = null;
 
-/** 角色绑定的启用按钮菜单 → 权限码（与服务端 permissionsOfMenus 同口径，Demo 不区分套餐） */
+/** 角色绑定的页面读权限 + 显式操作权限（Demo 不区分套餐） */
 function permissionsOfMenuIds(menuIds: readonly number[]): string[] {
   const ids = new Set(menuIds);
   const codes = SEED_MENUS
@@ -28,24 +28,20 @@ function toRoleSet(role: typeof mockRoles[number]): RolePermissionSet {
     status: role.status,
     tenantId: null,
     superAdmin,
-    permissions: superAdmin ? [] : permissionsOfMenuIds(role.menuIds ?? []),
+    permissions: superAdmin ? [] : [...new Set([...(role.permissionCodes ?? []), ...permissionsOfMenuIds(role.menuIds ?? [])])].sort(),
   };
 }
 
 function buildPermissionCatalog(): PermissionCatalog {
   const pages = SEED_MENUS.filter(menu => menu.type === 'menu');
-  const pageById = new Map(pages.map(page => [page.id, page]));
-  const buttons = SEED_MENUS.filter(menu => menu.type === 'button');
+  const pageByName = new Map(pages.flatMap(page => page.name ? [[page.name, page] as const] : []));
   return {
     items: Object.entries(ALL_PERMISSIONS).map(([code, meta]) => {
       const page = pages.find(item => item.permission === code);
       if (page) return { code, label: meta.label, surface: 'page' as const, pageId: page.id, pageTitle: page.title, path: page.path ?? null, uiOnly: meta.uiOnly ?? false };
-      const button = buttons.find(item => item.permission === code);
-      if (button) {
-        const parent = pageById.get(button.parentId);
-        return { code, label: meta.label, surface: 'button' as const, pageId: parent?.id ?? null, pageTitle: parent?.title ?? null, path: parent?.path ?? null, uiOnly: meta.uiOnly ?? false };
-      }
-      return { code, label: meta.label, surface: 'api' as const, pageId: null, pageTitle: null, path: null, uiOnly: meta.uiOnly ?? false };
+      const menuNames = typeof meta.menu === 'string' ? [meta.menu] : meta.menu ?? [];
+      const boundPage = menuNames.map(name => pageByName.get(name)).find(Boolean);
+      return { code, label: meta.label, surface: boundPage ? 'operation' as const : 'api' as const, pageId: boundPage?.id ?? null, pageTitle: boundPage?.title ?? null, path: boundPage?.path ?? null, uiOnly: meta.uiOnly ?? false };
     }),
   };
 }

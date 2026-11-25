@@ -33,7 +33,7 @@ export const DEPARTMENT_CATEGORIES = ['group', 'company', 'department'] as const
 
 export type DepartmentCategory = (typeof DEPARTMENT_CATEGORIES)[number];
 
-export const MENU_TYPES = ['directory', 'menu', 'button'] as const;
+export const MENU_TYPES = ['directory', 'menu'] as const;
 
 export type MenuType = (typeof MENU_TYPES)[number];
 
@@ -133,7 +133,7 @@ export const IMPERSONATION_DURATION_OPTIONS = [1, 5, 10, 15, 30, 45, 60, 90, 120
 export const IMPERSONATION_REASON_PRESETS = [
   '用户反馈问题排查',
   '处理工单，复现用户问题',
-  '核对菜单与按钮权限',
+  '核对页面与接口权限',
   '核对页面数据异常',
   '排查流程审批卡点',
   '功能培训与演示',

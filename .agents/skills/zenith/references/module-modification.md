@@ -54,7 +54,7 @@
 
 1. 在契约中添加操作 `op.xxx(...)`（Step 4）：后台登录令牌操作必须声明 `access`（权限码 / `'authenticated'` / `platformOnly`），
    写操作声明 `audit`；新权限码先在 `shared/src/{业务域}/permissions.ts` 登记；页面读权限同步到
-   `seed/menus/page-permissions.ts`，操作权限由生成器创建按钮，纯 API 权限省略 `menu`
+   `seed/menus/page-permissions.ts`，操作权限只留在注册表/权限目录，纯 API 权限省略 `menu`
 2. 在路由文件中 `defineContractRoute(xxxContract.op, { handler })`（认证 / 权限 / 审计按契约自动装配，不写门禁中间件），
    加进 `mountCrud(...)` 的附加路由数组或 `router.openapiRoutes([...])`（Step 6）
 3. 在 service 中添加对应业务函数（Step 5）

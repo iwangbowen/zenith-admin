@@ -125,7 +125,7 @@ export function decorateNavItemsWithBadges(items: NavItem[], collapsed = false):
 }
 
 export function menuToNavItem(menu: Menu): NavItem | null {
-  if (!menu.visible || menu.type === 'button') return null;
+  if (!menu.visible) return null;
   const icon = getMenuIcon(menu.icon);
   if (menu.type === 'directory') {
     const children = (menu.children ?? [])
@@ -155,7 +155,7 @@ export function findNavItemAncestorKeys(items: NavItem[], targetKey: string): st
 export function findAncestorKeys(menuTree: Menu[], targetPath: string): string[] | null {
   function traverse(nodes: Menu[], ancestors: string[]): string[] | null {
     for (const node of nodes) {
-      if (!node.visible || node.type === 'button') continue;
+      if (!node.visible) continue;
       if (node.type === 'directory') {
         const key = node.name ?? `dir-${node.id}`;
         const found = traverse(node.children ?? [], [...ancestors, key]);
@@ -178,7 +178,7 @@ export interface BreadcrumbData {
 
 export function findFirstLeafPath(children: Menu[]): string | null {
   for (const child of children) {
-    if (!child.visible || child.type === 'button') continue;
+    if (!child.visible) continue;
     if (child.type === 'directory') {
       const leaf = findFirstLeafPath(child.children ?? []);
       if (leaf) return leaf;
@@ -192,7 +192,7 @@ export function findFirstLeafPath(children: Menu[]): string | null {
 export function findBreadcrumbs(menuTree: Menu[], targetPath: string): BreadcrumbData[] {
   function traverse(nodes: Menu[], ancestors: BreadcrumbData[]): BreadcrumbData[] | null {
     for (const node of nodes) {
-      if (!node.visible || node.type === 'button') continue;
+      if (!node.visible) continue;
       if (node.type === 'directory') {
         const found = traverse(node.children ?? [], [...ancestors, { title: node.title, icon: node.icon ?? undefined, menuChildren: node.children ?? [] }]);
         if (found !== null) return found;

@@ -7,7 +7,7 @@
 ## 挂载与鉴权
 
 - 标准 API 以**懒加载子 app** 形式挂载：首次访问才初始化，零冷启动成本；
-- 鉴权：上游系统 authMiddleware + `ai:studio:access` 权限门控（菜单「智能体」下的「Studio 接入」按钮权限）；
+- 鉴权：上游系统 authMiddleware + `ai:studio:access` 操作权限门控（绑定「智能体」页面）；
 - CORS：`/api/mastra/*` 单独反射 Origin 并允许凭据（Studio 请求携带 credentials）。
 
 | 环境变量 | 说明 |

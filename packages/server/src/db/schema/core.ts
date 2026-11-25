@@ -3,7 +3,7 @@ import type { TenantPackageQuotas } from '@zenith/shared/licensing';
 import type { UserGroupMemberRule } from '@zenith/shared/identity';
 import { timestampColumns, idColumn, statusColumn, sortColumn, remarkColumn, timestamptz } from './common';
 
-export const menuTypeEnum = pgEnum('menu_type', ['directory', 'menu', 'button']);
+export const menuTypeEnum = pgEnum('menu_type', ['directory', 'menu']);
 
 export const dataScopeEnum = pgEnum('data_scope', ['all', 'custom', 'dept_only', 'dept', 'self']);
 

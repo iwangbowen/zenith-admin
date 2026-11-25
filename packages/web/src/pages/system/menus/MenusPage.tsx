@@ -17,7 +17,7 @@ import DictTag from '@/components/DictTag';
 import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
 import { useDictItems } from '@/hooks/useDictItems';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { createdAtColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '../../../utils/table-columns';
+import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 import { menuKeys, useDeleteMenu, useMenuDetail, useMenuTree, useSaveMenu, type MenuFormValues } from '@/hooks/queries/menus';
 import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
@@ -30,13 +30,6 @@ interface SearchParams {
 }
 
 const defaultSearchParams: SearchParams = { keyword: '', status: undefined };
-
-/** 菜单管理只维护导航资源；操作权限是权限码，不是菜单按钮，统一在权限目录只读查看。 */
-function withoutButtonNodes(items: Menu[]): Menu[] {
-  return items.flatMap((item) => item.type === 'button'
-    ? []
-    : [{ ...item, children: item.children ? withoutButtonNodes(item.children) : undefined }]);
-}
 
 export default function MenusPage() {
   const { hasPermission } = usePermission();
@@ -58,7 +51,7 @@ export default function MenusPage() {
   const { items: menuVisibleItems } = useDictItems('menu_visible');
 
   const menuTreeQuery = useMenuTree();
-  const data = useMemo(() => withoutButtonNodes(menuTreeQuery.data ?? []), [menuTreeQuery.data]);
+  const data = useMemo(() => menuTreeQuery.data ?? [], [menuTreeQuery.data]);
   const saveMutation = useSaveMenu();
   const menuModal = useEditModal<Menu, Record<string, unknown>, MenuFormValues>({
     entityName: '菜单',
@@ -152,10 +145,9 @@ export default function MenusPage() {
 
   // Semi Table 原生支持 children 字段树形展示，无需手动 flatten
 
-  // 递归构建 TreeSelect 数据（过滤掉按钮类型）
+  // 递归构建 TreeSelect 数据
   function buildTreeSelectData(items: Menu[]): TreeNodeData[] {
     return items
-      .filter((m) => m.type !== 'button')
       .map((m) => ({
         label: m.title,
         value: m.id,
@@ -203,7 +195,8 @@ export default function MenusPage() {
       {
         key: 'child',
         label: '子项',
-        hidden: row.type === 'button' || !hasPermission('system:menu:create'),
+        // 只有目录承载下级页面；页面不再有按钮/子项入口。
+        hidden: row.type !== 'directory' || !hasPermission('system:menu:create'),
         onClick: () => openCreate(row.id),
       },
     ],
@@ -270,7 +263,7 @@ export default function MenusPage() {
       dataIndex: 'status',
       width: 80,
       fixed: 'right',
-      render: (_val: string, row: Menu) => row.type === 'button' ? EMPTY_PLACEHOLDER : status.renderSwitch(row),
+      render: (_val: string, row: Menu) => status.renderSwitch(row),
     },
     {
       title: '显示',
@@ -278,7 +271,7 @@ export default function MenusPage() {
       width: 80,
       align: 'center',
       fixed: 'right',
-      render: (val: boolean, row: Menu) => row.type === 'button' ? EMPTY_PLACEHOLDER : <DictTag dictCode="menu_visible" value={val ? 'show' : 'hidden'} />,
+      render: (val: boolean) => <DictTag dictCode="menu_visible" value={val ? 'show' : 'hidden'} />,
     },
     operationColumn,
   ];
@@ -347,7 +340,7 @@ export default function MenusPage() {
           onChange={(e) => setMenuType((e.target as HTMLInputElement).value)}
           type="button"
         >
-          {menuTypeItems.filter((i) => i.value !== 'button').map((i) => (
+          {menuTypeItems.map((i) => (
             <Radio key={i.value} value={i.value}>{i.label}</Radio>
           ))}
         </Form.RadioGroup>
@@ -369,13 +362,11 @@ export default function MenusPage() {
           <Col span={12}>
             <Form.Input field="title" label="菜单名称" placeholder="请输入菜单名称" rules={[{ required: true, message: '请输入菜单名称' }]} />
           </Col>
-          {menuType !== 'button' && (
-            <Col span={12}>
-              <Form.Slot label={{ text: '图标' }}>
-                <IconPicker value={iconValue} onChange={setIconValue} />
-              </Form.Slot>
-            </Col>
-          )}
+          <Col span={12}>
+            <Form.Slot label={{ text: '图标' }}>
+              <IconPicker value={iconValue} onChange={setIconValue} />
+            </Form.Slot>
+          </Col>
           {(menuType === 'menu' || menuType === 'directory') && (
             <Col span={12}>
               <Form.Input
@@ -460,15 +451,13 @@ export default function MenusPage() {
           <Col span={12}>
             <FormStatusRadioGroup type="button" rules={[{ required: true }]} />
           </Col>
-          {menuType !== 'button' && (
-            <Col span={12}>
-              <Form.RadioGroup field="visible" label="显示状态" type="button" rules={[{ required: true }]}>
-                {menuVisibleItems.map((i) => (
-                  <Radio key={i.value} value={i.value}>{i.label}</Radio>
-                ))}
-              </Form.RadioGroup>
-            </Col>
-          )}
+          <Col span={12}>
+            <Form.RadioGroup field="visible" label="显示状态" type="button" rules={[{ required: true }]}>
+              {menuVisibleItems.map((i) => (
+                <Radio key={i.value} value={i.value}>{i.label}</Radio>
+              ))}
+            </Form.RadioGroup>
+          </Col>
         </Row>
       </EditFormModal>
     </div>

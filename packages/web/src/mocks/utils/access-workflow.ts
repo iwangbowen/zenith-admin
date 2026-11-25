@@ -15,19 +15,39 @@ export const mockAccessGrants = new Map<number, AccessGrant>();
 export function mockAccessPolicy(code: string) { return effectiveAccessPolicy(accessPolicyBaseline(code, ALL_PERMISSIONS[code]), mockAccessPolicies.get(code)); }
 
 export function mockAccessOptions(): AccessWorkflowOptions {
+  const pages = mockMenus.filter(menu => menu.type === 'menu');
+  const pageByName = new Map(pages.flatMap(page => page.name ? [[page.name, page] as const] : []));
+  let permissionNodeId = -1;
+  const permissionNodes = Object.entries(ALL_PERMISSIONS).flatMap(([code, meta]) => {
+    const policy = mockAccessPolicy(code);
+    if (!policy.enabled) return [];
+    const menuNames = typeof meta.menu === 'string' ? [meta.menu] : meta.menu ?? [];
+    const page = menuNames.map(name => pageByName.get(name)).find(Boolean);
+    if (!page || page.permission === code) return [];
+    return [{
+      id: permissionNodeId--, parentId: page.id, name: null, title: meta.label, type: 'permission' as const, permission: code,
+      permissionLabel: meta.label, requestable: true, path: [page.title, meta.label],
+      riskLevel: policy.riskLevel, approvalPolicy: policy.approvalPolicy, maxDurationMinutes: policy.maxDurationMinutes,
+      mfaRequired: policy.mfaRequired, permanentAllowed: policy.permanentAllowed, emergencyAllowed: policy.emergencyAllowed,
+      maxEmergencyMinutes: policy.maxEmergencyMinutes,
+    }];
+  });
   return {
     roles: mockRoles.filter(role => !['super_admin', 'tenant_admin', 'security_admin'].includes(role.code) && (role.permissionCodes ?? []).length).map(role => ({
       id: role.id, name: role.name, code: role.code, dataScope: role.dataScope ?? 'self', version: role.permissionVersion ?? 1,
       permissionCount: (role.permissionCodes ?? []).length, permissionCodes: role.permissionCodes ?? [], menuIds: role.menuIds ?? [], ...aggregateAccessPolicies((role.permissionCodes ?? []).map(mockAccessPolicy)),
     })),
-    menus: mockMenus.map(menu => {
-      const policy = menu.permission && ALL_PERMISSIONS[menu.permission] ? mockAccessPolicy(menu.permission) : null;
-      return { id: menu.id, parentId: menu.parentId, name: menu.name, title: menu.title, type: menu.type, permission: menu.permission,
-        permissionLabel: menu.permission ? ALL_PERMISSIONS[menu.permission]?.label ?? menu.title : null,
-        requestable: policy?.enabled ?? false, path: [menu.title], riskLevel: policy?.riskLevel ?? 'low', approvalPolicy: policy?.approvalPolicy ?? 'none',
-        maxDurationMinutes: policy?.maxDurationMinutes ?? null, mfaRequired: policy?.mfaRequired ?? false,
-        permanentAllowed: policy?.permanentAllowed ?? false, emergencyAllowed: policy?.emergencyAllowed ?? false, maxEmergencyMinutes: policy?.maxEmergencyMinutes ?? 60 };
-    }),
+    menus: [
+      ...mockMenus.map(menu => {
+        const policy = menu.permission && ALL_PERMISSIONS[menu.permission] ? mockAccessPolicy(menu.permission) : null;
+        return { id: menu.id, parentId: menu.parentId, name: menu.name, title: menu.title, type: menu.type, permission: menu.permission,
+          permissionLabel: menu.permission ? ALL_PERMISSIONS[menu.permission]?.label ?? menu.title : null,
+          requestable: policy?.enabled ?? false, path: [menu.title], riskLevel: policy?.riskLevel ?? 'low', approvalPolicy: policy?.approvalPolicy ?? 'none',
+          maxDurationMinutes: policy?.maxDurationMinutes ?? null, mfaRequired: policy?.mfaRequired ?? false,
+          permanentAllowed: policy?.permanentAllowed ?? false, emergencyAllowed: policy?.emergencyAllowed ?? false, maxEmergencyMinutes: policy?.maxEmergencyMinutes ?? 60 };
+      }),
+      ...permissionNodes,
+    ],
   };
 }
 

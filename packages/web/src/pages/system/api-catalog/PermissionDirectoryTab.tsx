@@ -8,11 +8,11 @@ import { DESKTOP_PAGINATION_PROPS } from '@/hooks/usePagination';
 import { useListSearch } from '@/hooks/useListSearch';
 import { apiCatalogKeys, usePermissionCatalog } from '@/hooks/queries/permission-matrix';
 
-type Surface = 'page' | 'button' | 'api';
+type Surface = 'page' | 'operation' | 'api';
 type Item = NonNullable<ReturnType<typeof usePermissionCatalog>['data']>['items'][number];
 
-const SURFACE_LABELS: Record<Surface, string> = { page: '页面读', button: '操作', api: '仅接口' };
-const SURFACE_COLORS: Record<Surface, 'blue' | 'green' | 'grey'> = { page: 'blue', button: 'green', api: 'grey' };
+const SURFACE_LABELS: Record<Surface, string> = { page: '页面读', operation: '操作', api: '仅接口' };
+const SURFACE_COLORS: Record<Surface, 'blue' | 'green' | 'grey'> = { page: 'blue', operation: 'green', api: 'grey' };
 
 type PermissionFilters = { keyword: string; surface: Surface | undefined };
 const EMPTY_FILTERS: PermissionFilters = { keyword: '', surface: undefined };

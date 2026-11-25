@@ -65,8 +65,8 @@ integration('entity relations on isolated PostgreSQL', () => {
     taskReader = await createUser('taskreader', tenantA, []);
     foreignUser = await createUser('foreign', tenantB, []);
     const [userMenu, taskMenu] = await storage.db.insert(tables.menus).values([
-      { title: 'QA user access', name: `${runId}_users`, type: 'button', permission: 'system:user:list' },
-      { title: 'QA task access', name: `${runId}_tasks`, type: 'button', permission: 'system:async-task:list' },
+      { title: 'QA user access', name: `${runId}_users`, type: 'menu', permission: 'system:user:list' },
+      { title: 'QA task access', name: `${runId}_tasks`, type: 'menu', permission: 'system:async-task:list' },
     ]).returning({ id: tables.menus.id });
     menuIds.push(userMenu.id, taskMenu.id);
     await storage.db.insert(tables.identityUserPermissions).values([

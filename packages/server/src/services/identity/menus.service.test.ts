@@ -45,7 +45,7 @@ type MenuRow = {
   path: string | null;
   component: string | null;
   icon: string | null;
-  type: 'directory' | 'menu' | 'button';
+  type: 'directory' | 'menu';
   permission: string | null;
   query: string | null;
   isExternal: boolean;
@@ -97,7 +97,7 @@ function createSelectChain(result: unknown[]) {
 const rows: MenuRow[] = [
   menuRow({ id: 1000, parentId: 0, title: '系统管理', type: 'directory', status: 'disabled' }),
   menuRow({ id: 1010, parentId: 1000, title: '用户管理', path: '/system/users' }),
-  menuRow({ id: 1011, parentId: 1010, title: '查询', type: 'button', permission: 'user:list' }),
+  menuRow({ id: 1011, parentId: 1010, title: '用户详情', type: 'menu', path: '/users/detail', permission: 'user:list' }),
   menuRow({ id: 1020, parentId: 1000, title: '角色管理', path: '/system/roles', status: 'disabled' }),
   menuRow({ id: 2000, parentId: 0, title: '系统设置', type: 'directory' }),
   menuRow({ id: 2010, parentId: 2000, title: '字典管理', path: '/settings/dicts' }),

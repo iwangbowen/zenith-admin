@@ -3,7 +3,6 @@ import { Col, Form, Modal, Row, Space, Tag, Toast, Typography } from '@douyinfe/
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Info } from 'lucide-react';
 import { MASK_TYPES, MASK_TYPE_LABELS, MASK_TYPE_OPTIONS, enumValueOf, previewMask, type CustomMaskRule, type MaskType } from '@zenith/shared/core';
-import type { Menu } from '@zenith/shared/identity';
 import { DATA_MASK_BYPASS_PERMISSION, type DataMaskField, type SaveDataMaskPolicyInput } from '@zenith/shared/platform';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
@@ -11,7 +10,7 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
 
 import { dataMaskKeys, useDataMaskFields, useResetDataMaskPolicy, useSaveDataMaskPolicy } from '@/hooks/queries/data-mask';
-import { useMenuTree } from '@/hooks/queries/menus';
+import { usePermissionCatalog } from '@/hooks/queries/permission-matrix';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
@@ -65,21 +64,6 @@ function customRuleOf(values: Pick<FormValues, 'maskType' | 'prefixKeep' | 'suff
   return { prefixKeep: values.prefixKeep ?? 3, suffixKeep: values.suffixKeep ?? 4, maskChar: values.maskChar?.trim() || '*' };
 }
 
-/** 菜单树里的全部按钮权限码：作为豁免权限的选项来源（label 带所属页面便于辨认） */
-function collectPermissionOptions(tree: Menu[] | undefined): { value: string; label: string }[] {
-  const out = new Map<string, string>();
-  const walk = (nodes: Menu[], parents: string[]) => {
-    for (const node of nodes) {
-      if (node.permission && !out.has(node.permission)) {
-        out.set(node.permission, `${[...parents.slice(-1), node.title].join(' / ')}（${node.permission}）`);
-      }
-      if (node.children?.length) walk(node.children, [...parents, node.title]);
-    }
-  };
-  walk(tree ?? [], []);
-  return [...out.entries()].map(([value, label]) => ({ value, label })).sort((a, b) => a.value.localeCompare(b.value));
-}
-
 export default function DataMaskPage() {
   const { hasPermission } = usePermission();
   const canUpdate = hasPermission('system:data-mask:update');
@@ -103,7 +87,10 @@ export default function DataMaskPage() {
     const entities = Array.from(new Set((listQuery.data ?? []).map((item) => item.entity))).sort();
     return entities.map((value) => ({ value, label: value }));
   }, [listQuery.data]);
-  const permissionOptions = collectPermissionOptions(useMenuTree().data);
+  const permissionCatalogQuery = usePermissionCatalog();
+  const permissionOptions = useMemo(() => (permissionCatalogQuery.data?.items ?? [])
+    .map(item => ({ value: item.code, label: `${item.pageTitle ? `${item.pageTitle} / ` : ''}${item.label}（${item.code}）` }))
+    .sort((a, b) => a.value.localeCompare(b.value)), [permissionCatalogQuery.data?.items]);
 
   const saveMutation = useSaveDataMaskPolicy();
   const resetMutation = useResetDataMaskPolicy();
@@ -300,7 +287,7 @@ export default function DataMaskPage() {
           maxTagCount={2} showRestTagsPopover
           optionList={permissionOptions}
           placeholder={`拥有任一权限即看到明文；平台超管无需配置。推荐 ${DATA_MASK_BYPASS_PERMISSION}`}
-          extraText="按钮权限码来自菜单管理；也可输入自定义权限码"
+          extraText="权限码来自权限目录；也可输入自定义权限码"
         />
         <Form.Switch field="enabled" label="启用脱敏" />
         <Form.TextArea field="remark" label="备注" maxCount={256} rows={2} />

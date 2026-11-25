@@ -39,7 +39,7 @@ export function useBreadcrumbData(menuTree: Menu[], pathname: string, breadcrumb
       // 找到首页菜单的图标（findBreadcrumbs 不包含首页）
       const findHomeIcon = (nodes: Menu[]): string | undefined => {
         for (const node of nodes) {
-          if (!node.visible || node.type === 'button') continue;
+          if (!node.visible) continue;
           if (node.type === 'directory' && node.children?.length) {
             const icon = findHomeIcon(node.children);
             if (icon) return icon;

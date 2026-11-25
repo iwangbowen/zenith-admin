@@ -22,7 +22,7 @@ import { MARKETING_PERMISSIONS } from './marketing/permissions';
 import { SHORT_LINK_PERMISSIONS } from './short-link/permissions';
 import type { PermissionMeta } from './core/permissions';
 
-/** 按域分组的全部权限码注册表（顺序即种子按钮生成顺序） */
+/** 按域分组的全部权限码注册表（顺序即权限目录展示顺序） */
 export const PERMISSION_REGISTRY_BY_DOMAIN = {
   'identity': IDENTITY_PERMISSIONS,
   'platform': PLATFORM_PERMISSIONS,

@@ -306,3 +306,56 @@ BEGIN
     END;
   END IF;
 END $$;
+--> statement-breakpoint
+
+-- Workflow 生命周期账本触发器（原 0010 custom migration）
+CREATE OR REPLACE FUNCTION public.workflow_record_instance_lifecycle()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+DECLARE ts timestamptz := clock_timestamp(); starting boolean; terminal boolean;
+BEGIN
+  starting := (TG_OP = 'INSERT' AND NEW.status <> 'draft') OR (TG_OP = 'UPDATE' AND OLD.status IN ('draft','returned') AND NEW.status = 'running');
+  terminal := NEW.status IN ('approved','rejected','withdrawn','cancelled');
+  IF starting THEN
+    NEW.cycle := CASE WHEN TG_OP = 'INSERT' THEN 1 ELSE OLD.cycle + 1 END;
+    NEW.submitted_at := coalesce(NEW.submitted_at, ts);
+    NEW.completed_at := NULL; NEW.outcome_reason := NULL;
+  END IF;
+  IF terminal AND (TG_OP = 'INSERT' OR OLD.status IS DISTINCT FROM NEW.status) THEN
+    NEW.completed_at := ts;
+    NEW.outcome_reason := coalesce(NEW.outcome_reason, CASE NEW.status WHEN 'approved' THEN 'business_approved' WHEN 'rejected' THEN 'business_rejected' ELSE NEW.status::text END);
+  ELSIF TG_OP = 'UPDATE' AND OLD.status = 'returned' AND NEW.status = 'running' THEN
+    NEW.completed_at := NULL; NEW.outcome_reason := NULL;
+  END IF;
+  RETURN NEW;
+END $function$;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION public.workflow_append_instance_lifecycle()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+DECLARE changed boolean; ts timestamptz := clock_timestamp(); previous workflow_instance_status;
+BEGIN
+  changed := TG_OP = 'INSERT' OR OLD.status IS DISTINCT FROM NEW.status;
+  IF NOT changed THEN RETURN NULL; END IF;
+  IF TG_OP = 'UPDATE' THEN previous := OLD.status; END IF;
+  INSERT INTO workflow_instance_transitions(instance_id,cycle,from_status,to_status,occurred_at,actor_id,tenant_id) VALUES(NEW.id,NEW.cycle,previous,NEW.status,ts,NEW.updated_by,NEW.tenant_id);
+  IF NEW.cycle > 0 THEN
+    INSERT INTO workflow_instance_cycles(instance_id,cycle,submitted_at,tenant_id) VALUES(NEW.id,NEW.cycle,NEW.submitted_at,NEW.tenant_id) ON CONFLICT DO NOTHING;
+    IF NEW.status IN ('approved','rejected','withdrawn','cancelled','returned') THEN
+      UPDATE workflow_instance_cycles SET completed_at=ts,outcome=NEW.status::text,outcome_reason=NEW.outcome_reason WHERE instance_id=NEW.id AND cycle=NEW.cycle AND completed_at IS NULL;
+    END IF;
+  END IF;
+  RETURN NULL;
+END $function$;
+--> statement-breakpoint
+CREATE TRIGGER workflow_instance_lifecycle_before BEFORE INSERT OR UPDATE OF status ON workflow_instances FOR EACH ROW EXECUTE FUNCTION workflow_record_instance_lifecycle();
+--> statement-breakpoint
+CREATE TRIGGER workflow_instance_lifecycle_after AFTER INSERT OR UPDATE OF status ON workflow_instances FOR EACH ROW EXECUTE FUNCTION workflow_append_instance_lifecycle();
+--> statement-breakpoint
+
+-- 授权 grant 菜单缓存失效触发器（原 0024 custom migration）
+CREATE TRIGGER identity_access_grant_menus_cache_invalidate
+  AFTER INSERT OR UPDATE OR DELETE ON "identity_access_grant_menus"
+  FOR EACH ROW EXECUTE FUNCTION notify_cache_invalidate('grant_id');

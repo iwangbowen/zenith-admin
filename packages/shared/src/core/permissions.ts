@@ -1,23 +1,19 @@
 /**
  * 各域 `permissions.ts` 经 `definePermissions()` 声明权限，聚合于 `@zenith/shared/permissions`。
  * 此处仅导入聚合表类型，推导完整的 `Permission` 联合，不引入 core → 业务域的运行时依赖。
- * 注册表生成种子 button，并以 `Permission` 约束契约 access 及前后端权限检查。
+ * 注册表只声明操作权限，不生成任何菜单节点；以 `Permission` 约束契约 access 及前后端权限检查。
  */
 import type { PERMISSION_REGISTRY_BY_DOMAIN } from '../permissions';
 
 export interface PermissionMeta {
-  /** 按钮标题（角色管理菜单树 / 权限矩阵展示） */
+  /** 权限名称（权限目录 / 授权界面展示） */
   readonly label: string;
   /**
    * 所属页面菜单的 `name`（`SEED_MENUS` 中 type 为 menu 的行）；同一权限挂多个页面时传数组。
-   * 页面读权限仍填写所属页面，但生成器会把它写入页面节点而不是生成按钮。
+   * 页面读权限仍填写所属页面，生成器会把它写入页面节点；操作权限只留在注册表，不生成菜单节点。
    * 无页面的纯 API 权限省略该字段，只存在于权限目录。
    */
   readonly menu?: string | readonly string[];
-  /** 覆盖生成的 button id（缺省 = 页面 id + 1 + 在该页面的序号）；与 `menu` 数组一一对应 */
-  readonly id?: number | readonly (number | undefined)[];
-  /** 覆盖生成的排序值（缺省 = 在该页面的序号）；与 `menu` 数组一一对应 */
-  readonly sort?: number | readonly (number | undefined)[];
   /** 服务端没有任何接口检查该码：纯前端门控，或待清理的死权限 */
   readonly uiOnly?: boolean;
   /** 权限治理默认风险等级；未声明时按 low 处理 */

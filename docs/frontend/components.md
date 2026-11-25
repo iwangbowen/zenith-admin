@@ -273,7 +273,7 @@ const operationColumn = createOperationColumn<User>({
 | 组件 | 用途 |
 | --- | --- |
 | `permissions/MenuPermissionPanel` | 页面访问树面板；`pagesOnly` 用于只选择导航页面 |
-| `permissions/CapabilityPanel` | 接口权限面板：页面读 / 按钮操作 / API-only 权限码；`onlySelected` 用于只读有效权限 |
+| `permissions/CapabilityPanel` | 接口权限面板：页面读 / 操作权限 / API-only 权限码；`onlySelected` 用于只读有效权限 |
 | `permissions/EffectivePermissionsPanel` | 最终有效权限双栏预览：页面权限树 + 接口权限列表，独立滚动与来源摘要 |
 | `permissions/DataScopePanel` | 数据权限范围面板 |
 | `logs/LoginLogsTable` | 登录日志表格 |

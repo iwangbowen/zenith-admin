@@ -86,7 +86,7 @@ export type UserPermissionSet = z.infer<typeof userPermissionSetSchema>;
 export const permissionCatalogItemSchema = z.object({
   code: z.string(),
   label: z.string(),
-  surface: z.enum(['page', 'button', 'api']).meta({ description: 'page 页面读权限 / button 操作权限 / api 仅接口权限' }),
+  surface: z.enum(['page', 'operation', 'api']).meta({ description: 'page 页面读权限 / operation 操作权限 / api 仅接口权限' }),
   pageId: z.int().nullable(),
   pageTitle: z.string().nullable(),
   path: z.string().nullable(),
@@ -103,7 +103,7 @@ export const permissionCatalogContract = defineContract('/api/api-catalog', {
   /** 操作名必须与 apiCatalogContract.get 区分：前端 query key 使用「契约资源 + 操作名」。 */
   directory: op.get('/permissions', {
     // 授权界面需要读取能力目录：目录查看者、角色授权者、用户授权者均可读。
-    access: { permission: ['system:access-catalog:view', 'system:role:assign', 'system:user:assign'] },
+    access: { permission: ['system:access-catalog:view', 'system:role:assign', 'system:user:assign', 'system:data-mask:list', 'system:data-mask:update'] },
     response: permissionCatalogSchema,
     summary: '权限目录：能力形态、绑定页面、API-only 权限',
   }),

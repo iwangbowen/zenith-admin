@@ -68,7 +68,7 @@
 4. `index.ts` 导出模块文件；`npm run test -w @zenith/shared` 会跑 `validateSettingsRegistry()`（默认值幂等、路径唯一、可见性字段存在、敏感字段名）
 5. 服务端 `routes/platform/settings.ts` 循环注册表，**无需改路由**；`app.contract.test.ts` 快照需 `-u` 重新生成
 6. 只有需要专用页面（表单结构复杂、带联动 / 预览）才写页面并在模块声明 `page: '/xxx/settings'`；否则通用设置页直接可用
-7. 使用域专属权限码（如 `drive:setting:view`）时在该域菜单种子下挂对应按钮；用通用 `system:setting:*` 则无需加菜单
+7. 使用域专属权限码（如 `drive:setting:view`）时在注册表中绑定所属页面；用通用 `system:setting:*` 则无需新增菜单
 
 ## C. 服务端读取规则
 

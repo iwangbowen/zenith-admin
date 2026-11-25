@@ -11,7 +11,7 @@
 | 服务层 | `packages\server\src\services\identity` | 认证、权限解析、组织管理、用户管理、企业身份源、通讯录同步、租户生命周期 |
 | HTTP 路由 | `packages\server\src\routes\identity` | `/api/auth`、`/api/users`、`/api/roles` 等管理端 API |
 | 前端页面 | `packages\web\src\pages\users`、`packages\web\src\pages\system` | 用户、组织、角色、菜单、租户、安全策略、身份源、同步源、在线会话等页面 |
-| 种子 | `packages\shared\src\seed\menus\system.ts`、`settings.ts`、`identity.ts` | 系统菜单、按钮权限、内置角色/组织/用户等初始数据 |
+| 种子 | `packages\shared\src\seed\menus\system.ts`、`settings.ts`、`identity.ts` | 系统目录/页面、操作权限绑定、内置角色/组织/用户等初始数据 |
 
 个人资料与私有签名的操作、版本及证据规则见[个人中心与我的签名](./profile.md)。
 
@@ -23,7 +23,7 @@
 | --- | --- |
 | `users` | 管理端用户；用户名、昵称、邮箱、手机号、部门、租户、状态、偏好、收藏菜单、用户级数据权限、密码更新时间、最近登录时间 |
 | `roles` | 角色；包含 `code`、`status`、`dataScope`、`tenantId` |
-| `menus` | 菜单/按钮树；`type` 为 `directory`、`menu`、`button`。页面节点承载导航和读权限，按钮节点只承载操作权限，目录不携带权限；`featureKey` 参与套餐/License 功能过滤 |
+| `menus` | 目录 / 页面树；`type` 为 `directory`、`menu`。页面节点承载导航和读权限，目录只分组，不携带权限；`featureKey` 参与套餐/License 功能过滤 |
 | `user_roles` | 用户直接角色 |
 | `role_menus` | 角色页面访问授权 |
 | `user_menus` | 用户直接页面访问授权 |
@@ -40,7 +40,7 @@
 
 1. 读取用户直接角色、用户直接页面、用户组继承角色、直接权限码和审批授权页面/权限。
 2. 仅启用角色与启用菜单参与授权；页面导航只来自显式页面授权，权限码不反推页面。
-3. 页面授权自动把页面节点的读权限并入 `permissions`；操作权限“`button`”不产生导航。
+3. 页面授权自动把页面节点的读权限并入 `permissions`；操作权限不产生导航。
 4. 多租户模式下，菜单 `featureKey` 与租户套餐功能集取交集；`featureKey = null` 的核心菜单保留。
 5. 输出去重后的 `permissions` 与 `menuIds`；缺失读权限的页面不注册，操作权限可以为 API-only。
 6. 结果以 Redis 键 `{prefix}perm:{userId}` 缓存 300 秒，Redis 不可用时退化为进程内缓存。
@@ -48,7 +48,7 @@
 
 平台超管判定必须同时满足角色 code 为 `super_admin` 且角色 `tenantId` 为 `null`，避免租户自建同名角色获得平台级权限。
 
-### 菜单与按钮权限
+### 页面与权限
 
 菜单树由 `menus` 表持久化，初始项来自 `packages\shared\src\seed\menus`。当前 IAM 相关入口：
 
@@ -71,13 +71,13 @@
 
 `GET /api/menus/user` 返回当前用户可见菜单。后台菜单管理的写操作在多租户模式下还经过 `platformAdminOnly`，即只有平台管理员可维护全局菜单。
 
-### 页面、按钮与 API-only 权限
+### 页面与 API-only 权限
 
 - **页面节点**：`type = menu`，`permission` 是页面最小读权限；页面授权自动携带该权限，页面读权限也可以单独授予形成 API-only。
-- **按钮节点**：`type = button` 是操作权限码的内部挂载锚点，**不是菜单管理中的导航资源**；菜单管理页面只展示目录与页面。按钮节点不产生页面，也不能带出页面。
 - **目录节点**：`type = directory`，只做分组，不允许携带权限码。
+- **操作权限**：只存在于各域 `permissions.ts` 注册表和权限目录；不生成菜单节点，也不在菜单管理中出现。
 - **权限目录**：权限码由代码注册表和 `ALL_PERMISSIONS` 提供；没有页面的纯 API 权限省略 `menu`，只出现在权限目录。
-- **页面读权限映射**：`packages/shared/src/seed/menus/page-permissions.ts` 的 `PAGE_READ_PERMISSION_BY_NAME` 声明页面 → 读权限；生成器写入页面节点并跳过同名查询按钮。
+- **页面读权限映射**：`packages/shared/src/seed/menus/page-permissions.ts` 的 `PAGE_READ_PERMISSION_BY_NAME` 声明页面 → 读权限；生成器写入页面节点。
 - **授权入口**：角色/用户授权分为「页面访问」与「接口权限」；审批申请同时写入页面项和权限项，运行时零推导。
 
 ## 数据权限
@@ -329,7 +329,7 @@ MFA 当前落库类型包括 `totp`、`passkey`、`recovery_code`，接口实现
 
 ## 维护要求
 
-- 权限码以各域 `permissions.ts` 注册表为唯一来源；菜单/按钮由 `packages\shared\src\seed\menus` 和
+- 权限码以各域 `permissions.ts` 注册表为唯一来源；目录/页面由 `packages\shared\src\seed\menus` 和
   `page-permissions.ts` 生成，页面读权限与操作权限不再重复授权。
 - 权限/数据权限行为以 `permissions.ts`、`data-scope.ts`、`user-group-access.ts` 为准。
 - 企业身份源与通讯录同步的字段、枚举、API 以 `packages\shared\src\identity` 与对应路由为准。

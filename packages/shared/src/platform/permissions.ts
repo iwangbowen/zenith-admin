@@ -1,8 +1,8 @@
 import { definePermissions } from '../core/permissions';
 
 /**
- * platform 域权限码注册表：code → 按钮标题 / 所属页面（菜单 name）。
- * 种子 button 节点由此生成（@zenith/shared/seed），契约操作 / 路由门禁 / 前端按钮以 `Permission` 类型引用。
+ * platform 域权限码注册表：code → 权限标题 / 所属页面（菜单 name）。
+ * 操作权限只存在于本注册表；契约操作 / 路由门禁 / 前端按钮以 `Permission` 类型引用。
  * `uiOnly` = 服务端没有任何接口检查该码（纯前端门控或待清理）。
  */
 export const PLATFORM_PERMISSIONS = definePermissions({
@@ -22,11 +22,11 @@ export const PLATFORM_PERMISSIONS = definePermissions({
   'system:dict:item': { label: '管理字典项', menu: 'SystemDicts' },
   'system:license:view': { label: '查询', menu: 'SystemLicense' },
   'system:license:manage': { label: '激活/停用', menu: 'SystemLicense' },
-  'system:region:list': { label: '查询', menu: 'SystemRegions', id: 1101, sort: 0 },
-  'system:region:create': { label: '新增地区', menu: 'SystemRegions', id: 1102, sort: 1 },
-  'system:region:update': { label: '编辑地区', menu: 'SystemRegions', id: 1103, sort: 2 },
-  'system:region:delete': { label: '删除地区', menu: 'SystemRegions', id: 1104, sort: 3 },
-  'system:region:export': { label: '导出地区', menu: 'SystemRegions', id: 1105, sort: 4 },
+  'system:region:list': { label: '查询', menu: 'SystemRegions' },
+  'system:region:create': { label: '新增地区', menu: 'SystemRegions' },
+  'system:region:update': { label: '编辑地区', menu: 'SystemRegions' },
+  'system:region:delete': { label: '删除地区', menu: 'SystemRegions' },
+  'system:region:export': { label: '导出地区', menu: 'SystemRegions' },
   'system:file:list': { label: '查询', menu: 'SystemFileList' },
   'system:file:config': { label: '查询', menu: 'SystemFileConfigs' },
   'system:file:config:create': { label: '新增配置', menu: 'SystemFileConfigs' },
@@ -64,10 +64,10 @@ export const PLATFORM_PERMISSIONS = definePermissions({
   'system:rate-limit:manage': { label: '管理规则', menu: 'SystemRateLimit' },
   'system:rate-limit:ban': { label: '临时封禁与解除', menu: 'SystemRateLimit' },
   'system:rate-limit:reset': { label: '清除额度与统计', menu: 'SystemRateLimit' },
-  'system:data-mask:list': { label: '查询', menu: 'SystemDataMask', id: 2391, sort: 0 },
-  'system:data-mask:update': { label: '编辑策略', menu: 'SystemDataMask', id: 2393, sort: 1 },
-  'system:data-mask:reveal': { label: '按需查看明文', menu: 'SystemDataMask', id: 2396, sort: 3, riskLevel: 'critical', approvalPolicy: 'two_person', reviewIntervalDays: 30 },
-  'system:data-mask:bypass': { label: '免脱敏查看', menu: 'SystemDataMask', id: 2395, sort: 2, riskLevel: 'critical', approvalPolicy: 'two_person', reviewIntervalDays: 30 },
+  'system:data-mask:list': { label: '查询', menu: 'SystemDataMask' },
+  'system:data-mask:update': { label: '编辑策略', menu: 'SystemDataMask' },
+  'system:data-mask:reveal': { label: '按需查看明文', menu: 'SystemDataMask', riskLevel: 'critical', approvalPolicy: 'two_person', reviewIntervalDays: 30 },
+  'system:data-mask:bypass': { label: '免脱敏查看', menu: 'SystemDataMask', riskLevel: 'critical', approvalPolicy: 'two_person', reviewIntervalDays: 30 },
   'system:setting:view': { label: '查看设置', menu: 'SystemSettingsCenter' },
   'system:setting:update': { label: '修改设置', menu: 'SystemSettingsCenter', riskLevel: 'critical', approvalPolicy: 'two_person', selfRequestable: false },
   'alert:overview:list': { label: '查询', menu: 'AlertOverview' },

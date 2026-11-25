@@ -166,7 +166,7 @@ export const reportChatbiHandlers = [
       : 'SELECT type, COUNT(*) AS item_count FROM menus GROUP BY type ORDER BY item_count DESC LIMIT 100';
     const resultSample = asksDepartment
       ? [{ name: '研发部', user_count: 28 }, { name: '产品部', user_count: 16 }]
-      : [{ type: 'menu', item_count: 24 }, { type: 'button', item_count: 53 }];
+      : [{ type: 'directory', item_count: 33 }, { type: 'menu', item_count: 265 }];
     const assistant = addMessage({
       sessionId: session.id,
       userId: DEMO_USER_ID,

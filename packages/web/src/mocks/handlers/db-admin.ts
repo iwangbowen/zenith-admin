@@ -66,7 +66,7 @@ const menusRows: DbAdminRow[] = Array.from({ length: 18 }, (_, i) => ({
   title: `菜单${i + 1}`,
   name: `Menu${i + 1}`,
   path: `/module-${i + 1}`,
-  type: i < 4 ? 'directory' : (i % 3 === 0 ? 'button' : 'menu'),
+  type: i < 4 ? 'directory' : 'menu',
   permission: i % 3 === 0 ? `system:module${i + 1}:view` : null,
   sort: i + 1,
   status: 'enabled',
@@ -702,7 +702,7 @@ export const dbAdminHandlers = [
       ],
       enums: [
         { schema: 'public', name: 'status', values: ['enabled', 'disabled'] },
-        { schema: 'public', name: 'menu_type', values: ['directory', 'menu', 'button'] },
+        { schema: 'public', name: 'menu_type', values: ['directory', 'menu'] },
         { schema: 'public', name: 'data_scope', values: ['all', 'custom', 'dept_only', 'dept', 'self'] },
       ],
       extensions: [

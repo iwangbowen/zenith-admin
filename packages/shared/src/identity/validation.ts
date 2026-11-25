@@ -139,7 +139,7 @@ export const createMenuSchema = z.object({
   path: z.string().max(256).optional(),
   component: z.string().max(256).optional(),
   icon: z.string().max(64).optional(),
-  type: z.enum(['directory', 'menu', 'button']).default('menu'),
+  type: z.enum(['directory', 'menu']).default('menu'),
   permission: z.string().max(128).optional(),
   query: z.string().max(512).nullish(),
   isExternal: z.boolean().default(false),

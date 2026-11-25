@@ -2,13 +2,17 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;--> statement-breakpoint
 CREATE TYPE "public"."push_provider" AS ENUM('jpush');--> statement-breakpoint
 CREATE TYPE "public"."status" AS ENUM('enabled', 'disabled');--> statement-breakpoint
 CREATE TYPE "public"."data_scope" AS ENUM('all', 'custom', 'dept_only', 'dept', 'self');--> statement-breakpoint
-CREATE TYPE "public"."menu_type" AS ENUM('directory', 'menu', 'button');--> statement-breakpoint
+CREATE TYPE "public"."menu_type" AS ENUM('directory', 'menu');--> statement-breakpoint
+CREATE TYPE "public"."azure_cloud" AS ENUM('public', 'china', 'us-government');--> statement-breakpoint
 CREATE TYPE "public"."business_type" AS ENUM('announcement', 'wiki_doc');--> statement-breakpoint
+CREATE TYPE "public"."file_access_strategy" AS ENUM('proxy', 'presigned', 'public-object', 'public-bucket', 'public-domain');--> statement-breakpoint
+CREATE TYPE "public"."file_bucket_acl" AS ENUM('private', 'public-read', 'public-read-write');--> statement-breakpoint
 CREATE TYPE "public"."file_gc_state" AS ENUM('live', 'orphan', 'deleting');--> statement-breakpoint
 CREATE TYPE "public"."file_object_acl" AS ENUM('default', 'private', 'public-read', 'public-read-write');--> statement-breakpoint
 CREATE TYPE "public"."file_storage_provider" AS ENUM('local', 'oss', 's3', 'cos', 'obs', 'kodo', 'bos', 'azure', 'sftp');--> statement-breakpoint
-CREATE TYPE "public"."file_url_strategy" AS ENUM('proxy', 'public', 'presigned');--> statement-breakpoint
+CREATE TYPE "public"."file_upload_mode" AS ENUM('server-proxy', 'browser-direct');--> statement-breakpoint
 CREATE TYPE "public"."file_visibility" AS ENUM('public', 'restricted');--> statement-breakpoint
+CREATE TYPE "public"."managed_file_origin" AS ENUM('upload', 'storage-register');--> statement-breakpoint
 CREATE TYPE "public"."upload_session_status" AS ENUM('uploading', 'completing', 'completed', 'aborted');--> statement-breakpoint
 CREATE TYPE "public"."mask_type" AS ENUM('phone', 'email', 'id_card', 'name', 'bank_card', 'address', 'redact', 'custom');--> statement-breakpoint
 CREATE TYPE "public"."async_task_item_status" AS ENUM('pending', 'success', 'failed', 'skipped');--> statement-breakpoint
@@ -72,6 +76,7 @@ CREATE TYPE "public"."frontend_error_type" AS ENUM('js_error', 'promise_rejectio
 CREATE TYPE "public"."replay_mode" AS ENUM('buffer', 'stream');--> statement-breakpoint
 CREATE TYPE "public"."replay_status" AS ENUM('recording', 'completed', 'expired');--> statement-breakpoint
 CREATE TYPE "public"."user_behavior_event_type" AS ENUM('page_view', 'page_leave', 'feature_use', 'area_click', 'custom', 'perf', 'api_request', 'identify');--> statement-breakpoint
+CREATE TYPE "public"."workflow_activation_kind" AS ENUM('approval', 'system', 'repair', 'cc');--> statement-breakpoint
 CREATE TYPE "public"."workflow_approval_activation_status" AS ENUM('active', 'approved', 'rejected', 'cancelled');--> statement-breakpoint
 CREATE TYPE "public"."workflow_approval_slot_origin" AS ENUM('base', 'addSign');--> statement-breakpoint
 CREATE TYPE "public"."workflow_approval_slot_status" AS ENUM('pending', 'approved', 'rejected', 'cancelled');--> statement-breakpoint
@@ -81,6 +86,7 @@ CREATE TYPE "public"."workflow_connector_invocation_source" AS ENUM('test', 'tri
 CREATE TYPE "public"."workflow_connector_type" AS ENUM('http', 'webhook', 'mock', 'email', 'sms', 'wecom', 'dingtalk', 'feishu', 'mq', 'database');--> statement-breakpoint
 CREATE TYPE "public"."workflow_definition_status" AS ENUM('draft', 'published', 'disabled');--> statement-breakpoint
 CREATE TYPE "public"."workflow_event_sign_mode" AS ENUM('hmacSha256', 'none');--> statement-breakpoint
+CREATE TYPE "public"."workflow_external_effect_status" AS ENUM('not_started', 'rejected_before_send', 'sent_unknown', 'confirmed_success', 'confirmed_failure');--> statement-breakpoint
 CREATE TYPE "public"."workflow_form_type" AS ENUM('designer', 'custom', 'external');--> statement-breakpoint
 CREATE TYPE "public"."workflow_instance_status" AS ENUM('draft', 'running', 'suspended', 'returned', 'approved', 'rejected', 'withdrawn', 'cancelled');--> statement-breakpoint
 CREATE TYPE "public"."workflow_job_execution_status" AS ENUM('running', 'succeeded', 'failed', 'skipped', 'canceled');--> statement-breakpoint
@@ -137,6 +143,7 @@ CREATE TYPE "public"."payment_deduct_period" AS ENUM('daily', 'weekly', 'monthly
 CREATE TYPE "public"."payment_dispute_reply_author" AS ENUM('merchant', 'user', 'system');--> statement-breakpoint
 CREATE TYPE "public"."payment_dispute_status" AS ENUM('pending', 'processing', 'resolved', 'refunded');--> statement-breakpoint
 CREATE TYPE "public"."payment_dispute_type" AS ENUM('refund_request', 'service_issue', 'fraud_report', 'other');--> statement-breakpoint
+CREATE TYPE "public"."payment_exception_status" AS ENUM('open', 'resolved', 'ignored');--> statement-breakpoint
 CREATE TYPE "public"."payment_fund_reservation_status" AS ENUM('active', 'captured', 'released', 'expired');--> statement-breakpoint
 CREATE TYPE "public"."payment_ledger_account_code" AS ENUM('provider_clearing', 'merchant_pending', 'merchant_available', 'merchant_frozen', 'platform_fee', 'refund_payable', 'sharing_payable', 'payout_payable', 'suspense');--> statement-breakpoint
 CREATE TYPE "public"."payment_ledger_normal_balance" AS ENUM('debit', 'credit');--> statement-breakpoint
@@ -611,7 +618,15 @@ CREATE TABLE "file_storage_configs" (
 	"is_default" boolean DEFAULT false NOT NULL,
 	"base_path" varchar(256),
 	"object_acl" "file_object_acl" DEFAULT 'default' NOT NULL,
-	"url_strategy" "file_url_strategy" DEFAULT 'proxy' NOT NULL,
+	"access_strategy" "file_access_strategy" DEFAULT 'proxy' NOT NULL,
+	"upload_mode" "file_upload_mode" DEFAULT 'server-proxy' NOT NULL,
+	"bucket_acl" "file_bucket_acl",
+	"bucket_block_public_access" boolean,
+	"bucket_policy_public" boolean,
+	"bucket_public_status" boolean,
+	"bucket_account_block_public_access" boolean,
+	"bucket_access_checked_at" timestamp with time zone,
+	"bucket_access_error" text,
 	"public_base_url" varchar(512),
 	"presigned_expiry_seconds" integer DEFAULT 1800 NOT NULL,
 	"local_root_path" varchar(512),
@@ -626,6 +641,7 @@ CREATE TABLE "file_storage_configs" (
 	"s3_access_key_id" varchar(128),
 	"s3_secret_access_key" varchar(256),
 	"s3_force_path_style" boolean DEFAULT false,
+	"s3_account_id" varchar(32),
 	"cos_region" varchar(64),
 	"cos_bucket" varchar(128),
 	"cos_secret_id" varchar(128),
@@ -647,6 +663,12 @@ CREATE TABLE "file_storage_configs" (
 	"azure_account_key" varchar(256),
 	"azure_container_name" varchar(128),
 	"azure_endpoint" varchar(256),
+	"azure_tenant_id" varchar(64),
+	"azure_client_id" varchar(64),
+	"azure_client_secret" varchar(256),
+	"azure_subscription_id" varchar(64),
+	"azure_resource_group" varchar(128),
+	"azure_cloud" "azure_cloud" DEFAULT 'public',
 	"sftp_host" varchar(256),
 	"sftp_port" integer DEFAULT 22,
 	"sftp_username" varchar(128),
@@ -673,7 +695,10 @@ CREATE TABLE "managed_files" (
 	"mime_type" varchar(128),
 	"extension" varchar(32),
 	"object_acl" "file_object_acl",
+	"public_access" boolean DEFAULT false NOT NULL,
+	"access_strategy" "file_access_strategy",
 	"visibility" "file_visibility" DEFAULT 'public' NOT NULL,
+	"origin" "managed_file_origin" DEFAULT 'upload' NOT NULL,
 	"content_hash" varchar(64),
 	"ref_count" integer DEFAULT 0 NOT NULL,
 	"gc_state" "file_gc_state" DEFAULT 'live' NOT NULL,
@@ -722,6 +747,14 @@ CREATE TABLE "upload_sessions" (
 	"bucket_name" varchar(256),
 	"multipart_upload_id" varchar(512),
 	"object_acl" "file_object_acl",
+	"public_access" boolean DEFAULT false NOT NULL,
+	"access_strategy" "file_access_strategy",
+	"upload_mode" "file_upload_mode" DEFAULT 'server-proxy' NOT NULL,
+	"module" varchar(64),
+	"visibility" "file_visibility" DEFAULT 'public' NOT NULL,
+	"expected_hash" varchar(64),
+	"compute_hash" boolean DEFAULT false NOT NULL,
+	"skip_type_check" boolean DEFAULT false NOT NULL,
 	"status" "upload_session_status" DEFAULT 'uploading' NOT NULL,
 	"tenant_id" integer,
 	"created_by" integer,
@@ -1372,6 +1405,14 @@ CREATE TABLE "identity_access_grant_items" (
 	CONSTRAINT "identity_access_grant_items_permission_scope_unique" UNIQUE("grant_id","permission_code","scope_key")
 );
 --> statement-breakpoint
+CREATE TABLE "identity_access_grant_menus" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "identity_access_grant_menus_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"grant_id" integer NOT NULL,
+	"menu_id" integer NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "identity_access_grant_menus_unique" UNIQUE("grant_id","menu_id")
+);
+--> statement-breakpoint
 CREATE TABLE "identity_access_grants" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "identity_access_grants_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"tenant_id" integer,
@@ -1410,6 +1451,14 @@ CREATE TABLE "identity_access_request_items" (
 	"source_refs" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"snapshot" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "identity_access_request_menus" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "identity_access_request_menus_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"request_id" integer NOT NULL,
+	"menu_id" integer NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "identity_access_request_menus_unique" UNIQUE("request_id","menu_id")
 );
 --> statement-breakpoint
 CREATE TABLE "identity_access_requests" (
@@ -1512,6 +1561,7 @@ CREATE TABLE "identity_role_versions" (
 	"role_id" integer NOT NULL,
 	"version" integer NOT NULL,
 	"permission_codes" jsonb NOT NULL,
+	"menu_ids" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"data_scope" "data_scope" NOT NULL,
 	"dept_scope_ids" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"created_by" integer,
@@ -2354,7 +2404,7 @@ CREATE TABLE "workflow_attachment_links" (
 	"tenant_id" integer,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "workflow_attachment_links_source_file_unique" UNIQUE("instance_id","source","source_key","file_id"),
-	CONSTRAINT "workflow_attachment_links_source_check" CHECK (("workflow_attachment_links"."source" = 'form' and "workflow_attachment_links"."task_id" is null and "workflow_attachment_links"."comment_id" is null and cardinality("workflow_attachment_links"."field_keys") > 0) or ("workflow_attachment_links"."source" = 'task' and "workflow_attachment_links"."task_id" is not null and "workflow_attachment_links"."comment_id" is null and "workflow_attachment_links"."source_key" = "workflow_attachment_links"."task_id"::text and cardinality("workflow_attachment_links"."field_keys") = 0) or ("workflow_attachment_links"."source" = 'comment' and "workflow_attachment_links"."comment_id" is not null and "workflow_attachment_links"."task_id" is null and "workflow_attachment_links"."source_key" = "workflow_attachment_links"."comment_id"::text and cardinality("workflow_attachment_links"."field_keys") = 0))
+	CONSTRAINT "workflow_attachment_links_source_check" CHECK (("workflow_attachment_links"."source" = 'form' and "workflow_attachment_links"."task_id" is null and "workflow_attachment_links"."comment_id" is null and cardinality("workflow_attachment_links"."field_keys") > 0) or ("workflow_attachment_links"."source" = 'task' and "workflow_attachment_links"."task_id" is not null and "workflow_attachment_links"."comment_id" is null and "workflow_attachment_links"."source_key" = "workflow_attachment_links"."task_id"::text and cardinality("workflow_attachment_links"."field_keys") = 0) or ("workflow_attachment_links"."source" = 'comment' and "workflow_attachment_links"."comment_id" is not null and "workflow_attachment_links"."task_id" is null and "workflow_attachment_links"."source_key" = "workflow_attachment_links"."comment_id"::text and cardinality("workflow_attachment_links"."field_keys") = 0) or ("workflow_attachment_links"."source" = 'compensation' and "workflow_attachment_links"."task_id" is null and "workflow_attachment_links"."comment_id" is null and cardinality("workflow_attachment_links"."field_keys") = 0))
 );
 --> statement-breakpoint
 CREATE TABLE "workflow_attachment_uploads" (
@@ -2423,6 +2473,8 @@ CREATE TABLE "workflow_compensation_logs" (
 CREATE TABLE "workflow_compensations" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "workflow_compensations_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"instance_id" integer NOT NULL,
+	"repair_activation_id" varchar(36),
+	"repair_task_id" integer,
 	"node_key" varchar(64) NOT NULL,
 	"node_name" varchar(64),
 	"error_message" varchar(1024),
@@ -2493,6 +2545,29 @@ CREATE TABLE "workflow_data_sources" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "workflow_data_sources_name_unique" UNIQUE("name")
+);
+--> statement-breakpoint
+CREATE TABLE "workflow_decision_executions" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "workflow_decision_executions_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"instance_id" integer NOT NULL,
+	"decision_id" varchar(64) NOT NULL,
+	"node_key" varchar(64) NOT NULL,
+	"branch_path" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"parent_token_id" integer,
+	"ref_kind" varchar(16) NOT NULL,
+	"rule_key" varchar(64) NOT NULL,
+	"rule_version" integer,
+	"matched" boolean DEFAULT false NOT NULL,
+	"reason" varchar(64),
+	"used_fallback" boolean,
+	"inputs" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"outputs" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"tenant_id" integer,
+	"created_by" integer,
+	"updated_by" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "workflow_decision_executions_decision_id_unique" UNIQUE("decision_id")
 );
 --> statement-breakpoint
 CREATE TABLE "workflow_definition_versions" (
@@ -2598,6 +2673,18 @@ CREATE TABLE "workflow_forms" (
 	CONSTRAINT "workflow_forms_code_uniq" UNIQUE("tenant_id","code")
 );
 --> statement-breakpoint
+CREATE TABLE "workflow_instance_cycles" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "workflow_instance_cycles_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"instance_id" integer NOT NULL,
+	"cycle" integer NOT NULL,
+	"submitted_at" timestamp with time zone NOT NULL,
+	"completed_at" timestamp with time zone,
+	"outcome" varchar(32),
+	"outcome_reason" varchar(64),
+	"tenant_id" integer,
+	CONSTRAINT "workflow_instance_cycles_unique" UNIQUE("instance_id","cycle")
+);
+--> statement-breakpoint
 CREATE TABLE "workflow_instance_migrations" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "workflow_instance_migrations_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"instance_id" integer NOT NULL,
@@ -2612,6 +2699,17 @@ CREATE TABLE "workflow_instance_migrations" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "workflow_instance_transitions" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "workflow_instance_transitions_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"instance_id" integer NOT NULL,
+	"cycle" integer NOT NULL,
+	"from_status" "workflow_instance_status",
+	"to_status" "workflow_instance_status" NOT NULL,
+	"occurred_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"actor_id" integer,
+	"tenant_id" integer
+);
+--> statement-breakpoint
 CREATE TABLE "workflow_instances" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "workflow_instances_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"definition_id" integer NOT NULL,
@@ -2620,6 +2718,9 @@ CREATE TABLE "workflow_instances" (
 	"title" varchar(128) NOT NULL,
 	"serial_no" varchar(128),
 	"form_data" jsonb,
+	"draft_revision" integer DEFAULT 0 NOT NULL,
+	"draft_form_revision" integer,
+	"draft_intent" jsonb,
 	"status" "workflow_instance_status" DEFAULT 'draft' NOT NULL,
 	"priority" varchar(16) DEFAULT 'normal' NOT NULL,
 	"current_node_key" varchar(64),
@@ -2632,6 +2733,10 @@ CREATE TABLE "workflow_instances" (
 	"biz_type" varchar(64),
 	"biz_id" varchar(64),
 	"suspended_at" timestamp with time zone,
+	"submitted_at" timestamp with time zone,
+	"completed_at" timestamp with time zone,
+	"outcome_reason" varchar(64),
+	"cycle" integer DEFAULT 0 NOT NULL,
 	"suspend_reason" varchar(500),
 	"archive_file_id" uuid,
 	"archive_sha256" varchar(64),
@@ -2651,6 +2756,7 @@ CREATE TABLE "workflow_job_executions" (
 	"generation" integer DEFAULT 0 NOT NULL,
 	"lease_token" varchar(64) DEFAULT gen_random_uuid()::text NOT NULL,
 	"status" "workflow_job_execution_status" DEFAULT 'running' NOT NULL,
+	"effect_status" "workflow_external_effect_status" DEFAULT 'not_started' NOT NULL,
 	"request_url" varchar(512),
 	"request_method" varchar(16),
 	"request_body" text,
@@ -2691,6 +2797,8 @@ CREATE TABLE "workflow_jobs" (
 	"lease_until" timestamp with time zone,
 	"execution_deadline" timestamp with time zone,
 	"paused_remaining_ms" bigint,
+	"effect_status" "workflow_external_effect_status" DEFAULT 'not_started' NOT NULL,
+	"effect_evidence" text,
 	"last_error" text,
 	"result" jsonb,
 	"tenant_id" integer,
@@ -2707,11 +2815,14 @@ CREATE TABLE "workflow_node_activations" (
 	"token_id" integer,
 	"node_key" varchar(64) NOT NULL,
 	"node_name" varchar(64) NOT NULL,
+	"kind" "workflow_activation_kind" DEFAULT 'system' NOT NULL,
+	"settlement_reason" text,
 	"status" "workflow_approval_activation_status" DEFAULT 'active' NOT NULL,
 	"approve_method" "workflow_approve_method",
 	"approve_ratio" integer,
 	"base_total" integer NOT NULL,
 	"base_required" integer NOT NULL,
+	"include_in_efficiency_stats" boolean DEFAULT true NOT NULL,
 	"settled_at" timestamp with time zone,
 	"tenant_id" integer,
 	"created_by" integer,
@@ -2786,6 +2897,7 @@ CREATE TABLE "workflow_simulation_cases" (
 	"name" varchar(64) NOT NULL,
 	"starter_user_id" integer,
 	"form_data" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"runtime_config" jsonb NOT NULL,
 	"decisions" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"tenant_id" integer,
 	"created_by" integer,
@@ -2828,6 +2940,10 @@ CREATE TABLE "workflow_task_urges" (
 	"instance_id" integer NOT NULL,
 	"urger_id" integer,
 	"urger_name" varchar(64),
+	"assignee_id" integer,
+	"assignee_name" varchar(64),
+	"node_key" varchar(64),
+	"node_name" varchar(64),
 	"message" varchar(256),
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
@@ -2846,6 +2962,11 @@ CREATE TABLE "workflow_tasks" (
 	"attachments" jsonb,
 	"action_at" timestamp with time zone,
 	"activated_at" timestamp with time zone,
+	"sla_deadline" timestamp with time zone,
+	"sla_paused_remaining_ms" bigint,
+	"sla_version" integer DEFAULT 0 NOT NULL,
+	"breached_at" timestamp with time zone,
+	"paused_duration_ms" bigint DEFAULT 0 NOT NULL,
 	"decision" jsonb,
 	"slot_id" integer,
 	"task_kind" "workflow_task_kind" NOT NULL,
@@ -2989,6 +3110,7 @@ CREATE TABLE "in_app_messages" (
 	"is_read" boolean DEFAULT false NOT NULL,
 	"read_at" timestamp with time zone,
 	"source" "send_source" DEFAULT 'system' NOT NULL,
+	"event_key" varchar(100),
 	"sender_id" integer,
 	"link" varchar(512),
 	"dedupe_key" varchar(192),
@@ -3824,6 +3946,10 @@ CREATE TABLE "payment_contracts" (
 	"app_id" integer NOT NULL,
 	"currency" varchar(8) DEFAULT 'CNY' NOT NULL,
 	"plan_id" integer NOT NULL,
+	"plan_amount_snapshot" integer,
+	"plan_period_snapshot" "payment_deduct_period",
+	"plan_custom_days_snapshot" integer,
+	"plan_max_retries_snapshot" integer,
 	"signer_account" varchar(128) NOT NULL,
 	"signer_name" varchar(64),
 	"status" "payment_contract_status" DEFAULT 'pending' NOT NULL,
@@ -3898,6 +4024,27 @@ CREATE TABLE "payment_disputes" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "payment_disputes_dispute_no_unique" UNIQUE("dispute_no")
+);
+--> statement-breakpoint
+CREATE TABLE "payment_exceptions" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "payment_exceptions_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"type" varchar(64) NOT NULL,
+	"dedupe_key" varchar(160) NOT NULL,
+	"order_no" varchar(64),
+	"refund_no" varchar(64),
+	"channel" "payment_channel",
+	"channel_config_id" integer,
+	"app_id" integer,
+	"amount" integer,
+	"currency" varchar(8),
+	"message" varchar(512),
+	"payload" jsonb,
+	"status" "payment_exception_status" DEFAULT 'open' NOT NULL,
+	"tenant_id" integer,
+	"resolved_at" timestamp with time zone,
+	"resolved_by" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "payment_exceptions_dedupe_key_unique" UNIQUE("dedupe_key")
 );
 --> statement-breakpoint
 CREATE TABLE "payment_fee_rules" (
@@ -4092,6 +4239,7 @@ CREATE TABLE "payment_orders" (
 	"paid_amount" integer,
 	"fee_amount" integer,
 	"net_amount" integer,
+	"fee_rule_snapshot" jsonb,
 	"original_amount" integer,
 	"discount_amount" integer,
 	"member_coupon_id" integer,
@@ -4160,6 +4308,10 @@ CREATE TABLE "payment_refunds" (
 	"reason" varchar(256),
 	"status" "payment_refund_status" DEFAULT 'pending' NOT NULL,
 	"approval_status" "payment_refund_approval_status" DEFAULT 'none' NOT NULL,
+	"channel_submitted_at" timestamp with time zone,
+	"submit_attempts" integer DEFAULT 0 NOT NULL,
+	"last_query_at" timestamp with time zone,
+	"unknown_since" timestamp with time zone,
 	"applied_by_id" integer,
 	"approver_id" integer,
 	"approved_at" timestamp with time zone,
@@ -9079,22 +9231,6 @@ CREATE TABLE "drive_tags" (
 	CONSTRAINT "drive_tags_space_name_unique" UNIQUE("space_id","name")
 );
 --> statement-breakpoint
-CREATE TABLE "drive_upload_bindings" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "drive_upload_bindings_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
-	"upload_id" varchar(64) NOT NULL,
-	"space_id" integer NOT NULL,
-	"parent_id" integer,
-	"node_id" integer,
-	"file_name" varchar(255) NOT NULL,
-	"file_size" bigint NOT NULL,
-	"conflict_policy" "drive_upload_conflict_policy" DEFAULT 'rename' NOT NULL,
-	"expected_hash" varchar(64),
-	"tenant_id" integer,
-	"created_by" integer,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "drive_upload_bindings_upload_id_unique" UNIQUE("upload_id")
-);
---> statement-breakpoint
 CREATE TABLE "entity_watch_events" (
 	"event_id" integer PRIMARY KEY NOT NULL,
 	"watcher_cursor" integer DEFAULT 0 NOT NULL,
@@ -9436,6 +9572,7 @@ CREATE UNIQUE INDEX "payment_notify_logs_provider_event_uq" ON "payment_notify_l
 CREATE UNIQUE INDEX "payment_orders_active_biz_uq" ON "payment_orders" USING btree (coalesce("tenant_id", 0),coalesce("app_id", 0),"biz_type","biz_id","currency") WHERE "payment_orders"."status" in ('pending', 'paying', 'unknown');--> statement-breakpoint
 CREATE UNIQUE INDEX "payment_orders_idempotency_scope_uq" ON "payment_orders" USING btree (coalesce("tenant_id", 0),coalesce("app_id", 0),"idempotency_key") WHERE "payment_orders"."idempotency_key" is not null;--> statement-breakpoint
 CREATE UNIQUE INDEX "payment_preauths_active_biz_uq" ON "payment_preauths" USING btree (coalesce("tenant_id", 0),"app_id","biz_type","biz_id","currency") WHERE "payment_preauths"."status" in ('pending', 'unknown', 'frozen');--> statement-breakpoint
+CREATE UNIQUE INDEX "payment_refunds_out_refund_no_uq" ON "payment_refunds" USING btree ("out_refund_no");--> statement-breakpoint
 CREATE UNIQUE INDEX "payment_refunds_idempotency_scope_uq" ON "payment_refunds" USING btree (coalesce("tenant_id", 0),"order_id","idempotency_key") WHERE "payment_refunds"."idempotency_key" is not null;--> statement-breakpoint
 CREATE UNIQUE INDEX "payment_risk_reviews_pending_biz_scope_uq" ON "payment_risk_reviews" USING btree (coalesce("tenant_id", 0),coalesce("app_id", 0),"biz_type","biz_id","currency") WHERE "payment_risk_reviews"."status" = 'pending';--> statement-breakpoint
 CREATE UNIQUE INDEX "payment_sharing_reversals_idempotency_scope_uq" ON "payment_sharing_reversals" USING btree (coalesce("tenant_id", 0),"sharing_order_id","idempotency_key");--> statement-breakpoint
@@ -9709,6 +9846,8 @@ ALTER TABLE "user_identity_accounts" ADD CONSTRAINT "user_identity_accounts_user
 ALTER TABLE "user_identity_accounts" ADD CONSTRAINT "user_identity_accounts_provider_id_tenant_identity_providers_id_fk" FOREIGN KEY ("provider_id") REFERENCES "public"."tenant_identity_providers"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "identity_access_grant_items" ADD CONSTRAINT "identity_access_grant_items_grant_id_identity_access_grants_id_fk" FOREIGN KEY ("grant_id") REFERENCES "public"."identity_access_grants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "identity_access_grant_items" ADD CONSTRAINT "identity_access_grant_items_revoked_by_users_id_fk" FOREIGN KEY ("revoked_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "identity_access_grant_menus" ADD CONSTRAINT "identity_access_grant_menus_grant_id_identity_access_grants_id_fk" FOREIGN KEY ("grant_id") REFERENCES "public"."identity_access_grants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "identity_access_grant_menus" ADD CONSTRAINT "identity_access_grant_menus_menu_id_menus_id_fk" FOREIGN KEY ("menu_id") REFERENCES "public"."menus"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "identity_access_grants" ADD CONSTRAINT "identity_access_grants_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "identity_access_grants" ADD CONSTRAINT "identity_access_grants_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "identity_access_grants" ADD CONSTRAINT "identity_access_grants_request_id_identity_access_requests_id_fk" FOREIGN KEY ("request_id") REFERENCES "public"."identity_access_requests"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
@@ -9718,6 +9857,8 @@ ALTER TABLE "identity_access_grants" ADD CONSTRAINT "identity_access_grants_crea
 ALTER TABLE "identity_access_grants" ADD CONSTRAINT "identity_access_grants_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "identity_access_request_items" ADD CONSTRAINT "identity_access_request_items_request_id_identity_access_requests_id_fk" FOREIGN KEY ("request_id") REFERENCES "public"."identity_access_requests"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "identity_access_request_items" ADD CONSTRAINT "identity_access_request_items_role_id_roles_id_fk" FOREIGN KEY ("role_id") REFERENCES "public"."roles"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "identity_access_request_menus" ADD CONSTRAINT "identity_access_request_menus_request_id_identity_access_requests_id_fk" FOREIGN KEY ("request_id") REFERENCES "public"."identity_access_requests"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "identity_access_request_menus" ADD CONSTRAINT "identity_access_request_menus_menu_id_menus_id_fk" FOREIGN KEY ("menu_id") REFERENCES "public"."menus"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "identity_access_requests" ADD CONSTRAINT "identity_access_requests_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "identity_access_requests" ADD CONSTRAINT "identity_access_requests_applicant_user_id_users_id_fk" FOREIGN KEY ("applicant_user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "identity_access_requests" ADD CONSTRAINT "identity_access_requests_target_user_id_users_id_fk" FOREIGN KEY ("target_user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -9868,6 +10009,10 @@ ALTER TABLE "workflow_connectors" ADD CONSTRAINT "workflow_connectors_created_by
 ALTER TABLE "workflow_connectors" ADD CONSTRAINT "workflow_connectors_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_data_sources" ADD CONSTRAINT "workflow_data_sources_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_data_sources" ADD CONSTRAINT "workflow_data_sources_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_decision_executions" ADD CONSTRAINT "workflow_decision_executions_instance_id_workflow_instances_id_fk" FOREIGN KEY ("instance_id") REFERENCES "public"."workflow_instances"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_decision_executions" ADD CONSTRAINT "workflow_decision_executions_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_decision_executions" ADD CONSTRAINT "workflow_decision_executions_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_decision_executions" ADD CONSTRAINT "workflow_decision_executions_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_definition_versions" ADD CONSTRAINT "workflow_definition_versions_definition_id_workflow_definitions_id_fk" FOREIGN KEY ("definition_id") REFERENCES "public"."workflow_definitions"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_definition_versions" ADD CONSTRAINT "workflow_definition_versions_published_by_users_id_fk" FOREIGN KEY ("published_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_definition_versions" ADD CONSTRAINT "workflow_definition_versions_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -9892,9 +10037,14 @@ ALTER TABLE "workflow_forms" ADD CONSTRAINT "workflow_forms_category_id_workflow
 ALTER TABLE "workflow_forms" ADD CONSTRAINT "workflow_forms_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_forms" ADD CONSTRAINT "workflow_forms_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_forms" ADD CONSTRAINT "workflow_forms_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_instance_cycles" ADD CONSTRAINT "workflow_instance_cycles_instance_id_workflow_instances_id_fk" FOREIGN KEY ("instance_id") REFERENCES "public"."workflow_instances"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_instance_cycles" ADD CONSTRAINT "workflow_instance_cycles_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_instance_migrations" ADD CONSTRAINT "workflow_instance_migrations_instance_id_workflow_instances_id_fk" FOREIGN KEY ("instance_id") REFERENCES "public"."workflow_instances"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_instance_migrations" ADD CONSTRAINT "workflow_instance_migrations_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_instance_migrations" ADD CONSTRAINT "workflow_instance_migrations_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_instance_transitions" ADD CONSTRAINT "workflow_instance_transitions_instance_id_workflow_instances_id_fk" FOREIGN KEY ("instance_id") REFERENCES "public"."workflow_instances"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_instance_transitions" ADD CONSTRAINT "workflow_instance_transitions_actor_id_users_id_fk" FOREIGN KEY ("actor_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_instance_transitions" ADD CONSTRAINT "workflow_instance_transitions_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_instances" ADD CONSTRAINT "workflow_instances_definition_id_workflow_definitions_id_fk" FOREIGN KEY ("definition_id") REFERENCES "public"."workflow_definitions"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_instances" ADD CONSTRAINT "workflow_instances_initiator_id_users_id_fk" FOREIGN KEY ("initiator_id") REFERENCES "public"."users"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_instances" ADD CONSTRAINT "workflow_instances_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -9946,6 +10096,7 @@ ALTER TABLE "workflow_task_transfers" ADD CONSTRAINT "workflow_task_transfers_te
 ALTER TABLE "workflow_task_urges" ADD CONSTRAINT "workflow_task_urges_task_id_workflow_tasks_id_fk" FOREIGN KEY ("task_id") REFERENCES "public"."workflow_tasks"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_task_urges" ADD CONSTRAINT "workflow_task_urges_instance_id_workflow_instances_id_fk" FOREIGN KEY ("instance_id") REFERENCES "public"."workflow_instances"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_task_urges" ADD CONSTRAINT "workflow_task_urges_urger_id_users_id_fk" FOREIGN KEY ("urger_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_task_urges" ADD CONSTRAINT "workflow_task_urges_assignee_id_users_id_fk" FOREIGN KEY ("assignee_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_tasks" ADD CONSTRAINT "workflow_tasks_instance_id_workflow_instances_id_fk" FOREIGN KEY ("instance_id") REFERENCES "public"."workflow_instances"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_tasks" ADD CONSTRAINT "workflow_tasks_assignee_id_users_id_fk" FOREIGN KEY ("assignee_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_tasks" ADD CONSTRAINT "workflow_tasks_slot_id_workflow_approval_slots_id_fk" FOREIGN KEY ("slot_id") REFERENCES "public"."workflow_approval_slots"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -10124,6 +10275,10 @@ ALTER TABLE "payment_dispute_replies" ADD CONSTRAINT "payment_dispute_replies_op
 ALTER TABLE "payment_disputes" ADD CONSTRAINT "payment_disputes_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_disputes" ADD CONSTRAINT "payment_disputes_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_disputes" ADD CONSTRAINT "payment_disputes_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_exceptions" ADD CONSTRAINT "payment_exceptions_channel_config_id_payment_channel_configs_id_fk" FOREIGN KEY ("channel_config_id") REFERENCES "public"."payment_channel_configs"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_exceptions" ADD CONSTRAINT "payment_exceptions_app_id_payment_apps_id_fk" FOREIGN KEY ("app_id") REFERENCES "public"."payment_apps"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_exceptions" ADD CONSTRAINT "payment_exceptions_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_exceptions" ADD CONSTRAINT "payment_exceptions_resolved_by_users_id_fk" FOREIGN KEY ("resolved_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_fee_rules" ADD CONSTRAINT "payment_fee_rules_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_fee_rules" ADD CONSTRAINT "payment_fee_rules_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_fee_rules" ADD CONSTRAINT "payment_fee_rules_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
@@ -11125,11 +11280,6 @@ ALTER TABLE "drive_tags" ADD CONSTRAINT "drive_tags_space_id_drive_spaces_id_fk"
 ALTER TABLE "drive_tags" ADD CONSTRAINT "drive_tags_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "drive_tags" ADD CONSTRAINT "drive_tags_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "drive_tags" ADD CONSTRAINT "drive_tags_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "drive_upload_bindings" ADD CONSTRAINT "drive_upload_bindings_space_id_drive_spaces_id_fk" FOREIGN KEY ("space_id") REFERENCES "public"."drive_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "drive_upload_bindings" ADD CONSTRAINT "drive_upload_bindings_parent_id_drive_nodes_id_fk" FOREIGN KEY ("parent_id") REFERENCES "public"."drive_nodes"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "drive_upload_bindings" ADD CONSTRAINT "drive_upload_bindings_node_id_drive_nodes_id_fk" FOREIGN KEY ("node_id") REFERENCES "public"."drive_nodes"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "drive_upload_bindings" ADD CONSTRAINT "drive_upload_bindings_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "drive_upload_bindings" ADD CONSTRAINT "drive_upload_bindings_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "entity_watch_events" ADD CONSTRAINT "entity_watch_events_event_id_domain_events_id_fk" FOREIGN KEY ("event_id") REFERENCES "public"."domain_events"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "entity_watches" ADD CONSTRAINT "entity_watches_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "entity_watches" ADD CONSTRAINT "entity_watches_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -11200,6 +11350,7 @@ CREATE INDEX "upload_session_bindings_module_idx" ON "upload_session_bindings" U
 CREATE INDEX "upload_sessions_tenant_idx" ON "upload_sessions" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "upload_sessions_created_at_idx" ON "upload_sessions" USING btree ("created_at");--> statement-breakpoint
 CREATE INDEX "upload_sessions_status_idx" ON "upload_sessions" USING btree ("status");--> statement-breakpoint
+CREATE INDEX "upload_sessions_module_status_idx" ON "upload_sessions" USING btree ("module","status");--> statement-breakpoint
 CREATE INDEX "async_task_items_task_idx" ON "async_task_items" USING btree ("task_id");--> statement-breakpoint
 CREATE INDEX "async_task_items_task_status_idx" ON "async_task_items" USING btree ("task_id","status");--> statement-breakpoint
 CREATE INDEX "async_task_subjects_entity_idx" ON "async_task_subjects" USING btree ("tenant_id","entity_type","entity_key","task_id");--> statement-breakpoint
@@ -11269,11 +11420,15 @@ CREATE INDEX "user_identity_accounts_user_idx" ON "user_identity_accounts" USING
 CREATE INDEX "user_identity_accounts_provider_idx" ON "user_identity_accounts" USING btree ("provider_id");--> statement-breakpoint
 CREATE INDEX "identity_access_grant_items_permission_idx" ON "identity_access_grant_items" USING btree ("permission_code");--> statement-breakpoint
 CREATE INDEX "identity_access_grant_items_lifecycle_idx" ON "identity_access_grant_items" USING btree ("status","expires_at");--> statement-breakpoint
+CREATE INDEX "identity_access_grant_menus_grant_idx" ON "identity_access_grant_menus" USING btree ("grant_id");--> statement-breakpoint
+CREATE INDEX "identity_access_grant_menus_menu_idx" ON "identity_access_grant_menus" USING btree ("menu_id");--> statement-breakpoint
 CREATE INDEX "identity_access_grants_tenant_status_idx" ON "identity_access_grants" USING btree ("tenant_id","status","expires_at");--> statement-breakpoint
 CREATE INDEX "identity_access_grants_user_status_idx" ON "identity_access_grants" USING btree ("user_id","status","starts_at","expires_at");--> statement-breakpoint
 CREATE INDEX "identity_access_grants_expiry_idx" ON "identity_access_grants" USING btree ("status","expires_at");--> statement-breakpoint
 CREATE INDEX "identity_access_request_items_request_idx" ON "identity_access_request_items" USING btree ("request_id");--> statement-breakpoint
 CREATE INDEX "identity_access_request_items_role_idx" ON "identity_access_request_items" USING btree ("role_id");--> statement-breakpoint
+CREATE INDEX "identity_access_request_menus_request_idx" ON "identity_access_request_menus" USING btree ("request_id");--> statement-breakpoint
+CREATE INDEX "identity_access_request_menus_menu_idx" ON "identity_access_request_menus" USING btree ("menu_id");--> statement-breakpoint
 CREATE INDEX "identity_access_requests_tenant_created_idx" ON "identity_access_requests" USING btree ("tenant_id","created_at" DESC NULLS LAST,"id" DESC NULLS LAST);--> statement-breakpoint
 CREATE INDEX "identity_access_requests_applicant_idx" ON "identity_access_requests" USING btree ("applicant_user_id","created_at" DESC NULLS LAST);--> statement-breakpoint
 CREATE INDEX "identity_access_requests_target_idx" ON "identity_access_requests" USING btree ("target_user_id","created_at" DESC NULLS LAST);--> statement-breakpoint
@@ -11435,6 +11590,7 @@ CREATE INDEX "workflow_compensations_tenant_idx" ON "workflow_compensations" USI
 CREATE INDEX "wf_compensation_instance_idx" ON "workflow_compensations" USING btree ("instance_id");--> statement-breakpoint
 CREATE INDEX "wf_compensation_status_idx" ON "workflow_compensations" USING btree ("status");--> statement-breakpoint
 CREATE INDEX "workflow_connector_invocations_conn_idx" ON "workflow_connector_invocations" USING btree ("connector_id","created_at");--> statement-breakpoint
+CREATE INDEX "workflow_decision_executions_instance_node_idx" ON "workflow_decision_executions" USING btree ("instance_id","node_key");--> statement-breakpoint
 CREATE INDEX "workflow_definition_versions_tenant_idx" ON "workflow_definition_versions" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "workflow_definitions_tenant_status_idx" ON "workflow_definitions" USING btree ("tenant_id","status");--> statement-breakpoint
 CREATE INDEX "workflow_definitions_flow_data_gin_idx" ON "workflow_definitions" USING gin ("flow_data" jsonb_path_ops);--> statement-breakpoint
@@ -11443,8 +11599,10 @@ CREATE INDEX "workflow_delegations_tenant_idx" ON "workflow_delegations" USING b
 CREATE INDEX "workflow_engine_health_snapshots_created_at_idx" ON "workflow_engine_health_snapshots" USING btree ("created_at");--> statement-breakpoint
 CREATE INDEX "workflow_event_subscriptions_definition_idx" ON "workflow_event_subscriptions" USING btree ("definition_id");--> statement-breakpoint
 CREATE INDEX "workflow_event_subscriptions_tenant_idx" ON "workflow_event_subscriptions" USING btree ("tenant_id");--> statement-breakpoint
+CREATE INDEX "workflow_instance_cycles_submitted_idx" ON "workflow_instance_cycles" USING btree ("submitted_at");--> statement-breakpoint
 CREATE INDEX "workflow_instance_migrations_tenant_idx" ON "workflow_instance_migrations" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "wf_inst_migration_idx" ON "workflow_instance_migrations" USING btree ("instance_id");--> statement-breakpoint
+CREATE INDEX "workflow_instance_transitions_time_idx" ON "workflow_instance_transitions" USING btree ("instance_id","occurred_at");--> statement-breakpoint
 CREATE INDEX "workflow_instances_definition_idx" ON "workflow_instances" USING btree ("definition_id");--> statement-breakpoint
 CREATE INDEX "workflow_instances_tenant_status_idx" ON "workflow_instances" USING btree ("tenant_id","status");--> statement-breakpoint
 CREATE INDEX "workflow_instances_initiator_status_idx" ON "workflow_instances" USING btree ("initiator_id","status");--> statement-breakpoint
@@ -11502,6 +11660,7 @@ CREATE INDEX "in_app_messages_tenant_idx" ON "in_app_messages" USING btree ("ten
 CREATE INDEX "in_app_messages_user_created_idx" ON "in_app_messages" USING btree ("user_id","created_at");--> statement-breakpoint
 CREATE INDEX "in_app_messages_created_at_idx" ON "in_app_messages" USING btree ("created_at");--> statement-breakpoint
 CREATE INDEX "in_app_messages_user_unread_idx" ON "in_app_messages" USING btree ("user_id") WHERE "in_app_messages"."is_read" = false;--> statement-breakpoint
+CREATE INDEX "in_app_messages_inbox_event_idx" ON "in_app_messages" USING btree ("user_id","tenant_id","event_key","id");--> statement-breakpoint
 CREATE INDEX "in_app_templates_tenant_idx" ON "in_app_templates" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "notification_dispatches_recipient_idx" ON "notification_dispatches" USING btree ("recipient_type","recipient_id","created_at");--> statement-breakpoint
 CREATE INDEX "notification_dispatches_event_idx" ON "notification_dispatches" USING btree ("event_key","created_at");--> statement-breakpoint
@@ -11589,6 +11748,9 @@ CREATE INDEX "payment_disputes_status_idx" ON "payment_disputes" USING btree ("s
 CREATE INDEX "payment_disputes_order_no_idx" ON "payment_disputes" USING btree ("order_no");--> statement-breakpoint
 CREATE INDEX "payment_disputes_deadline_idx" ON "payment_disputes" USING btree ("deadline");--> statement-breakpoint
 CREATE INDEX "payment_disputes_route_idx" ON "payment_disputes" USING btree ("route");--> statement-breakpoint
+CREATE INDEX "payment_exceptions_status_created_idx" ON "payment_exceptions" USING btree ("status","created_at");--> statement-breakpoint
+CREATE INDEX "payment_exceptions_tenant_status_idx" ON "payment_exceptions" USING btree ("tenant_id","status");--> statement-breakpoint
+CREATE INDEX "payment_exceptions_order_idx" ON "payment_exceptions" USING btree ("order_no");--> statement-breakpoint
 CREATE INDEX "payment_fee_rules_tenant_idx" ON "payment_fee_rules" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "payment_fee_rules_channel_idx" ON "payment_fee_rules" USING btree ("channel");--> statement-breakpoint
 CREATE INDEX "payment_fund_reservations_active_account_idx" ON "payment_fund_reservations" USING btree ("account_id","status","expires_at");--> statement-breakpoint
@@ -11607,7 +11769,11 @@ CREATE INDEX "payment_notify_logs_order_no_idx" ON "payment_notify_logs" USING b
 CREATE INDEX "payment_orders_user_idx" ON "payment_orders" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "payment_orders_tenant_idx" ON "payment_orders" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "payment_orders_biz_idx" ON "payment_orders" USING btree ("tenant_id","app_id","biz_type","biz_id","currency");--> statement-breakpoint
+CREATE INDEX "payment_orders_config_out_trade_idx" ON "payment_orders" USING btree ("channel_config_id","out_trade_no");--> statement-breakpoint
 CREATE INDEX "payment_orders_status_idx" ON "payment_orders" USING btree ("status");--> statement-breakpoint
+CREATE INDEX "payment_orders_status_created_idx" ON "payment_orders" USING btree ("status","created_at");--> statement-breakpoint
+CREATE INDEX "payment_orders_status_paid_idx" ON "payment_orders" USING btree ("status","paid_at");--> statement-breakpoint
+CREATE INDEX "payment_orders_tenant_created_idx" ON "payment_orders" USING btree ("tenant_id","created_at");--> statement-breakpoint
 CREATE INDEX "payment_orders_expired_idx" ON "payment_orders" USING btree ("expired_at");--> statement-breakpoint
 CREATE INDEX "payment_preauths_operator_idx" ON "payment_preauths" USING btree ("operator_id");--> statement-breakpoint
 CREATE INDEX "payment_preauths_tenant_idx" ON "payment_preauths" USING btree ("tenant_id");--> statement-breakpoint
@@ -11618,6 +11784,8 @@ CREATE INDEX "payment_refunds_operator_idx" ON "payment_refunds" USING btree ("o
 CREATE INDEX "payment_refunds_tenant_idx" ON "payment_refunds" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "payment_refunds_order_no_idx" ON "payment_refunds" USING btree ("order_no");--> statement-breakpoint
 CREATE INDEX "payment_refunds_status_idx" ON "payment_refunds" USING btree ("status");--> statement-breakpoint
+CREATE INDEX "payment_refunds_status_created_idx" ON "payment_refunds" USING btree ("status","created_at");--> statement-breakpoint
+CREATE INDEX "payment_refunds_tenant_created_idx" ON "payment_refunds" USING btree ("tenant_id","created_at");--> statement-breakpoint
 CREATE INDEX "payment_risk_hits_user_idx" ON "payment_risk_hits" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "payment_risk_hits_tenant_idx" ON "payment_risk_hits" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "payment_risk_hits_created_idx" ON "payment_risk_hits" USING btree ("created_at");--> statement-breakpoint

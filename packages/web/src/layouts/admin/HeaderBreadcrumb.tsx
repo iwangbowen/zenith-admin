@@ -56,7 +56,7 @@ export function HeaderBreadcrumb({
           const hasSubMenu = (breadcrumbSubMenu ?? false)
             && !isLast
             && !isHome
-            && (crumb.menuChildren?.filter(c => c.visible && c.status === 'enabled' && c.type !== 'button').length ?? 0) > 0;
+            && (crumb.menuChildren?.filter(c => c.visible && c.status === 'enabled').length ?? 0) > 0;
           const breadcrumbItem = (
             <Breadcrumb.Item
               key={crumb.title}
@@ -68,7 +68,7 @@ export function HeaderBreadcrumb({
             </Breadcrumb.Item>
           );
           if (hasSubMenu) {
-            const subItems = crumb.menuChildren!.filter(c => c.visible && c.status === 'enabled' && c.type !== 'button');
+            const subItems = crumb.menuChildren!.filter(c => c.visible && c.status === 'enabled');
             return (
               <BreadcrumbMenuPopover
                 key={`${crumb.title}:${pathname}`}

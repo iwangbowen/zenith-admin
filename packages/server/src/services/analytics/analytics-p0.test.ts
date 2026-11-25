@@ -86,6 +86,6 @@ describe('analytics P0 contracts', () => {
       'analytics-ingest',
       'error-report',
     ]));
-    expect(SEED_MENUS.find((menu) => menu.permission === 'analytics:clean')?.type).toBe('button');
+    expect(SEED_MENUS.some((menu) => menu.permission === 'analytics:clean')).toBe(false);
   });
 });

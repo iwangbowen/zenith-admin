@@ -150,7 +150,7 @@ export type AccessReviewCampaign = z.infer<typeof accessReviewCampaignSchema>;
 const accessPolicySummaryFields = { riskLevel: z.enum(ACCESS_RISK_LEVELS), approvalPolicy: z.enum(ACCESS_APPROVAL_POLICIES), maxDurationMinutes: z.int().positive().nullable(), mfaRequired: z.boolean(), permanentAllowed: z.boolean(), emergencyAllowed: z.boolean(), maxEmergencyMinutes: z.int() };
 export const accessWorkflowOptionsSchema = z.object({
   roles: z.array(z.object({ id: z.int(), name: z.string(), code: z.string(), description: z.string().nullable().optional(), dataScope: z.enum(DATA_SCOPES), version: z.int(), permissionCount: z.int(), permissionCodes: z.array(z.string()), menuIds: z.array(z.int()), ...accessPolicySummaryFields })),
-  menus: z.array(z.object({ id: z.int(), parentId: z.int(), title: z.string(), name: z.string().nullable().optional(), type: z.enum(['directory', 'menu', 'button']), permission: z.string().nullable().optional(), permissionLabel: z.string().nullable().optional(), requestable: z.boolean(), path: z.array(z.string()), ...accessPolicySummaryFields })),
+  menus: z.array(z.object({ id: z.int(), parentId: z.int(), title: z.string(), name: z.string().nullable().optional(), type: z.enum(['directory', 'menu', 'permission']), permission: z.string().nullable().optional(), permissionLabel: z.string().nullable().optional(), requestable: z.boolean(), path: z.array(z.string()), ...accessPolicySummaryFields })),
 }).meta({ id: 'IdentityAccessWorkflowOptions' });
 
 export type AccessWorkflowOptions = z.infer<typeof accessWorkflowOptionsSchema>;

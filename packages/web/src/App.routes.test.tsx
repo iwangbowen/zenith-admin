@@ -25,7 +25,7 @@ const MENU_TREE: Menu[] = [
     type: 'directory',
     children: [
       menu({ id: 2590, parentId: 2440, title: 'SSL 证书', path: SSL_PATH, component: 'system/ssl-certificates/SslCertificatesPage' }),
-      menu({ id: 2591, parentId: 2590, title: '查询', type: 'button', permission: 'system:ssl:view' }),
+      menu({ id: 2591, parentId: 2590, title: '证书详情', type: 'menu', path: '/system/ssl/detail', permission: 'system:ssl:view' }),
     ],
   }),
   // 隐藏工具页：不进侧边栏但必须注册路由

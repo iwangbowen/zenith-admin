@@ -1,1 +1,0 @@
-ALTER TABLE "file_storage_configs" ADD COLUMN "s3_account_id" varchar(32);

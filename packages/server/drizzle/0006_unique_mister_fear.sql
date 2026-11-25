@@ -1,2 +1,0 @@
-ALTER TABLE "in_app_messages" ADD COLUMN "event_key" varchar(100);--> statement-breakpoint
-CREATE INDEX "in_app_messages_inbox_event_idx" ON "in_app_messages" USING btree ("user_id","tenant_id","event_key","id");

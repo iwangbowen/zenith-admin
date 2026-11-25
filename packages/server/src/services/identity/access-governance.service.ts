@@ -8,7 +8,7 @@ import { ALL_PERMISSIONS } from '@zenith/shared/permissions';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { db } from '../../db';
 import type { DbExecutor } from '../../db/types';
-import { identityAccessGrantItems, identityAccessGrantMenus, identityAccessGrants, identityAccessRequestMenus, identityAccessRequests, identityAccessReviewItems, identityPermissionPolicies, menus, roles, users, asyncTasks } from '../../db/schema';
+import { identityAccessGrantItems, identityAccessGrantMenus, identityAccessGrants, identityAccessRequests, identityAccessReviewItems, identityPermissionPolicies, menus, roles, users, asyncTasks } from '../../db/schema';
 import { currentUser, setAuditBefore } from '../../lib/context';
 import { exactTenantCondition, getCreateTenantId, tenantCondition } from '../../lib/tenant';
 import { requireRow } from '../../lib/db-assert';
@@ -60,7 +60,7 @@ async function resolveRequestItems(roleSelections: AccessWorkflowInput['roleSele
 
   const requestedMenuIds = [...new Set([...menuIds, ...roleRows.flatMap(role => role.roleMenus.map(item => item.menuId))])];
   const menuRows = requestedMenuIds.length ? await executor.select({ id: menus.id, type: menus.type, status: menus.status, permission: menus.permission }).from(menus).where(inArray(menus.id, requestedMenuIds)) : [];
-  if (menuRows.length !== requestedMenuIds.length || menuRows.some(menu => menu.status !== 'enabled' || menu.type === 'button')) throw new HTTPException(400, { message: '存在无效的页面访问项' });
+  if (menuRows.length !== requestedMenuIds.length || menuRows.some(menu => menu.status !== 'enabled')) throw new HTTPException(400, { message: '存在无效的页面访问项' });
   for (const menu of menuRows) {
     if (!menu.permission) continue;
     selected.push({ permissionCode: menu.permission, permissionLabel: ALL_PERMISSIONS[menu.permission]?.label ?? menu.permission,
@@ -90,7 +90,7 @@ export async function getAccessWorkflowOptions() {
     db.select({ id: menus.id, parentId: menus.parentId, title: menus.title, name: menus.name, type: menus.type, permission: menus.permission, status: menus.status, featureKey: menus.featureKey })
       .from(menus).where(eq(menus.status, 'enabled')).orderBy(asc(menus.parentId), asc(menus.sort), asc(menus.id)),
   ]);
-  const effective = await loadEffectiveAccessPolicies(menuRows.flatMap(menu => menu.permission && ALL_PERMISSIONS[menu.permission] ? [menu.permission] : []), user.tenantId);
+  const effective = await loadEffectiveAccessPolicies(Object.keys(ALL_PERMISSIONS), user.tenantId);
   const policies = new Map(effective.map(policy => [policy.permissionCode, policy]));
   const roleOptions = roleRows.flatMap(role => {
     if (['super_admin', 'tenant_admin', 'security_admin'].includes(role.code)) return [];
@@ -101,38 +101,85 @@ export async function getAccessWorkflowOptions() {
   });
   const available = menuRows.filter(menu => !featureSet || !menu.featureKey || featureSet.has(menu.featureKey));
   const menuIndex = new Map(available.map(menu => [menu.id, menu]));
+  const pageByName = new Map(available.filter(menu => menu.type === 'menu' && menu.name).map(menu => [menu.name!, menu]));
   const included = new Set<number>();
-  for (const menu of available) {
-    if (!menu.permission || !policies.get(menu.permission)?.enabled) continue;
-    let node: typeof menu | undefined = menu;
+  const addAncestors = (menuId: number) => {
+    let node: typeof available[number] | undefined = menuIndex.get(menuId);
     const visited = new Set<number>();
     while (node && !visited.has(node.id)) {
       visited.add(node.id);
       included.add(node.id);
       node = menuIndex.get(node.parentId);
     }
+  };
+  for (const menu of available) {
+    if (menu.type !== 'menu' || !menu.permission || !policies.get(menu.permission)?.enabled) continue;
+    addAncestors(menu.id);
   }
+
+  let permissionNodeId = -1;
+  const permissionNodes = Object.entries(ALL_PERMISSIONS).flatMap(([code, meta]) => {
+    if (policies.get(code)?.enabled !== true) return [];
+    const menuNames = typeof meta.menu === 'string' ? [meta.menu] : meta.menu ?? [];
+    const boundPages = menuNames.map(name => pageByName.get(name)).filter((page): page is NonNullable<typeof page> => !!page);
+    if (boundPages.length === 0) return [];
+    return boundPages
+      .filter(page => page.permission !== code)
+      .map(page => {
+        addAncestors(page.id);
+        const path = [page.title, meta.label];
+        let ancestor = menuIndex.get(page.parentId);
+        const visited = new Set([page.id]);
+        while (ancestor && !visited.has(ancestor.id)) {
+          visited.add(ancestor.id);
+          path.unshift(ancestor.title);
+          ancestor = menuIndex.get(ancestor.parentId);
+        }
+        return {
+          id: permissionNodeId--,
+          parentId: page.id,
+          title: meta.label,
+          name: null,
+          type: 'permission' as const,
+          permission: code,
+          permissionLabel: meta.label,
+          requestable: true,
+          path,
+          riskLevel: policies.get(code)?.riskLevel ?? 'low',
+          approvalPolicy: policies.get(code)?.approvalPolicy ?? 'none',
+          maxDurationMinutes: policies.get(code)?.maxDurationMinutes ?? null,
+          mfaRequired: policies.get(code)?.mfaRequired ?? false,
+          permanentAllowed: policies.get(code)?.permanentAllowed ?? false,
+          emergencyAllowed: policies.get(code)?.emergencyAllowed ?? false,
+          maxEmergencyMinutes: policies.get(code)?.maxEmergencyMinutes ?? 60,
+        };
+      });
+  });
+
   return {
     roles: roleOptions,
-    menus: available.filter(menu => included.has(menu.id)).map(menu => {
-      const policy = menu.permission ? policies.get(menu.permission) : undefined;
-      const path = [menu.title];
-      let ancestor = menuIndex.get(menu.parentId);
-      const visited = new Set([menu.id]);
-      while (ancestor && !visited.has(ancestor.id)) {
-        visited.add(ancestor.id);
-        path.unshift(ancestor.title);
-        ancestor = menuIndex.get(ancestor.parentId);
-      }
-      return {
-        id: menu.id, parentId: menu.parentId, title: menu.title, name: menu.name ?? null, type: menu.type, permission: menu.permission,
-        permissionLabel: menu.permission ? ALL_PERMISSIONS[menu.permission]?.label ?? menu.title : null,
-        requestable: !!policy?.enabled, path,
-        riskLevel: policy?.riskLevel ?? 'low', approvalPolicy: policy?.approvalPolicy ?? 'none',
-        maxDurationMinutes: policy?.maxDurationMinutes ?? null, mfaRequired: policy?.mfaRequired ?? false,
-        permanentAllowed: policy?.permanentAllowed ?? false, emergencyAllowed: policy?.emergencyAllowed ?? false, maxEmergencyMinutes: policy?.maxEmergencyMinutes ?? 60,
-      };
-    }),
+    menus: [
+      ...available.filter(menu => included.has(menu.id)).map(menu => {
+        const policy = menu.permission ? policies.get(menu.permission) : undefined;
+        const path = [menu.title];
+        let ancestor = menuIndex.get(menu.parentId);
+        const visited = new Set([menu.id]);
+        while (ancestor && !visited.has(ancestor.id)) {
+          visited.add(ancestor.id);
+          path.unshift(ancestor.title);
+          ancestor = menuIndex.get(ancestor.parentId);
+        }
+        return {
+          id: menu.id, parentId: menu.parentId, title: menu.title, name: menu.name ?? null, type: menu.type, permission: menu.permission,
+          permissionLabel: menu.permission ? ALL_PERMISSIONS[menu.permission]?.label ?? menu.title : null,
+          requestable: !!policy?.enabled, path,
+          riskLevel: policy?.riskLevel ?? 'low', approvalPolicy: policy?.approvalPolicy ?? 'none',
+          maxDurationMinutes: policy?.maxDurationMinutes ?? null, mfaRequired: policy?.mfaRequired ?? false,
+          permanentAllowed: policy?.permanentAllowed ?? false, emergencyAllowed: policy?.emergencyAllowed ?? false, maxEmergencyMinutes: policy?.maxEmergencyMinutes ?? 60,
+        };
+      }),
+      ...permissionNodes,
+    ],
   };
 }
 

@@ -21,8 +21,6 @@ type MenuPermissionPanelProps = Readonly<{
   onChange?: (ids: number[]) => void;
   loading?: boolean;
   readonly?: boolean;
-  /** 只展示目录/页面，用于页面访问授权；按钮能力由 CapabilityPanel 单独授权 */
-  pagesOnly?: boolean;
   /** 数据首次到达时自动展开所有节点；只读有效权限预览使用 */
   defaultExpandAll?: boolean;
   /** 只读模式下也显示展开/折叠工具条 */
@@ -33,12 +31,8 @@ type MenuPermissionPanelProps = Readonly<{
   labelSuffix?: Record<string, React.ReactNode>;
 }>;
 
-function visibleMenus(items: Menu[], pagesOnly: boolean): Menu[] {
-  return items.flatMap((m) => {
-    if (pagesOnly && m.type === 'button') return [];
-    const children = m.children ? visibleMenus(m.children, pagesOnly) : undefined;
-    return [{ ...m, children }];
-  });
+function visibleMenus(items: Menu[]): Menu[] {
+  return items.map((m) => ({ ...m, children: m.children ? visibleMenus(m.children) : undefined }));
 }
 
 function menusToTreeData(items: Menu[], labelSuffix?: Record<string, React.ReactNode>): object[] {
@@ -65,30 +59,12 @@ function getAllMenuKeys(items: Menu[]): string[] {
   return items.flatMap((m) => [String(m.id), ...(m.children ? getAllMenuKeys(m.children) : [])]);
 }
 
-function flattenMenus(items: Menu[], map = new Map<number, Menu>()): Map<number, Menu> {
-  for (const m of items) {
-    map.set(m.id, m);
-    if (m.children) flattenMenus(m.children, map);
-  }
-  return map;
-}
-
-/** 页面/目录节点的「查询」按钮子节点：勾选页面时自动带上，保证页面数据可加载 */
-function queryButtonIdsOf(node: Menu): number[] {
-  return (node.children ?? [])
-    .filter((c) => c.type === 'button' && (
-      c.permission?.endsWith(':list') || c.permission?.endsWith(':query') || c.title === '查询'
-    ))
-    .map((c) => c.id);
-}
-
 export function MenuPermissionPanel({
   allMenus,
   checkedMenuIds,
   onChange,
   loading = false,
   readonly = false,
-  pagesOnly = false,
   defaultExpandAll = false,
   showExpandControls = false,
   height = 400,
@@ -96,11 +72,10 @@ export function MenuPermissionPanel({
 }: MenuPermissionPanelProps) {
   // 默认折叠（菜单树节点较多，全展开列表过长）；可用「展开全部」按钮展开
   const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
-  const displayMenus = useMemo(() => visibleMenus(allMenus, pagesOnly), [allMenus, pagesOnly]);
+  const displayMenus = useMemo(() => visibleMenus(allMenus), [allMenus]);
   useEffect(() => {
     if (defaultExpandAll && displayMenus.length > 0) setExpandedKeys(getAllMenuKeys(displayMenus));
   }, [defaultExpandAll, displayMenus]);
-  const menuIndex = useMemo(() => flattenMenus(allMenus), [allMenus]);
   // 拼音词典就绪后重渲染，补上已输入关键字的拼音命中
   usePinyinReady();
 
@@ -112,22 +87,8 @@ export function MenuPermissionPanel({
     );
   }
 
-  // 父子不联动（精确授权）。页面模式下只写页面 ID，读权限由服务端按页面自动补齐；
-  // 旧的「查询」按钮自动勾选仅保留给仍带子查询按钮的页面。
-  const handleChange = (keys: string[]) => {
-    const next = new Set(keys.map(Number));
-    const prev = new Set(checkedMenuIds);
-    if (!pagesOnly) {
-      for (const id of next) {
-        if (prev.has(id)) continue;
-        const node = menuIndex.get(id);
-        if (node && node.type !== 'button') {
-          for (const qid of queryButtonIdsOf(node)) next.add(qid);
-        }
-      }
-    }
-    onChange?.([...next]);
-  };
+  // 父子不联动（精确授权）。页面读权限由服务端按页面自动补齐。
+  const handleChange = (keys: string[]) => onChange?.(keys.map(Number));
 
   return (
     <>
@@ -137,9 +98,7 @@ export function MenuPermissionPanel({
             type="info"
             closeIcon={null}
             style={{ marginBottom: 8 }}
-            description={pagesOnly
-              ? '页面访问只控制导航；页面读权限随页面自动授予。操作权限请在「接口权限」中单独选择，不会隐藏或带出页面。'
-              : '页面与按钮分别授权；页面承担导航和读权限，按钮只承载操作权限。'}
+            description="页面访问只控制导航；页面读权限随页面自动授予。操作权限请在「接口权限」中单独选择，不会隐藏或带出页面。"
           />
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
             <Space>

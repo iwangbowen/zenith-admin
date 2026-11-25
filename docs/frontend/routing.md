@@ -73,7 +73,7 @@ lazyPageComponent(m.component)（utils/page-registry.ts）解析懒加载组件
 
 完整菜单树（`useMenuTree()` → `GET /api/menus`）不在启动链路上：只有命中 catch-all 的 `NotFoundOrForbidden` 才会请求它，用于 403 / 404 判别。
 
-页面节点承载导航和读权限，按钮只承载操作权限。`getUserMenuIds()` 只返回显式页面授权；只授予读/操作权限时页面不注册（API-only）。页面授权缺少读权限时由服务端 fail-closed，前端不自行从权限码推导页面。
+页面节点承载导航和读权限；操作权限只由权限注册表/权限目录承载，不生成菜单节点。`getUserMenuIds()` 只返回显式页面授权；只授予读/操作权限时页面不注册（API-only）。页面授权缺少读权限时由服务端 fail-closed，前端不自行从权限码推导页面。
 
 catch-all 的 403 / 404 判别使用 `GET /api/menus/paths` 的轻量页面路径集合（任意登录用户可读），不依赖 `system:menu:list` 的管理菜单树；命中已知路径但不在当前用户菜单中时返回 403，否则 404。
 

@@ -79,7 +79,7 @@ export interface CreateMenuInput {
   path?: string;
   component?: string;
   icon?: string;
-  type?: 'directory' | 'menu' | 'button';
+  type?: 'directory' | 'menu';
   permission?: string;
   query?: string | null;
   isExternal?: boolean;
@@ -125,11 +125,11 @@ export async function listMenuPaths(): Promise<string[]> {
 export async function listUserMenuTree(): Promise<Menu[]> {
   const user = currentUser();
   // 禁用菜单（含其整棵子树）对所有人（含超管）不可见，前端不再注册禁用路由；菜单管理页走 listMenuTree 不受影响
-  // 按钮型节点是纯操作权限点（权限码经登录态下发），不参与页面/侧边栏展示
+  // 菜单树只包含目录与页面；操作权限码由登录态下发，不参与页面/侧边栏展示
   const platformPages = new Set(Object.values(SETTINGS_MODULES).filter((def) => def.platformOnly).flatMap((def) => def.page ? [def.page] : []));
   platformPages.add('/system/maintenance');
   const allMenus = excludeDisabledSubtrees(await db.select().from(menus).orderBy(asc(menus.sort), asc(menus.id)))
-    .filter((m) => m.type !== 'button' && (!config.multiTenantMode || isPlatformAdmin(user) || !m.path || !platformPages.has(m.path)));
+    .filter((m) => !config.multiTenantMode || isPlatformAdmin(user) || !m.path || !platformPages.has(m.path));
 
   if (isSuperAdmin(user)) {
     return buildMenuTree(allMenus.map(mapMenu));
@@ -167,24 +167,15 @@ export async function listMenusFlat(): Promise<Omit<Menu, 'children'>[]> {
   return list.map(mapMenu);
 }
 
-async function assertMenuPermission(input: CreateMenuInput, currentId?: number) {
+function assertMenuPermission(input: CreateMenuInput) {
   const type = input.type ?? 'menu';
   const permission = input.permission?.trim() || null;
   if (type === 'directory' && permission) throw new HTTPException(400, { message: '目录不能携带权限码' });
-  if (type === 'button' && !permission) throw new HTTPException(400, { message: '按钮必须填写权限码' });
   if (permission && !ALL_PERMISSIONS[permission]) throw new HTTPException(400, { message: `权限目录未登记 ${permission}` });
-  if (type === 'button') {
-    const parent = await db.query.menus.findFirst({ where: eq(menus.id, input.parentId ?? 0), columns: { type: true } });
-    if (!parent || parent.type !== 'menu') throw new HTTPException(400, { message: '按钮只能挂在页面节点下' });
-  }
-  if (currentId !== undefined && input.parentId !== undefined && type === 'button') {
-    const parent = await db.query.menus.findFirst({ where: eq(menus.id, input.parentId), columns: { type: true } });
-    if (!parent || parent.type !== 'menu') throw new HTTPException(400, { message: '按钮只能挂在页面节点下' });
-  }
 }
 
 export async function createMenu(input: CreateMenuInput): Promise<Omit<Menu, 'children'>> {
-  await assertMenuPermission(input);
+  assertMenuPermission(input);
   await ensureMenuParentValid(input.parentId ?? 0);
   const [row] = await db
     .insert(menus)
@@ -211,7 +202,7 @@ export async function createMenu(input: CreateMenuInput): Promise<Omit<Menu, 'ch
 
 export async function updateMenu(id: number, input: UpdateMenuInput): Promise<Omit<Menu, 'children'>> {
   const current = requireRow(await db.query.menus.findFirst({ where: eq(menus.id, id) }), '菜单不存在');
-  await assertMenuPermission({ ...current, ...input } as CreateMenuInput, id);
+  assertMenuPermission({ ...current, ...input } as CreateMenuInput);
   if (input.parentId !== undefined) {
     await ensureMenuParentValid(input.parentId, id);
   }

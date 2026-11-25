@@ -129,7 +129,7 @@ function RedirectFromLogin() {
  * 通过全量菜单树的 path → component 映射判断当前路径是否对应一个已存在的页面组件；
  * 若命中的页面用户本就有权限（路由已注册仍落入 catch-all），说明只是子路径不存在，按 404 处理。
  *
- * 全量菜单树（含全部按钮节点，数百 KB）只在真正落入 catch-all 时才请求：
+ * 全量目录/页面树只在真正落入 catch-all 时才请求，用于 403 / 404 判别：
  * 它不参与正常导航，不能作为首载 gate 让每个用户每次启动都下载一遍。
  */
 function NotFoundOrForbidden({ userMenuPaths }: Readonly<{ userMenuPaths: Set<string> }>) {

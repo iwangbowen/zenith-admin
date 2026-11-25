@@ -94,7 +94,7 @@ export default function AccessRequestWorkflowForm({ mode, value, instanceId, biz
   const menus = optionsQuery.data?.menus ?? [];
   const pageMenus = useMemo(() => {
     const flat = (optionsQuery.data?.menus ?? [])
-      .filter(menu => menu.type !== 'button')
+      .filter(menu => menu.type === 'directory' || menu.type === 'menu')
       .map(menu => ({ ...menu, path: menu.path.join(' / ') }));
     return buildTree(flat as unknown as Menu[]) as unknown as Menu[];
   }, [optionsQuery.data?.menus]);
@@ -171,7 +171,6 @@ export default function AccessRequestWorkflowForm({ mode, value, instanceId, biz
       <MenuPermissionPanel
         allMenus={pageMenus}
         checkedMenuIds={values.menuIds}
-        pagesOnly
         onChange={(ids) => {
           menuIdsRef.current = ids;
           formApi.current?.setValue('menuIds', ids);

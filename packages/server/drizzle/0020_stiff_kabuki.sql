@@ -1,2 +1,0 @@
-CREATE TYPE "public"."managed_file_origin" AS ENUM('upload', 'storage-register');--> statement-breakpoint
-ALTER TABLE "managed_files" ADD COLUMN "origin" "managed_file_origin" DEFAULT 'upload' NOT NULL;

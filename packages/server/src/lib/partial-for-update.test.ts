@@ -9,7 +9,7 @@ import { partialForUpdate } from '@zenith/shared/core';
 
 const createSchema = z.object({
   title: z.string().min(1),
-  type: z.enum(['directory', 'menu', 'button']).default('menu'),
+  type: z.enum(['directory', 'menu']).default('menu'),
   parentId: z.coerce.number().int().default(0),
   tagIds: z.array(z.number()).default([]),
   optionalWithDefault: z.string().default('A').optional(),
