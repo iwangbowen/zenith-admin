@@ -26,6 +26,8 @@ export interface WorkflowBusinessFormApi {
   onActionSuccess?: () => void;
   /** 业务值尚不足以预览时阻止公共容器发送预览请求。 */
   isPreviewReady?: () => boolean;
+  /** 强制重算业务侧预览（如审批人、策略等与当前表单值无关的外部上下文变化）。 */
+  refreshPreview?: () => void;
 }
 
 /** 自定义业务表单组件接收的 props 契约 */

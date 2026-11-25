@@ -193,6 +193,12 @@ const WorkflowLaunchForm = forwardRef<WorkflowLaunchFormHandle, WorkflowLaunchFo
         : (dynamicFormApi.current?.getValues?.() as Record<string, unknown>) ?? {}
     );
 
+    const refreshPreview = () => {
+      setChainReloadKey((k) => k + 1);
+      // 业务表单可能还有独立的权限/审批预览，也要随表头「刷新」一起重算。
+      businessFormApi.current?.refreshPreview?.();
+    };
+
     const businessPreviewReady = def.formType !== 'custom' || (businessFormApi.current?.isPreviewReady?.() ?? true);
 
     // 动态默认值（${currentUser}/${today} 等）按发起人解析，被草稿/编辑回填覆盖
@@ -329,7 +335,7 @@ const WorkflowLaunchForm = forwardRef<WorkflowLaunchFormHandle, WorkflowLaunchFo
             size="small"
             theme="borderless"
             icon={<RefreshCw size={13} />}
-            onClick={() => setChainReloadKey((k) => k + 1)}
+            onClick={refreshPreview}
           >
             刷新
           </Button>

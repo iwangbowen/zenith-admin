@@ -126,6 +126,8 @@ export default function AccessRequestWorkflowForm({ mode, value, instanceId, biz
   const previewQuery = useAccessWorkflowPreview(debouncedPreviewInput, mode === 'create' && optionsQuery.isSuccess, requestClient);
   const previewPending = previewQuery.isFetching || stableStringify(previewInput) !== stableStringify(debouncedPreviewInput);
   const preview = previewPending ? undefined : previewQuery.data;
+  const previewRefetchRef = useRef(previewQuery.refetch);
+  previewRefetchRef.current = previewQuery.refetch;
   const latestPreview = useRef({ preview, previewInput, roles, maxMinutes });
   latestPreview.current = { preview, previewInput, roles, maxMinutes };
 
@@ -147,6 +149,7 @@ export default function AccessRequestWorkflowForm({ mode, value, instanceId, biz
     getFormApi?.({
       isPreviewReady: () => { const current = withPicked(api.getValues() as FormValues); return !!(current.roleIds?.length || current.permissionCodes?.length || current.menuIds?.length); },
       getValues: () => serialize(withPicked(api.getValues() as FormValues), latestPreview.current.roles),
+      refreshPreview: () => { void previewRefetchRef.current(); },
       validate: async () => {
         const current = withPicked(await api.validate() as FormValues);
         const fail = (message: string): never => { Toast.warning(message); return abortSubmit('invalid_access_request'); };

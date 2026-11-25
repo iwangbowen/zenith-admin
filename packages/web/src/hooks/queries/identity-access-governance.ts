@@ -46,7 +46,14 @@ export function useAccessWorkflowOptions(enabled = true, client?: ApiClient) {
 }
 
 export function useAccessWorkflowPreview(body: BodyOf<typeof accessGovernanceContract.workflowPreview>, enabled: boolean, client?: ApiClient) {
-  return useApiQuery(accessGovernanceContract.workflowPreview, { body }, { enabled, staleTime: 0, requestOptions: { client } });
+  // 审批人与策略由服务端按当前组织/权限实时解析；回到页面或网络恢复时强制重算，避免表单一直展示旧的阻断提示。
+  return useApiQuery(accessGovernanceContract.workflowPreview, { body }, {
+    enabled,
+    staleTime: 0,
+    refetchOnWindowFocus: 'always',
+    refetchOnReconnect: 'always',
+    requestOptions: { client },
+  });
 }
 
 export function useAccessRequestList(query: AccessRequestListQuery, enabled = true) {
