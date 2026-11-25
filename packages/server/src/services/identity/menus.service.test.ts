@@ -33,6 +33,7 @@ vi.mock('../../lib/tenant-package', () => ({
 vi.mock('../../lib/permissions', () => ({
   isSuperAdmin: permissionMocks.isSuperAdmin,
   getUserMenuIds: permissionMocks.getUserMenuIds,
+  clearUserPermissionCache: vi.fn(),
 }));
 
 import { excludeDisabledSubtrees, listUserMenuTree } from './menus.service';

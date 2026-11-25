@@ -71,6 +71,15 @@ export function useDeleteMenu() {
   });
 }
 
+export function useReorderMenus() {
+  return useApiMutation(menuContract.reorder, {
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: menuKeys.tree });
+      void qc.invalidateQueries({ queryKey: menuKeys.userTree });
+    },
+  });
+}
+
 /**
  * 访问权限来源（角色菜单 / 用户直授 / 用户组角色 / 租户套餐）变更后，
  * 刷新当前登录者的导航树与权限码快照。客户端无法判断本次变更是否覆盖自己，

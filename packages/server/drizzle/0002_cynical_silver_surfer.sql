@@ -1,0 +1,2 @@
+CREATE UNIQUE INDEX "menus_name_unique" ON "menus" USING btree ("name") WHERE "menus"."name" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "menus_internal_path_unique" ON "menus" USING btree ("path") WHERE "menus"."type" = 'menu' and "menus"."is_external" = false and "menus"."path" is not null;

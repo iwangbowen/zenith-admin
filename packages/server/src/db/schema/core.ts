@@ -1,4 +1,5 @@
-import { pgTable, varchar, pgEnum, integer, boolean, primaryKey, unique, index, text, jsonb, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { pgTable, varchar, pgEnum, integer, boolean, primaryKey, unique, uniqueIndex, index, text, jsonb, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import type { TenantPackageQuotas } from '@zenith/shared/licensing';
 import type { UserGroupMemberRule } from '@zenith/shared/identity';
 import { timestampColumns, idColumn, statusColumn, sortColumn, remarkColumn, timestamptz } from './common';
@@ -168,7 +169,10 @@ export const menus = pgTable('menus', {
   featureKey: varchar({ length: 50 }),
   ...auditColumns(),
   ...timestampColumns(),
-});
+}, (t) => [
+  uniqueIndex('menus_name_unique').on(t.name).where(sql`${t.name} is not null`),
+  uniqueIndex('menus_internal_path_unique').on(t.path).where(sql`${t.type} = 'menu' and ${t.isExternal} = false and ${t.path} is not null`),
+]);
 
 export type MenuRow = typeof menus.$inferSelect;
 

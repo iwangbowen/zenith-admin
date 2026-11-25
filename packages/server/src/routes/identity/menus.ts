@@ -11,6 +11,7 @@ import {
   getMenu,
   createMenu,
   updateMenu,
+  reorderMenus,
   deleteMenu,
   getMenuBeforeAudit,
   getMenuCascadeBeforeAudit,
@@ -47,6 +48,13 @@ const updateMenuRoute = defineContractRoute(menuContract.update, {
   },
 });
 
+const reorderMenuRoute = defineContractRoute(menuContract.reorder, {
+  handler: async (c) => {
+    const data = c.req.valid('json');
+    return c.json(okBody(await reorderMenus(data.parentId, data.orderedIds), '排序已更新'), 200);
+  },
+});
+
 const deleteMenuRoute = defineContractRoute(menuContract.remove, {
   responses: conflictResponse,
   handler: async (c) => {
@@ -61,7 +69,7 @@ const deleteMenuRoute = defineContractRoute(menuContract.remove, {
 mountCrud(menusRouter, menuContract,
   { get: getMenu },
   { exclude: ['create', 'update', 'remove'] },
-  [userMenuRoute, pathsRoute, listRoute, flatRoute, createMenuRoute, updateMenuRoute, deleteMenuRoute],
+  [userMenuRoute, pathsRoute, listRoute, flatRoute, createMenuRoute, updateMenuRoute, reorderMenuRoute, deleteMenuRoute],
 );
 
 export default menusRouter;

@@ -1,4 +1,5 @@
 import { requireRow } from '../../lib/db-assert';
+import { buildWhere } from '../../lib/where-helpers';
 import { eq, and, ne, asc, inArray, countDistinct, isNotNull } from 'drizzle-orm';
 import { db } from '../../db';
 import { menus, roleMenus, userMenus, roles } from '../../db/schema';
@@ -10,7 +11,7 @@ import { SETTINGS_MODULES } from '@zenith/shared/settings';
 import { ALL_PERMISSIONS } from '@zenith/shared/permissions';
 import { config } from '../../config';
 import { getTenantPackageFeatureSet } from '../../lib/tenant-package';
-import { isSuperAdmin, getUserMenuIds } from '../../lib/permissions';
+import { isSuperAdmin, getUserMenuIds, clearUserPermissionCache } from '../../lib/permissions';
 import { formatTimestamps } from '../../lib/datetime';
 import { buildTree } from '@zenith/shared/core';
 
@@ -174,8 +175,31 @@ function assertMenuPermission(input: CreateMenuInput) {
   if (permission && !ALL_PERMISSIONS[permission]) throw new HTTPException(400, { message: `权限目录未登记 ${permission}` });
 }
 
+async function assertMenuIdentityUnique(input: CreateMenuInput, currentId?: number) {
+  const name = input.name?.trim();
+  if (name) {
+    const duplicate = await db.select({ id: menus.id }).from(menus)
+      .where(buildWhere(eq(menus.name, name), currentId === undefined ? undefined : ne(menus.id, currentId)))
+      .limit(1);
+    if (duplicate.length) throw new HTTPException(400, { message: `菜单组件名 ${name} 已被占用` });
+  }
+  const path = input.path?.trim();
+  if (path && (input.type ?? 'menu') === 'menu' && !input.isExternal) {
+    const duplicate = await db.select({ id: menus.id }).from(menus)
+      .where(buildWhere(
+        eq(menus.path, path),
+        eq(menus.type, 'menu'),
+        eq(menus.isExternal, false),
+        currentId === undefined ? undefined : ne(menus.id, currentId),
+      ))
+      .limit(1);
+    if (duplicate.length) throw new HTTPException(400, { message: `页面路由 ${path} 已被占用` });
+  }
+}
+
 export async function createMenu(input: CreateMenuInput): Promise<Omit<Menu, 'children'>> {
   assertMenuPermission(input);
+  await assertMenuIdentityUnique(input);
   await ensureMenuParentValid(input.parentId ?? 0);
   const [row] = await db
     .insert(menus)
@@ -202,12 +226,31 @@ export async function createMenu(input: CreateMenuInput): Promise<Omit<Menu, 'ch
 
 export async function updateMenu(id: number, input: UpdateMenuInput): Promise<Omit<Menu, 'children'>> {
   const current = requireRow(await db.query.menus.findFirst({ where: eq(menus.id, id) }), '菜单不存在');
-  assertMenuPermission({ ...current, ...input } as CreateMenuInput);
+  const merged = { ...current, ...input } as CreateMenuInput;
+  assertMenuPermission(merged);
+  await assertMenuIdentityUnique(merged, id);
   if (input.parentId !== undefined) {
     await ensureMenuParentValid(input.parentId, id);
   }
   const [row] = await db.update(menus).set({ ...input }).where(eq(menus.id, id)).returning();
   return mapMenu(requireRow(row, '菜单不存在'));
+}
+
+/** 同一父级下的排序：orderedIds 必须覆盖全部直接子节点，避免拖拽造成部分排序。 */
+export async function reorderMenus(parentId: number, orderedIds: number[]): Promise<{ count: number }> {
+  const siblings = await db.select({ id: menus.id }).from(menus).where(eq(menus.parentId, parentId));
+  const expected = new Set(siblings.map(row => row.id));
+  const submitted = new Set(orderedIds);
+  if (expected.size !== orderedIds.length || submitted.size !== orderedIds.length || [...expected].some(id => !submitted.has(id))) {
+    throw new HTTPException(400, { message: '排序项必须包含该父级下的全部节点' });
+  }
+  await db.transaction(async (tx) => {
+    for (let index = 0; index < orderedIds.length; index++) {
+      await tx.update(menus).set({ sort: index }).where(eq(menus.id, orderedIds[index]));
+    }
+  });
+  await clearUserPermissionCache();
+  return { count: orderedIds.length };
 }
 
 export async function deleteMenu(id: number): Promise<void> {

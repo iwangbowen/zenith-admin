@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Button, Form, Radio, TreeSelect, Row, Col, Tooltip, Banner } from '@douyinfe/semi-ui';
+import { Button, Form, Radio, TreeSelect, Row, Col, Tooltip, Banner, Toast } from '@douyinfe/semi-ui';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
-import { ChevronsDownUp, ChevronsUpDown } from 'lucide-react';
+import { ChevronsDownUp, ChevronsUpDown, GripVertical } from 'lucide-react';
 import type { Menu } from '@zenith/shared/identity';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { renderLucideIcon } from '@/utils/icons';
@@ -18,11 +18,12 @@ import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
 import { useDictItems } from '@/hooks/useDictItems';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
-import { menuKeys, useDeleteMenu, useMenuDetail, useMenuTree, useSaveMenu, type MenuFormValues } from '@/hooks/queries/menus';
+import { menuKeys, useDeleteMenu, useMenuDetail, useMenuTree, useReorderMenus, useSaveMenu, type MenuFormValues } from '@/hooks/queries/menus';
 import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { ListSearchToolbar, useStatusToggle, useCrudOperationColumn } from '@/components/list-page';
 import { EditFormModal } from '@/components/EditFormModal';
+import PagePermissionsDrawer from './PagePermissionsDrawer';
 
 interface SearchParams {
   keyword: string;
@@ -38,6 +39,9 @@ export default function MenusPage() {
   const [iconValue, setIconValue] = useState('');
   const [menuType, setMenuType] = useState<string>('menu');
   const [isExternalVal, setIsExternalVal] = useState<boolean>(false);
+  const [permissionMenu, setPermissionMenu] = useState<Menu | null>(null);
+  const [draggedMenuId, setDraggedMenuId] = useState<number | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<number | null>(null);
 
   // 树形列表不分页：只取草稿 / 已提交双状态与「查询 / 重置必回源」，submitted 进客户端过滤谓词
   const { bind, bindKeyword, submittedParams, handleSearch, handleReset } = useListSearch<SearchParams>({
@@ -85,6 +89,7 @@ export default function MenusPage() {
   });
   const toggleStatusMutation = useSaveMenu();
   const deleteMutation = useDeleteMenu();
+  const reorderMutation = useReorderMenus();
 
   useEffect(() => {
     const detail = menuModal.editing;
@@ -95,11 +100,16 @@ export default function MenusPage() {
     setIsExternalVal(detail.isExternal ?? false);
   }, [menuModal.editing, menuModal.visible]);
 
-  // 递归过滤树节点（标题子串 + 拼音首字母 / 全拼）
+  // 递归过滤树节点（标题 / 组件名 / 路由 / 权限码 + 标题拼音）
   const filterTree = useCallback((items: Menu[], kw: string, st: string): Menu[] => {
     return items.reduce<Menu[]>((acc, item) => {
       const filteredChildren = item.children?.length ? filterTree(item.children, kw, st) : [];
-      const titleMatch = !kw || textMatches(item.title, kw);
+      const keywordMatch = !kw || textMatches(item.title, kw) || [
+        item.name,
+        item.path,
+        item.component,
+        item.permission,
+      ].some(value => value?.toLowerCase().includes(kw.toLowerCase()));
       const statusMatch = !st || item.status === st;
       let mergedChildren: Menu[] | undefined;
       if (filteredChildren.length > 0) {
@@ -107,7 +117,7 @@ export default function MenusPage() {
       } else if (item.children?.length) {
         mergedChildren = [];
       }
-      if ((titleMatch && statusMatch) || filteredChildren.length > 0) {
+      if ((keywordMatch && statusMatch) || filteredChildren.length > 0) {
         acc.push({ ...item, children: mergedChildren });
       }
       return acc;
@@ -122,6 +132,47 @@ export default function MenusPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [data, keyword, statusFilter, filterTree, pinyinReady]
   );
+  const canReorder = hasPermission('system:menu:update') && !keyword && !statusFilter;
+  const findMenuById = useCallback((items: Menu[], id: number): Menu | undefined => {
+    for (const item of items) {
+      if (item.id === id) return item;
+      const found = item.children ? findMenuById(item.children, id) : undefined;
+      if (found) return found;
+    }
+    return undefined;
+  }, []);
+  const handleDrop = async (target: Menu) => {
+    if (!canReorder || draggedMenuId === null || draggedMenuId === target.id) {
+      setDraggedMenuId(null);
+      setDropTargetId(null);
+      return;
+    }
+    const source = findMenuById(data, draggedMenuId);
+    if (!source || source.parentId !== target.parentId) {
+      Toast.warning('只能在同一父级内拖拽排序');
+      setDraggedMenuId(null);
+      setDropTargetId(null);
+      return;
+    }
+    const siblings = target.parentId === 0
+      ? data
+      : findMenuById(data, target.parentId)?.children ?? [];
+    const siblingIds = siblings.map(item => item.id);
+    const ordered = siblingIds.filter(id => id !== draggedMenuId);
+    const targetIndex = ordered.indexOf(target.id);
+    if (targetIndex < 0) return;
+    ordered.splice(targetIndex, 0, draggedMenuId);
+    if (ordered.every((id, index) => id === siblingIds[index])) return;
+    try {
+      await reorderMutation.mutateAsync({ body: { parentId: target.parentId, orderedIds: ordered } });
+      Toast.success('菜单顺序已更新');
+    } catch (error) {
+      Toast.error(error instanceof Error ? error.message : '菜单排序失败');
+    } finally {
+      setDraggedMenuId(null);
+      setDropTargetId(null);
+    }
+  };
 
   // 展开态跟随**表格实际渲染的** filteredData：跟未筛选的全量树比较会让筛选后
   // 已全部展开的表格仍显示「全部展开」，点击后可见区域毫无变化
@@ -199,9 +250,15 @@ export default function MenusPage() {
         hidden: row.type !== 'directory' || !hasPermission('system:menu:create'),
         onClick: () => openCreate(row.id),
       },
+      {
+        key: 'permissions',
+        label: '页面权限',
+        hidden: row.type !== 'menu' || !hasPermission('system:menu:list'),
+        onClick: () => setPermissionMenu(row),
+      },
     ],
-    width: 210,
-    desktopInlineKeys: ['child', 'edit', 'delete'],
+    width: 250,
+    desktopInlineKeys: ['child', 'permissions', 'edit', 'delete'],
   });
 
   const columns: ColumnProps<Menu>[] = [
@@ -217,6 +274,25 @@ export default function MenusPage() {
           <span style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
             {indentText}
             {expandIcon}
+            {canReorder && (
+              <span
+                draggable
+                aria-label={`拖拽调整 ${row.title} 的同级顺序`}
+                title="拖拽调整同级顺序"
+                onDragStart={(event) => {
+                  event.stopPropagation();
+                  event.dataTransfer.effectAllowed = 'move';
+                  setDraggedMenuId(row.id);
+                }}
+                onDragEnd={() => {
+                  setDraggedMenuId(null);
+                  setDropTargetId(null);
+                }}
+                style={{ display: 'inline-flex', alignItems: 'center', marginRight: 4, cursor: 'grab', color: 'var(--semi-color-text-2)', flexShrink: 0 }}
+              >
+                <GripVertical size={14} />
+              </span>
+            )}
             {row.icon && (
               <span style={{ marginRight: 6, marginLeft: 4, display: 'flex', alignItems: 'center', color: 'var(--semi-color-text-1)', flexShrink: 0 }}>
                 {renderLucideIcon(row.icon, 15)}
@@ -289,7 +365,7 @@ export default function MenusPage() {
   return (
     <div className="page-container" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="菜单名称" {...bindKeyword('keyword')} width={200} />}
+        keyword={<KeywordInput placeholder="菜单名称、路由、组件或权限码" {...bindKeyword('keyword')} width={260} />}
         filters={<StatusSelect items={statusItems} {...bind('status')} />}
         onSearch={handleSearch}
         onReset={handleResetAndCollapse}
@@ -329,6 +405,27 @@ export default function MenusPage() {
           childrenRecordName="children"
           virtualized
           scroll={{ y: tableHeight }}
+          onRow={(row) => {
+            if (!row) return {};
+            return {
+              'data-menu-id': row.id,
+              onDragOver: canReorder && draggedMenuId !== null && row.id !== draggedMenuId
+                ? (event) => {
+                  event.preventDefault();
+                  setDropTargetId(row.id);
+                }
+                : undefined,
+              onDrop: canReorder
+                ? (event) => {
+                  event.preventDefault();
+                  void handleDrop(row);
+                }
+                : undefined,
+              style: draggedMenuId === row.id
+                ? { opacity: 0.55 }
+                : dropTargetId === row.id ? { backgroundColor: 'var(--semi-color-primary-light-default)' } : undefined,
+            };
+          }}
         />
       </div>
 
@@ -460,6 +557,12 @@ export default function MenusPage() {
           </Col>
         </Row>
       </EditFormModal>
+
+      <PagePermissionsDrawer
+        menu={permissionMenu}
+        visible={permissionMenu !== null}
+        onClose={() => setPermissionMenu(null)}
+      />
     </div>
   );
 }

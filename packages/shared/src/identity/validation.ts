@@ -153,6 +153,12 @@ export const createMenuSchema = z.object({
 
 export const updateMenuSchema = partialForUpdate(createMenuSchema);
 
+/** 同一父级下拖拽排序：必须提交全部兄弟节点，避免部分更新造成顺序空洞。 */
+export const reorderMenusSchema = z.object({
+  parentId: z.number().int().min(0),
+  orderedIds: z.array(z.number().int().positive()).min(1),
+});
+
 
 // ─── 角色 Schema ──────────────────────────────────────────────────────────────
 export const createRoleSchema = z.object({
@@ -281,6 +287,7 @@ export type CreateMenuInput = z.infer<typeof createMenuSchema>;
 
 
 export type UpdateMenuInput = z.infer<typeof updateMenuSchema>;
+export type ReorderMenusInput = z.infer<typeof reorderMenusSchema>;
 
 
 export type CreateRoleInput = z.infer<typeof createRoleSchema>;

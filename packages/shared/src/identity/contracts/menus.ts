@@ -2,7 +2,7 @@ import * as z from 'zod';
 import { auditFieldsSchema, entityStatusSchema, idParam } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { MENU_TYPES } from '../constants';
-import { createMenuSchema, updateMenuSchema } from '../validation';
+import { createMenuSchema, reorderMenusSchema, updateMenuSchema } from '../validation';
 
 // ─── 实体 ────────────────────────────────────────────────────────────────────
 
@@ -53,5 +53,6 @@ export const menuContract = defineContract('/api/menus', {
   detail: op.get('/{id}', { access: { permission: 'system:menu:list' }, params: idParam, response: menuSchema, summary: '获取菜单详情' }),
   create: op.post('/', { access: { permission: 'system:menu:create', platformOnly: 'multi-tenant' }, audit: '创建菜单', body: createMenuSchema, response: menuSchema, summary: '新增菜单' }),
   update: op.put('/{id}', { access: { permission: 'system:menu:update', platformOnly: 'multi-tenant' }, audit: '更新菜单', params: idParam, body: updateMenuSchema, response: menuSchema, summary: '更新菜单' }),
+  reorder: op.put('/sort', { access: { permission: 'system:menu:update', platformOnly: 'multi-tenant' }, audit: '调整菜单排序', body: reorderMenusSchema, response: z.object({ count: z.int() }), summary: '同一父级下的菜单拖拽排序' }),
   remove: op.delete('/{id}', { access: { permission: 'system:menu:delete', platformOnly: 'multi-tenant' }, audit: '删除菜单', params: idParam, summary: '删除菜单及子菜单' }),
 }, { auditModule: '菜单管理', tags: ['Menus'] });
