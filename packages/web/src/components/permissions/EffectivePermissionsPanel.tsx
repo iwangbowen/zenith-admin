@@ -1,14 +1,14 @@
 /**
- * 最终有效权限：页面权限与接口权限双栏只读预览。
+ * 最终有效权限：页面为主、操作权限跟随页面的只读预览。
  *
- * 页面树和权限列表各自有搜索与独立滚动，避免页面树过长时把接口权限推到视口外。
+ * 页面树和权限项共享同一套页面分组结构，避免页面与接口权限各占一栏后失去关联。
  */
 import { useMemo } from 'react';
-import { TabPane, Tabs, Typography } from '@douyinfe/semi-ui';
+import { Banner, Typography } from '@douyinfe/semi-ui';
 import type { Menu } from '@zenith/shared/identity';
-import { useIsMobile } from '@/hooks/useMediaQuery';
-import { CapabilityPanel } from './CapabilityPanel';
-import { MenuPermissionPanel } from './MenuPermissionPanel';
+import { usePermissionCatalog } from '@/hooks/queries/permission-matrix';
+import { PermissionScopeWorkspace } from './PermissionScopeWorkspace';
+import { createAdminScopeData } from './scope-adapters';
 
 type PermissionSourceGroups = ReadonlyArray<{ id: number; name: string }>;
 
@@ -49,7 +49,7 @@ export function EffectivePermissionsPanel({
   pageSources = {},
   groups = [],
 }: EffectivePermissionsPanelProps) {
-  const isMobile = useIsMobile();
+  const catalogQuery = usePermissionCatalog();
   const pageSet = useMemo(() => new Set(pageIds), [pageIds]);
   const menuIndex = useMemo(() => flattenMenus(allMenus), [allMenus]);
   const effectiveMenus = useMemo(() => filterEffectiveMenus(allMenus, pageSet), [allMenus, pageSet]);
@@ -81,29 +81,15 @@ export function EffectivePermissionsPanel({
     return result;
   }, [pageIds, pageSources, sourceSignatures]);
 
-  const pagePanel = (
-    <MenuPermissionPanel
-      allMenus={effectiveMenus}
-      checkedMenuIds={pageIds}
-      loading={loading}
-      readonly
-      defaultExpandAll
-      showExpandControls
-      height={400}
-      labelSuffix={labelSuffix}
-    />
-  );
-  const permissionPanel = (
-    <CapabilityPanel
-      selectedPermissionCodes={permissionCodes}
-      selectedPageIds={pageIds}
-      readonly
-      onlySelected
-      hideBanner
-      showToolbar
-      height={400}
-    />
-  );
+  const scopeData = useMemo(() => {
+    const base = createAdminScopeData(effectiveMenus, catalogQuery.data ?? { items: [] });
+    const codeSet = new Set(permissionCodes);
+    return {
+      pages: base.pages,
+      permissions: base.permissions.filter(item => codeSet.has(item.code)
+        || (item.surface === 'page' && item.pageId !== null && pageSet.has(item.pageId))),
+    };
+  }, [catalogQuery.data, effectiveMenus, pageSet, permissionCodes]);
 
   const summary = (
     <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginBottom: 10, fontSize: 13 }}>
@@ -120,43 +106,26 @@ export function EffectivePermissionsPanel({
     </div>
   );
 
-  if (isMobile) {
-    return (
-      <div>
-        {summary}
-        <Tabs collapsible="auto">
-          <TabPane tab={`页面权限 ${pageCount}`} itemKey="pages">{pagePanel}</TabPane>
-          <TabPane tab={`接口权限 ${permissionCodes.length}`} itemKey="permissions">{permissionPanel}</TabPane>
-        </Tabs>
-      </div>
-    );
+  if (catalogQuery.error) {
+    return <div>{summary}<Banner type="warning" closeIcon={null} description={catalogQuery.error.message} /></div>;
   }
 
   return (
     <div>
       {summary}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'minmax(0, 1.05fr) minmax(0, 0.95fr)',
-        border: '1px solid var(--semi-color-border)',
-        borderRadius: 'var(--semi-border-radius-medium)',
-        overflow: 'hidden',
-      }}>
-        <div style={{ minWidth: 0, padding: 12, borderRight: '1px solid var(--semi-color-border)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
-            <Typography.Text strong>页面权限</Typography.Text>
-            <Typography.Text type="tertiary" size="small">{pageCount} 项</Typography.Text>
-          </div>
-          {pagePanel}
-        </div>
-        <div style={{ minWidth: 0, padding: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
-            <Typography.Text strong>接口权限</Typography.Text>
-            <Typography.Text type="tertiary" size="small">{permissionCodes.length} 项</Typography.Text>
-          </div>
-          {permissionPanel}
-        </div>
-      </div>
+      <PermissionScopeWorkspace
+        data={scopeData}
+        value={{ pageIds, permissionCodes }}
+        onChange={() => {}}
+        readonly
+        onlySelected
+        autoExpandSelected={false}
+        showBanner={false}
+        showSummary={false}
+        loading={loading || catalogQuery.isLoading}
+        height={400}
+        pageSuffix={labelSuffix}
+      />
     </div>
   );
 }
