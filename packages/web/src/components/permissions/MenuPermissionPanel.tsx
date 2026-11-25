@@ -25,6 +25,8 @@ type MenuPermissionPanelProps = Readonly<{
   defaultExpandAll?: boolean;
   /** 只读模式下也显示展开/折叠工具条 */
   showExpandControls?: boolean;
+  /** 隐藏顶部说明；页面访问与操作权限并排时由外层统一说明 */
+  hideBanner?: boolean;
   /** 树虚拟列表高度，默认 400；双栏预览时由调用方统一列高 */
   height?: number;
   /** key(menuId 字符串) -> 额外渲染的 ReactNode（如来源 Tag）*/
@@ -67,6 +69,7 @@ export function MenuPermissionPanel({
   readonly = false,
   defaultExpandAll = false,
   showExpandControls = false,
+  hideBanner = false,
   height = 400,
   labelSuffix,
 }: MenuPermissionPanelProps) {
@@ -94,12 +97,14 @@ export function MenuPermissionPanel({
     <>
       {!readonly && (
         <>
-          <Banner
-            type="info"
-            closeIcon={null}
-            style={{ marginBottom: 8 }}
-            description="页面访问只控制导航；页面读权限随页面自动授予。操作权限请在「接口权限」中单独选择，不会隐藏或带出页面。"
-          />
+          {!hideBanner && (
+            <Banner
+              type="info"
+              closeIcon={null}
+              style={{ marginBottom: 8 }}
+              description="页面访问只控制导航；页面读权限随页面自动授予。操作权限请在「接口权限」中单独选择，不会隐藏或带出页面。"
+            />
+          )}
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
             <Space>
               <Button size="small" theme="borderless" onClick={() => onChange?.(getAllMenuIds(displayMenus))}>全选</Button>

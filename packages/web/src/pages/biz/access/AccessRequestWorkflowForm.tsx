@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDebouncedValue } from '@tanstack/react-pacer';
-import { Banner, Descriptions, Form, Space, Spin, Table, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Banner, Descriptions, Form, Space, Spin, TabPane, Table, Tabs, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { buildTree, createLabelOptionsFromMap, stableStringify, type BodyOf } from '@zenith/shared/core';
 import {
@@ -17,7 +17,9 @@ import { useAccessWorkflowOptions, useAccessWorkflowPreview } from '@/hooks/quer
 import { abortSubmit } from '@/lib/abort-submit';
 import { formatDateTimeForApi, parseDateTimeParam } from '@/utils/date';
 import { singleLineColumns } from '@/utils/table-columns';
-import { FormAccessPermissionPicker } from './AccessPermissionPicker';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { mediaDown } from '@/lib/breakpoints';
+import { AccessPermissionPicker } from './AccessPermissionPicker';
 import { MenuPermissionPanel } from '@/components/permissions/MenuPermissionPanel';
 import AccessWorkflowResult from './AccessWorkflowResult';
 
@@ -86,10 +88,12 @@ function ReadonlyAccessRequest({ value }: Readonly<{ value: Record<string, unkno
 
 export default function AccessRequestWorkflowForm({ mode, value, instanceId, bizId, requestClient, getFormApi, onValuesChange }: Readonly<WorkflowBusinessFormProps>) {
   const optionsQuery = useAccessWorkflowOptions(mode === 'create', requestClient);
+  const compactScope = useMediaQuery(mediaDown('lg'));
   const formApi = useRef<FormApi | null>(null);
   const [defaults] = useState(() => initialValues(value));
   const [values, setValues] = useState(defaults);
   const menuIdsRef = useRef<number[]>(defaults.menuIds ?? []);
+  const permissionCodesRef = useRef<string[]>(defaults.permissionCodes ?? []);
   const roles = optionsQuery.data?.roles ?? [];
   const menus = optionsQuery.data?.menus ?? [];
   const pageMenus = useMemo(() => {
@@ -135,12 +139,12 @@ export default function AccessRequestWorkflowForm({ mode, value, instanceId, biz
 
   const registerApi = (api: FormApi) => {
     formApi.current = api;
-    const withMenuIds = (current: FormValues): FormValues => ({ ...current, menuIds: menuIdsRef.current });
+    const withPicked = (current: FormValues): FormValues => ({ ...current, menuIds: menuIdsRef.current, permissionCodes: permissionCodesRef.current });
     getFormApi?.({
-      isPreviewReady: () => { const current = withMenuIds(api.getValues() as FormValues); return !!(current.roleIds?.length || current.permissionCodes?.length || current.menuIds?.length); },
-      getValues: () => serialize(withMenuIds(api.getValues() as FormValues), latestPreview.current.roles),
+      isPreviewReady: () => { const current = withPicked(api.getValues() as FormValues); return !!(current.roleIds?.length || current.permissionCodes?.length || current.menuIds?.length); },
+      getValues: () => serialize(withPicked(api.getValues() as FormValues), latestPreview.current.roles),
       validate: async () => {
-        const current = withMenuIds(await api.validate() as FormValues);
+        const current = withPicked(await api.validate() as FormValues);
         const fail = (message: string): never => { Toast.warning(message); return abortSubmit('invalid_access_request'); };
         const { preview: evaluated, roles: currentRoles, maxMinutes: currentLimit } = latestPreview.current;
         if (!(current.roleIds?.length || current.permissionCodes?.length || current.menuIds?.length)) fail('请选择至少一项页面、角色或操作权限');
@@ -160,6 +164,66 @@ export default function AccessRequestWorkflowForm({ mode, value, instanceId, biz
     } satisfies WorkflowBusinessFormApi);
   };
 
+  const pagePicker = (
+    <MenuPermissionPanel
+      allMenus={pageMenus}
+      checkedMenuIds={values.menuIds}
+      hideBanner
+      height={340}
+      onChange={(ids) => {
+        menuIdsRef.current = ids;
+        formApi.current?.setValue('menuIds', ids);
+        setValues(prev => ({ ...prev, menuIds: ids }));
+      }}
+    />
+  );
+  const permissionPicker = (
+    <AccessPermissionPicker
+      menus={menus}
+      coveredPermissionCodes={coveredPermissionCodes}
+      value={values.permissionCodes}
+      hideBanner
+      compact
+      height={340}
+      onChange={(codes) => {
+        permissionCodesRef.current = codes;
+        formApi.current?.setValue('permissionCodes', codes);
+        setValues(prev => ({ ...prev, permissionCodes: codes }));
+      }}
+    />
+  );
+  const scopePicker = compactScope ? (
+    <Tabs collapsible="auto">
+      <TabPane tab={`页面访问 ${values.menuIds.length}`} itemKey="pages">{pagePicker}</TabPane>
+      <TabPane tab={`操作权限 ${values.permissionCodes.length}`} itemKey="permissions">{permissionPicker}</TabPane>
+    </Tabs>
+  ) : (
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: 'minmax(0, 0.95fr) minmax(0, 1.05fr)',
+      border: '1px solid var(--semi-color-border)',
+      borderRadius: 'var(--semi-border-radius-medium)',
+      overflow: 'hidden',
+    }}>
+      <div style={{ minWidth: 0, padding: 12, borderRight: '1px solid var(--semi-color-border)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
+          <Typography.Text strong>页面访问</Typography.Text>
+          <Typography.Text type="tertiary" size="small">{values.menuIds.length} 个</Typography.Text>
+        </div>
+        {pagePicker}
+      </div>
+      <div style={{ minWidth: 0, padding: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
+          <Typography.Text strong>操作权限</Typography.Text>
+          <Typography.Text type="tertiary" size="small">
+            {values.permissionCodes.length} 项{coveredPermissionCodes.length ? ` · 角色覆盖 ${coveredPermissionCodes.length} 项` : ''}
+          </Typography.Text>
+        </div>
+        {permissionPicker}
+      </div>
+    </div>
+  );
+
   return <Form getFormApi={registerApi} initValues={defaults} onValueChange={next => { setValues(next as FormValues); onValuesChange?.(); }} labelPosition="left" labelWidth={110} style={{ width: '100%' }}>
     <Form.RadioGroup field="requestType" name="access-request-type" label="申请类型" options={TYPE_OPTIONS.map(option => ({ ...option, disabled: option.value === 'emergency' && !emergencyAllowed }))} type="button"
       extraText={values.requestType === 'emergency' ? '用于故障处置等紧急任务，将以紧急授权留痕；仍须按所选权限风险完成全部审批与 MFA 验证。' : '用于日常业务任务，可选择限时或永久有效；审批链由所选权限中最严格的策略决定。'} />
@@ -167,18 +231,24 @@ export default function AccessRequestWorkflowForm({ mode, value, instanceId, biz
       maxTagCount={2} showRestTagsPopover
       optionList={roles.map(role => ({ value: role.id, label: `${role.name} · ${role.permissionCount} 项 · ${ACCESS_RISK_LABELS[role.riskLevel]}` }))} placeholder="可选，按需申请完整角色权限包"
       extraText="角色包按角色配置的数据范围授权。只需要少量权限时，优先在下方逐项选择。" />
-    <Form.Slot label={{ text: '页面访问' }}>
-      <MenuPermissionPanel
-        allMenus={pageMenus}
-        checkedMenuIds={values.menuIds}
-        onChange={(ids) => {
-          menuIdsRef.current = ids;
-          formApi.current?.setValue('menuIds', ids);
-          setValues(prev => ({ ...prev, menuIds: ids }));
-        }}
-      />
+    <Form.Slot label={{ text: '授权范围' }}>
+      <div>
+        <Banner
+          type="info"
+          closeIcon={null}
+          style={{ marginBottom: 8 }}
+          description="页面访问和操作权限独立授权：页面访问负责导航并自动携带页面读权限；操作权限按业务模块选择，不会隐藏或带出页面。"
+        />
+        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+          <Typography.Text strong>已选授权</Typography.Text>
+          <Typography.Text type="tertiary">{values.menuIds.length} 个页面</Typography.Text>
+          <Typography.Text type="tertiary">·</Typography.Text>
+          <Typography.Text type="tertiary">{values.permissionCodes.length} 项操作权限</Typography.Text>
+          {values.roleIds.length > 0 && <Typography.Text type="tertiary">· {values.roleIds.length} 个角色包</Typography.Text>}
+        </div>
+        {scopePicker}
+      </div>
     </Form.Slot>
-    <FormAccessPermissionPicker field="permissionCodes" label="操作权限" menus={menus} coveredPermissionCodes={coveredPermissionCodes} />
     <Form.RadioGroup field="startMode" name="access-start-mode" label="生效方式" options={START_OPTIONS} />
     {values.startMode === 'scheduled' && <Form.DatePicker field="startsAt" label="生效时间" type="dateTime" format="yyyy-MM-dd HH:mm:ss" style={{ width: '100%' }} rules={[{ required: true, message: '请选择预约生效时间' }]} />}
     <Form.RadioGroup field="validityMode" name="access-validity-mode" label="有效期限" options={VALIDITY_OPTIONS.map(option => ({ ...option, disabled: option.value === 'permanent' && (!permanentAllowed || values.requestType === 'emergency') }))} extraText={values.validityMode === 'permanent' ? '无需填写截止时间。授权仍可撤销，并按权限策略定期复核。' : !permanentAllowed && selection.length > 0 ? '所选权限仅支持限时授权。' : undefined} />
