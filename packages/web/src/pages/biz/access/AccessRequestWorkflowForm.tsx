@@ -186,28 +186,21 @@ export default function AccessRequestWorkflowForm({ mode, value, instanceId, biz
       optionList={roles.map(role => ({ value: role.id, label: `${role.name} · ${role.permissionCount} 项 · ${ACCESS_RISK_LABELS[role.riskLevel]}` }))} placeholder="可选，按需申请完整角色权限包"
       extraText="角色包按角色配置的数据范围授权。只需要少量权限时，优先在下方逐项选择。" />
     <Form.Slot label={{ text: '授权范围' }}>
-      <div style={{ padding: 12, border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-medium)', backgroundColor: 'var(--semi-color-fill-0)' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-          <div style={{ minWidth: 0 }}>
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <Space wrap spacing={6}>
             <Typography.Text strong>已选授权</Typography.Text>
-            <Space wrap spacing={6} style={{ marginTop: 8 }}>
-              <Tag color="blue" size="small">页面 {values.menuIds.length}</Tag>
-              <Tag color="green" size="small">操作权限 {values.permissionCodes.length}</Tag>
-              {values.roleIds.length > 0 && <Tag size="small">角色包 {values.roleIds.length}</Tag>}
-              {coveredPermissionCodes.length > 0 && <Typography.Text type="tertiary" size="small">角色覆盖 {coveredPermissionCodes.length} 项</Typography.Text>}
-            </Space>
-          </div>
-          <Button
-            type="primary"
-            theme="light"
-            htmlType="button"
-            onClick={openScope}
-          >
+            <Tag color="blue" size="small">页面 {values.menuIds.length}</Tag>
+            <Tag color="green" size="small">操作权限 {values.permissionCodes.length}</Tag>
+            {values.roleIds.length > 0 && <Tag size="small">角色包 {values.roleIds.length}</Tag>}
+            {coveredPermissionCodes.length > 0 && <Typography.Text type="tertiary" size="small">角色覆盖 {coveredPermissionCodes.length} 项</Typography.Text>}
+          </Space>
+          <Button type="primary" theme="light" htmlType="button" onClick={openScope}>
             {values.menuIds.length || values.permissionCodes.length ? '编辑授权范围' : '选择授权范围'}
           </Button>
         </div>
         {selectedPageTitles.length > 0 || selectedPermissionLabels.length > 0 ? (
-          <div style={{ display: 'grid', gap: 4, marginTop: 10, minWidth: 0 }}>
+          <div style={{ display: 'grid', gap: 4, marginTop: 8, minWidth: 0 }}>
             {selectedPageTitles.length > 0 && (
               <div title={selectedPageTitles.join('、')} style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 <Typography.Text type="tertiary" size="small">页面：</Typography.Text>
@@ -222,9 +215,9 @@ export default function AccessRequestWorkflowForm({ mode, value, instanceId, biz
             )}
           </div>
         ) : (
-          <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginTop: 8 }}>尚未选择页面访问或操作权限</Typography.Text>
+          <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginTop: 6 }}>尚未选择页面访问或操作权限</Typography.Text>
         )}
-        <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginTop: 8 }}>
+        <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginTop: 6 }}>
           页面访问负责导航并自动携带页面读权限；操作权限独立授予，不会隐藏或带出页面。
         </Typography.Text>
       </div>
