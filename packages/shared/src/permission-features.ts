@@ -8,6 +8,27 @@ const pagesByName = new Map(
     .map((menu) => [menu.name!, menu] as const),
 );
 
+export interface PermissionPageBinding {
+  id: number;
+  title: string;
+  path: string | null;
+}
+
+const pageBindingsByPermission = new Map<string, readonly PermissionPageBinding[]>();
+
+for (const [code, meta] of Object.entries(ALL_PERMISSIONS)) {
+  const pageReadBindings = SEED_MENUS
+    .filter((menu) => menu.type === 'menu' && menu.permission === code)
+    .map((menu) => ({ id: menu.id, title: menu.title, path: menu.path ?? null }));
+  const menuNames = typeof meta.menu === 'string' ? [meta.menu] : meta.menu ?? [];
+  const operationBindings = menuNames.flatMap((menuName) => {
+    const menu = pagesByName.get(menuName);
+    return menu ? [{ id: menu.id, title: menu.title, path: menu.path ?? null }] : [];
+  });
+  const bindings = [...pageReadBindings, ...operationBindings];
+  pageBindingsByPermission.set(code, [...new Map(bindings.map((binding) => [binding.id, binding])).values()]);
+}
+
 const featureKeysByPermission = new Map<string, ReadonlySet<LicenseFeatureKey | null>>();
 
 for (const [code, meta] of Object.entries(ALL_PERMISSIONS)) {
@@ -26,6 +47,11 @@ for (const [code, meta] of Object.entries(ALL_PERMISSIONS)) {
  */
 export function permissionFeatureKeys(code: string): ReadonlySet<LicenseFeatureKey | null> {
   return featureKeysByPermission.get(code) ?? new Set();
+}
+
+/** 返回权限码绑定的全部页面，页面读权限和操作权限共用此映射。 */
+export function permissionPageBindings(code: string): readonly PermissionPageBinding[] {
+  return pageBindingsByPermission.get(code) ?? [];
 }
 
 /** 权限码是否属于页面读权限。 */

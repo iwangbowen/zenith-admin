@@ -83,6 +83,12 @@ export type UserPermissionSet = z.infer<typeof userPermissionSetSchema>;
  * 「主体持有哪些权限码」两个只读端点；不落任何新表。
  */
 /** 权限目录：能力定义、形态和绑定页面；无页面的 API-only 权限也在这里出现 */
+export const permissionPageBindingSchema = z.object({
+  id: z.int(),
+  title: z.string(),
+  path: z.string().nullable(),
+}).meta({ id: 'PermissionPageBinding' });
+
 export const permissionCatalogItemSchema = z.object({
   code: z.string(),
   label: z.string(),
@@ -90,6 +96,7 @@ export const permissionCatalogItemSchema = z.object({
   pageId: z.int().nullable(),
   pageTitle: z.string().nullable(),
   path: z.string().nullable(),
+  pageBindings: z.array(permissionPageBindingSchema),
   uiOnly: z.boolean().default(false),
 }).meta({ id: 'PermissionCatalogItem' });
 

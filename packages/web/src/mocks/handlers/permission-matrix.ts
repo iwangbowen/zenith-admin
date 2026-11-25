@@ -1,7 +1,8 @@
 import { apiCatalogContract, permissionCatalogContract, permissionMatrixContract, type ApiCatalog, type PermissionCatalog, type RolePermissionSet, type UserPermissionSet } from '@zenith/shared/identity';
 import { buildApiCatalog } from '@zenith/shared/permission-catalog';
-import { SEED_MENUS } from '@zenith/shared/seed';
 import { ALL_PERMISSIONS } from '@zenith/shared/permissions';
+import { SEED_MENUS } from '@zenith/shared/seed';
+import { isPageReadPermission, permissionPageBindings } from '@zenith/shared/permission-features';
 import { mock } from '@/mocks/utils/contract';
 import { requireItem } from '@/mocks/utils/crud';
 import { mockRoles } from '@/mocks/data/roles';
@@ -33,15 +34,13 @@ function toRoleSet(role: typeof mockRoles[number]): RolePermissionSet {
 }
 
 function buildPermissionCatalog(): PermissionCatalog {
-  const pages = SEED_MENUS.filter(menu => menu.type === 'menu');
-  const pageByName = new Map(pages.flatMap(page => page.name ? [[page.name, page] as const] : []));
   return {
     items: Object.entries(ALL_PERMISSIONS).map(([code, meta]) => {
-      const page = pages.find(item => item.permission === code);
-      if (page) return { code, label: meta.label, surface: 'page' as const, pageId: page.id, pageTitle: page.title, path: page.path ?? null, uiOnly: meta.uiOnly ?? false };
-      const menuNames = typeof meta.menu === 'string' ? [meta.menu] : meta.menu ?? [];
-      const boundPage = menuNames.map(name => pageByName.get(name)).find(Boolean);
-      return { code, label: meta.label, surface: boundPage ? 'operation' as const : 'api' as const, pageId: boundPage?.id ?? null, pageTitle: boundPage?.title ?? null, path: boundPage?.path ?? null, uiOnly: meta.uiOnly ?? false };
+      const pageBindings = permissionPageBindings(code);
+      const primaryPage = pageBindings[0];
+      return { code, label: meta.label, surface: isPageReadPermission(code) ? 'page' as const : pageBindings.length > 0 ? 'operation' as const : 'api' as const,
+        pageId: primaryPage?.id ?? null, pageTitle: primaryPage?.title ?? null, path: primaryPage?.path ?? null,
+        pageBindings: [...pageBindings], uiOnly: meta.uiOnly ?? false };
     }),
   };
 }

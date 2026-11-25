@@ -1,6 +1,5 @@
 import { ALL_PERMISSIONS } from '@zenith/shared/permissions';
 import { permissionFeatureKeys } from '@zenith/shared/permission-features';
-import { SEED_MENUS } from '@zenith/shared/seed/menus';
 import { db } from '../../db';
 import type { DbExecutor } from '../../db/types';
 import { getTenantPackageFeatureSet } from '../../lib/tenant-package';

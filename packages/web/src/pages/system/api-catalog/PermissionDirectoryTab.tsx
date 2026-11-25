@@ -30,7 +30,8 @@ export default function PermissionDirectoryTab() {
   const rows = useMemo(() => (query.data?.items ?? []).filter(item => {
     if (submittedParams.surface && item.surface !== submittedParams.surface) return false;
     const keyword = submittedParams.keyword.trim().toLowerCase();
-    const text = `${item.code} ${item.label} ${item.pageTitle ?? ''} ${item.path ?? ''}`.toLowerCase();
+    const bindings = item.pageBindings.map(page => `${page.title} ${page.path ?? ''}`).join(' ');
+    const text = `${item.code} ${item.label} ${bindings}`.toLowerCase();
     return !keyword || text.includes(keyword);
   }), [query.data?.items, submittedParams]);
   const pageRows = useMemo(
@@ -45,8 +46,8 @@ export default function PermissionDirectoryTab() {
     { title: '权限码', dataIndex: 'code', width: 260, render: (code: string) => <Typography.Text code>{code}</Typography.Text> },
     { title: '名称', dataIndex: 'label', width: 160 },
     { title: '形态', dataIndex: 'surface', width: 100, render: (value: Surface) => <Tag size="small" color={SURFACE_COLORS[value]}>{SURFACE_LABELS[value]}</Tag> },
-    { title: '绑定页面', dataIndex: 'pageTitle', width: 180, render: (value: string | null) => value ?? '—' },
-    { title: '路径', dataIndex: 'path', render: (value: string | null) => value ?? '—' },
+    { title: '绑定页面', dataIndex: 'pageBindings', width: 240, render: (value: Item['pageBindings']) => value.length ? value.map(page => page.title).join('、') : '—' },
+    { title: '路径', dataIndex: 'pageBindings', render: (value: Item['pageBindings']) => value.length ? value.map(page => page.path ?? '—').join('、') : '—' },
     { title: '备注', dataIndex: 'uiOnly', width: 100, render: (value: boolean) => value ? <Tag size="small" color="orange">仅前端</Tag> : '—' },
   ];
   return <div>

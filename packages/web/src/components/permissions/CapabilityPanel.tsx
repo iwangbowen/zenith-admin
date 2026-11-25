@@ -13,6 +13,7 @@ type CapabilityItem = {
   pageId: number | null;
   pageTitle: string | null;
   path: string | null;
+  pageBindings: Array<{ id: number; title: string; path: string | null }>;
   uiOnly: boolean;
 };
 
@@ -69,7 +70,7 @@ export function CapabilityPanel({
     const query = keyword.trim().toLowerCase();
     for (const item of catalogQuery.data?.items ?? []) {
       if (onlySelected && !selected.has(item.code)) continue;
-      if (query && !`${item.code} ${item.label} ${item.pageTitle ?? ''}`.toLowerCase().includes(query)) continue;
+      if (query && !`${item.code} ${item.label} ${item.pageBindings.map((binding) => binding.title).join(' ')}`.toLowerCase().includes(query)) continue;
       const key = item.pageTitle ?? '仅接口权限';
       const list = groups.get(key) ?? [];
       list.push(item);
@@ -170,6 +171,11 @@ export function CapabilityPanel({
                     <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {item.label}
                     </span>
+                    {item.pageBindings.length > 1 && (
+                      <Typography.Text type="tertiary" size="small" style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {item.pageBindings.map((binding) => binding.title).join('、')}
+                      </Typography.Text>
+                    )}
                     <Typography.Text type="tertiary" size="small" style={{ flexShrink: 0 }}>{item.code}</Typography.Text>
                     {showSurfaceTag && (
                       <Tag size="small" color={SURFACE_COLORS[item.surface]}>

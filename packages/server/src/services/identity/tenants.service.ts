@@ -1,5 +1,5 @@
 import { publishRoleVersion } from './authority-write.service';
-import { permissionCodesForPageIds, SEED_MENUS } from '@zenith/shared/seed/menus';
+import { permissionCodesForPageIds } from '@zenith/shared/seed/menus';
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
 import { eq, and, ne, desc, count, inArray, or } from 'drizzle-orm';
