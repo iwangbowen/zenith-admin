@@ -241,3 +241,6 @@ export const PAGE_READ_PERMISSION_BY_NAME: Readonly<Record<string, string>> = {
   DriveAdminShareLinks: 'drive:admin:link:list',
   DriveAdminActivities: 'drive:admin:activity:list',
 };
+
+/** 页面节点允许绑定的权限码；操作权限只存在于权限注册表。 */
+export const PAGE_READ_PERMISSION_CODES: ReadonlySet<string> = new Set(Object.values(PAGE_READ_PERMISSION_BY_NAME));
