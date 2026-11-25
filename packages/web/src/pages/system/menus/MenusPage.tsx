@@ -245,7 +245,7 @@ export default function MenusPage() {
     extra: (row) => [
       {
         key: 'child',
-        label: '子项',
+        label: '增加子项',
         // 只有目录承载下级页面；页面不再有按钮/子项入口。
         hidden: row.type !== 'directory' || !hasPermission('system:menu:create'),
         onClick: () => openCreate(row.id),

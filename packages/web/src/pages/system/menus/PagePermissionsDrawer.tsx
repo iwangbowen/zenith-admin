@@ -44,12 +44,15 @@ export default function PagePermissionsDrawer({ menu, visible, onClose }: Props)
           ? <Banner type="danger" closeIcon={null} description={catalogQuery.error.message} />
           : (
             <PermissionScopePermissionList
+              key={menu?.id ?? 'empty'}
               items={items}
               selectedPermissionCodes={menu?.permission ? [menu.permission] : []}
               pageIds={menu ? [menu.id] : []}
               readonly
+              defaultExpandAll
               height={520}
               showPolicy
+              emptyText="该页面暂未登记页面读权限或操作权限"
             />
           )}
     </SideSheet>

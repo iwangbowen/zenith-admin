@@ -14,6 +14,8 @@ import { PermissionScopeWorkspace } from '@/components/permissions/PermissionSco
 import { createAdminScopeData } from '@/components/permissions/scope-adapters';
 import { usePermissionCatalog } from '@/hooks/queries/permission-matrix';
 import { useMenuTree } from '@/hooks/queries/menus';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { mediaDown } from '@/lib/breakpoints';
 import ModalFooter from '@/components/ModalFooter';
 import { useSaveUserMenus, useUserEffectivePermissions } from '@/hooks/queries/users';
 
@@ -32,6 +34,7 @@ export function UserMenuPermissionModal({ userId, userName, visible, onClose }: 
   const [groups, setGroups] = useState<Array<{ id: number; name: string }>>([]);
   const [effectiveMenuIds, setEffectiveMenuIds] = useState<number[]>([]);
   const [activeTab, setActiveTab] = useState('direct');
+  const compact = useMediaQuery(mediaDown('lg'));
   const menuTreeQuery = useMenuTree({ enabled: visible });
   const permissionCatalogQuery = usePermissionCatalog(visible);
   const scopeData = useMemo(
@@ -78,7 +81,7 @@ export function UserMenuPermissionModal({ userId, userName, visible, onClose }: 
           disabled={!permissionsQuery.isSuccess}
         />
       )}
-      width={1180}
+      width={compact ? Math.max(320, Math.floor(window.innerWidth * 0.94)) : 1180}
     >
       <Tabs collapsible="auto" activeKey={activeTab} onChange={setActiveTab}>
         <TabPane tab={`直接授权 ${directMenuIds.length} 个页面 / ${directPermissionCodes.length} 项权限`} itemKey="direct">

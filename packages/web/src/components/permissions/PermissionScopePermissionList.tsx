@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Checkbox, Input, Space, Tag, Typography } from '@douyinfe/semi-ui';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { PermissionScopeItem } from './scope-types';
@@ -36,6 +36,9 @@ type Props = Readonly<{
   height?: number;
   showToolbar?: boolean;
   showPolicy?: boolean;
+  /** 页面功能抽屉等只读场景默认展开分组；只初始化一次，不打断用户后续折叠。 */
+  defaultExpandAll?: boolean;
+  emptyText?: string;
 }>;
 
 function groupItems(items: PermissionScopeItem[]): PermissionGroup[] {
@@ -73,9 +76,12 @@ export function PermissionScopePermissionList({
   height = 420,
   showToolbar = true,
   showPolicy = false,
+  defaultExpandAll = false,
+  emptyText,
 }: Props) {
   const [keyword, setKeyword] = useState('');
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set());
+  const initializedDefaultExpand = useRef(false);
   const selected = useMemo(() => new Set(selectedPermissionCodes), [selectedPermissionCodes]);
   const pageSet = useMemo(() => new Set(pageIds), [pageIds]);
   const covered = useMemo(() => new Set(coveredPermissionCodes), [coveredPermissionCodes]);
@@ -90,6 +96,12 @@ export function PermissionScopePermissionList({
     });
     return groupItems(visible);
   }, [items, keyword, onlySelected, pageSet, selected]);
+
+  useEffect(() => {
+    if (!defaultExpandAll || initializedDefaultExpand.current || groups.length === 0) return;
+    initializedDefaultExpand.current = true;
+    setExpandedGroups(new Set(groups.map(group => group.key)));
+  }, [defaultExpandAll, groups]);
 
   const isExpanded = (group: PermissionGroup) => keyword.trim().length > 0 || expandedGroups.has(group.key);
   const toggleGroup = (key: string) => setExpandedGroups((prev) => {
@@ -135,7 +147,7 @@ export function PermissionScopePermissionList({
         </div>
       )}
       <div style={{ maxHeight: height, overflow: 'auto', paddingRight: 4 }}>
-        {groups.length === 0 && <Typography.Text type="tertiary">{onlySelected ? '没有生效的操作权限' : '没有匹配的权限'}</Typography.Text>}
+        {groups.length === 0 && <Typography.Text type="tertiary">{emptyText ?? (onlySelected ? '没有生效的操作权限' : '没有匹配的权限')}</Typography.Text>}
         {groups.map((group) => {
           const expanded = isExpanded(group);
           const allChecked = groupSelected(group);

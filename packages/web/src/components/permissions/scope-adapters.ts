@@ -15,7 +15,8 @@ export function createAdminScopeData(menuTree: Menu[], catalog: PermissionCatalo
     label: item.label,
     pageId: item.pageId,
     pageTitle: item.pageTitle,
-    path: item.path ? item.path.split('/').filter(Boolean) : [],
+    // 管理端权限目录的 path 是路由地址，不是中文层级；页面分组只需要 pageTitle，避免在标题旁显示 system 之类的片段。
+    path: [],
     surface: item.surface,
     requestable: true,
     uiOnly: item.uiOnly,
