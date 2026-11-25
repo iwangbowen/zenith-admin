@@ -31,6 +31,13 @@ interface SearchParams {
 
 const defaultSearchParams: SearchParams = { keyword: '', status: undefined };
 
+/** 菜单管理只维护导航资源；操作权限是权限码，不是菜单按钮，统一在权限目录只读查看。 */
+function withoutButtonNodes(items: Menu[]): Menu[] {
+  return items.flatMap((item) => item.type === 'button'
+    ? []
+    : [{ ...item, children: item.children ? withoutButtonNodes(item.children) : undefined }]);
+}
+
 export default function MenusPage() {
   const { hasPermission } = usePermission();
   const createParentIdRef = useRef<number>(0);
@@ -51,7 +58,7 @@ export default function MenusPage() {
   const { items: menuVisibleItems } = useDictItems('menu_visible');
 
   const menuTreeQuery = useMenuTree();
-  const data = useMemo(() => menuTreeQuery.data ?? [], [menuTreeQuery.data]);
+  const data = useMemo(() => withoutButtonNodes(menuTreeQuery.data ?? []), [menuTreeQuery.data]);
   const saveMutation = useSaveMenu();
   const menuModal = useEditModal<Menu, Record<string, unknown>, MenuFormValues>({
     entityName: '菜单',
@@ -299,6 +306,10 @@ export default function MenusPage() {
         actionTitle="菜单操作"
       />
 
+      <div style={{ marginBottom: 8, fontSize: 12, color: 'var(--semi-color-text-2)' }}>
+        菜单管理只维护目录和页面；操作权限是权限码，请在「接口与权限 → 权限目录」查看。
+      </div>
+
       {menuTreeQuery.isError && (
         <Banner
           fullMode={false}
@@ -336,7 +347,7 @@ export default function MenusPage() {
           onChange={(e) => setMenuType((e.target as HTMLInputElement).value)}
           type="button"
         >
-          {menuTypeItems.map((i) => (
+          {menuTypeItems.filter((i) => i.value !== 'button').map((i) => (
             <Radio key={i.value} value={i.value}>{i.label}</Radio>
           ))}
         </Form.RadioGroup>
@@ -431,13 +442,12 @@ export default function MenusPage() {
               </Form.RadioGroup>
             </Col>
           )}
-          {(menuType === 'menu' || menuType === 'button') && (
+          {menuType === 'menu' && (
             <Col span={12}>
               <Form.Input
                 field="permission"
-                label={menuType === 'menu' ? '页面读权限' : '操作权限'}
-                placeholder={menuType === 'menu' ? '如：system:user:list' : '如：system:user:create'}
-                rules={menuType === 'button' ? [{ required: true, message: '请输入操作权限码' }] : undefined}
+                label="页面读权限"
+                placeholder="如：system:user:list"
               />
             </Col>
           )}

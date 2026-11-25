@@ -74,7 +74,7 @@
 ### 页面、按钮与 API-only 权限
 
 - **页面节点**：`type = menu`，`permission` 是页面最小读权限；页面授权自动携带该权限，页面读权限也可以单独授予形成 API-only。
-- **按钮节点**：`type = button`，`permission` 是操作权限；按钮授权不产生页面，也不能带出页面。
+- **按钮节点**：`type = button` 是操作权限码的内部挂载锚点，**不是菜单管理中的导航资源**；菜单管理页面只展示目录与页面。按钮节点不产生页面，也不能带出页面。
 - **目录节点**：`type = directory`，只做分组，不允许携带权限码。
 - **权限目录**：权限码由代码注册表和 `ALL_PERMISSIONS` 提供；没有页面的纯 API 权限省略 `menu`，只出现在权限目录。
 - **页面读权限映射**：`packages/shared/src/seed/menus/page-permissions.ts` 的 `PAGE_READ_PERMISSION_BY_NAME` 声明页面 → 读权限；生成器写入页面节点并跳过同名查询按钮。
