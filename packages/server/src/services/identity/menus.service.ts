@@ -14,6 +14,7 @@ import { getTenantPackageFeatureSet } from '../../lib/tenant-package';
 import { isSuperAdmin, getUserMenuIds, clearUserPermissionCache } from '../../lib/permissions';
 import { formatTimestamps } from '../../lib/datetime';
 import { buildTree } from '@zenith/shared/core';
+import { isPageReadPermission } from '@zenith/shared/permission-features';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
 
@@ -136,10 +137,13 @@ export async function listUserMenuTree(): Promise<Menu[]> {
     return buildMenuTree(allMenus.map(mapMenu));
   }
 
+  const featureSet = await getTenantPackageFeatureSet(getEffectiveTenantId(user));
+  const packageMenus = featureSet ? allMenus.filter((menu) => !menu.featureKey || featureSet.has(menu.featureKey)) : allMenus;
+
   // 页面导航只来自显式页面授权；权限码不反推页面。
   // 隐藏页面仅在其父页面/目录已授权时注册，避免所有登录用户都拿到编辑页路由。
   const assignedIds = await getUserMenuIds(user.userId);
-  const idToMenu = new Map(allMenus.map((m) => [m.id, m]));
+  const idToMenu = new Map(packageMenus.map((m) => [m.id, m]));
   const allowedMenuIds = new Set(assignedIds.filter((id) => idToMenu.has(id)));
   for (const id of [...allowedMenuIds]) {
     let current = idToMenu.get(id);
@@ -150,7 +154,7 @@ export async function listUserMenuTree(): Promise<Menu[]> {
     }
   }
 
-  const filtered = allMenus.filter((m) => allowedMenuIds.has(m.id)
+  const filtered = packageMenus.filter((m) => allowedMenuIds.has(m.id)
     || (!m.visible && m.parentId !== 0 && allowedMenuIds.has(m.parentId)));
   return buildMenuTree(filtered.map(mapMenu));
 }
@@ -173,6 +177,9 @@ function assertMenuPermission(input: CreateMenuInput) {
   const permission = input.permission?.trim() || null;
   if (type === 'directory' && permission) throw new HTTPException(400, { message: '目录不能携带权限码' });
   if (permission && !ALL_PERMISSIONS[permission]) throw new HTTPException(400, { message: `权限目录未登记 ${permission}` });
+  if (type === 'menu' && permission && !isPageReadPermission(permission)) {
+    throw new HTTPException(400, { message: '页面只能绑定页面读权限码，操作权限请在角色权限中单独授权' });
+  }
 }
 
 async function assertMenuIdentityUnique(input: CreateMenuInput, currentId?: number) {

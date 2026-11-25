@@ -8,6 +8,9 @@ const permissionMocks = vi.hoisted(() => ({
   isSuperAdmin: vi.fn(),
   getUserMenuIds: vi.fn(),
 }));
+const packageMocks = vi.hoisted(() => ({
+  getTenantPackageFeatureSet: vi.fn(async () => null as ReadonlySet<string> | null),
+}));
 const deployment = vi.hoisted(() => ({ multiTenantMode: false }));
 vi.mock('../../config', () => ({ config: deployment }));
 
@@ -27,7 +30,7 @@ vi.mock('../../lib/tenant', () => ({
 }));
 
 vi.mock('../../lib/tenant-package', () => ({
-  getTenantPackageFeatureSet: vi.fn(async () => null),
+  getTenantPackageFeatureSet: packageMocks.getTenantPackageFeatureSet,
 }));
 
 vi.mock('../../lib/permissions', () => ({
@@ -176,6 +179,26 @@ describe('listUserMenuTree', () => {
 
     const tree = await listUserMenuTree();
 
+    expect(tree.map((node) => node.id)).toEqual([2000]);
+    expect(tree[0].children?.map((node) => node.id)).toEqual([2010]);
+  });
+
+  it('filters stale page grants after a tenant package is reduced', async () => {
+    deployment.multiTenantMode = true;
+    permissionMocks.isSuperAdmin.mockReturnValue(false);
+    permissionMocks.getUserMenuIds.mockResolvedValue([2440, 2450, 2000, 2010]);
+    packageMocks.getTenantPackageFeatureSet.mockResolvedValue(new Set(['workflow']));
+    dbMocks.select.mockReturnValueOnce(createSelectChain([
+      menuRow({ id: 2000, parentId: 0, title: '系统设置', type: 'directory', featureKey: null }),
+      menuRow({ id: 2010, parentId: 2000, title: '系统设置', path: '/system/settings', featureKey: null }),
+      menuRow({ id: 2440, parentId: 2000, title: '系统运维', type: 'directory', featureKey: 'ops' }),
+      menuRow({ id: 2450, parentId: 2440, title: 'Web 终端', path: '/system/terminal', featureKey: 'ops' }),
+      menuRow({ id: 4000, parentId: 0, title: '工作流', type: 'directory', featureKey: 'workflow' }),
+    ]));
+
+    const tree = await listUserMenuTree();
+
+    expect(JSON.stringify(tree)).not.toContain('Web 终端');
     expect(tree.map((node) => node.id)).toEqual([2000]);
     expect(tree[0].children?.map((node) => node.id)).toEqual([2010]);
   });
