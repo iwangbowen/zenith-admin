@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ApiCatalog, ApiCatalogItem } from '@zenith/shared/identity';
+import { apiCatalogContract, permissionCatalogContract, type ApiCatalog, type ApiCatalogItem } from '@zenith/shared/identity';
 import { EMPTY_FILTERS, matchesCatalogFilters, summarizeCatalog, toCatalogRows } from './catalog-model';
 
 function item(partial: Partial<ApiCatalogItem> & Pick<ApiCatalogItem, 'method' | 'fullPath' | 'summary'>): ApiCatalogItem {
@@ -39,6 +39,13 @@ describe('catalog model', () => {
     expect(new Set(rows.map((r) => r.key)).size).toBe(rows.length);
     const stats = summarizeCatalog(rows);
     expect(stats).toEqual({ total: 6, permission: 2, authenticated: 1, platform: 1, public: 1, otherCredential: 1 });
+  });
+
+  it('normalizes malformed permission arrays and keeps the two catalog query keys distinct', () => {
+    const malformed = { ...catalog, items: [{ ...catalog.items[0], permissions: undefined }] } as unknown as ApiCatalog;
+    expect(toCatalogRows(malformed)[0].permissions).toEqual([]);
+    // query key = 契约资源 + 操作名；两个目录共用 basePath，操作名必须不同。
+    expect(permissionCatalogContract.directory.name).not.toBe(apiCatalogContract.get.name);
   });
 
   it('filters by module / method / permission code / keyword on path', () => {

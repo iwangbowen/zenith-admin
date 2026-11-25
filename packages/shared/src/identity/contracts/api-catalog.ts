@@ -100,7 +100,8 @@ export const permissionCatalogSchema = z.object({
 export type PermissionCatalog = z.infer<typeof permissionCatalogSchema>;
 
 export const permissionCatalogContract = defineContract('/api/api-catalog', {
-  get: op.get('/permissions', {
+  /** 操作名必须与 apiCatalogContract.get 区分：前端 query key 使用「契约资源 + 操作名」。 */
+  directory: op.get('/permissions', {
     // 授权界面需要读取能力目录：目录查看者、角色授权者、用户授权者均可读。
     access: { permission: ['system:access-catalog:view', 'system:role:assign', 'system:user:assign'] },
     response: permissionCatalogSchema,

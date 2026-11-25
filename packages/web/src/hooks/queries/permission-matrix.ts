@@ -4,7 +4,7 @@ import { LOOKUP_STALE_TIME } from '@/lib/query';
 
 export const apiCatalogKeys = {
   catalog: contractKey(apiCatalogContract.get),
-  permissions: contractKey(permissionCatalogContract.get),
+  permissions: contractKey(permissionCatalogContract.directory),
 };
 
 /**
@@ -17,7 +17,7 @@ export function useApiCatalog() {
 
 /** 权限目录：能力定义、形态和页面绑定；API-only 权限也包含在内。 */
 export function usePermissionCatalog() {
-  return useApiQuery(permissionCatalogContract.get, { staleTime: Infinity });
+  return useApiQuery(permissionCatalogContract.directory, { staleTime: Infinity });
 }
 
 /**

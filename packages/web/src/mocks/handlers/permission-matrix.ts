@@ -54,7 +54,7 @@ let cachedPermissionCatalog: PermissionCatalog | null = null;
 
 export const permissionMatrixHandlers = [
   mock(apiCatalogContract.get, ({ ok }) => ok(cachedCatalog ??= buildApiCatalog())),
-  mock(permissionCatalogContract.get, ({ ok }) => ok(cachedPermissionCatalog ??= buildPermissionCatalog())),
+  mock(permissionCatalogContract.directory, ({ ok }) => ok(cachedPermissionCatalog ??= buildPermissionCatalog())),
   mock(permissionMatrixContract.roles, ({ ok }) => ok(mockRoles.map(toRoleSet))),
   mock(permissionMatrixContract.user, ({ params, ok }) => {
     const user = requireItem(mockUsers, params.id, '用户不存在', { status: 404 });

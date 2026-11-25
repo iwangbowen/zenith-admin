@@ -17,14 +17,19 @@ export interface CatalogRow extends ApiCatalogItem {
 }
 
 export function toCatalogRows(catalog: ApiCatalog | undefined): CatalogRow[] {
-  return (catalog?.items ?? []).map((item) => ({ ...item, key: `${item.method} ${item.fullPath}` }));
+  return (catalog?.items ?? []).map((item) => ({
+    ...item,
+    // 防御旧缓存 / 异常响应：目录行即使缺少权限数组，也不能把整页打崩。
+    permissions: Array.isArray(item.permissions) ? item.permissions : [],
+    key: `${item.method} ${item.fullPath}`,
+  }));
 }
 
 /** 权限码 → 引用它的接口（详情抽屉「同权限码的接口」） */
 export function rowsByPermission(rows: readonly CatalogRow[]): Map<string, CatalogRow[]> {
   const map = new Map<string, CatalogRow[]>();
   for (const row of rows) {
-    for (const code of row.permissions) {
+    for (const code of row.permissions ?? []) {
       const list = map.get(code) ?? [];
       list.push(row);
       map.set(code, list);
@@ -67,7 +72,7 @@ export function describeAccess(entry: ApiCatalogItem): string {
   const platform = entry.platformOnly === true ? '仅平台超管' : entry.platformOnly === 'multi-tenant' ? '多租户下仅平台超管' : null;
   if (entry.accessKind === 'authenticated') return ACCESS_KIND_LABELS.authenticated;
   if (entry.accessKind === 'platform') return platform ?? ACCESS_KIND_LABELS.platform;
-  const codes = entry.permissions.join(' / ');
+  const codes = (entry.permissions ?? []).join(' / ');
   return platform ? `${codes}（${platform}）` : codes;
 }
 
