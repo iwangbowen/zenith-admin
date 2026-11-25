@@ -9,7 +9,7 @@
  *  - readonly?:      只读模式（不可勾选，用于「有效权限」预览）
  *  - extraTreeData?:  叶/节点额外渲染内容（key->ReactNode），用于显示来源 Tag
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Banner, Button, Space, Spin, Tree } from '@douyinfe/semi-ui';
 import type { Menu } from '@zenith/shared/identity';
 import { usePinyinReady } from '@/hooks/usePinyinReady';
@@ -23,6 +23,12 @@ type MenuPermissionPanelProps = Readonly<{
   readonly?: boolean;
   /** 只展示目录/页面，用于页面访问授权；按钮能力由 CapabilityPanel 单独授权 */
   pagesOnly?: boolean;
+  /** 数据首次到达时自动展开所有节点；只读有效权限预览使用 */
+  defaultExpandAll?: boolean;
+  /** 只读模式下也显示展开/折叠工具条 */
+  showExpandControls?: boolean;
+  /** 树虚拟列表高度，默认 400；双栏预览时由调用方统一列高 */
+  height?: number;
   /** key(menuId 字符串) -> 额外渲染的 ReactNode（如来源 Tag）*/
   labelSuffix?: Record<string, React.ReactNode>;
 }>;
@@ -83,11 +89,17 @@ export function MenuPermissionPanel({
   loading = false,
   readonly = false,
   pagesOnly = false,
+  defaultExpandAll = false,
+  showExpandControls = false,
+  height = 400,
   labelSuffix,
 }: MenuPermissionPanelProps) {
   // 默认折叠（菜单树节点较多，全展开列表过长）；可用「展开全部」按钮展开
   const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
   const displayMenus = useMemo(() => visibleMenus(allMenus, pagesOnly), [allMenus, pagesOnly]);
+  useEffect(() => {
+    if (defaultExpandAll && displayMenus.length > 0) setExpandedKeys(getAllMenuKeys(displayMenus));
+  }, [defaultExpandAll, displayMenus]);
   const menuIndex = useMemo(() => flattenMenus(allMenus), [allMenus]);
   // 拼音词典就绪后重渲染，补上已输入关键字的拼音命中
   usePinyinReady();
@@ -141,6 +153,14 @@ export function MenuPermissionPanel({
           </div>
         </>
       )}
+      {readonly && showExpandControls && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+          <Space>
+            <Button size="small" theme="borderless" onClick={() => setExpandedKeys(getAllMenuKeys(displayMenus))}>展开全部</Button>
+            <Button size="small" theme="borderless" onClick={() => setExpandedKeys([])}>折叠全部</Button>
+          </Space>
+        </div>
+      )}
       <Tree
         treeData={menusToTreeData(displayMenus, labelSuffix)}
         multiple
@@ -159,7 +179,7 @@ export function MenuPermissionPanel({
         searchPlaceholder="搜索菜单名称"
         // 唯一的滚动容器：虚拟列表内部滚动；外层不定高（搜索框 + 400 列表自适应），
         // 否则外层 448 与内层 400 两个滚动容器叠加出现双滚动条
-        virtualize={{ height: 400, itemSize: 36 }}
+        virtualize={{ height, itemSize: 36 }}
       />
     </>
   );

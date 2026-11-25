@@ -2,7 +2,7 @@
  * 能力授权面板：权限码来自权限目录，包含页面读权限、按钮操作权限和 API-only 权限。
  * 页面读权限在页面已选中时自动视为授予，避免页面和读权限漏配；操作权限不会带出页面。
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Banner, Button, Checkbox, Input, Space, Spin, Tag, Typography } from '@douyinfe/semi-ui';
 import { usePermissionCatalog } from '@/hooks/queries/permission-matrix';
 
@@ -34,6 +34,14 @@ type CapabilityPanelProps = Readonly<{
   /** 已选页面：页面的读权限自动随页面授予，在权限面板中锁定展示 */
   selectedPageIds?: number[];
   readonly?: boolean;
+  /** 只显示已生效的权限；只读预览使用，避免把整个权限目录塞进有效权限视图 */
+  onlySelected?: boolean;
+  /** 只读预览中不需要授权说明横幅 */
+  hideBanner?: boolean;
+  /** 内容滚动区最大高度 */
+  height?: number;
+  /** 是否显示展开/折叠全部工具条 */
+  showToolbar?: boolean;
 }>;
 
 export function CapabilityPanel({
@@ -41,16 +49,26 @@ export function CapabilityPanel({
   onChange,
   selectedPageIds = [],
   readonly = false,
+  onlySelected = false,
+  hideBanner = false,
+  height = 420,
+  showToolbar = true,
 }: CapabilityPanelProps) {
   const catalogQuery = usePermissionCatalog();
   const [keyword, setKeyword] = useState('');
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set());
+  const initializedOnlySelected = useRef<string | null>(null);
+  const selectionSignature = useMemo(
+    () => [...selectedPermissionCodes].sort().join('|'),
+    [selectedPermissionCodes],
+  );
   const selected = useMemo(() => new Set(selectedPermissionCodes), [selectedPermissionCodes]);
   const pageSet = useMemo(() => new Set(selectedPageIds), [selectedPageIds]);
   const grouped = useMemo(() => {
     const groups = new Map<string, CapabilityItem[]>();
     const query = keyword.trim().toLowerCase();
     for (const item of catalogQuery.data?.items ?? []) {
+      if (onlySelected && !selected.has(item.code)) continue;
       if (query && !`${item.code} ${item.label} ${item.pageTitle ?? ''}`.toLowerCase().includes(query)) continue;
       const key = item.pageTitle ?? '仅接口权限';
       const list = groups.get(key) ?? [];
@@ -58,7 +76,12 @@ export function CapabilityPanel({
       groups.set(key, list);
     }
     return [...groups.entries()].sort(([a], [b]) => a === '仅接口权限' ? 1 : b === '仅接口权限' ? -1 : a.localeCompare(b));
-  }, [catalogQuery.data?.items, keyword]);
+  }, [catalogQuery.data?.items, keyword, onlySelected, selected]);
+  useEffect(() => {
+    if (!onlySelected || initializedOnlySelected.current === selectionSignature || grouped.length === 0) return;
+    initializedOnlySelected.current = selectionSignature;
+    setExpandedGroups(new Set(grouped.map(([group]) => group)));
+  }, [grouped, onlySelected, selectionSignature]);
 
   if (catalogQuery.isLoading) return <div style={{ padding: 40, textAlign: 'center' }}><Spin /></div>;
   if (catalogQuery.error) return <Banner type="danger" closeIcon={null} description={catalogQuery.error.message} />;
@@ -73,12 +96,14 @@ export function CapabilityPanel({
 
   return (
     <div>
-      <Banner
-        type="info"
-        closeIcon={null}
-        style={{ marginBottom: 8 }}
-        description="接口权限只授予调用权限，不产生页面导航。页面读权限随已选页面自动锁定；只勾选读/操作权限可获得 API-only 权限。"
-      />
+      {!hideBanner && (
+        <Banner
+          type="info"
+          closeIcon={null}
+          style={{ marginBottom: 8 }}
+          description="接口权限只授予调用权限，不产生页面导航。页面读权限随已选页面自动锁定；只勾选读/操作权限可获得 API-only 权限。"
+        />
+      )}
       <Input
         value={keyword}
         onChange={(value) => setKeyword(value)}
@@ -86,12 +111,14 @@ export function CapabilityPanel({
         showClear
         style={{ marginBottom: 8 }}
       />
-      <Space style={{ marginBottom: 8 }}>
-        <Button size="small" theme="borderless" onClick={() => setExpandedGroups(new Set(grouped.map(([group]) => group)))}>展开全部</Button>
-        <Button size="small" theme="borderless" onClick={() => setExpandedGroups(new Set())}>折叠全部</Button>
-      </Space>
-      <div style={{ maxHeight: 420, overflow: 'auto', paddingRight: 4 }}>
-        {grouped.length === 0 && <Typography.Text type="tertiary">没有匹配的权限</Typography.Text>}
+      {showToolbar && (
+        <Space style={{ marginBottom: 8 }}>
+          <Button size="small" theme="borderless" onClick={() => setExpandedGroups(new Set(grouped.map(([group]) => group)))}>展开全部</Button>
+          <Button size="small" theme="borderless" onClick={() => setExpandedGroups(new Set())}>折叠全部</Button>
+        </Space>
+      )}
+      <div style={{ maxHeight: height, overflow: 'auto', paddingRight: 4 }}>
+        {grouped.length === 0 && <Typography.Text type="tertiary">{onlySelected ? '没有生效的接口权限' : '没有匹配的权限'}</Typography.Text>}
         {grouped.map(([group, items]) => {
           const expanded = keyword.trim().length > 0 || expandedGroups.has(group);
           return (
@@ -112,17 +139,41 @@ export function CapabilityPanel({
               {items.map((item) => {
                 const autoGranted = item.surface === 'page' && item.pageId !== null && pageSet.has(item.pageId);
                 const checked = autoGranted || selected.has(item.code);
+                const showSurfaceTag = !readonly || item.surface !== 'button';
                 return (
-                  <div key={item.code} style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                    <Checkbox
-                      checked={checked}
-                      disabled={readonly || autoGranted}
-                      onChange={(event) => toggle(item, Boolean(event.target.checked))}
-                    >
-                      <span style={{ marginRight: 6 }}>{item.label}</span>
-                      <Typography.Text type="tertiary" size="small">{item.code}</Typography.Text>
-                    </Checkbox>
-                    <Tag size="small" color={SURFACE_COLORS[item.surface]}>{autoGranted ? '随页面' : SURFACE_LABELS[item.surface]}</Tag>
+                  <div key={item.code} style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, padding: '1px 0' }}>
+                    {readonly ? (
+                      <span
+                        aria-hidden
+                        style={{
+                          width: 6,
+                          height: 6,
+                          borderRadius: '50%',
+                          flexShrink: 0,
+                          background: item.surface === 'page'
+                            ? 'var(--semi-color-primary)'
+                            : item.surface === 'button'
+                              ? 'var(--semi-color-success)'
+                              : 'var(--semi-color-text-2)',
+                        }}
+                      />
+                    ) : (
+                      <Checkbox
+                        checked={checked}
+                        disabled={autoGranted}
+                        aria-label={`${item.label} ${item.code}`}
+                        onChange={(event) => toggle(item, Boolean(event.target.checked))}
+                      />
+                    )}
+                    <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {item.label}
+                    </span>
+                    <Typography.Text type="tertiary" size="small" style={{ flexShrink: 0 }}>{item.code}</Typography.Text>
+                    {showSurfaceTag && (
+                      <Tag size="small" color={SURFACE_COLORS[item.surface]}>
+                        {autoGranted ? '随页面' : SURFACE_LABELS[item.surface]}
+                      </Tag>
+                    )}
                     {item.uiOnly && <Tag size="small" color="orange">仅前端</Tag>}
                   </div>
                 );

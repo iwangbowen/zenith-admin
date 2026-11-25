@@ -7,10 +7,11 @@
  *  3. 最终有效权限 — 只读，显示角色继承 ∪ 用户组继承 ∪ 直接授权，并用 Tag 标注来源
  */
 import { useState, useEffect } from 'react';
-import { Tabs, TabPane, Toast, Tag, Space } from '@douyinfe/semi-ui';
+import { Tabs, TabPane, Toast } from '@douyinfe/semi-ui';
 import AppModal from '@/components/AppModal';
 import { MenuPermissionPanel } from '@/components/permissions/MenuPermissionPanel';
 import { CapabilityPanel } from '@/components/permissions/CapabilityPanel';
+import { EffectivePermissionsPanel } from '@/components/permissions/EffectivePermissionsPanel';
 import { useMenuTree } from '@/hooks/queries/menus';
 import ModalFooter from '@/components/ModalFooter';
 import { useSaveUserMenus, useUserEffectivePermissions } from '@/hooks/queries/users';
@@ -57,26 +58,6 @@ export function UserMenuPermissionModal({ userId, userName, visible, onClose }: 
     onClose();
   };
 
-  /** 构造有效权限 Tab 里的具体来源 Tag（同一菜单可能有多个来源） */
-  function buildLabelSuffix(): Record<string, React.ReactNode> {
-    const menuSources = permissionsQuery.data?.menuSources ?? {};
-    const result: Record<string, React.ReactNode> = {};
-    for (const id of effectiveMenuIds) {
-      const sources = menuSources[String(id)] ?? [];
-      const tags = sources.map((source) => (
-        <Tag
-          key={source}
-          size="small"
-          color={source === '用户直接授权' ? 'green' : source.includes('用户组：') ? 'orange' : 'blue'}
-        >
-          {source}
-        </Tag>
-      ));
-      result[String(id)] = <Space spacing={4} style={{ marginLeft: 4 }}>{tags}</Space>;
-    }
-    return result;
-  }
-
   return (
     <AppModal
       title={`页面与权限 — ${userName}`}
@@ -91,10 +72,13 @@ export function UserMenuPermissionModal({ userId, userName, visible, onClose }: 
           disabled={!permissionsQuery.isSuccess}
         />
       )}
-      width={760}
+      width={1180}
     >
       <Tabs collapsible="auto" activeKey={activeTab} onChange={setActiveTab}>
-        <TabPane tab="页面访问" itemKey="direct">
+        <TabPane tab="页面访问（直接）" itemKey="direct">
+          <div style={{ marginBottom: 8, fontSize: 12, color: 'var(--semi-color-text-2)' }}>
+            这里只编辑用户直接授权：当前直接授权 {directMenuIds.length} 个页面。角色、用户组或审批继承的页面请在「最终有效权限」查看。
+          </div>
           <MenuPermissionPanel
             allMenus={menuTreeQuery.data ?? []}
             checkedMenuIds={directMenuIds}
@@ -103,7 +87,10 @@ export function UserMenuPermissionModal({ userId, userName, visible, onClose }: 
             pagesOnly
           />
         </TabPane>
-        <TabPane tab="接口权限" itemKey="capabilities">
+        <TabPane tab="接口权限（直接）" itemKey="capabilities">
+          <div style={{ marginBottom: 8, fontSize: 12, color: 'var(--semi-color-text-2)' }}>
+            这里只编辑用户直接授权：当前直接授权 {directPermissionCodes.length} 项权限。角色、用户组或审批继承的权限请在「最终有效权限」查看。
+          </div>
           <CapabilityPanel
             selectedPermissionCodes={directPermissionCodes}
             onChange={setDirectPermissionCodes}
@@ -111,43 +98,13 @@ export function UserMenuPermissionModal({ userId, userName, visible, onClose }: 
           />
         </TabPane>
         <TabPane tab="最终有效权限" itemKey="effective">
-          <div style={{ marginBottom: 8, fontSize: 12, color: 'var(--semi-color-text-2)' }}>
-            <div>最终权限 = 角色权限 ∪ 用户组继承 ∪ 用户直接授权，仅供预览</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '88px minmax(0, 1fr)', columnGap: 8, rowGap: 6, alignItems: 'start', marginTop: 6 }}>
-              <span>权限来源：</span>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {[...new Set(Object.values(permissionsQuery.data?.menuSources ?? {}).flat())].map((source) => (
-                  <Tag
-                    key={source}
-                    size="small"
-                    color={source === '用户直接授权' ? 'green' : source.includes('用户组：') ? 'orange' : 'blue'}
-                  >
-                    {source}
-                  </Tag>
-                ))}
-              </div>
-              {groups.length > 0 && (
-                <>
-                  <span>继承自用户组：</span>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {groups.map((g) => <Tag key={g.id} size="small" color="orange">{g.name}</Tag>)}
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-          <MenuPermissionPanel
+          <EffectivePermissionsPanel
             allMenus={menuTreeQuery.data ?? []}
-            checkedMenuIds={effectiveMenuIds}
+            pageIds={effectiveMenuIds}
+            permissionCodes={permissionsQuery.data?.permissionCodes ?? []}
             loading={menuTreeQuery.isFetching || permissionsQuery.isFetching}
-            readonly
-            pagesOnly
-            labelSuffix={buildLabelSuffix()}
-          />
-          <CapabilityPanel
-            selectedPermissionCodes={permissionsQuery.data?.permissionCodes ?? []}
-            selectedPageIds={effectiveMenuIds}
-            readonly
+            pageSources={permissionsQuery.data?.menuSources}
+            groups={groups}
           />
         </TabPane>
       </Tabs>
