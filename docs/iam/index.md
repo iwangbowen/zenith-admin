@@ -78,7 +78,7 @@
 - **目录节点**：`type = directory`，只做分组，不允许携带权限码。
 - **权限目录**：权限码由代码注册表和 `ALL_PERMISSIONS` 提供；没有页面的纯 API 权限省略 `menu`，只出现在权限目录。
 - **页面读权限映射**：`packages/shared/src/seed/menus/page-permissions.ts` 的 `PAGE_READ_PERMISSION_BY_NAME` 声明页面 → 读权限；生成器写入页面节点并跳过同名查询按钮。
-- **授权入口**：角色/用户授权分为「页面访问」与「接口能力」；审批申请同时写入页面项和权限项，运行时零推导。
+- **授权入口**：角色/用户授权分为「页面访问」与「接口权限」；审批申请同时写入页面项和权限项，运行时零推导。
 
 ## 数据权限
 
@@ -312,7 +312,7 @@ MFA 当前落库类型包括 `totp`、`passkey`、`recovery_code`，接口实现
 | `/api/roles` | 角色全量/分页/详情、创建、更新、删除、分配菜单、读取/设置角色用户 |
 | `/api/menus` | 当前用户菜单、管理菜单树、平铺菜单、详情、创建、更新、删除 |
 | `/api/menus/paths` | 全部启用页面路径（任意登录用户可读，用于 403/404 判别） |
-| `/api/api-catalog/permissions` | 权限目录：权限码、形态、页面绑定与 API-only 能力 |
+| `/api/api-catalog/permissions` | 权限目录：权限码、形态、页面绑定与 API-only 权限 |
 | `/api/departments` | 部门树、平铺列表、详情、创建、更新、删除 |
 | `/api/positions` | 岗位全量/分页/详情、创建、更新、批量删除、成员读取与设置 |
 | `/api/user-groups` | 用户组全量/分页/详情、创建、更新、批量删除、成员维护、角色绑定、动态规则预览与同步 |

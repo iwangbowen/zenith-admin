@@ -116,7 +116,7 @@ export default function RolesPage() {
   const handleAssignMenus = async () => {
     if (!menuRole) return;
     await assignMenusMutation.mutateAsync({ params: { id: menuRole.id }, body: { menuIds: checkedMenuIds, permissionCodes: checkedPermissionCodes } });
-    Toast.success('页面与能力权限已更新');
+    Toast.success('页面与权限已更新');
     setMenuModalVisible(false);
   };
 
@@ -182,7 +182,7 @@ export default function RolesPage() {
     extraBetween: (row) => [
       {
         key: 'menu',
-        label: '页面与能力',
+        label: '页面与权限',
         hidden: !hasPermission('system:role:assign'),
         onClick: () => openMenuModal(row),
       },
@@ -270,9 +270,9 @@ export default function RolesPage() {
         />
       </EditFormModal>
 
-      {/* 页面与能力授权 Modal */}
+      {/* 页面与权限授权 Modal */}
       <AppModal
-        title={`页面与能力 — ${menuRole?.name}`}
+        title={`页面与权限 — ${menuRole?.name}`}
         visible={menuModalVisible}
         onCancel={() => setMenuModalVisible(false)}
         onOk={handleAssignMenus}
@@ -289,7 +289,7 @@ export default function RolesPage() {
               pagesOnly
             />
           </TabPane>
-          <TabPane tab="接口能力" itemKey="capabilities">
+          <TabPane tab="接口权限" itemKey="capabilities">
             <CapabilityPanel
               selectedPermissionCodes={checkedPermissionCodes}
               onChange={setCheckedPermissionCodes}

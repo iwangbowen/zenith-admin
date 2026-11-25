@@ -35,7 +35,7 @@ const assignMenusRoute = defineContractRoute(roleContract.assignMenus, {
     const before = await getRoleBeforeAudit(id);
     if (before) setAuditBeforeData(c, before);
     await assignRoleMenus(id, data.menuIds, data.permissionCodes);
-    return c.json(okBody(null, '页面与能力权限已更新'), 200);
+    return c.json(okBody(null, '页面与权限已更新'), 200);
   },
 });
 

@@ -31,7 +31,7 @@ const SURFACE_COLORS: Record<CapabilityItem['surface'], 'blue' | 'green' | 'grey
 type CapabilityPanelProps = Readonly<{
   selectedPermissionCodes: string[];
   onChange?: (codes: string[]) => void;
-  /** 已选页面：页面的读权限自动随页面授予，在能力面板中锁定展示 */
+  /** 已选页面：页面的读权限自动随页面授予，在权限面板中锁定展示 */
   selectedPageIds?: number[];
   readonly?: boolean;
 }>;
@@ -77,7 +77,7 @@ export function CapabilityPanel({
         type="info"
         closeIcon={null}
         style={{ marginBottom: 8 }}
-        description="接口能力只授予调用能力，不产生页面导航。页面读权限随已选页面自动锁定；只勾选读/操作权限可获得 API-only 能力。"
+        description="接口权限只授予调用权限，不产生页面导航。页面读权限随已选页面自动锁定；只勾选读/操作权限可获得 API-only 权限。"
       />
       <Input
         value={keyword}

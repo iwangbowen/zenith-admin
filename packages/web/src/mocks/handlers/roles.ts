@@ -81,7 +81,7 @@ export const rolesHandlers = [
       }),
     ])];
     role.updatedAt = mockDateTime();
-    return ok(null, '页面与能力权限更新成功');
+    return ok(null, '页面与权限更新成功');
   }),
 
   mock(roleContract.users, ({ params, ok }) => {

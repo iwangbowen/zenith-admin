@@ -72,7 +72,7 @@ Server 测试计划、领域 loader 和 CI 分片的用法见 [后端测试](../
 | `src/member/` | 会员前台独立应用 |
 | `src/approval/` | 移动审批入口 |
 | `src/layouts/` | 后台主布局、偏好面板、多账号切换、Electron 标题栏承载 |
-| `src/components/` | 公共组件（含 `settings/` 的 schema 驱动设置表单、`permissions/` 的页面访问与接口能力授权面板） |
+| `src/components/` | 公共组件（含 `settings/` 的 schema 驱动设置表单、`permissions/` 的页面权限与接口权限授权面板） |
 | `src/hooks/queries/` | TanStack Query v5 域 hooks（由 `lib/contract-query.ts` 按契约派生） |
 | `src/lib/` | 契约调用层（`contract-query.ts`）、请求、账号停靠、主题色、启动预取（`shell-prefetch.ts`）等封装 |
 | `src/mocks/` | MSW Demo 数据、handlers、测试与工具 |

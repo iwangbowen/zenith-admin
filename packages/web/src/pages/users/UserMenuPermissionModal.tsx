@@ -1,9 +1,9 @@
 /**
- * 用户页面与能力授权弹窗
+ * 用户页面与权限授权弹窗
  *
  * Tabs：
  *  1. 页面访问 — 可编辑，只选择导航页面
- *  2. 接口能力 — 可编辑，选择页面读/按钮操作/API-only 权限码
+ *  2. 接口权限 — 可编辑，选择页面读/按钮操作/API-only 权限码
  *  3. 最终有效权限 — 只读，显示角色继承 ∪ 用户组继承 ∪ 直接授权，并用 Tag 标注来源
  */
 import { useState, useEffect } from 'react';
@@ -51,7 +51,7 @@ export function UserMenuPermissionModal({ userId, userName, visible, onClose }: 
 
   const handleSave = async () => {
     await saveMenusMutation.mutateAsync({ params: { id: userId }, body: { menuIds: directMenuIds, permissionCodes: directPermissionCodes } });
-    Toast.success('页面与能力权限已更新');
+    Toast.success('页面与权限已更新');
     const effectiveSet = new Set([...directMenuIds, ...roleMenuIds, ...groupMenuIds]);
     setEffectiveMenuIds([...effectiveSet]);
     onClose();
@@ -79,7 +79,7 @@ export function UserMenuPermissionModal({ userId, userName, visible, onClose }: 
 
   return (
     <AppModal
-      title={`页面与能力 — ${userName}`}
+      title={`页面与权限 — ${userName}`}
       visible={visible}
       onCancel={onClose}
       footer={activeTab === 'effective' ? null : (
@@ -103,7 +103,7 @@ export function UserMenuPermissionModal({ userId, userName, visible, onClose }: 
             pagesOnly
           />
         </TabPane>
-        <TabPane tab="接口能力" itemKey="capabilities">
+        <TabPane tab="接口权限" itemKey="capabilities">
           <CapabilityPanel
             selectedPermissionCodes={directPermissionCodes}
             onChange={setDirectPermissionCodes}

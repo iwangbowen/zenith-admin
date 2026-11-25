@@ -126,8 +126,8 @@ export function MenuPermissionPanel({
             closeIcon={null}
             style={{ marginBottom: 8 }}
             description={pagesOnly
-              ? '页面访问只控制导航；页面读权限随页面自动授予。操作能力请在「接口能力」中单独选择，不会隐藏或带出页面。'
-              : '页面与按钮分别授权；页面承担导航和读权限，按钮只承载操作能力。'}
+              ? '页面访问只控制导航；页面读权限随页面自动授予。操作权限请在「接口权限」中单独选择，不会隐藏或带出页面。'
+              : '页面与按钮分别授权；页面承担导航和读权限，按钮只承载操作权限。'}
           />
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
             <Space>

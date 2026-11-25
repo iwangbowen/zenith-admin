@@ -71,8 +71,8 @@ export type AlertRecipientUser = z.infer<typeof alertRecipientUserSchema>;
 export const userMenuPermissionsSchema = z.object({
   directMenuIds: z.array(z.int()).meta({ description: '用户直接授权页面 ID 列表' }),
   roleMenuIds: z.array(z.int()).meta({ description: '角色继承页面 ID 列表' }),
-  directPermissionCodes: z.array(z.string()).meta({ description: '用户直接授权能力码' }),
-  rolePermissionCodes: z.array(z.string()).meta({ description: '角色继承能力码' }),
+  directPermissionCodes: z.array(z.string()).meta({ description: '用户直接授权权限码' }),
+  rolePermissionCodes: z.array(z.string()).meta({ description: '角色继承权限码' }),
 }).meta({ id: 'UserMenuPermissions' });
 
 export type UserMenuPermissions = z.infer<typeof userMenuPermissionsSchema>;
