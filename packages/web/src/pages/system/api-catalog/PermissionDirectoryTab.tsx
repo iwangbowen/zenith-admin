@@ -1,8 +1,9 @@
 /** 权限目录：能力定义、形态和绑定页面；页面读、按钮操作与 API-only 权限统一查看。 */
 import { useMemo } from 'react';
-import { Button, Input, Select, Tag, Typography } from '@douyinfe/semi-ui';
+import { Input, Select, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { DESKTOP_PAGINATION_PROPS } from '@/hooks/usePagination';
 import { useListSearch } from '@/hooks/useListSearch';
 import { apiCatalogKeys, usePermissionCatalog } from '@/hooks/queries/permission-matrix';
@@ -64,8 +65,8 @@ export default function PermissionDirectoryTab() {
         style={{ width: 150 }}
         optionList={Object.entries(SURFACE_LABELS).map(([value, label]) => ({ value, label }))}
       />
-      <Button onClick={handleSearch}>查询</Button>
-      <Button onClick={handleReset}>重置</Button>
+      <SearchButton onClick={handleSearch} />
+      <ResetButton onClick={handleReset} />
       <Typography.Text type="tertiary" style={{ alignSelf: 'center' }}>共 {rows.length} 项权限</Typography.Text>
     </div>
     <ConfigurableTable<Item> rowKey="code" dataSource={pageRows} columns={columns} loading={query.isFetching} pagination={pagination} size="small" />

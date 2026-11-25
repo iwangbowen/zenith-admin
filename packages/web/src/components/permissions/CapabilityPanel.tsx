@@ -104,6 +104,14 @@ export function CapabilityPanel({
           description="接口权限只授予调用权限，不产生页面导航。页面读权限随已选页面自动锁定；只勾选读/操作权限可获得 API-only 权限。"
         />
       )}
+      {showToolbar && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+          <Space>
+            <Button size="small" theme="borderless" onClick={() => setExpandedGroups(new Set(grouped.map(([group]) => group)))}>展开全部</Button>
+            <Button size="small" theme="borderless" onClick={() => setExpandedGroups(new Set())}>折叠全部</Button>
+          </Space>
+        </div>
+      )}
       <Input
         value={keyword}
         onChange={(value) => setKeyword(value)}
@@ -111,12 +119,6 @@ export function CapabilityPanel({
         showClear
         style={{ marginBottom: 8 }}
       />
-      {showToolbar && (
-        <Space style={{ marginBottom: 8 }}>
-          <Button size="small" theme="borderless" onClick={() => setExpandedGroups(new Set(grouped.map(([group]) => group)))}>展开全部</Button>
-          <Button size="small" theme="borderless" onClick={() => setExpandedGroups(new Set())}>折叠全部</Button>
-        </Space>
-      )}
       <div style={{ maxHeight: height, overflow: 'auto', paddingRight: 4 }}>
         {grouped.length === 0 && <Typography.Text type="tertiary">{onlySelected ? '没有生效的接口权限' : '没有匹配的权限'}</Typography.Text>}
         {grouped.map(([group, items]) => {
