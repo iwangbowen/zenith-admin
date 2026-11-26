@@ -56,7 +56,7 @@ export function UserDropdown({
   const { hasAnyPermission } = usePermission();
   // 移动审批轻页首屏即查待办 / 角标 / 可发起流程，无任一审批相关权限必 403；
   // 与意见反馈入口同模式：无权限直接隐藏入口，而不是点进去再报错
-  const canUseApproval = hasAnyPermission('workflow:task:handle', 'workflow:instance:list', 'workflow:instance:create');
+  const canUseApproval = hasAnyPermission('workflow:task:list', 'workflow:task:handle', 'workflow:instance:list', 'workflow:instance:create');
   const [switcherVisible, setSwitcherVisible] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
   const impersonating = impersonation !== null;

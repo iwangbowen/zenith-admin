@@ -181,7 +181,7 @@ export const cmsWidgetContract = defineContract('/api/cms/widgets', {
   renderers: op.get('/renderers', { access: { permission: 'cms:widget:list' }, query: cmsWidgetRenderersQuery, response: z.array(cmsWidgetRendererOptionSchema), summary: '当前站点主题支持的部件展示模板' }),
   slots: op.get('/slots', { access: { permission: 'cms:widget:list' }, query: cmsSiteScopeQuery, response: z.array(cmsWidgetSlotSchema), summary: '当前站点主题部件插槽' }),
   saveSlot: op.put('/slots/{slotKey}', { access: { permission: 'cms:widget:bind' }, audit: '更新 CMS 主题页面部件插槽', params: cmsWidgetSlotKeyParam, body: saveCmsWidgetSlotSchema, response: z.array(cmsWidgetSlotSchema), summary: '绑定或清空主题部件插槽' }),
-  batch: op.post('/batch', { access: { permission: 'cms:widget:list' }, audit: '提交 CMS 页面部件批量操作', body: batchCmsWidgetSchema, response: asyncTaskSchema, summary: '提交页面部件批量发布/下线/删除任务' }),
+  batch: op.post('/batch', { access: { permission: ['cms:widget:publish', 'cms:widget:offline', 'cms:widget:delete'] }, audit: '提交 CMS 页面部件批量操作', body: batchCmsWidgetSchema, response: asyncTaskSchema, summary: '提交页面部件批量发布/下线/删除任务' }),
   sourceRefs: op.get('/source-refs', { access: { permission: 'cms:widget:list' }, query: cmsWidgetSourceRefsQuery, response: z.array(cmsWidgetSourceReferenceSchema), summary: '查看内容或栏目被哪些已发布页面部件引用' }),
   refs: op.get('/{id}/refs', { access: { permission: 'cms:widget:list' }, params: idParam, response: z.array(cmsWidgetRefSchema), summary: '查看页面部件引用位置' }),
   preview: op.get('/{id}/preview', { access: { permission: 'cms:widget:list' }, params: idParam, query: cmsWidgetPreviewQuery, response: cmsWidgetPreviewSchema, summary: '按当前草稿生成页面部件 SSR 预览' }),

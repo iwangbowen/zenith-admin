@@ -68,7 +68,7 @@ export const inAppMessageContract = defineContract('/api/in-app-messages', {
   adminMarkRead: op.post('/admin/{id}/read', { access: { permission: 'system:in-app-message:read' }, audit: '管理员标记站内信已读', params: idParam, summary: '管理员：标记任意站内信为已读' }),
   adminRemove: op.delete('/admin/{id}', { access: { permission: 'system:in-app-message:delete' }, audit: '管理员删除站内信', params: idParam, summary: '管理员：删除任意站内信' }),
   unreadCount: op.get('/unread-count', { access: 'authenticated', query: inAppMessageScopeQuery, response: inAppUnreadCountSchema, summary: '当前用户指定事件分组的未读消息数' }),
-  send: op.post('/send', { access: { permission: 'system:in-app-template:list' }, audit: '发送站内信', body: sendInAppSchema, response: inAppSendResultSchema, summary: '发送站内信' }),
+  send: op.post('/send', { access: { permission: 'system:in-app-message:send' }, audit: '发送站内信', body: sendInAppSchema, response: inAppSendResultSchema, summary: '发送站内信' }),
   markAllRead: op.post('/read-all', { access: 'authenticated', body: inAppMessageScopeQuery, response: inAppUnreadCountSchema, summary: '当前用户指定事件分组全部标记已读' }),
   markReadBatch: op.post('/batch-read', { access: 'authenticated', body: batchIdsBody, summary: '批量标记为已读' }),
   removeBatch: op.delete('/batch', { access: { permission: 'system:in-app-message:delete' }, body: batchIdsBody, summary: '批量删除站内信' }),

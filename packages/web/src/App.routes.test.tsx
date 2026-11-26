@@ -10,7 +10,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Menu } from '@zenith/shared/identity';
-import { FIXED_ROUTES, flattenMenus, buildAllMenuPaths } from './App';
+import { FIXED_ROUTES, flattenMenus, isKnownMenuRoute } from './App';
 
 const SSL_PATH = '/system/ssl-certificates';
 
@@ -47,9 +47,9 @@ describe('SSL 证书页面只能由动态菜单承载', () => {
   });
 
   it('is discriminated as 403 (not 404) for unauthorized users via the management tree', () => {
-    // catch-all 用管理树判别：路径存在但用户菜单未注册 → 403
-    const allPaths = buildAllMenuPaths(MENU_TREE);
-    expect(allPaths.get(SSL_PATH)).toBe('system/ssl-certificates/SslCertificatesPage');
+    expect(isKnownMenuRoute(SSL_PATH, [SSL_PATH])).toBe(true);
+    expect(isKnownMenuRoute(`${SSL_PATH}/missing`, [SSL_PATH])).toBe(false);
+    expect(isKnownMenuRoute('/workflow/designer/42', ['/workflow/designer/:id'])).toBe(true);
   });
 });
 

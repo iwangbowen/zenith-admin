@@ -1,7 +1,7 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { Banner, Descriptions, Divider, Form, SideSheet, Skeleton, Spin, TabPane, Table, Tabs, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import type { AccessGrant, AccessRequest, AccessReviewItem, PermissionPolicy, UpdatePermissionPolicyInput } from '@zenith/shared/identity';
+import type { AccessGrant, AccessGrantItem, AccessRequest, AccessReviewItem, PermissionPolicy, UpdatePermissionPolicyInput } from '@zenith/shared/identity';
 import { accessGovernanceContract, accessPermissionCount, accessSourceLabel, ACCESS_RISK_LABELS as RISK_LABELS, ACCESS_REQUEST_STATUS_LABELS as STATUS_LABELS, ACCESS_PROVISION_STATUS_LABELS, ACCESS_GRANT_STATUS_LABELS as GRANT_STATUS_LABELS, ACCESS_REVIEW_DECISION_LABELS as REVIEW_DECISION_LABELS, ACCESS_APPROVAL_POLICY_LABELS as APPROVAL_LABELS, ACCESS_REQUEST_TYPE_LABELS as REQUEST_TYPE_LABELS, ACCESS_GRANT_SOURCE_LABELS as GRANT_SOURCE_LABELS, ACCESS_REVIEW_SOURCE_LABELS as REVIEW_SOURCE_LABELS, ACCESS_MINIMUM_APPROVAL, higherAccessRisk, stricterAccessApproval } from '@zenith/shared/identity';
 import { createLabelOptionsFromMap } from '@zenith/shared/core';
 import AccessReviews from './AccessReviews';
@@ -110,7 +110,7 @@ function RequestDetailSheet({ record: suppliedRecord, visible = suppliedRecord !
       dataIndex: 'permissionCode',
       minWidth: 240,
       render: (value: string | null, row) => {
-        const label = row.permissionLabel ?? snapshotText(row.snapshot, ['menuTitle', 'roleName']);
+        const label = row.pageTitle ?? row.permissionLabel ?? snapshotText(row.snapshot, ['menuTitle', 'roleName']);
         if (value) return label ? `${value} · ${label}` : value;
         return label ?? EMPTY_PLACEHOLDER;
       },
@@ -194,7 +194,7 @@ function GrantDetailSheet({ record: suppliedRecord, visible = suppliedRecord !==
   }, [visible]);
   const menuColumns: ColumnProps<AccessGrant['items'][number]>[] = [
     { title: '权限码', dataIndex: 'permissionCode', minWidth: 220, render: (value: string | null) => value ?? EMPTY_PLACEHOLDER },
-    { title: '权限名称', dataIndex: 'permissionLabel', width: 200, render: (value: string | null) => value ?? EMPTY_PLACEHOLDER },
+    { title: '页面或权限', dataIndex: 'permissionLabel', width: 200, render: (value: string | null, row: AccessGrantItem) => row.pageTitle ?? value ?? EMPTY_PLACEHOLDER },
     { title: '数据范围', dataIndex: 'dataScope', width: 130, render: (value: string) => dataScopeLabel(value) },
     { title: '部门范围', dataIndex: 'deptScopeIds', width: 110, render: (value: number[]) => deptScopeText(value) },
     { title: '状态', dataIndex: 'status', width: 100, render: (value: AccessGrant['status']) => GRANT_STATUS_LABELS[value] },

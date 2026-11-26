@@ -175,9 +175,10 @@ function TaskListContent() {
   const me = useApprovalMe();
   const can = (permission: string) => !!me.data?.permissions?.some(p => p === '*' || p === permission);
   const canHandle = can('workflow:task:handle');
+  const canListTasks = canHandle || can('workflow:task:list');
   const canList = can('workflow:instance:list');
   const canCreate = can('workflow:instance:create');
-  const [tab, setTab] = useState<ApprovalTab>(() => { const value = searchParams.get('tab'); return value && ['pending', 'handled', 'mine', 'cc'].includes(value) ? value as ApprovalTab : canHandle ? 'pending' : 'mine'; });
+  const [tab, setTab] = useState<ApprovalTab>(() => { const value = searchParams.get('tab'); return value && ['pending', 'handled', 'mine', 'cc'].includes(value) ? value as ApprovalTab : canListTasks ? 'pending' : 'mine'; });
   const [size, setSize] = useState(10);
   const [keywordDraft, setKeywordDraft] = useState(() => searchParams.get('keyword') ?? '');
   const [keyword, setKeyword] = useState(() => searchParams.get('keyword') ?? '');
@@ -197,10 +198,10 @@ function TaskListContent() {
   const [ccReadingAll, setCcReadingAll] = useState(false);
   const [filters, setFilters] = useState<ApprovalFilters>(() => ({ definitionId: Number(searchParams.get('definitionId')) || null, priority: searchParams.get('priority') as ApprovalFilters['priority'], overdue: searchParams.get('overdue') === 'true' }));
   const [instanceStatus, setInstanceStatus] = useState<ApplicationStatus | undefined>(() => (searchParams.get('status') || undefined) as ApplicationStatus | undefined);
-  const tabAllowed = tab === 'pending' || tab === 'handled' ? canHandle : canList || (tab === 'mine' && instanceStatus === 'draft' && canCreate);
-  useEffect(() => { if (!canHandle && !canList && canCreate && instanceStatus !== 'draft') navigate('/launch', { replace: true }); }, [canHandle, canList, canCreate, instanceStatus, navigate]);
+  const tabAllowed = tab === 'pending' || tab === 'handled' ? canListTasks : canList || (tab === 'mine' && instanceStatus === 'draft' && canCreate);
+  useEffect(() => { if (!canListTasks && !canList && canCreate && instanceStatus !== 'draft') navigate('/launch', { replace: true }); }, [canListTasks, canList, canCreate, instanceStatus, navigate]);
   const listQuery = useApprovalList(tab, size, keyword, tabAllowed || (tab === 'mine' && instanceStatus === 'draft' && canCreate), { ...filters, status: instanceStatus });
-  const definitionsQuery = useApprovalDefinitionOptions(canHandle, canCreate);
+  const definitionsQuery = useApprovalDefinitionOptions(canListTasks, canCreate);
   const [filtersVisible, setFiltersVisible] = useState(false);
   const [notificationsVisible, setNotificationsVisible] = useState(false);
   const [delegationsVisible, setDelegationsVisible] = useState(false);
@@ -543,7 +544,7 @@ function TaskListContent() {
                 type="button"
                 role="tab"
                 aria-selected={active}
-                disabled={(key === 'pending' || key === 'handled') ? !canHandle : !canList}
+                disabled={(key === 'pending' || key === 'handled') ? !canListTasks : !canList}
                 className={`ap-tabbar__item${active ? ' ap-tabbar__item--active' : ''}`}
                 onClick={() => switchTab(key)}
               >

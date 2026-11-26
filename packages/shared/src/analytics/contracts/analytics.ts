@@ -217,45 +217,45 @@ export const analyticsContract = defineContract('/api/analytics', {
 
   // 保存的分析报表
   reports: op.get('/reports', { access: { permission: 'analytics:view' }, query: analyticsSavedReportListQuery, response: analyticsSavedReportListSchema, summary: '保存的报表列表' }),
-  createReport: op.post('/reports', { access: { permission: 'analytics:view' }, body: createAnalyticsSavedReportSchema, response: analyticsSavedReportSchema, summary: '保存报表配置' }),
-  removeReport: op.delete('/reports/{id}', { access: { permission: 'analytics:view' }, params: idParam, summary: '删除保存的报表' }),
+  createReport: op.post('/reports', { access: { permission: 'analytics:report:manage' }, body: createAnalyticsSavedReportSchema, response: analyticsSavedReportSchema, summary: '保存报表配置' }),
+  removeReport: op.delete('/reports/{id}', { access: { permission: 'analytics:report:manage' }, params: idParam, summary: '删除保存的报表' }),
 
   // 事件数据管理
-  events: op.get('/events', { access: { permission: 'analytics:manage' }, query: analyticsEventListQuery, response: paginated(eventListItemSchema), summary: '埋点事件列表' }),
-  eventDetail: op.get('/events/{id}', { access: { permission: 'analytics:manage' }, params: idParam, response: eventDetailSchema, summary: '事件详情' }),
+  events: op.get('/events', { access: { permission: 'analytics:data:view' }, query: analyticsEventListQuery, response: paginated(eventListItemSchema), summary: '埋点事件列表' }),
+  eventDetail: op.get('/events/{id}', { access: { permission: 'analytics:data:view' }, params: idParam, response: eventDetailSchema, summary: '事件详情' }),
   clean: op.delete('/clean', { access: { permission: 'analytics:clean' }, audit: '清除埋点数据', query: analyticsCleanQuery, summary: '清除埋点数据' }),
 
   // 事件字典（Tracking Plan）
-  eventMeta: op.get('/event-meta', { access: { permission: 'analytics:manage' }, query: analyticsEventMetaListQuery, response: paginated(analyticsEventMetaSchema), summary: '事件字典列表' }),
+  eventMeta: op.get('/event-meta', { access: { permission: 'analytics:data:view' }, query: analyticsEventMetaListQuery, response: paginated(analyticsEventMetaSchema), summary: '事件字典列表' }),
   createEventMeta: op.post('/event-meta', { access: { permission: 'analytics:manage' }, body: createAnalyticsEventMetaSchema, response: analyticsEventMetaSchema, summary: '新增事件字典' }),
   updateEventMeta: op.put('/event-meta/{id}', { access: { permission: 'analytics:manage' }, params: idParam, body: updateAnalyticsEventMetaSchema, response: analyticsEventMetaSchema, summary: '更新事件字典' }),
   removeEventMeta: op.delete('/event-meta/{id}', { access: { permission: 'analytics:manage' }, params: idParam, summary: '删除事件字典' }),
   eventMetaReferences: op.get('/event-meta/references', {
-    access: { permission: 'analytics:manage' },
+    access: { permission: 'analytics:data:view' },
     query: analyticsEventMetaReferencesQuery,
     response: analyticsEventMetaReferencesSchema,
     summary: '事件字典下游引用（漏斗报表 / 分群 / 实验）',
   }),
 
   // 租户级事件启停覆盖
-  eventOverrides: op.get('/event-overrides', { access: { permission: 'analytics:manage' }, query: analyticsEventOverrideListQuery, response: paginated(analyticsEventOverrideSchema), summary: '事件覆盖列表' }),
+  eventOverrides: op.get('/event-overrides', { access: { permission: 'analytics:data:view' }, query: analyticsEventOverrideListQuery, response: paginated(analyticsEventOverrideSchema), summary: '事件覆盖列表' }),
   createEventOverride: op.post('/event-overrides', { access: { permission: 'analytics:manage' }, audit: '新增事件覆盖', body: createAnalyticsEventOverrideSchema, response: analyticsEventOverrideSchema, summary: '新增事件覆盖' }),
   updateEventOverride: op.put('/event-overrides/{id}', { access: { permission: 'analytics:manage' }, audit: '更新事件覆盖', params: idParam, body: updateAnalyticsEventOverrideSchema, response: analyticsEventOverrideSchema, summary: '更新事件覆盖' }),
   removeEventOverride: op.delete('/event-overrides/{id}', { access: { permission: 'analytics:manage' }, audit: '删除事件覆盖', params: idParam, summary: '删除事件覆盖' }),
 
   // 埋点质量 / 调试
-  quality: op.get('/quality', { access: { permission: 'analytics:manage' }, query: analyticsQualityQuery, response: analyticsQualityQueryResultSchema, summary: '埋点质量看板' }),
-  debugEvents: op.get('/debug/events', { access: { permission: 'analytics:manage' }, query: analyticsDebugEventsQuery, response: paginated(analyticsDebugEventSchema), summary: '事件调试查询' }),
+  quality: op.get('/quality', { access: { permission: 'analytics:data:view' }, query: analyticsQualityQuery, response: analyticsQualityQueryResultSchema, summary: '埋点质量看板' }),
+  debugEvents: op.get('/debug/events', { access: { permission: 'analytics:data:view' }, query: analyticsDebugEventsQuery, response: paginated(analyticsDebugEventSchema), summary: '事件调试查询' }),
 
-  rollup: op.get('/rollup', { access: { permission: 'analytics:manage' }, query: analyticsRollupQuery, response: analyticsRollupSummarySchema, summary: '每日聚合数据' }),
+  rollup: op.get('/rollup', { access: { permission: 'analytics:data:view' }, query: analyticsRollupQuery, response: analyticsRollupSummarySchema, summary: '每日聚合数据' }),
   rebuildRollup: op.post('/rollup/rebuild', { access: { permission: 'analytics:manage' }, audit: '提交重建每日聚合任务', query: analyticsRollupQuery, response: asyncTaskSchema, summary: '重建每日聚合（异步任务）' }),
 
   // 用户分群 CRUD + 成员物化
-  segments: op.get('/segments', { access: { permission: 'analytics:manage' }, query: analyticsSegmentListQuery, response: paginated(analyticsUserSegmentSchema), summary: '用户分群列表' }),
+  segments: op.get('/segments', { access: { permission: 'analytics:data:view' }, query: analyticsSegmentListQuery, response: paginated(analyticsUserSegmentSchema), summary: '用户分群列表' }),
   createSegment: op.post('/segments', { access: { permission: 'analytics:manage' }, audit: '创建用户分群', body: createAnalyticsUserSegmentSchema, response: analyticsUserSegmentSchema, summary: '创建用户分群' }),
-  segmentDetail: op.get('/segments/{id}', { access: { permission: 'analytics:manage' }, params: idParam, response: analyticsUserSegmentSchema, summary: '分群详情' }),
+  segmentDetail: op.get('/segments/{id}', { access: { permission: 'analytics:data:view' }, params: idParam, response: analyticsUserSegmentSchema, summary: '分群详情' }),
   updateSegment: op.put('/segments/{id}', { access: { permission: 'analytics:manage' }, audit: '更新用户分群', params: idParam, body: updateAnalyticsUserSegmentSchema, response: analyticsUserSegmentSchema, summary: '更新分群' }),
   removeSegment: op.delete('/segments/{id}', { access: { permission: 'analytics:manage' }, audit: '删除用户分群', params: idParam, summary: '删除分群' }),
-  segmentMembers: op.get('/segments/{id}/members', { access: { permission: 'analytics:manage' }, params: idParam, query: paginationQuery, response: paginated(analyticsSegmentMemberSchema), summary: '分群成员分页' }),
+  segmentMembers: op.get('/segments/{id}/members', { access: { permission: 'analytics:data:view' }, params: idParam, query: paginationQuery, response: paginated(analyticsSegmentMemberSchema), summary: '分群成员分页' }),
   materializeSegment: op.post('/segments/{id}/materialize', { access: { permission: 'analytics:manage' }, audit: '提交分群重算任务', params: idParam, response: asyncTaskSchema, summary: '重算分群成员（异步任务）' }),
 }, { auditModule: '行为分析', tags: ['Analytics'] });

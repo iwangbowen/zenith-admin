@@ -24,7 +24,7 @@ export default function AccessWorkflowResult({ instanceId, requestClient }: { re
       { title: '路径', dataIndex: 'path', render: path => path ?? '—' },
     ]} /> : null}
     {grant ? <Table rowKey="id" dataSource={grant.items} pagination={false} size="small" scroll={{ x: 1000 }} columns={[
-      { title: '权限', dataIndex: 'permissionLabel', width: 200, render: (label, row: AccessGrantItem) => label ?? row.permissionCode },
+      { title: '页面或权限', dataIndex: 'permissionLabel', width: 200, render: (label, row: AccessGrantItem) => row.pageTitle ?? label ?? row.permissionCode },
       { title: '数据范围', dataIndex: 'dataScope', width: 130, render: scope => DATA_SCOPE_OPTIONS.find(item => item.value === scope)?.label ?? scope },
       { title: '当前状态', dataIndex: 'status', width: 100, render: (status: AccessGrantItem['status']) => ACCESS_GRANT_STATUS_LABELS[status] },
       dateTimeColumn('失效时间', 'expiresAt', { empty: '永久有效' }),

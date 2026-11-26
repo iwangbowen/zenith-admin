@@ -7,7 +7,9 @@ import { definePermissions } from '../core/permissions';
  */
 export const ANALYTICS_PERMISSIONS = definePermissions({
   'analytics:view': { label: '查询', menu: 'AnalyticsBehavior' },
-  'analytics:manage': { label: '查询', menu: 'AnalyticsData' },
+  'analytics:data:view': { label: '查看数据管理', menu: 'AnalyticsData' },
+  'analytics:manage': { label: '管理分析数据与配置', menu: 'AnalyticsData' },
+  'analytics:report:manage': { label: '管理自定义分析报表', menu: 'AnalyticsBehavior' },
   'analytics:clean': { label: '清除数据', menu: 'AnalyticsData' },
   'analytics:export': { label: '导出数据', menu: 'AnalyticsData' },
 });

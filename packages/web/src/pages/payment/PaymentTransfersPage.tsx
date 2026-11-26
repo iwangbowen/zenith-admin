@@ -196,7 +196,7 @@ export default function PaymentTransfersPage() {
       width: 120,
       desktopInlineKeys: ['approve'],
       actions: (r) => [
-        ...(r.status === 'processing' || r.status === 'unknown' ? [{
+        ...(hasPermission('payment:transfer:sync') && (r.status === 'processing' || r.status === 'unknown') ? [{
           key: 'query',
           label: '查单',
           onClick: () => void handleQuery(r.id),

@@ -213,7 +213,7 @@ export default function InAppMessagesPage() {
         )}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={can('system:in-app-template:list') && (
+        create={can('system:in-app-message:send') && (
           <Button type="primary" icon={<Plus size={14} />} onClick={sendModal.openCreate}>发送站内信</Button>
         )}
         actions={can('system:in-app-message:read') && (

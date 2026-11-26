@@ -14,3 +14,4 @@ export * from './access-governance-validation';
 export * from './access-policy';
 export * from './access-print';
 export * from './permissions';
+export * from './admin-routes';

@@ -35,11 +35,11 @@ vi.mock('../../lib/tenant-package', () => ({
 
 vi.mock('../../lib/permissions', () => ({
   isSuperAdmin: permissionMocks.isSuperAdmin,
-  getUserMenuIds: permissionMocks.getUserMenuIds,
+  getUserEffectiveAccess: async () => ({ menuIds: await permissionMocks.getUserMenuIds(), permissions: [] }),
   clearUserPermissionCache: vi.fn(),
 }));
 
-import { excludeDisabledSubtrees, listUserMenuTree } from './menus.service';
+import { excludeDisabledSubtrees, listMenuPaths, listUserMenuTree } from './menus.service';
 
 type MenuRow = {
   id: number;
@@ -167,7 +167,7 @@ describe('listUserMenuTree', () => {
 
     const tree = await listUserMenuTree();
 
-    expect(tree.map((node) => node.id)).toEqual([2000, 9000]);
+    expect(tree.map((node) => node.id)).toEqual([2000]);
     expect(tree[0].children?.map((node) => node.id)).toEqual([2010]);
     expect(JSON.stringify(tree)).not.toContain('"id":1010');
   });
@@ -201,5 +201,23 @@ describe('listUserMenuTree', () => {
     expect(JSON.stringify(tree)).not.toContain('Web 终端');
     expect(tree.map((node) => node.id)).toEqual([2000]);
     expect(tree[0].children?.map((node) => node.id)).toEqual([2010]);
+  });
+
+  it('adds a directory as navigation without picking up a hidden sibling', async () => {
+    permissionMocks.getUserMenuIds.mockResolvedValue([2]);
+    dbMocks.select.mockReturnValueOnce(createSelectChain([
+      menuRow({ id: 1, parentId: 0, title: '模块', type: 'directory' }),
+      menuRow({ id: 2, parentId: 1, title: '已授权' }),
+      menuRow({ id: 3, parentId: 1, title: '隐藏页', visible: false }),
+    ]));
+    const tree = await listUserMenuTree();
+    expect(tree[0].children?.map(row => row.id)).toEqual([2]);
+  });
+
+  it('omits pages under disabled ancestors from the route catalog', async () => {
+    dbMocks.select.mockReturnValueOnce(createSelectChain(rows.map(row => ({ ...row, component: 'Page' }))));
+    const paths = await listMenuPaths();
+    expect(paths).toContain('/settings/dicts');
+    expect(paths).not.toContain('/system/users');
   });
 });

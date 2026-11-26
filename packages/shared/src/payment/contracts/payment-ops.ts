@@ -89,12 +89,12 @@ export const paymentOutboxEventListQuery = paginationQuery.extend({
 });
 
 export const paymentOpsContract = defineContract('/api/payment/ops', {
-  events: op.get('/events', { access: { permission: 'payment:ops:manage' }, query: paymentOutboxEventListQuery, response: paginated(paymentOutboxEventSchema), summary: '支付领域事件消费者列表' }),
-  eventAttempts: op.get('/events/{id}/attempts', { access: { permission: 'payment:ops:manage' }, params: idParam, response: z.array(paymentEventAttemptSchema), summary: '支付事件消费者尝试历史' }),
-  health: op.get('/health', { access: { permission: 'payment:ops:manage' }, response: paymentOpsHealthSchema, summary: '支付链路健康指标',
+  events: op.get('/events', { access: { permission: 'payment:ops:view' }, query: paymentOutboxEventListQuery, response: paginated(paymentOutboxEventSchema), summary: '支付领域事件消费者列表' }),
+  eventAttempts: op.get('/events/{id}/attempts', { access: { permission: 'payment:ops:view' }, params: idParam, response: z.array(paymentEventAttemptSchema), summary: '支付事件消费者尝试历史' }),
+  health: op.get('/health', { access: { permission: 'payment:ops:view' }, response: paymentOpsHealthSchema, summary: '支付链路健康指标',
     description: '领域事件消费者积压/死信、Webhook 待投递/24h 失败、处理中分账/转账、待处理对账差异。' }),
   redispatchEvent: op.post('/events/{id}/redispatch', { access: { permission: 'payment:ops:manage' }, audit: '重试支付事件消费者', params: idParam, response: paymentOutboxEventSchema, summary: '重试失败的支付事件消费者' }),
-  exceptions: op.get('/exceptions', { access: { permission: 'payment:ops:manage' }, query: paymentExceptionListQuery, response: paginated(paymentExceptionSchema), summary: '支付异常列表' }),
+  exceptions: op.get('/exceptions', { access: { permission: 'payment:ops:view' }, query: paymentExceptionListQuery, response: paginated(paymentExceptionSchema), summary: '支付异常列表' }),
   handleException: op.post('/exceptions/{id}/handle', {
     access: { permission: 'payment:ops:manage' },
     audit: '处理支付异常',

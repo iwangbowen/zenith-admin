@@ -40,7 +40,7 @@ export const analyticsCampaignListQuery = paginationQuery.extend({
 });
 
 export const analyticsCampaignContract = defineContract('/api/analytics', {
-  campaigns: op.get('/campaigns', { access: { permission: 'analytics:manage' }, query: analyticsCampaignListQuery, response: paginated(analyticsSegmentCampaignSchema), summary: '分群触达活动列表' }),
+  campaigns: op.get('/campaigns', { access: { permission: 'analytics:data:view' }, query: analyticsCampaignListQuery, response: paginated(analyticsSegmentCampaignSchema), summary: '分群触达活动列表' }),
   createCampaign: op.post('/campaigns', { access: { permission: 'analytics:manage' }, audit: '创建分群触达活动', body: createAnalyticsCampaignSchema, response: analyticsSegmentCampaignSchema, summary: '创建分群触达活动' }),
   updateCampaign: op.put('/campaigns/{id}', { access: { permission: 'analytics:manage' }, audit: '更新分群触达活动', params: idParam, body: updateAnalyticsCampaignSchema, response: analyticsSegmentCampaignSchema, summary: '更新分群触达活动' }),
   removeCampaign: op.delete('/campaigns/{id}', { access: { permission: 'analytics:manage' }, audit: '删除分群触达活动', params: idParam, summary: '删除分群触达活动' }),

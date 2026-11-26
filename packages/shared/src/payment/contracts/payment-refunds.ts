@@ -60,7 +60,7 @@ export const paymentRefundContract = defineContract('/api/payment', {
   refunds: op.get('/refunds', { access: { permission: 'payment:refund:list' }, query: paymentRefundListQuery, response: paginated(paymentRefundSchema), summary: '退款记录列表' }),
   refundDetail: op.get('/refunds/{id}', { access: { permission: 'payment:refund:list' }, params: idParam, response: paymentRefundSchema, summary: '退款详情' }),
   queryRefund: op.post('/refunds/{id}/query', {
-    access: { permission: 'payment:refund:list' }, audit: '主动同步退款状态',
+    access: { permission: 'payment:refund:sync' }, audit: '主动同步退款状态',
     params: idParam,
     response: paymentRefundSchema,
     summary: '主动查询并同步退款状态',

@@ -91,5 +91,5 @@ export const paymentTransferContract = defineContract('/api/payment/transfers', 
     summary: '驳回待审批转账',
     description: '驳回转账并在同一事务内释放对应的资金预占。',
   }),
-  query: op.post('/{id}/query', { access: { permission: 'payment:transfer:list' }, params: idParam, response: paymentTransferSchema, summary: '主动查询渠道转账结果并同步本地状态' }),
+  query: op.post('/{id}/query', { access: { permission: 'payment:transfer:sync' }, params: idParam, response: paymentTransferSchema, summary: '主动查询渠道转账结果并同步本地状态' }),
 }, { auditModule: '支付中心', tags: ['支付中心-转账'] });

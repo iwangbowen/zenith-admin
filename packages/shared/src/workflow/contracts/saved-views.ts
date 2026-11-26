@@ -28,7 +28,7 @@ export const workflowSavedViewListQuery = z.object({
 
 export const workflowSavedViewContract = defineContract('/api/workflows/saved-views', {
   list: op.get('/', { access: { permission: 'workflow:instance:list' }, query: workflowSavedViewListQuery, response: z.array(workflowSavedViewSchema), summary: '保存视图列表' }),
-  create: op.post('/', { access: { permission: 'workflow:instance:list' }, audit: '保存工作流视图', body: createWorkflowSavedViewSchema, response: workflowSavedViewSchema, summary: '保存视图' }),
-  update: op.put('/{id}', { access: { permission: 'workflow:instance:list' }, audit: '更新工作流视图', params: idParam, body: updateWorkflowSavedViewSchema, response: workflowSavedViewSchema, summary: '更新视图' }),
-  remove: op.delete('/{id}', { access: { permission: 'workflow:instance:list' }, audit: '删除工作流视图', params: idParam, summary: '删除视图' }),
+  create: op.post('/', { access: { permission: 'workflow:instance:collaborate' }, audit: '保存工作流视图', body: createWorkflowSavedViewSchema, response: workflowSavedViewSchema, summary: '保存视图' }),
+  update: op.put('/{id}', { access: { permission: 'workflow:instance:collaborate' }, audit: '更新工作流视图', params: idParam, body: updateWorkflowSavedViewSchema, response: workflowSavedViewSchema, summary: '更新视图' }),
+  remove: op.delete('/{id}', { access: { permission: 'workflow:instance:collaborate' }, audit: '删除工作流视图', params: idParam, summary: '删除视图' }),
 }, { auditModule: '工作流管理', tags: ['WorkflowSavedViews'] });

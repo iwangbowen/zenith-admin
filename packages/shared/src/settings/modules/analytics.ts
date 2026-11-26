@@ -34,7 +34,7 @@ export const analyticsSettingsModule = defineSettingsModule({
   title: '数据采集',
   description: '行为事件、错误监控和会话回放采集策略；配置页面位于数据管理',
   scope: 'tenant',
-  readPermission: 'analytics:view',
+  readPermission: 'analytics:data:view',
   writePermission: 'analytics:manage',
   page: '/analytics/data?tab=settings',
   sort: 125,

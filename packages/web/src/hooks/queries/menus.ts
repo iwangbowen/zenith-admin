@@ -55,6 +55,7 @@ export function useSaveMenu() {
     invalidate: (qc, saved) => {
       void qc.invalidateQueries({ queryKey: menuKeys.detail(saved.id) });
       void qc.invalidateQueries({ queryKey: menuKeys.tree });
+      void qc.invalidateQueries({ queryKey: menuKeys.paths });
       // 菜单结构变化直接影响所有用户的导航树与动态路由
       void qc.invalidateQueries({ queryKey: menuKeys.userTree });
     },
@@ -66,6 +67,7 @@ export function useDeleteMenu() {
     invalidate: (qc, _output, { params }) => {
       qc.removeQueries({ queryKey: menuKeys.detail(params.id) });
       void qc.invalidateQueries({ queryKey: menuKeys.tree });
+      void qc.invalidateQueries({ queryKey: menuKeys.paths });
       void qc.invalidateQueries({ queryKey: menuKeys.userTree });
     },
   });

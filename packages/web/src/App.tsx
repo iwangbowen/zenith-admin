@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, Suspense, useMemo, useRef } from 'react';
 import { Button } from '@douyinfe/semi-ui';
-import { BrowserRouter, HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, HashRouter, Routes, Route, Navigate, matchPath, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import FullPageRetry from '@/components/FullPageRetry';
@@ -17,7 +17,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { maintenanceKeys, usePublicMaintenanceStatus, useMaintenanceAccess } from '@/hooks/queries/maintenance';
 import { lazyPageComponent } from '@/utils/page-registry';
 import { useCurrentUserMenuTree, useMenuPaths } from '@/hooks/queries/menus';
-import type { Menu, User } from '@zenith/shared/identity';
+import { ADMIN_CONTEXT_ROUTES, ADMIN_SHELL_ROUTES, menuRoutePattern, type Menu, type User } from '@zenith/shared/identity';
 import PageLoading from '@/components/PageLoading';
 // 布局内页面的 Suspense 边界：占位 → 内容的揭示与路由切换共用 ViewTransition（体积极小，不会拖入 AdminLayout）
 import RouteSuspense from '@/layouts/RouteSuspense';
@@ -54,21 +54,11 @@ const PaymentLinkPublicPage = React.lazy(() => import('@/pages/payment/PaymentLi
 const PublicDashboardPage = React.lazy(() => import('@/pages/report/PublicDashboardPage'));
 const PublicAiChatPage = React.lazy(() => import('@/pages/public-ai-chat/PublicAiChatPage'));
 const PublicDriveSharePage = React.lazy(() => import('@/pages/drive/public/PublicSharePage'));
-const WorkflowDesignerPage = React.lazy(() => import('@/pages/workflow/designer/WorkflowDesignerPage'));
-const WorkflowLaunchPage = React.lazy(() => import('@/pages/workflow/launchpad/WorkflowLaunchPage'));
-const WorkflowInstancePage = React.lazy(() => import('@/pages/workflow/instances/WorkflowInstancePage'));
-const FirewallPage = React.lazy(() => import('@/pages/system/firewall/FirewallPage'));
-const NginxSitesPage = React.lazy(() => import('@/pages/system/nginx-sites/NginxSitesPage'));
-const DashboardDesignerPage = React.lazy(() => import('@/pages/report/designer/DashboardDesignerPage'));
-const PrintDesignerPage = React.lazy(() => import('@/pages/report/designer/PrintDesignerPage'));
-const DashboardViewPage = React.lazy(() => import('@/pages/report/DashboardViewPage'));
-const FillEntryPage = React.lazy(() => import('@/pages/report/FillEntryPage'));
-const OAuth2AppDetailPage = React.lazy(() => import('@/pages/open-platform/apps/OAuth2AppDetailPage'));
 
 const routeFallback = <PageLoading inline />;
 
 /** 固定路由路径，不通过菜单动态加载（导出供路由策略回归测试使用） */
-export const FIXED_ROUTES = new Set(['/profile', '/announcements', '/inbox', '/search', '/system/firewall', '/system/nginx-sites']);
+export const FIXED_ROUTES = ADMIN_SHELL_ROUTES;
 
 /**
  * 首页入口：登录后一次性应用「默认首页」偏好。
@@ -132,40 +122,28 @@ function RedirectFromLogin() {
  * 全量目录/页面树只在真正落入 catch-all 时才请求，用于 403 / 404 判别：
  * 它不参与正常导航，不能作为首载 gate 让每个用户每次启动都下载一遍。
  */
-function NotFoundOrForbidden({ userMenuPaths }: Readonly<{ userMenuPaths: Set<string> }>) {
+export function isKnownMenuRoute(path: string, patterns: readonly string[]) {
+  return patterns.some(pattern => matchPath({ path: pattern, end: true }, path) !== null);
+}
+
+function NotFoundOrForbidden() {
   const location = useLocation();
-  const path = location.pathname;
   const allPathsQuery = useMenuPaths();
-  const allMenuPaths = useMemo(() => new Set(allPathsQuery.data ?? []), [allPathsQuery.data]);
-  // 路径目录未到达前不下结论：直接渲染 404 会对「有页面但无权限」的路径闪一下错误结论
   if (allPathsQuery.isPending) return <PageLoading />;
-
-  // 精确匹配或前缀匹配（如 /system/users/123 匹配 /system/users）
-  const segments = path.split('/').filter(Boolean);
-  let matched = false;
-  for (let i = segments.length; i > 0; i--) {
-    const partialPath = '/' + segments.slice(0, i).join('/');
-    if (allMenuPaths.has(partialPath)) {
-      matched = !userMenuPaths.has(partialPath);
-      break;
-    }
+  if (allPathsQuery.isError) {
+    return <FullPageRetry title="页面目录加载失败" description="刷新目录后可重新判断此地址的访问状态。" error={allPathsQuery.error}
+      retrying={allPathsQuery.isFetching} onRetry={() => void allPathsQuery.refetch()} />;
   }
-
-  // 固定路由也不属于 403
-  const normalizedPath = path.startsWith('/') ? path : '/' + path;
-  if (FIXED_ROUTES.has(normalizedPath) || normalizedPath === '/') {
-    matched = false;
-  }
-
-return matched ? <ForbiddenPage /> : <NotFoundPage />;
+  return isKnownMenuRoute(location.pathname, allPathsQuery.data) ? <ForbiddenPage /> : <NotFoundPage />;
 }
 
 /** 扁平化菜单以便注册路由 */
 export function flattenMenus(menus: Menu[]): Menu[] {
   const routes: Menu[] = [];
   for (const m of menus) {
-    if (m.path && m.component && !FIXED_ROUTES.has(m.path)) {
-      routes.push(m);
+    const path = menuRoutePattern(m);
+    if (path && !m.isExternal) {
+      routes.push({ ...m, path });
     }
     if (m.children && m.children.length > 0) {
       routes.push(...flattenMenus(m.children));
@@ -188,24 +166,6 @@ function flattenEmbedMenus(menus: Menu[]): Menu[] {
   return result;
 }
 
-/**
- * 从所有菜单中提取「path → component」映射，用于判断某个路径是否对应一个已存在的页面组件。
- * 这样可以在 catch-all 路由中区分 403（页面存在但无权限）和 404（页面不存在）。
- */
-export function buildAllMenuPaths(menus: Menu[]): Map<string, string> {
-  const map = new Map<string, string>();
-  for (const m of menus) {
-    if (m.path && m.component && !FIXED_ROUTES.has(m.path)) {
-      map.set(m.path, m.component);
-    }
-    if (m.children?.length) {
-      const childPaths = buildAllMenuPaths(m.children);
-      childPaths.forEach((v, k) => map.set(k, v));
-    }
-  }
-  return map;
-}
-
 interface AdminRouteLoaderProps {
   user: Omit<User, 'password'>;
   logout: () => void;
@@ -219,7 +179,11 @@ function AdminRouteLoader({ user, logout }: Readonly<AdminRouteLoaderProps>) {
 
   const menus = userMenusQuery.data ?? EMPTY_MENUS;
   const dynamicRoutes = useMemo(() => flattenMenus(menus), [menus]);
-  const userMenuPaths = useMemo(() => new Set(dynamicRoutes.map((m) => m.path!)), [dynamicRoutes]);
+  const contextRoutes = useMemo(() => {
+    const assignedKeys = new Set(dynamicRoutes.map(menu => menu.name));
+    return ADMIN_CONTEXT_ROUTES.filter(route => (!route.owner || assignedKeys.has(route.owner))
+      && (permissions.includes('*') || route.anyPermission.some(code => permissions.includes(code))));
+  }, [dynamicRoutes, permissions]);
   const embedRoutes = useMemo(() => flattenEmbedMenus(menus), [menus]);
 
   // 首载 gate 只等用户可见菜单树（有凭证时已在应用挂载期与 /me 并行预取）；后台 refetch 保留旧数据，不会重新进入此分支
@@ -262,21 +226,11 @@ function AdminRouteLoader({ user, logout }: Readonly<AdminRouteLoaderProps>) {
         <Route path="announcements" element={<RouteSuspense><AnnouncementsPage /></RouteSuspense>} />
         <Route path="inbox" element={<RouteSuspense><InboxPage /></RouteSuspense>} />
         <Route path="search" element={<RouteSuspense><GlobalSearchPage /></RouteSuspense>} />
-        <Route path="workflow/designer/:id" element={<RouteSuspense><WorkflowDesignerPage /></RouteSuspense>} />
-        <Route path="workflow/launch/:definitionId" element={<RouteSuspense><WorkflowLaunchPage /></RouteSuspense>} />
-        <Route path="workflow/instance/:id" element={<RouteSuspense><WorkflowInstancePage /></RouteSuspense>} />
-        <Route path="report/dashboards/:id/design" element={<RouteSuspense><DashboardDesignerPage /></RouteSuspense>} />
-        <Route path="report/print/:id/design" element={<RouteSuspense><PrintDesignerPage /></RouteSuspense>} />
-        <Route path="report/dashboards/:id/view" element={<RouteSuspense><DashboardViewPage /></RouteSuspense>} />
-        <Route
-          path="report/fill/:code"
-          element={permissions.includes('*') || permissions.includes('report:fill:record:create') || permissions.includes('report:fill:record:update')
-            ? <RouteSuspense><FillEntryPage /></RouteSuspense>
-            : <RouteSuspense><ForbiddenPage /></RouteSuspense>}
-        />
-        <Route path="system/firewall" element={permissions.includes('*') || permissions.includes('system:firewall:view') ? <RouteSuspense><FirewallPage /></RouteSuspense> : <RouteSuspense><ForbiddenPage /></RouteSuspense>} />
-        <Route path="system/nginx-sites" element={permissions.includes('*') || permissions.includes('system:nginx:view') ? <RouteSuspense><NginxSitesPage /></RouteSuspense> : <RouteSuspense><ForbiddenPage /></RouteSuspense>} />
-        <Route path="system/oauth2-apps/:id" element={permissions.includes('*') || permissions.includes('system:oauth2-apps:view') ? <RouteSuspense><OAuth2AppDetailPage /></RouteSuspense> : <RouteSuspense><ForbiddenPage /></RouteSuspense>} />
+        {contextRoutes.map(route => {
+          const Component = lazyPageComponent(route.component);
+          return Component ? <Route key={route.path} path={route.path.slice(1)}
+            element={<RouteSuspense><Component /></RouteSuspense>} /> : null;
+        })}
         <Route path="users" element={<Navigate to="/system/users" replace />} />
         <Route path="forbidden" element={<RouteSuspense><ForbiddenPage /></RouteSuspense>} />
 
@@ -314,9 +268,9 @@ function AdminRouteLoader({ user, logout }: Readonly<AdminRouteLoaderProps>) {
           />
         ))}
 
-        <Route path="*" element={<RouteSuspense><NotFoundOrForbidden userMenuPaths={userMenuPaths} /></RouteSuspense>} />
+        <Route path="*" element={<RouteSuspense><NotFoundOrForbidden /></RouteSuspense>} />
       </Route>
-      <Route path="*" element={<Suspense fallback={routeFallback}><NotFoundOrForbidden userMenuPaths={userMenuPaths} /></Suspense>} />
+      <Route path="*" element={<Suspense fallback={routeFallback}><NotFoundOrForbidden /></Suspense>} />
     </Routes>
   );
 }

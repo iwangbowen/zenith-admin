@@ -321,7 +321,7 @@ async function countMyOverduePending(user: ReturnType<typeof currentUser>): Prom
 export async function getWorkbenchSummary(): Promise<WorkflowWorkbenchSummary> {
   const user = currentUser();
   const [canHandle, canList, canCreate] = await Promise.all([
-    hasPermission('workflow:task:handle'),
+    hasPermission('workflow:task:list', 'workflow:task:handle'),
     hasPermission('workflow:instance:list'),
     hasPermission('workflow:instance:create'),
   ]);

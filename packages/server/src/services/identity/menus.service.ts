@@ -1,20 +1,22 @@
 import { requireRow } from '../../lib/db-assert';
 import { buildWhere } from '../../lib/where-helpers';
-import { eq, and, ne, asc, inArray, countDistinct, isNotNull } from 'drizzle-orm';
+import { eq, and, ne, asc, inArray, countDistinct } from 'drizzle-orm';
 import { db } from '../../db';
 import { menus, roleMenus, userMenus, roles } from '../../db/schema';
-import type { Menu } from '@zenith/shared/identity';
+import { ADMIN_CONTEXT_ROUTES, PAGE_ROUTE_RULES, menuRoutePattern, type Menu } from '@zenith/shared/identity';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../lib/context';
 import { getEffectiveTenantId, isPlatformAdmin } from '../../lib/tenant';
-import { SETTINGS_MODULES } from '@zenith/shared/settings';
 import { ALL_PERMISSIONS } from '@zenith/shared/permissions';
-import { config } from '../../config';
 import { getTenantPackageFeatureSet } from '../../lib/tenant-package';
-import { isSuperAdmin, getUserMenuIds, clearUserPermissionCache } from '../../lib/permissions';
+import { isSuperAdmin, getUserEffectiveAccess, clearUserPermissionCache } from '../../lib/permissions';
 import { formatTimestamps } from '../../lib/datetime';
 import { buildTree } from '@zenith/shared/core';
 import { isPageReadPermission } from '@zenith/shared/permission-features';
+import { SEED_MENUS } from '@zenith/shared/seed/menus';
+import { availableNavigation } from '../../lib/page-access';
+
+const builtInPages = new Map(SEED_MENUS.filter(row => row.type === 'menu').map(row => [row.id, row]));
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
 
@@ -118,45 +120,57 @@ async function ensureMenuParentValid(parentId: number, currentId?: number) {
 
 /** 全部启用页面路径；只暴露路径，用于 403/404 判别，不暴露权限码、按钮和组件。 */
 export async function listMenuPaths(): Promise<string[]> {
-  const rows = await db.select({ path: menus.path }).from(menus)
-    .where(and(eq(menus.type, 'menu'), eq(menus.status, 'enabled'), isNotNull(menus.path)));
-  return [...new Set(rows.flatMap(row => row.path ? [row.path] : []))];
+  const user = currentUser();
+  const [rows, features] = await Promise.all([
+    db.select().from(menus),
+    getTenantPackageFeatureSet(user.tenantId),
+  ]);
+  const available = availableNavigation(rows, features, isPlatformAdmin(user));
+  const pageKeys = new Set(available.filter(row => row.type === 'menu').map(row => row.name));
+  const patterns = available.flatMap(row => {
+    const owner = PAGE_ROUTE_RULES[row.name ?? '']?.owner;
+    return (!owner || pageKeys.has(owner)) ? menuRoutePattern(row) ?? [] : [];
+  });
+  const details = ADMIN_CONTEXT_ROUTES.filter(route =>
+    (!route.owner || pageKeys.has(route.owner)) && (!route.feature || features === null || features.has(route.feature)));
+  return [...new Set([...patterns, ...details.map(route => route.path)])];
 }
 
 /** 当前登录用户可见的菜单树 */
 export async function listUserMenuTree(): Promise<Menu[]> {
   const user = currentUser();
-  // 禁用菜单（含其整棵子树）对所有人（含超管）不可见，前端不再注册禁用路由；菜单管理页走 listMenuTree 不受影响
-  // 菜单树只包含目录与页面；操作权限码由登录态下发，不参与页面/侧边栏展示
-  const platformPages = new Set(Object.values(SETTINGS_MODULES).filter((def) => def.platformOnly).flatMap((def) => def.page ? [def.page] : []));
-  platformPages.add('/system/maintenance');
-  const allMenus = excludeDisabledSubtrees(await db.select().from(menus).orderBy(asc(menus.sort), asc(menus.id)))
-    .filter((m) => !config.multiTenantMode || isPlatformAdmin(user) || !m.path || !platformPages.has(m.path));
-
-  if (isSuperAdmin(user)) {
-    return buildMenuTree(allMenus.map(mapMenu));
-  }
-
-  const featureSet = await getTenantPackageFeatureSet(getEffectiveTenantId(user));
-  const packageMenus = featureSet ? allMenus.filter((menu) => !menu.featureKey || featureSet.has(menu.featureKey)) : allMenus;
-
-  // 页面导航只来自显式页面授权；权限码不反推页面。
-  // 隐藏页面仅在其父页面/目录已授权时注册，避免所有登录用户都拿到编辑页路由。
-  const assignedIds = await getUserMenuIds(user.userId);
-  const idToMenu = new Map(packageMenus.map((m) => [m.id, m]));
-  const allowedMenuIds = new Set(assignedIds.filter((id) => idToMenu.has(id)));
-  for (const id of [...allowedMenuIds]) {
-    let current = idToMenu.get(id);
-    while (current && current.parentId !== 0) {
-      if (allowedMenuIds.has(current.parentId)) break;
-      allowedMenuIds.add(current.parentId);
-      current = idToMenu.get(current.parentId);
+  const superAdmin = isSuperAdmin(user);
+  const [rows, featureSet, access] = await Promise.all([
+    db.select().from(menus).orderBy(asc(menus.sort), asc(menus.id)),
+    getTenantPackageFeatureSet(user.tenantId),
+    superAdmin ? null : getUserEffectiveAccess(user.userId),
+  ]);
+  const navigation = availableNavigation(rows, featureSet, superAdmin);
+  const ids = new Set(access?.menuIds ?? []);
+  const codes = new Set(access?.permissions ?? []);
+  const owners = new Map(navigation.flatMap(row => row.type === 'menu' && row.name ? [[row.name, row.id] as const] : []));
+  const selected = navigation.filter(row => {
+    if (row.type !== 'menu') return false;
+    const rule = PAGE_ROUTE_RULES[row.name ?? ''];
+    if (!rule) return superAdmin || ids.has(row.id);
+    const owner = owners.get(rule.owner);
+    return owner !== undefined && (superAdmin || ((ids.has(row.id) || ids.has(owner)) &&
+      (!rule.anyPermission || rule.anyPermission.some(code => codes.has(code)))));
+  });
+  const byId = new Map(navigation.map(row => [row.id, row]));
+  const included = new Set(selected.map(row => row.id));
+  for (const row of selected) {
+    let current = byId.get(row.parentId);
+    while (current) {
+      if (current.type === 'directory') included.add(current.id);
+      current = byId.get(current.parentId);
     }
   }
-
-  const filtered = packageMenus.filter((m) => allowedMenuIds.has(m.id)
-    || (!m.visible && m.parentId !== 0 && allowedMenuIds.has(m.parentId)));
-  return buildMenuTree(filtered.map(mapMenu));
+  return buildMenuTree(navigation.filter(row => included.has(row.id)).map(row => {
+    let parentId = row.parentId;
+    while (parentId && !included.has(parentId)) parentId = byId.get(parentId)?.parentId ?? 0;
+    return { ...mapMenu(row), parentId };
+  }));
 }
 
 export async function listMenuTree(): Promise<Menu[]> {
@@ -176,7 +190,7 @@ function assertMenuPermission(input: CreateMenuInput) {
   const type = input.type ?? 'menu';
   const permission = input.permission?.trim() || null;
   if (type === 'directory' && permission) throw new HTTPException(400, { message: '目录不能携带权限码' });
-  if (permission && !ALL_PERMISSIONS[permission]) throw new HTTPException(400, { message: `权限目录未登记 ${permission}` });
+  if (permission && !Object.hasOwn(ALL_PERMISSIONS, permission)) throw new HTTPException(400, { message: `权限目录未登记 ${permission}` });
   if (type === 'menu' && permission && !isPageReadPermission(permission)) {
     throw new HTTPException(400, { message: '页面只能绑定页面读权限码，操作权限请在角色权限中单独授权' });
   }
@@ -233,6 +247,13 @@ export async function createMenu(input: CreateMenuInput): Promise<Omit<Menu, 'ch
 
 export async function updateMenu(id: number, input: UpdateMenuInput): Promise<Omit<Menu, 'children'>> {
   const current = requireRow(await db.query.menus.findFirst({ where: eq(menus.id, id) }), '菜单不存在');
+  if (current.type === 'menu' && input.name !== undefined && input.name !== current.name) {
+    throw new HTTPException(400, { message: '页面标识创建后固定，请修改显示名称' });
+  }
+  if (builtInPages.has(id) && (['type', 'path', 'component', 'permission', 'isExternal'] as const).some(key =>
+    input[key] !== undefined && input[key] !== current[key])) {
+    throw new HTTPException(400, { message: '内置页面的路由、组件和读权限由代码定义' });
+  }
   const merged = { ...current, ...input } as CreateMenuInput;
   assertMenuPermission(merged);
   await assertMenuIdentityUnique(merged, id);
@@ -240,6 +261,7 @@ export async function updateMenu(id: number, input: UpdateMenuInput): Promise<Om
     await ensureMenuParentValid(input.parentId, id);
   }
   const [row] = await db.update(menus).set({ ...input }).where(eq(menus.id, id)).returning();
+  await clearUserPermissionCache();
   return mapMenu(requireRow(row, '菜单不存在'));
 }
 
@@ -292,6 +314,7 @@ export async function deleteMenu(id: number): Promise<void> {
     }
     await tx.delete(menus).where(inArray(menus.id, ids));
   });
+  await clearUserPermissionCache();
 }
 
 export async function getMenu(id: number) {

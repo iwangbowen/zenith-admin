@@ -294,7 +294,7 @@ export default function PaymentOrdersPage() {
           label: '详情',
           onClick: () => void openDetail(r),
         },
-        ...(hasPermission('payment:order:list') && (r.status === 'paying' || r.status === 'pending') ? [{
+        ...(hasPermission('payment:order:sync') && (r.status === 'paying' || r.status === 'pending') ? [{
           key: 'query',
           label: '查单',
           onClick: () => handleQuery(r),

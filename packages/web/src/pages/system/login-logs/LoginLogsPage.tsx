@@ -4,6 +4,7 @@ import ExportButton from '@/components/ExportButton';
 import { LoginLogsTable } from '@/components/logs/LoginLogsTable';
 import { ClearLogsButtons, ClearLogsModal } from '@/components/logs/ClearLogsControl';
 import { useClearLogs } from '@/hooks/useClearLogs';
+import { usePermission } from '@/hooks/usePermission';
 import { formatDateTimeRangeForApi, parseDateTimeParam } from '@/utils/date';
 import LoginLogStatsPanel from './LoginLogStatsPanel';
 import { loginLogKeys, useCleanLoginLogs, useLoginLogList } from '@/hooks/queries/login-logs';
@@ -17,6 +18,7 @@ import { useFilterQuery } from '@/hooks/useFilterQuery';
 import { useListDeepLink } from '@/hooks/useListDeepLink';
 
 export default function LoginLogsPage() {
+  const { hasPermission } = usePermission();
   const [activeTab, setActiveTab] = useUrlTabState(['list', 'stats'] as const, 'list');
   interface SearchParams {
     username: string;
@@ -87,7 +89,7 @@ export default function LoginLogsPage() {
             actions={(
               <>
                 <ExportButton entity="system.login-logs" query={filterQuery} />
-                <ClearLogsButtons allowClearAll loading={clearLogsLoading} onClear={clearLogs.openClearModal} />
+                {hasPermission('system:log:login:clean') && <ClearLogsButtons allowClearAll loading={clearLogsLoading} onClear={clearLogs.openClearModal} />}
               </>
             )}
             filterTitle="登录日志筛选"

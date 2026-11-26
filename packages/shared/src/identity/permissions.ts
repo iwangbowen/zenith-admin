@@ -77,6 +77,7 @@ export const IDENTITY_PERMISSIONS = definePermissions({
   'system:session:list': { label: '查询', menu: 'SystemSessions' },
   'system:session:forceLogout': { label: '强制下线', menu: 'SystemSessions' },
   'system:log:login': { label: '查询', menu: 'SystemLoginLogs' },
+  'system:log:login:clean': { label: '清除登录日志', menu: 'SystemLoginLogs', selfRequestable: false, riskLevel: 'high' },
   'system:impersonation:list': { label: '查询', menu: 'SystemImpersonationRecords' },
   'system:impersonation:forceEnd': { label: '强制结束', menu: 'SystemImpersonationRecords' },
 });

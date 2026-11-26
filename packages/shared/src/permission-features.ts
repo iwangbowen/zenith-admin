@@ -1,5 +1,6 @@
 import type { LicenseFeatureKey } from './licensing';
-import { ALL_PERMISSIONS } from './permissions';
+import { ALL_PERMISSIONS, PERMISSION_REGISTRY_BY_DOMAIN, type PermissionDomain } from './permissions';
+import { PAGE_READ_PERMISSION_CODES } from './seed/menus/page-permissions';
 import { SEED_MENUS } from './seed/menus';
 
 const pagesByName = new Map(
@@ -29,21 +30,27 @@ for (const [code, meta] of Object.entries(ALL_PERMISSIONS)) {
   pageBindingsByPermission.set(code, [...new Map(bindings.map((binding) => [binding.id, binding])).values()]);
 }
 
-const featureKeysByPermission = new Map<string, ReadonlySet<LicenseFeatureKey | null>>();
+const domainFeature: Record<PermissionDomain, LicenseFeatureKey | null> = {
+  identity: null, platform: null, messaging: null, tasks: null, biz: null,
+  ops: 'ops', workflow: 'workflow', chat: 'chat', rules: 'rules', analytics: 'analytics',
+  report: 'report', payment: 'payment', member: 'member', mp: 'mp', cms: 'cms', wiki: 'wiki',
+  drive: 'drive', 'open-platform': 'open-platform', ai: 'ai', iot: 'iot', marketing: 'growth', 'short-link': 'growth',
+};
 
-for (const [code, meta] of Object.entries(ALL_PERMISSIONS)) {
-  const menuNames = typeof meta.menu === 'string' ? [meta.menu] : meta.menu ?? [];
-  const featureKeys = new Set<LicenseFeatureKey | null>();
-  for (const menuName of menuNames) {
-    const menu = pagesByName.get(menuName);
-    if (menu) featureKeys.add((menu.featureKey ?? null) as LicenseFeatureKey | null);
+const featureKeysByPermission = new Map<string, ReadonlySet<LicenseFeatureKey | null>>();
+const coreOpsPrefixes = ['system:log:', 'system:db-admin:', 'system:maintenance:', 'system:retention:'];
+for (const [domain, registry] of Object.entries(PERMISSION_REGISTRY_BY_DOMAIN)) {
+  for (const code of Object.keys(registry)) {
+    const feature = domain === 'platform' && code.startsWith('monitor:') ? 'analytics'
+      : domain === 'ops' && coreOpsPrefixes.some(prefix => code.startsWith(prefix)) ? null
+      : domainFeature[domain as PermissionDomain];
+    featureKeysByPermission.set(code, new Set([feature]));
   }
-  featureKeysByPermission.set(code, featureKeys);
 }
 
 /**
- * 返回权限码绑定页面对应的功能集合。
- * 没有页面绑定的纯 API 权限返回空集合，表示核心能力，不受套餐功能限制。
+ * 功能归属由能力注册表所在域和显式例外决定。
+ * 接口能力即使没有页面入口，也沿用其所属功能的套餐边界。
  */
 export function permissionFeatureKeys(code: string): ReadonlySet<LicenseFeatureKey | null> {
   return featureKeysByPermission.get(code) ?? new Set();
@@ -56,5 +63,5 @@ export function permissionPageBindings(code: string): readonly PermissionPageBin
 
 /** 权限码是否属于页面读权限。 */
 export function isPageReadPermission(code: string): boolean {
-  return SEED_MENUS.some((menu) => menu.type === 'menu' && menu.permission === code);
+  return PAGE_READ_PERMISSION_CODES.has(code);
 }

@@ -10,9 +10,11 @@ const WORKFLOW_ADMIN = { riskLevel: 'high', approvalPolicy: 'manager_security', 
 
 export const WORKFLOW_PERMISSIONS = definePermissions({
   'workflow:instance:create': { label: '发起申请', menu: ['WorkflowLaunchpad', 'MyApplications'] },
-  'workflow:task:handle': { label: '查询', menu: ['PendingApprovals', 'WorkflowHandled'] },
+  'workflow:task:list': { label: '查看审批任务', menu: ['PendingApprovals', 'WorkflowHandled'] },
+  'workflow:task:handle': { label: '处理审批任务', menu: ['PendingApprovals', 'WorkflowHandled'] },
   'workflow:instance:print': { label: '打印审批单', menu: ['PendingApprovals', 'MyApplications', 'WorkflowMonitor'] },
   'workflow:instance:list': { label: '查询', menu: ['MyApplications', 'WorkflowCcToMe'] },
+  'workflow:instance:collaborate': { label: '催办、评论、转发与保存视图', menu: ['MyApplications', 'WorkflowCcToMe'] },
   'workflow:delegation:view': { label: '查询', menu: 'WorkflowDelegations' },
   'workflow:delegation:manage': { label: '管理审批代理', menu: 'WorkflowDelegations' },
   'workflow:definition:list': { label: '查询', menu: ['WorkflowDefinitions', 'WorkflowTemplates', 'WorkflowAutomations'] },

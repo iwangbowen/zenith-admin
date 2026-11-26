@@ -20,7 +20,7 @@ const DRIVE_PERSONAL_PERMISSIONS: readonly string[] = [
 const DRIVE_PERSONAL_MENU_IDS = collectMenuSubtreeIds(DRIVE_WORKBENCH_MENU_ID);
 
 const WORKFLOW_SELF_MENU_NAMES = new Set(['WorkflowLaunchpad', 'MyApplications', 'WorkflowCcToMe']);
-const WORKFLOW_SELF_PERMISSIONS = ['workflow:instance:create'];
+const WORKFLOW_SELF_PERMISSIONS = ['workflow:instance:create', 'workflow:instance:collaborate'];
 const WORKFLOW_SELF_MENU_IDS = SEED_MENUS.filter(menu => WORKFLOW_SELF_MENU_NAMES.has(menu.name ?? '')).map(menu => menu.id);
 const CMS_SUBTREE_IDS = new Set(collectMenuSubtreeIds(CMS_ROOT_MENU_ID));
 const CMS_PAGE_IDS = SEED_MENUS.filter(menu => menu.type === 'menu' && CMS_SUBTREE_IDS.has(menu.id)).map(menu => menu.id);

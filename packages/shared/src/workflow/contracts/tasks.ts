@@ -174,9 +174,9 @@ export const workflowHandoverPreviewQuery = z.object({
 
 /** 审批任务动作 / 流转 / 协办 / 批量审批 / 任务监控 / 离职交接（与实例契约共用工作流资源根） */
 export const workflowTaskContract = defineContract('/api/workflows', {
-  mySignGroups: op.get('/sign-groups/mine', { access: { permission: 'workflow:task:handle' }, query: paginationQuery, response: paginated(workflowMySignGroupItemSchema), summary: '我创建或负责的未完成加签组' }),
+  mySignGroups: op.get('/sign-groups/mine', { access: { permission: ['workflow:task:list', 'workflow:task:handle'] }, query: paginationQuery, response: paginated(workflowMySignGroupItemSchema), summary: '我创建或负责的未完成加签组' }),
   taskMonitor: op.get('/tasks/monitor', { access: { permission: 'workflow:instance:monitor' }, query: workflowTaskMonitorQuery, response: workflowTaskMonitorResultSchema, summary: '全局任务监控列表' }),
-  myConsults: op.get('/instances/consults/mine', { access: { permission: 'workflow:task:handle' }, query: workflowMyConsultsQuery, response: paginated(workflowTaskConsultSchema), summary: '我的协办列表' }),
+  myConsults: op.get('/instances/consults/mine', { access: { permission: ['workflow:task:list', 'workflow:task:handle'] }, query: workflowMyConsultsQuery, response: paginated(workflowTaskConsultSchema), summary: '我的协办列表' }),
   handoverPreview: op.get('/tasks/handover-preview', { access: { permission: 'workflow:task:handover' }, query: workflowHandoverPreviewQuery, response: workflowHandoverPreviewSchema, summary: '离职交接影响范围预览' }),
   handover: op.post('/tasks/handover', { access: { permission: 'workflow:task:handover' }, audit: '离职交接待办', body: workflowHandoverSchema, response: workflowHandoverResultSchema, summary: '离职交接（批量移交待办）' }),
   batchApprove: op.post('/tasks/batch-approve', { access: { permission: 'workflow:task:handle' }, audit: { description: '批量审批通过', recordBody: false, recordResponseBody: false }, body: batchApproveWorkflowTaskSchema, response: workflowBatchActionResponseSchema, summary: '批量审批通过' }),

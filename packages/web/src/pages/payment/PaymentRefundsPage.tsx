@@ -128,7 +128,7 @@ export default function PaymentRefundsPage() {
           label: '详情',
           onClick: () => openDetail(r),
         },
-        ...((r.status === 'processing' || r.status === 'pending' || r.status === 'unknown') && r.approvalStatus !== 'pending' ? [{
+        ...(hasPermission('payment:refund:sync') && (r.status === 'processing' || r.status === 'pending' || r.status === 'unknown') && r.approvalStatus !== 'pending' ? [{
           key: 'query',
           label: '查单',
           loading: queryingId === r.id,

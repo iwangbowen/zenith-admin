@@ -4,6 +4,7 @@ import ExportButton from '@/components/ExportButton';
 import { OperationLogsTable } from '@/components/logs/OperationLogsTable';
 import { ClearLogsButtons, ClearLogsModal } from '@/components/logs/ClearLogsControl';
 import { useClearLogs } from '@/hooks/useClearLogs';
+import { usePermission } from '@/hooks/usePermission';
 import { formatDateTimeRangeForApi, parseDateTimeParam } from '@/utils/date';
 import OperationLogStatsPanel from './OperationLogStatsPanel';
 import { operationLogKeys, useCleanOperationLogs, useOperationLogList } from '@/hooks/queries/operation-logs';
@@ -41,6 +42,7 @@ interface SearchParams {
 const defaultParams: SearchParams = { username: '', module: '', description: '', method: undefined, path: '', ip: '', status: undefined, content: '', impersonated: undefined, timeRange: null, minDurationMs: undefined, maxDurationMs: undefined };
 
 export default function OperationLogsPage() {
+  const { hasPermission } = usePermission();
   const [activeTab, setActiveTab] = useUrlTabState(['list', 'stats'] as const, 'list');
   const {
     page, pageSize, setPage, buildPagination,
@@ -132,7 +134,7 @@ export default function OperationLogsPage() {
             actions={(
               <>
                 <ExportButton entity="system.operation-logs" query={filterQuery} />
-                <ClearLogsButtons allowClearAll loading={clearLogsLoading} onClear={clearLogs.openClearModal} />
+                {hasPermission('system:log:operation:clean') && <ClearLogsButtons allowClearAll loading={clearLogsLoading} onClear={clearLogs.openClearModal} />}
               </>
             )}
             filterTitle="操作日志筛选"

@@ -77,16 +77,16 @@ export const cmsPushLogListQuery = paginationQuery.extend({
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 
 export const cmsSeoContract = defineContract('/api/cms/seo', {
-  redirectList: op.get('/redirects', { access: { permission: 'cms:seo:manage' }, query: cmsSeoListQuery, response: paginated(cmsRedirectSchema), summary: '重定向规则列表' }),
+  redirectList: op.get('/redirects', { access: { permission: 'cms:seo:view' }, query: cmsSeoListQuery, response: paginated(cmsRedirectSchema), summary: '重定向规则列表' }),
   redirectCreate: op.post('/redirects', { access: { permission: 'cms:seo:manage' }, audit: '创建 CMS 重定向', body: createCmsRedirectSchema, response: cmsRedirectSchema, summary: '创建重定向规则' }),
   redirectUpdate: op.put('/redirects/{id}', { access: { permission: 'cms:seo:manage' }, audit: '更新 CMS 重定向', params: idParam, body: updateCmsRedirectSchema, response: cmsRedirectSchema, summary: '更新重定向规则' }),
   redirectRemove: op.delete('/redirects/{id}', { access: { permission: 'cms:seo:manage' }, audit: '删除 CMS 重定向', params: idParam, summary: '删除重定向规则' }),
-  linkWordList: op.get('/link-words', { access: { permission: 'cms:seo:manage' }, query: cmsSeoListQuery, response: paginated(cmsLinkWordSchema), summary: '内链词列表' }),
+  linkWordList: op.get('/link-words', { access: { permission: 'cms:seo:view' }, query: cmsSeoListQuery, response: paginated(cmsLinkWordSchema), summary: '内链词列表' }),
   linkWordCreate: op.post('/link-words', { access: { permission: 'cms:seo:manage' }, audit: '创建 CMS 内链词', body: createCmsLinkWordSchema, response: cmsLinkWordSchema, summary: '创建内链词' }),
   linkWordUpdate: op.put('/link-words/{id}', { access: { permission: 'cms:seo:manage' }, audit: '更新 CMS 内链词', params: idParam, body: updateCmsLinkWordSchema, response: cmsLinkWordSchema, summary: '更新内链词' }),
   linkWordRemove: op.delete('/link-words/{id}', { access: { permission: 'cms:seo:manage' }, audit: '删除 CMS 内链词', params: idParam, summary: '删除内链词' }),
   push: op.post('/push', { access: { permission: 'cms:seo:push' }, audit: 'CMS 搜索引擎推送', body: pushCmsUrlsSchema, response: z.array(cmsPushResultSchema), summary: '手动推送 URL 到搜索引擎（百度/IndexNow）' }),
-  pushLogs: op.get('/push-logs', { access: { permission: 'cms:seo:manage' }, query: cmsPushLogListQuery, response: paginated(cmsPushLogSchema), summary: '推送日志' }),
+  pushLogs: op.get('/push-logs', { access: { permission: 'cms:seo:view' }, query: cmsPushLogListQuery, response: paginated(cmsPushLogSchema), summary: '推送日志' }),
   deadlinkCheck: op.post('/deadlink-check', { access: { permission: 'cms:seo:manage' }, audit: 'CMS 死链检测', body: cmsSiteIdBodySchema, response: asyncTaskSchema, summary: '提交死链检测任务（站内链接查库 + 外链探测）' }),
 }, { auditModule: 'CMS内容管理', tags: ['CMS-SEO'] });
 
