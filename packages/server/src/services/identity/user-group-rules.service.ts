@@ -15,7 +15,7 @@ import type { UserGroupMemberRule } from '@zenith/shared/identity';
 import { db } from '../../db';
 import { departments, userGroupMembers, userGroups, userPositions, users } from '../../db/schema';
 import { assertAutomaticGroupMembership } from './authority-write.service';
-import { clearUserPermissionCache } from '../../lib/permissions';
+import { notifyUserPermissionsChanged } from '../../lib/permissions';
 import { formatDateTime } from '../../lib/datetime';
 import logger from '../../lib/logger';
 import { exactTenantCondition } from '../../lib/tenant';
@@ -110,7 +110,7 @@ async function applyMembershipDiff(groupId: number, toAdd: number[], toRemove: n
     await tx.update(userGroups).set({ ruleSyncedAt: new Date() }).where(eq(userGroups.id, groupId));
   });
   // 组可能绑定角色：进出成员即授/撤权，前后都清缓存
-  await Promise.all([...new Set([...toAdd, ...toRemove])].map((uid) => clearUserPermissionCache(uid)));
+  await Promise.all([...new Set([...toAdd, ...toRemove])].map(notifyUserPermissionsChanged));
 }
 
 /** 整组重算：规则保存、模式切换、手动同步、夜间校准共用 */

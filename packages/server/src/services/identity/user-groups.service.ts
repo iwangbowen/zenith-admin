@@ -11,7 +11,7 @@ import type { QueryOutputOf } from '@zenith/shared/core';
 import { currentUser } from '../../lib/context';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { replaceGroupRoleBindings, replaceGroupMemberBindings, assertAuthorityActor, assertAutomaticGroupMembership } from './authority-write.service';
-import { clearUserPermissionCache } from '../../lib/permissions';
+import { notifyUserPermissionsChanged } from '../../lib/permissions';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { formatDateTime, formatTimestamps } from '../../lib/datetime';
 import { getScopeMemberSummaries, validateScopeUserIds } from './user-scope.service';
@@ -220,7 +220,7 @@ export async function updateUserGroup(id: number, input: UpdateUserGroupInput) {
     } else if (input.status !== undefined) {
       // 组状态切换影响成员继承权限的生效性，清成员缓存即时生效
       const members = await db.select({ userId: userGroupMembers.userId }).from(userGroupMembers).where(eq(userGroupMembers.groupId, id));
-      await Promise.all(members.map((m) => clearUserPermissionCache(m.userId)));
+      await Promise.all(members.map((m) => notifyUserPermissionsChanged(m.userId)));
     }
     return getUserGroup(row.id);
   } catch (err) {
@@ -244,7 +244,7 @@ export async function deleteUserGroup(id: number): Promise<void> {
   }
   await db.delete(userGroups).where(and(eq(userGroups.id, id), tc));
   // 组可能绑定角色：删除即撤销成员的继承权限
-  await Promise.all(members.map((m) => clearUserPermissionCache(m.userId)));
+  await Promise.all(members.map((m) => notifyUserPermissionsChanged(m.userId)));
 }
 
 export async function batchDeleteUserGroups(ids: number[]): Promise<{ count: number }> {
@@ -268,7 +268,7 @@ export async function batchDeleteUserGroups(ids: number[]): Promise<{ count: num
     .from(userGroupMembers)
     .where(inArray(userGroupMembers.groupId, validIds));
   await db.delete(userGroups).where(and(inArray(userGroups.id, validIds), tc));
-  await Promise.all([...new Set(members.map((m) => m.userId))].map((uid) => clearUserPermissionCache(uid)));
+  await Promise.all([...new Set(members.map((m) => m.userId))].map(notifyUserPermissionsChanged));
   return { count: validIds.length };
 }
 
@@ -379,7 +379,7 @@ export async function setGroupMembers(groupId: number, userIds: number[]) {
     await replaceGroupMemberBindings(tx, groupId, uniqueUserIds, group.tenantId);
   });
   // 组可能绑定角色：成员进出影响其继承权限，前后成员均需清缓存
-  await Promise.all([...new Set([...previous.map((r) => r.userId), ...uniqueUserIds])].map((uid) => clearUserPermissionCache(uid)));
+  await Promise.all([...new Set([...previous.map((r) => r.userId), ...uniqueUserIds])].map(notifyUserPermissionsChanged));
 }
 
 export async function addGroupMembers(groupId: number, userIds: number[]) {
@@ -398,7 +398,7 @@ export async function addGroupMembers(groupId: number, userIds: number[]) {
       const before = await tx.select({ userId: userGroupMembers.userId }).from(userGroupMembers).where(eq(userGroupMembers.groupId, groupId));
       await replaceGroupMemberBindings(tx, groupId, [...before.map(row => row.userId), ...toAdd], group.tenantId);
     });
-    await Promise.all(toAdd.map((uid) => clearUserPermissionCache(uid)));
+    await Promise.all(toAdd.map(notifyUserPermissionsChanged));
   }
 }
 
@@ -408,7 +408,7 @@ export async function removeGroupMembers(groupId: number, userIds: number[]) {
   if (userIds.length === 0) return;
   await db.delete(userGroupMembers)
     .where(and(eq(userGroupMembers.groupId, groupId), inArray(userGroupMembers.userId, userIds)));
-  await Promise.all(userIds.map((uid) => clearUserPermissionCache(uid)));
+  await Promise.all(userIds.map(notifyUserPermissionsChanged));
 }
 
 // ─── 角色管理 ────────────────────────────────────────────────────────────────
@@ -434,7 +434,7 @@ export async function setGroupRoles(groupId: number, roleIds: number[]) {
   });
   // 组内所有成员的权限受影响，清缓存即时生效
   const members = await db.select({ userId: userGroupMembers.userId }).from(userGroupMembers).where(eq(userGroupMembers.groupId, groupId));
-  await Promise.all(members.map((m) => clearUserPermissionCache(m.userId)));
+  await Promise.all(members.map((m) => notifyUserPermissionsChanged(m.userId)));
 }
 
 export async function getUserGroupRolesBeforeAudit(groupId: number) {

@@ -7,7 +7,7 @@ import { buildWhere, dateRangeConditions, keywordCondition, withPagination } fro
 import { db } from '../../db';
 import type { DbTransaction } from '../../db/types';
 import { roles, roleDeptScopes, userRoles } from '../../db/schema';
-import { clearUserPermissionCache, isSuperAdmin, notifyUserPermissionsChanged } from '../../lib/permissions';
+import { isSuperAdmin, notifyUserPermissionsChanged } from '../../lib/permissions';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { currentUser } from '../../lib/context';
 import { forceLogoutAllByUsers } from '../../lib/session-manager';
@@ -16,7 +16,7 @@ import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { formatTimestamps } from '../../lib/datetime';
 import { getScopeMemberSummaries, validateScopeUserIds } from './user-scope.service';
 import { RESERVED_ROLE_CODES } from './role-grant';
-import { assertAuthorityActor, roleBeneficiaries, publishRoleVersion, replaceRoleMembers, replaceRolePermissions } from './authority-write.service';
+import { assertAuthorityActor, lockIdentityAuthority, roleBeneficiaries, publishRoleVersion, replaceRoleMembers, replaceRolePermissions } from './authority-write.service';
 
 export function mapRole(row: typeof roles.$inferSelect, menuIds?: number[], deptScopeIds?: number[]) {
   return {
@@ -125,7 +125,7 @@ export async function createRole(data: CreateRoleInput) {
 export async function updateRole(id: number, data: Partial<CreateRoleInput>) {
   const user = currentUser();
   const { deptScopeIds, ...rest } = data;
-  return await db.transaction(async (tx) => {
+  const { published, beneficiaries } = await db.transaction(async (tx) => {
     const [existing] = await tx.select({ code: roles.code, tenantId: roles.tenantId }).from(roles).where(and(eq(roles.id, id), tenantCondition(roles, user))).limit(1);
     requireRow(existing, '角色不存在');
     // 保护仅针对平台超管角色（tenantId=null）；租户遗留的同名伪造角色允许禁用/清理
@@ -140,19 +140,20 @@ export async function updateRole(id: number, data: Partial<CreateRoleInput>) {
         throw new HTTPException(400, { message: '超级管理员角色编码不允许修改' });
       }
     }
-    if (rest.dataScope !== undefined || deptScopeIds !== undefined || rest.status !== undefined) {
-      await assertAuthorityActor(tx, existing.tenantId, 'system:role:assign', await roleBeneficiaries(tx, id));
-    }
+    await lockIdentityAuthority(tx, existing.tenantId);
+    const changesAccess = rest.dataScope !== undefined || deptScopeIds !== undefined || rest.status !== undefined;
+    const beneficiaries = changesAccess || rest.name !== undefined ? await roleBeneficiaries(tx, id) : [];
+    if (changesAccess) await assertAuthorityActor(tx, existing.tenantId, 'system:role:assign', beneficiaries);
     const [role] = await tx.update(roles).set({ ...rest }).where(and(eq(roles.id, id), tenantCondition(roles, user))).returning();
     requireRow(role, '角色不存在');
     if (deptScopeIds !== undefined && deptScopeIds !== null) {
       await syncRoleDeptScopes(tx, id, deptScopeIds);
     }
     const published = await publishRoleVersion(tx, id, existing.tenantId);
-    // 角色状态/属性变更影响权限解析结果（禁用角色即时失权），清空权限缓存
-    await clearUserPermissionCache();
-    return mapRole(published, undefined, deptScopeIds ?? undefined);
+    return { published, beneficiaries };
   });
+  await Promise.all(beneficiaries.map(notifyUserPermissionsChanged));
+  return mapRole(published, undefined, deptScopeIds ?? undefined);
 }
 
 export async function deleteRole(id: number) {
@@ -210,19 +211,11 @@ export async function assignRoleUsers(id: number, userIds: number[]) {
   const uniqueUserIds = await validateScopeUserIds(userIds, roleInfo.tenantId);
   // 平台超管角色：JWT 中的 roles 在 2h 内不随 DB 变化，被移出者须立即撤销会话防权限残留
   const isPlatformSuperRole = roleInfo.code === SUPER_ADMIN_CODE && roleInfo.tenantId === null;
-  const removedUserIds: number[] = [];
-  if (isPlatformSuperRole) {
-    const beforeRows = await db.select({ userId: userRoles.userId }).from(userRoles).where(eq(userRoles.roleId, id));
-    const nextSet = new Set(uniqueUserIds);
-    removedUserIds.push(...beforeRows.map((r) => r.userId).filter((uid) => !nextSet.has(uid)));
-  }
-  await db.transaction(async (tx) => {
-    await replaceRoleMembers(tx, id, uniqueUserIds, roleInfo.tenantId);
-  });
-  await clearUserPermissionCache();
-  if (removedUserIds.length > 0) {
+  const { added, removed } = await db.transaction(tx => replaceRoleMembers(tx, id, uniqueUserIds, roleInfo.tenantId));
+  await Promise.all([...added, ...removed].map(notifyUserPermissionsChanged));
+  if (isPlatformSuperRole && removed.length > 0) {
     try {
-      await forceLogoutAllByUsers(removedUserIds);
+      await forceLogoutAllByUsers(removed);
     } catch {
       // 会话撤销 best-effort，失败不影响主流程
     }

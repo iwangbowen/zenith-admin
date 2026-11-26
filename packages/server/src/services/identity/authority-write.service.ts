@@ -178,6 +178,7 @@ export async function replaceRoleMembers(tx: DbExecutor, roleId: number, userIds
   await assertUserRolesRemovable(tx, removed, [roleId]);
   if (removed.length) await tx.delete(userRoles).where(and(eq(userRoles.roleId, roleId), inArray(userRoles.userId, removed)));
   if (added.length) await tx.insert(userRoles).values([...new Set(added)].map(userId => ({ roleId, userId })));
+  return { added, removed };
 }
 
 export async function replaceGroupRoleBindings(tx: DbExecutor, groupId: number, roleIds: readonly number[], tenantId: number | null) {

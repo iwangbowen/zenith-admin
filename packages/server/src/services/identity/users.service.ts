@@ -486,7 +486,7 @@ export async function manageUser(id: number, data: import('@zenith/shared/core')
     rethrowPgUniqueViolation(error, '用户名、邮箱或手机号已存在');
   }
   if (organization || roleAssignment) {
-    await clearUserPermissionCache(id);
+    await notifyUserPermissionsChanged(id);
   }
   if (organization) {
     await syncUserDynamicMembershipsSafe([id], '调整用户组织归属');
@@ -660,7 +660,7 @@ export async function assignRolesToUser(userId: number, roleIds: number[]) {
   await db.transaction(async (tx) => {
     await replaceUserRoles(tx, userId, uniqueRoleIds, target.tenantId);
   });
-  await clearUserPermissionCache(userId);
+  await notifyUserPermissionsChanged(userId);
   if (hadPlatformSuper && !(await userHasPlatformSuperRole(userId))) {
     await revokeUserSessions([userId]);
   }
@@ -778,7 +778,7 @@ export async function updateUserDataPermission(userId: number, data: { dataScope
       await tx.insert(userDeptScopes).values(data.deptScopeIds.map((deptId) => ({ userId, deptId })));
     }
   });
-  await clearUserPermissionCache(userId);
+  await notifyUserPermissionsChanged(userId);
 }
 
 export async function getUserEffectivePermissions(userId: number) {
