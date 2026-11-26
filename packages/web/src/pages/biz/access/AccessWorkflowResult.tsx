@@ -20,7 +20,7 @@ export default function AccessWorkflowResult({ instanceId, requestClient }: { re
       { key: '授权情况', value: grant ? '以每项权限的当前状态及有效期为准' : request.status === 'approved' ? '审批已通过，权限在发放成功后可用' : '尚未产生授权' },
     ]} />
     {grant && grant.menus.length > 0 ? <Table rowKey="menuId" dataSource={grant.menus} pagination={false} size="small" columns={[
-      { title: '页面访问', dataIndex: 'title', width: 240 },
+      { title: '发放时的页面', dataIndex: 'title', width: 240 },
       { title: '路径', dataIndex: 'path', render: path => path ?? '—' },
     ]} /> : null}
     {grant ? <Table rowKey="id" dataSource={grant.items} pagination={false} size="small" scroll={{ x: 1000 }} columns={[

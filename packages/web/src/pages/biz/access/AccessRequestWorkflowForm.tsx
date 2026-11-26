@@ -77,7 +77,7 @@ function ReadonlyAccessRequest({ value }: Readonly<{ value: Record<string, unkno
       ])} />
     </div>}
     <Table dataSource={items.map((item, index) => ({ ...item, key: index }))} rowKey="key" pagination={false} size="small" empty="暂无权限项" columns={singleLineColumns([
-      { title: '权限名称', dataIndex: 'permissionLabel', render: (label: unknown, row: Record<string, unknown>) => String(label ?? row.permissionCode ?? '—') },
+      { title: '页面或权限', dataIndex: 'permissionLabel', render: (label: unknown, row: Record<string, unknown>) => String(row.pageTitle ?? label ?? row.permissionCode ?? '—') },
       { title: '权限码', dataIndex: 'permissionCode' },
       { title: '数据范围', render: (_: unknown, row: Record<string, unknown>) => DATA_SCOPE_OPTIONS.find(option => option.value === row.dataScope)?.label ?? '—' },
       { title: '来源', render: (_: unknown, row: Record<string, unknown>) => { const sources = accessSourceRefSchema.array().safeParse(row.sourceRefs); return sources.success ? accessSourceLabel(sources.data) : '—'; } },

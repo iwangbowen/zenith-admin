@@ -185,6 +185,10 @@ function GrantDetailSheet({ record: suppliedRecord, visible = suppliedRecord !==
   });
   const [userId, setUserId] = useState<number | null>(null);
   const [requestId, setRequestId] = useState<number | null>(null);
+  const revokeTarget = revokeModal.editing;
+  const revokeTargetLabel = revokeTarget?.pageTitle
+    ? `页面「${revokeTarget.pageTitle}」`
+    : `权限「${revokeTarget?.permissionCode ?? ''}」`;
   // 抽屉关闭后清空下钻引用，避免下次打开时残留上一次的用户/申请
   useEffect(() => {
     if (!visible) {
@@ -227,7 +231,7 @@ function GrantDetailSheet({ record: suppliedRecord, visible = suppliedRecord !==
             { key: '撤销原因', value: record.revokeReason ? <Text style={{ whiteSpace: 'pre-wrap' }}>{record.revokeReason}</Text> : EMPTY_PLACEHOLDER, span: 2 },
           ]}
         />
-        <Divider align="left" style={{ margin: '16px 0 10px' }}>页面访问（{record.menus.length} 个）</Divider>
+        <Divider align="left" style={{ margin: '16px 0 10px' }}>发放时的页面（{record.menus.length} 个）</Divider>
         <Table dataSource={record.menus} rowKey="menuId" size="small" pagination={false} empty="暂无页面访问项" columns={[
           { title: '页面', dataIndex: 'title' },
           { title: '路径', dataIndex: 'path', render: (path: string | null) => path ?? EMPTY_PLACEHOLDER },
@@ -238,7 +242,7 @@ function GrantDetailSheet({ record: suppliedRecord, visible = suppliedRecord !==
     </DetailSheet>
     {visible && requestId !== null && <RequestRefSheet id={requestId} onClose={() => setRequestId(null)} />}
     {visible && userId !== null && <UserGovernanceSheet userId={userId} onClose={() => setUserId(null)} />}
-    <EditFormModal modal={revokeModal} title="撤销单项授权" okText="撤销此项" width={560} header={<Banner type="warning" closeIcon={null} description={`仅撤销“${revokeModal.editing?.permissionLabel ?? revokeModal.editing?.permissionCode ?? ''}”，同一授权包中的其他权限及独立授权来源保留。`} />}>
+    <EditFormModal modal={revokeModal} title="撤销单项授权" okText="撤销此项" width={560} header={<Banner type="warning" closeIcon={null} description={`确认撤销${revokeTargetLabel}的这条授权。`} />}>
       <Form.TextArea field="reason" label="撤销原因" rows={3} maxCount={1000} rules={[{ required: true, message: '请填写撤销原因' }, { min: 2, message: '至少填写两个字' }]} />
     </EditFormModal>
   </>;
