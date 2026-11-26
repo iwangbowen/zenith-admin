@@ -226,7 +226,7 @@ export const analyticsContract = defineContract('/api/analytics', {
   clean: op.delete('/clean', { access: { permission: 'analytics:clean' }, audit: '清除埋点数据', query: analyticsCleanQuery, summary: '清除埋点数据' }),
 
   // 事件字典（Tracking Plan）
-  eventMeta: op.get('/event-meta', { access: { permission: 'analytics:data:view' }, query: analyticsEventMetaListQuery, response: paginated(analyticsEventMetaSchema), summary: '事件字典列表' }),
+  eventMeta: op.get('/event-meta', { access: { permission: ['analytics:data:view', 'analytics:view'] }, query: analyticsEventMetaListQuery, response: paginated(analyticsEventMetaSchema), summary: '事件字典列表' }),
   createEventMeta: op.post('/event-meta', { access: { permission: 'analytics:manage' }, body: createAnalyticsEventMetaSchema, response: analyticsEventMetaSchema, summary: '新增事件字典' }),
   updateEventMeta: op.put('/event-meta/{id}', { access: { permission: 'analytics:manage' }, params: idParam, body: updateAnalyticsEventMetaSchema, response: analyticsEventMetaSchema, summary: '更新事件字典' }),
   removeEventMeta: op.delete('/event-meta/{id}', { access: { permission: 'analytics:manage' }, params: idParam, summary: '删除事件字典' }),

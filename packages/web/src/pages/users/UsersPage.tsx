@@ -124,6 +124,9 @@ function isPlatformSuperUser(user: Pick<User, 'roles' | 'tenantId'>) {
 export default function UsersPage() {
   const queryClient = useQueryClient();
   const { hasPermission } = usePermission();
+  const canListRoles = hasPermission('system:role:list');
+  const canListDepartments = hasPermission('system:department:list');
+  const canListPositions = hasPermission('system:position:list');
   const { updateUser, user: currentUser, impersonation, startImpersonation } = useAuth();
   const {
     page, pageSize, buildPagination,
@@ -159,9 +162,9 @@ export default function UsersPage() {
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
   const [deptTreeExpandedKeys, setDeptTreeExpandedKeys] = useState<string[]>([]);
 
-  const allRolesQuery = useAllRoles();
-  const allDepartmentsQuery = useFlatDepartments();
-  const allPositionsQuery = useAllPositions();
+  const allRolesQuery = useAllRoles({ enabled: canListRoles });
+  const allDepartmentsQuery = useFlatDepartments({ enabled: canListDepartments });
+  const allPositionsQuery = useAllPositions({ enabled: canListPositions });
   const mySettingsQuery = useMySettings();
   const allRoles = allRolesQuery.data ?? EMPTY_ROLES;
   const allDepartments = allDepartmentsQuery.data ?? EMPTY_DEPARTMENTS;
@@ -192,8 +195,8 @@ export default function UsersPage() {
   const assignRolesMutation = useAssignUserRoles();
   const manageMutation = useManageUser();
   const canEditProfile = hasPermission('system:user:update');
-  const canEditOrganization = hasPermission('system:user:organization');
-  const canAssignRoles = hasPermission('system:user:assign');
+  const canEditOrganization = hasPermission('system:user:organization') && canListDepartments && canListPositions;
+  const canAssignRoles = hasPermission('system:user:assign') && canListRoles;
   const roleEffectivePermissionsQuery = useUserEffectivePermissions(roleAssignUser?.id, roleAssignVisible);
   const kickSessionsMutation = useKickUserSessions();
   // 敏感字段（手机号 / 邮箱）对非豁免用户是掩码：编辑时锁定，提交前剔除未修改的锁定字段
@@ -522,7 +525,7 @@ export default function UsersPage() {
           {
             key: 'edit',
             label: '编辑',
-            hidden: !hasPermission('system:user:update') && !hasPermission('system:user:organization') && !hasPermission('system:user:assign'),
+            hidden: !canEditProfile && !canEditOrganization && !canAssignRoles,
             onClick: () => {
               openEdit(record);
             },
@@ -589,7 +592,7 @@ export default function UsersPage() {
           {
             key: 'assign-role',
             label: '分配角色',
-            hidden: !hasPermission('system:user:assign'),
+            hidden: !canAssignRoles,
             onClick: () => {
               setRoleAssignUser(record);
               setRoleAssignIds(record.roles.map((r) => r.id));
@@ -599,7 +602,7 @@ export default function UsersPage() {
           {
             key: 'data-permission',
             label: '数据权限',
-            hidden: !hasPermission('system:user:assign'),
+            hidden: !hasPermission('system:user:assign') || !canListDepartments,
             onClick: () => {
               setDataPermUser(record);
               setDataPermVisible(true);
@@ -643,7 +646,7 @@ export default function UsersPage() {
         ];
       },
     }),
-  ], [hasPermission, status, deleteMutation, handleUnlock, kickUserSessions, refetchUserList, openEdit, openPassword, openDetail, canImpersonate, openImpersonate, canViewUserLogs]);
+  ], [hasPermission, canEditProfile, canEditOrganization, canAssignRoles, canListDepartments, status, deleteMutation, handleUnlock, kickUserSessions, refetchUserList, openEdit, openPassword, openDetail, canImpersonate, openImpersonate, canViewUserLogs]);
 
   const [showDeptTree, setShowDeptTree] = useState(false);
   const [isLayoutNarrow, setIsLayoutNarrow] = useState(false);
@@ -697,7 +700,7 @@ export default function UsersPage() {
     </div>
   );
 
-  const renderDepartmentButton = (forceVisible = false) => (
+  const renderDepartmentButton = (forceVisible = false) => canListDepartments && (
     <Button
       theme="borderless"
       icon={<Building2 size={14} />}
@@ -736,6 +739,8 @@ export default function UsersPage() {
     <div className="page-container page-container--stretch">
       <MasterDetailLayout
         master={masterContent}
+        collapsed={!canListDepartments}
+        showDetail={!canListDepartments || !showDeptTree}
         detail={
         <div className="users-content">
       <ListSearchToolbar
@@ -744,25 +749,25 @@ export default function UsersPage() {
           <>
             <KeywordInput placeholder="搜索手机号码" {...bindKeyword('phone')} width={180} />
             <KeywordInput placeholder="搜索邮箱" {...bindKeyword('email')} width={180} />
-            <FilterSelect
+            {canListPositions && <FilterSelect
               placeholder="全部岗位"
               items={allPositions.map((position) => ({ value: position.id, label: position.name }))}
               {...bind('positionId')}
               width={140}
               filter
-            />
+            />}
             <StatusSelect
               items={statusItems}
               {...bind('status')}
             />
-            <FilterSelect
+            {canListRoles && <FilterSelect
               placeholder="全部角色"
               items={allRoles.map((role) => ({ value: role.id, label: role.name }))}
               {...bind('roleId')}
               width={160}
               filter
               loading={allRolesQuery.isFetching}
-            />
+            />}
             <FilterSelect
               placeholder="在线状态"
               items={USER_ONLINE_STATUS_OPTIONS}
@@ -812,7 +817,6 @@ export default function UsersPage() {
         defaultSize={220}
         minSize={160}
         maxSize={400}
-        showDetail={!showDeptTree}
         onMasterBack={() => setShowDeptTree(false)}
         masterBackLabel="返回用户列表"
         onResponsiveChange={setIsLayoutNarrow}
@@ -1109,6 +1113,7 @@ export default function UsersPage() {
         visible={roleAssignVisible}
         onCancel={() => setRoleAssignVisible(false)}
         confirmLoading={assignRolesMutation.isPending}
+        okButtonProps={{ disabled: !allRolesQuery.isSuccess }}
         onOk={async () => {
           if (!roleAssignUser) return;
           const protectedRoleId = protectedSuperRoleId(roleAssignUser);

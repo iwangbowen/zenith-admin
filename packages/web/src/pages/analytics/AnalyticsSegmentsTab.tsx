@@ -32,6 +32,7 @@ import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { dateTimeColumn, renderEllipsis, EMPTY_PLACEHOLDER, renderEnabledStatusTag } from '@/utils/table-columns';
 import { useListPage } from '@/hooks/useListPage';
+import { usePermission } from '@/hooks/usePermission';
 
 const PAGE_SIZE = 20;
 const MAX_CONDITIONS = 10;
@@ -138,15 +139,22 @@ const ATTRIBUTE_FIELD_OPTIONS = [
 ];
 
 function CampaignDrawer({ segment, onClose }: { segment: AnalyticsUserSegment; onClose: () => void }) {
+  const { hasPermission } = usePermission();
+  const canManage = hasPermission('analytics:manage');
+  const channels = ANALYTICS_CAMPAIGN_CHANNEL_OPTIONS.filter(({ value }) => value === 'webhook'
+    || (value === 'email' && hasPermission('system:email-template:list'))
+    || (value === 'sms' && hasPermission('system:sms-template:list'))
+    || (value === 'in_app' && hasPermission('system:in-app-template:list')));
   const [name, setName] = useState('');
-  const [channel, setChannel] = useState<AnalyticsSegmentCampaign['channel']>('email');
+  const [selectedChannel, setChannel] = useState<AnalyticsSegmentCampaign['channel']>('email');
+  const channel = channels.some(option => option.value === selectedChannel) ? selectedChannel : 'webhook';
   const [templateId, setTemplateId] = useState<number | undefined>();
   const [webhookUrl, setWebhookUrl] = useState('');
   const [landingUrl, setLandingUrl] = useState('');
   const campaignsQuery = useCampaigns({ page: 1, pageSize: 50, segmentId: segment.id }, true, 3000);
-  const emailTemplatesQuery = useEmailTemplateList({ page: 1, pageSize: 100, status: 'enabled' }, channel === 'email');
-  const inAppTemplatesQuery = useInAppTemplateList({ page: 1, pageSize: 100, status: 'enabled' });
-  const smsTemplatesQuery = useSmsTemplateList({ page: 1, pageSize: 100, status: 'enabled' }, channel === 'sms');
+  const emailTemplatesQuery = useEmailTemplateList({ page: 1, pageSize: 100, status: 'enabled' }, canManage && channel === 'email');
+  const inAppTemplatesQuery = useInAppTemplateList({ page: 1, pageSize: 100, status: 'enabled' }, canManage && channel === 'in_app');
+  const smsTemplatesQuery = useSmsTemplateList({ page: 1, pageSize: 100, status: 'enabled' }, canManage && channel === 'sms');
   const createCampaign = useCreateCampaign();
   const deleteCampaign = useDeleteCampaign();
   const executeCampaign = useExecuteCampaign();
@@ -194,23 +202,23 @@ function CampaignDrawer({ segment, onClose }: { segment: AnalyticsUserSegment; o
     createOperationColumn<AnalyticsSegmentCampaign>({
       width: 120,
       desktopInlineKeys: ['execute'],
-      actions: (record) => [
+      actions: (record) => canManage ? [
         { key: 'execute', label: '执行', loading: executeCampaign.isPending, disabledReason: record.status === 'running' ? '执行中' : undefined, onClick: async () => { await executeCampaign.mutateAsync({ params: { id: record.id } }); Toast.success('触达任务已提交'); } },
         deleteAction({
           disabledReason: record.status === 'running' ? '执行中不可删' : undefined,
           title: `确定删除触达「${record.name}」吗？`,
           run: () => deleteCampaign.mutateAsync({ params: { id: record.id } }),
         }),
-      ],
+      ] : [],
     }),
   ];
 
   return (
     <SideSheet title={`分群触达 · ${segment.name}`} visible onCancel={onClose} width={900}>
       <div style={{ display: 'grid', gap: 12 }}>
-        <SearchToolbar>
+        {canManage && <SearchToolbar>
           <Input placeholder="触达名称" value={name} onChange={setName} style={{ width: 180 }} />
-          <Select value={channel} optionList={ANALYTICS_CAMPAIGN_CHANNEL_OPTIONS} onChange={(v) => { setChannel(v as AnalyticsSegmentCampaign['channel']); setTemplateId(undefined); }} style={{ width: 130 }} />
+          <Select value={channel} optionList={channels} onChange={(v) => { setChannel(v as AnalyticsSegmentCampaign['channel']); setTemplateId(undefined); }} style={{ width: 130 }} />
           {channel === 'webhook' ? (
             <Input placeholder="https://example.com/webhook" value={webhookUrl} onChange={setWebhookUrl} style={{ width: 300 }} />
           ) : (
@@ -227,7 +235,7 @@ function CampaignDrawer({ segment, onClose }: { segment: AnalyticsUserSegment; o
             </>
           )}
           <CreateButton onClick={() => void handleCreate()} loading={createCampaign.isPending} />
-        </SearchToolbar>
+        </SearchToolbar>}
         <ConfigurableTable
 
 
@@ -245,6 +253,8 @@ function CampaignDrawer({ segment, onClose }: { segment: AnalyticsUserSegment; o
 }
 
 export default function AnalyticsSegmentsTab() {
+  const { hasPermission } = usePermission();
+  const canManage = hasPermission('analytics:manage');
   const {
     bind,
     bindKeyword,
@@ -369,17 +379,18 @@ export default function AnalyticsSegmentsTab() {
       actions: (record) => [
         { key: 'members', label: '成员', onClick: () => { setMembersSegment(record); membersPagination.setPage(1); } },
         { key: 'campaign', label: '触达', onClick: () => setCampaignSegment(record) },
-        { key: 'materialize', label: '重算', loading: materializeMutation.isPending, onClick: () => handleMaterialize(record) },
-        { key: 'edit', label: '编辑', onClick: () => openEdit(record) },
+        { key: 'materialize', label: '重算', hidden: !canManage, loading: materializeMutation.isPending, onClick: () => handleMaterialize(record) },
+        { key: 'edit', label: '编辑', hidden: !canManage, onClick: () => openEdit(record) },
         // eslint-disable-next-line no-restricted-syntax -- 嵌套组件 / 复合操作列，保留 createOperationColumn
         deleteAction({
+          hidden: !canManage,
           title: `确定删除分群「${record.name}」吗？`,
           run: () => deleteMutation.mutateAsync({ params: { id: record.id } }),
         }),
       ],
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [materializeMutation.isPending]);
+  ], [canManage, materializeMutation.isPending]);
 
   const memberColumns: ColumnProps<AnalyticsSegmentMember>[] = [
     { title: 'distinctId', dataIndex: 'distinctId' },
@@ -396,7 +407,7 @@ export default function AnalyticsSegmentsTab() {
         filters={<StatusSelect items={ANALYTICS_EVENT_OVERRIDE_STATUS_OPTIONS} {...bind('status')} />}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={<CreateButton onClick={openCreate} />}
+        create={<CreateButton permission="analytics:manage" onClick={openCreate} />}
       />
       <ConfigurableTable
         columns={columns}

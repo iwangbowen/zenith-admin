@@ -22,6 +22,7 @@ import { useEditModal } from '@/hooks/useEditModal';
 import { copyableNoColumn, dateTimeColumn, overflowTagColumn } from '@/utils/table-columns';
 import { confirmDelete } from '@/utils/confirm';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { usePermission } from '@/hooks/usePermission';
 
 const PAGE_SIZE = 20;
 const STATUS_META: Record<AnalyticsSite['status'], { label: string; color: 'green' | 'red' }> = {
@@ -61,6 +62,8 @@ function renderUsage(record: AnalyticsSite) {
 }
 
 export default function AnalyticsSitesTab() {
+  const { hasPermission } = usePermission();
+  const canManage = hasPermission('analytics:manage');
   const {
     page, pageSize, buildPagination,
     bind, bindKeyword, submittedParams: submitted,
@@ -122,7 +125,7 @@ export default function AnalyticsSitesTab() {
     createOperationColumn<AnalyticsSite>({
       width: 180,
       desktopInlineKeys: ['edit', 'delete'],
-      actions: (record) => [
+      actions: (record) => canManage ? [
         { key: 'edit', label: '编辑', onClick: () => siteModal.openEdit(record) },
         {
           key: 'regenerate', label: '重新生成 Key', loading: regenerateMutation.isPending,
@@ -132,7 +135,7 @@ export default function AnalyticsSitesTab() {
           key: 'delete', label: '删除', danger: true, loading: deleteMutation.isPending,
           onClick: () => { confirmDelete({ title: '确定要删除该站点吗？', content: '删除后不可恢复', onOk: () => deleteMutation.mutate({ params: { id: record.id } }) }); },
         },
-      ],
+      ] : [],
     }),
   ];
 
@@ -143,7 +146,7 @@ export default function AnalyticsSitesTab() {
         filters={<StatusSelect items={COMMON_STATUS_OPTIONS} {...bind('status')} />}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={<CreateButton onClick={siteModal.openCreate} />}
+        create={<CreateButton permission="analytics:manage" onClick={siteModal.openCreate} />}
       />
 
       <ConfigurableTable

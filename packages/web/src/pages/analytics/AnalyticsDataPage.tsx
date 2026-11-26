@@ -191,6 +191,7 @@ const DATA_TABS = ['events', 'meta', 'quality', 'debug', 'segments', 'sites', 'r
 export default function AnalyticsDataPage() {
   const queryClient = useQueryClient();
   const { hasPermission } = usePermission();
+  const canManage = hasPermission('analytics:manage');
   const canClean = hasPermission('analytics:clean');
   const [activeTab, setActiveTab] = useUrlTabState(DATA_TABS, 'events');
 
@@ -248,7 +249,7 @@ export default function AnalyticsDataPage() {
   const deleteMetaMutation = useDeleteAnalyticsEventMeta();
   const rebuildRollupMutation = useRebuildAnalyticsRollup();
   const saveSettingsMutation = useSaveSettings('analytics');
-  const canEditSettings = hasPermission('analytics:manage') && !saveSettingsMutation.isPending;
+  const canEditSettings = canManage && !saveSettingsMutation.isPending;
   const metaModal = useEditModal<AnalyticsEventMeta, EventMetaFormValues, EventMetaPayload>({
     entityName: '事件字典',
     save: saveMetaMutation,
@@ -445,7 +446,7 @@ export default function AnalyticsDataPage() {
     createOperationColumn<AnalyticsEventMeta>({
       width: 150,
       desktopInlineKeys: ['edit', 'delete'],
-      actions: (record) => [
+      actions: (record) => canManage ? [
         {
           key: 'edit',
           label: '编辑',
@@ -459,7 +460,7 @@ export default function AnalyticsDataPage() {
             void openMetaDeleteConfirm(record);
           },
         },
-      ],
+      ] : [],
     }),
   ];
 
@@ -576,8 +577,8 @@ export default function AnalyticsDataPage() {
 
     return (
       <Card>
-        <SettingsEditorTools module="analytics" editor={settingsEditor} canWrite={hasPermission('analytics:manage')} saving={saveSettingsMutation.isPending} onReload={settingsQuery.refetch} />
-        <Form labelPosition="left" labelWidth={150} disabled={!hasPermission('analytics:manage') || saveSettingsMutation.isPending}>
+        <SettingsEditorTools module="analytics" editor={settingsEditor} canWrite={canManage} saving={saveSettingsMutation.isPending} onReload={settingsQuery.refetch} />
+        <Form labelPosition="left" labelWidth={150} disabled={!canEditSettings}>
           <Form.Slot label="启用采集">
             <Switch disabled={!canEditSettings} checked={settings.enabled} onChange={(checked) => updateSettings('enabled', checked)} />
           </Form.Slot>
@@ -745,7 +746,7 @@ export default function AnalyticsDataPage() {
             </>
           )}
           <Form.Slot label=" ">
-            {hasPermission('analytics:manage') ? <Button type="primary" disabled={!settingsEditor.dirty} loading={saveSettingsMutation.isPending} onClick={() => void handleSaveSettings()}>保存</Button> : null}
+            {canManage ? <Button type="primary" disabled={!settingsEditor.dirty} loading={saveSettingsMutation.isPending} onClick={() => void handleSaveSettings()}>保存</Button> : null}
           </Form.Slot>
         </Form>
       </Card>
@@ -755,7 +756,7 @@ export default function AnalyticsDataPage() {
   const renderRollupDaysFilter = () => (
     <Select value={rollupDays} onChange={handleRollupDaysChange} optionList={ROLLUP_DAY_OPTIONS} style={{ width: 130 }} />
   );
-  const renderRebuildRollupButton = () => (
+  const renderRebuildRollupButton = () => canManage && (
     <Button type="primary" loading={rebuildRollupMutation.isPending} onClick={() => void handleRebuildRollup()}>重建聚合</Button>
   );
 
@@ -787,7 +788,7 @@ export default function AnalyticsDataPage() {
             onReset={eventList.handleReset}
             actions={
               <>
-                <ExportButton entity="analytics.events" query={eventFilterQuery} />
+                <ExportButton entity="analytics.events" query={eventFilterQuery} permission="analytics:export" />
                 {canClean ? (
                   <SplitButtonGroup>
                     <Button type="danger" theme="light" icon={<Trash2 size={14} />} loading={cleanMutation.isPending} onClick={() => handleClean(90)}>清除数据</Button>
@@ -812,7 +813,7 @@ export default function AnalyticsDataPage() {
             }
             mobileActions={(
               <>
-                <ExportButton entity="analytics.events" query={eventFilterQuery} />
+                <ExportButton entity="analytics.events" query={eventFilterQuery} permission="analytics:export" />
                 {canClean && CLEAN_DAY_OPTIONS.map((item) => (
                   <Button
                     key={item.value}
@@ -859,7 +860,7 @@ export default function AnalyticsDataPage() {
             }
             onSearch={metaList.handleSearch}
             onReset={metaList.handleReset}
-            create={<CreateButton onClick={metaModal.openCreate} />}
+            create={<CreateButton permission="analytics:manage" onClick={metaModal.openCreate} />}
             filterTitle="事件字典筛选"
           />
 

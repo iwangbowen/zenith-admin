@@ -38,6 +38,8 @@ import { EditFormModal } from '@/components/EditFormModal';
 
 export default function RolesPage() {
   const { hasPermission } = usePermission();
+  const canListDepartments = hasPermission('system:department:list');
+  const canAssignUsers = hasPermission('system:role:assign') && hasPermission('system:user:list');
   const { options: statusOptions } = useDictItems('common_status');
   const page = useListPage({
     contract: roleContract,
@@ -58,11 +60,10 @@ export default function RolesPage() {
 
   const scopeQuery = useAssignmentScope('role', menuRole?.id, menuModalVisible);
   const menuRoleDetailQuery = useRoleDetail(menuRole?.id, menuModalVisible);
-  const allUsersQuery = useAllUsers({ enabled: userModalVisible });
-  const roleUsersQuery = useRoleUsers(userRole?.id, userModalVisible);
+  const userEditorOpen = userModalVisible && canAssignUsers;
+  const allUsersQuery = useAllUsers({ enabled: userEditorOpen });
+  const roleUsersQuery = useRoleUsers(userRole?.id, userEditorOpen);
   const dataScopeRoleDetailQuery = useRoleDetail(dataScopeRole?.id, dataScopeModalVisible);
-  const deptTreeQuery = useDepartmentTree();
-  const deptTree = useMemo(() => deptTreeQuery.data ?? [], [deptTreeQuery.data]);
 
   const saveMutation = useSaveRole();
   const roleModal = useEditModal<Role, Partial<CreateRoleInput>>({
@@ -72,7 +73,14 @@ export default function RolesPage() {
     defaults: { status: 'enabled' },
     // 记录里的 null 描述在表单中视为未填
     toValues: (role) => ({ name: role.name, code: role.code, description: role.description ?? undefined, deptScopeIds: role.deptScopeIds, status: role.status }),
+    beforeSave: (values) => {
+      if (canListDepartments) return values;
+      const { deptScopeIds: _deptScopeIds, ...rest } = values;
+      return rest;
+    },
   });
+  const deptTreeQuery = useDepartmentTree({ enabled: canListDepartments && (roleModal.visible || dataScopeModalVisible || userEditorOpen) });
+  const deptTree = useMemo(() => deptTreeQuery.data ?? [], [deptTreeQuery.data]);
   const editingRole = roleModal.editing;
   const toggleStatusMutation = useSaveRole();
   const deleteMutation = useDeleteRoles();
@@ -190,13 +198,13 @@ export default function RolesPage() {
       {
         key: 'users',
         label: '分配用户',
-        hidden: !hasPermission('system:role:assign'),
+        hidden: !canAssignUsers,
         onClick: () => openUserModal(row),
       },
       {
         key: 'dataScope',
         label: '数据权限',
-        hidden: !hasPermission('system:role:update'),
+        hidden: !hasPermission('system:role:update') || !hasPermission('system:role:assign') || !canListDepartments,
         onClick: () => openDataScopeModal(row),
       },
     ],
@@ -253,7 +261,7 @@ export default function RolesPage() {
         <Form.Input field="name" label="角色名称" placeholder="请输入角色名称" rules={[{ required: true, message: '请输入角色名称' }]} />
         <Form.Input field="code" label="角色编码" placeholder="请输入角色编码" rules={[{ required: true, message: '请输入角色编码' }]} />
         <Form.Input field="description" label="描述" placeholder="请输入描述" />
-        <Form.TreeSelect
+        {canListDepartments && <Form.TreeSelect
           field="deptScopeIds"
           label="管理范围"
           placeholder="默认全员（用于工作流「角色」审批人按部门过滤）"
@@ -261,7 +269,7 @@ export default function RolesPage() {
           filterTreeNode
           treeData={departmentTreeToTreeData(deptTree)}
           style={{ width: '100%' }}
-        />
+        />}
         <Form.Select field="status" label="状态" style={{ width: '100%' }}
           disabled={editingRole?.code === 'super_admin'}
           optionList={statusOptions}
@@ -321,7 +329,7 @@ export default function RolesPage() {
       {/* 分配用户 SideSheet */}
       <SideSheet
         title={<span>分配用户 — {userRole?.name}</span>}
-        visible={userModalVisible}
+        visible={userEditorOpen}
         onCancel={() => setUserModalVisible(false)}
         width={720}
         footer={(

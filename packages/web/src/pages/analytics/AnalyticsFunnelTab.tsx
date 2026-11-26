@@ -5,6 +5,7 @@ import { Bookmark, Plus, Target, Trash2 } from 'lucide-react';
 import { DataBar } from '@/components/data-viz/DataBar';
 import { BarChart, chartOptions, makeBarSpec, useChartPalette } from '@/components/charts';
 import { useAnalyzeFunnel, useSavedFunnelReports, useSaveFunnelReport, useDeleteFunnelReport } from '@/hooks/queries/analytics';
+import { usePermission } from '@/hooks/usePermission';
 import type { AnalyticsComparison, AnalyticsSavedReport, AnalyticsSegmentPropertyFilter } from '@zenith/shared/analytics';
 import { ANALYTICS_SEGMENT_COMPARE_OP_OPTIONS } from '@zenith/shared/analytics';
 import { ComparisonPicker, DrillUsersSheet, isComparisonReady, useDrillSheet } from './AnalyticsComparison';
@@ -33,6 +34,8 @@ function buildStepProperties(step: FunnelStepDraft): AnalyticsSegmentPropertyFil
 }
 
 export default function AnalyticsFunnelTab() {
+  const { hasPermission } = usePermission();
+  const canManageReports = hasPermission('analytics:report:manage');
   const palette = useChartPalette();
   const [days, setDays] = useBehaviorDays();
   const [conversionWindowHours, setConversionWindowHours] = useState(72);
@@ -200,7 +203,7 @@ export default function AnalyticsFunnelTab() {
         <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
           <Button icon={<Plus size={14} />} onClick={addStep}>添加步骤</Button>
           <Button type="primary" icon={<Target size={14} />} loading={loading} disabled={steps.length < 2} onClick={() => void analyze()}>分析</Button>
-          <Button icon={<Bookmark size={14} />} onClick={() => setSaveVisible(true)}>保存配置</Button>
+          {canManageReports && <Button icon={<Bookmark size={14} />} onClick={() => setSaveVisible(true)}>保存配置</Button>}
           <Dropdown
             trigger="click"
             position="bottomLeft"
@@ -211,7 +214,7 @@ export default function AnalyticsFunnelTab() {
                   <Dropdown.Item key={report.id}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
                       <span style={{ flex: 1, cursor: 'pointer' }} onClick={() => loadReport(report)}>{report.name}</span>
-                      <Button
+                      {canManageReports && <Button
                         theme="borderless"
                         type="danger"
                         size="small"
@@ -224,7 +227,7 @@ export default function AnalyticsFunnelTab() {
                             successMessage: '已删除',
                           });
                         }}
-                      />
+                      />}
                     </div>
                   </Dropdown.Item>
                 ))}

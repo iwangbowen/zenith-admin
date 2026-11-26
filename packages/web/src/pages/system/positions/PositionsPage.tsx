@@ -38,14 +38,16 @@ export default function PositionsPage() {
   const { options: statusOptions } = useDictItems('common_status');
 
   // 成员管理
-  const allUsersQuery = useAllUsers();
-  const departmentsQuery = useFlatDepartments();
-  const allUsers: UserTransferUser[] = allUsersQuery.data ?? [];
-  const departments = departmentsQuery.data ?? [];
   const [memberSheetVisible, setMemberSheetVisible] = useState(false);
   const [memberPosition, setMemberPosition] = useState<Position | null>(null);
   const [memberIds, setMemberIds] = useState<number[]>([]);
-  const membersQuery = usePositionMembers(memberPosition?.id, memberSheetVisible);
+  const canManageMembers = hasPermission('system:position:update') && hasPermission('system:user:list');
+  const memberEditorOpen = memberSheetVisible && canManageMembers;
+  const allUsersQuery = useAllUsers({ enabled: memberEditorOpen });
+  const departmentsQuery = useFlatDepartments({ enabled: memberEditorOpen && hasPermission('system:department:list') });
+  const allUsers: UserTransferUser[] = allUsersQuery.data ?? [];
+  const departments = departmentsQuery.data ?? [];
+  const membersQuery = usePositionMembers(memberPosition?.id, memberEditorOpen);
   const saveMutation = useSavePosition();
   const positionModal = useEditModal<Position, PositionFormValues>({
     entityName: '岗位',
@@ -104,7 +106,7 @@ export default function PositionsPage() {
       {
         key: 'members',
         label: '成员',
-        hidden: !hasPermission('system:position:update'),
+        hidden: !canManageMembers,
         onClick: () => { void openMembers(record); },
       },
     ],
@@ -169,13 +171,14 @@ export default function PositionsPage() {
 
       <MemberAssignmentSheet
         title={`成员管理 - ${memberPosition?.name ?? ''}`}
-        visible={memberSheetVisible}
+        visible={memberEditorOpen}
         onCancel={() => setMemberSheetVisible(false)}
         users={allUsers}
         value={memberIds}
         onChange={setMemberIds}
         departments={departments}
-        canSave={membersQuery.isSuccess}
+        loading={allUsersQuery.isFetching || membersQuery.isFetching}
+        canSave={membersQuery.isSuccess && allUsersQuery.isSuccess}
         saveLoading={assignMembersMutation.isPending}
         onSave={handleSaveMembers}
       />

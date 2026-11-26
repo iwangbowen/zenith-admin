@@ -21,6 +21,7 @@ import { confirmDelete } from '@/utils/confirm';
 import { abortSubmit } from '@/lib/abort-submit';
 import { trimToNull } from './analytics-format';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { usePermission } from '@/hooks/usePermission';
 
 const PAGE_SIZE = 20;
 const defaultSearch = { name: '', status: undefined as AnalyticsExperiment['status'] | undefined };
@@ -114,6 +115,8 @@ function normalizePayload(values: ExperimentFormValues, variants: AnalyticsExper
 }
 
 export default function AnalyticsExperimentsTab() {
+  const { hasPermission } = usePermission();
+  const canManage = hasPermission('analytics:manage');
   const {
     page, pageSize, buildPagination,
     bind, bindKeyword, submittedParams: submitted,
@@ -191,18 +194,18 @@ export default function AnalyticsExperimentsTab() {
       desktopInlineKeys: ['report', 'toggle', 'edit'],
       actions: (record) => [
         { key: 'report', label: '报告', onClick: () => setReporting(record) },
-        ...(record.status === 'running'
+        ...(canManage && record.status === 'running'
           ? [{ key: 'toggle', label: '暂停', loading: pauseMutation.isPending, onClick: () => pauseMutation.mutate({ params: { id: record.id } }) }]
-          : record.status === 'draft' || record.status === 'paused'
+          : canManage && (record.status === 'draft' || record.status === 'paused')
             ? [{ key: 'toggle', label: '启动', loading: startMutation.isPending, onClick: () => startMutation.mutate({ params: { id: record.id } }) }]
             : []),
-        { key: 'edit', label: '编辑', disabled: record.status === 'completed', onClick: () => experimentModal.openEdit(record) },
+        { key: 'edit', label: '编辑', hidden: !canManage, disabled: record.status === 'completed', onClick: () => experimentModal.openEdit(record) },
         {
-          key: 'complete', label: '完成', hidden: record.status === 'running' || record.status === 'completed',
+          key: 'complete', label: '完成', hidden: !canManage || record.status === 'running' || record.status === 'completed',
           onClick: () => { Modal.confirm({ title: '确定完成该实验吗？', content: '完成后不可继续启动。', onOk: () => completeMutation.mutate({ params: { id: record.id } }) }); },
         },
         {
-          key: 'delete', label: '删除', danger: true, disabled: record.status === 'running', disabledReason: '运行中的实验不能删除',
+          key: 'delete', label: '删除', hidden: !canManage, danger: true, disabled: record.status === 'running', disabledReason: '运行中的实验不能删除',
           onClick: () => { confirmDelete({ title: '确定要删除该实验吗？', content: '删除后不可恢复', onOk: () => deleteMutation.mutate({ params: { id: record.id } }) }); },
         },
       ],
@@ -223,7 +226,7 @@ export default function AnalyticsExperimentsTab() {
         filters={<StatusSelect items={ANALYTICS_EXPERIMENT_STATUS_OPTIONS} {...bind('status')} />}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={<CreateButton onClick={experimentModal.openCreate} />}
+        create={<CreateButton permission="analytics:manage" onClick={experimentModal.openCreate} />}
       />
 
       <ConfigurableTable
