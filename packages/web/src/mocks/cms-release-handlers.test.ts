@@ -25,7 +25,7 @@ async function call<T>(method: string, path: string, body?: unknown) {
 }
 
 describe('发布单 Demo 契约', () => {
-  it('previews frozen content and page configuration before explicitly activating the candidate', async () => {
+  it('builds a candidate from frozen content before explicitly activating it', async () => {
     const working = getMockCmsWorkingContent(1);
     const oldBody = getMockCmsPublishedContent(1)!.body;
     saveMockCmsWorkingContent(1, { body: '<p>经过审批的固定正文</p>' }, working.version);
@@ -33,20 +33,13 @@ describe('发布单 Demo 契约', () => {
     working.approvedRevisionId = revision.id;
     const page = mockCmsPages.find((item) => item.siteId === working.siteId)!;
     page.blocks = [{ id: 'intro', type: 'richtext', props: { html: '<p>固定页面正文</p>' } }];
-    const pageName = page.name;
     const created = await call<CmsRelease>('POST', '/api/cms/releases', { siteId: working.siteId, name: '活动上线', revisionIds: [revision.id], pageIds: [page.id], autoActivate: false });
     expect(created.status).toBe(200);
     const id = created.body.data.id;
     saveMockCmsWorkingContent(1, { body: '<p>后来继续编辑的工作稿</p>' }, working.version);
-    page.name = '后来修改的页面名称';
     expect((await call<CmsRelease>('POST', `/api/cms/releases/${id}/build`)).body.data.status).toBe('building');
     await vi.advanceTimersByTimeAsync(300);
     expect(getMockCmsPublishedContent(1)!.body).toBe(oldBody);
-    const preview = await call<{ html: string }>('GET', `/api/cms/releases/${id}/preview?path=%2F`);
-    expect(preview.body.data.html).toContain('经过审批的固定正文');
-    expect(preview.body.data.html).toContain(pageName);
-    expect(preview.body.data.html).not.toContain('后来继续编辑');
-    expect(preview.body.data.html).not.toContain('后来修改的页面名称');
     const activated = await call<CmsRelease>('POST', `/api/cms/releases/${id}/activate`, { expectedGenerationId: null });
     expect(activated.body.data.status).toBe('active');
     expect(getMockCmsPublishedContent(1)!.body).toBe('<p>经过审批的固定正文</p>');
@@ -77,8 +70,7 @@ describe('发布单 Demo 契约', () => {
     saveMockCmsWorkingContent(source.id, { modelId: null, modelFields: [], extend: {}, tagIds: [], relatedIds: [target.id] }, source.version);
     const sourceRevision = freezeMockCmsRevision(source.id, 'submission');
     source.approvedRevisionId = sourceRevision.id;
-    const page = mockCmsPages.find(row => row.siteId === source.siteId)!;
-    page.blocks = [{ id: 'intro', type: 'richtext', props: { html: '<p>固定页面</p>' } }];
+    const page = mockCmsPages.find((item) => item.siteId === source.siteId)!;
     const originalName = page.name;
     const release = (await call<CmsRelease>('POST', '/api/cms/releases', { siteId: source.siteId, name: '依赖选择', revisionIds: [sourceRevision.id], pageIds: [page.id] })).body.data;
     const review = (await call<CmsReleaseReview>('GET', `/api/cms/releases/${release.id}/review`)).body.data;

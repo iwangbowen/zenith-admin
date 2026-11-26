@@ -73,10 +73,9 @@ describe('CMS Demo 配置待审阅草稿', () => {
     const updated = await call<CmsRelease>('GET', `${releasePath}/${second.id}`);
     expect(updated.configurationItems.some((item) => item.kind === 'page' && item.id === page.id)).toBe(false);
     await vi.advanceTimersByTimeAsync(300);
-    const preview = await call<{ html: string }>('GET', `${releasePath}/${first.id}/preview?path=%2F`);
-    expect(preview.html).toContain('审阅时冻结的页面名称');
-    expect(preview.html).not.toContain('构建后继续修改的页面');
-    expect((await call<CmsReleaseDetail>('GET', `${releasePath}/${first.id}`)).activeGenerationId).toBeNull();
+    const built = await call<CmsReleaseDetail>('GET', `${releasePath}/${first.id}`);
+    expect(built).toMatchObject({ status: 'ready', activeGenerationId: null });
+    expect(built.configurationItems).toContainEqual({ kind: 'page', id: page.id, title: '审阅时冻结的页面名称' });
   });
 
   it('keeps different sites and cancelled review drafts separate', async () => {

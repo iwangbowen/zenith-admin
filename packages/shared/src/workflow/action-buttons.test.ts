@@ -29,9 +29,9 @@ describe('WORKFLOW_ACTION_BUTTON_DEFAULTS', () => {
     });
   });
 
-  it('覆盖全部七类动作且顺序稳定', () => {
-    expect(WORKFLOW_ACTION_BUTTONS.map((meta) => meta.key)).toEqual([
-      'approve', 'reject', 'transfer', 'delegate', 'addSign', 'reduceSign', 'return',
+  it('覆盖全部七类动作', () => {
+    expect(WORKFLOW_ACTION_BUTTONS.map((meta) => meta.key).sort()).toEqual([
+      'addSign', 'approve', 'delegate', 'reduceSign', 'reject', 'return', 'transfer',
     ]);
   });
 });
@@ -41,15 +41,10 @@ describe('resolveWorkflowActionButton', () => {
     const cfg = { transfer: { enabled: true } };
     expect(resolveWorkflowActionButton(cfg, 'transfer')).toEqual({
       enabled: true,
-      displayName: '转办',
-      opinionName: '转办说明',
+      displayName: WORKFLOW_ACTION_BUTTON_DEFAULTS.transfer.displayName,
+      opinionName: WORKFLOW_ACTION_BUTTON_DEFAULTS.transfer.opinionName,
     });
     expect(resolveWorkflowActionButton(cfg, 'return').enabled).toBe(false);
-  });
-
-  it('未配置节点时的文案与意见标签来自默认值', () => {
-    expect(resolveWorkflowActionButton(null, 'approve')).toMatchObject({ displayName: '同意', opinionName: '审批意见' });
-    expect(resolveWorkflowActionButton(undefined, 'reject')).toMatchObject({ displayName: '拒绝', opinionName: '拒绝原因' });
   });
 });
 

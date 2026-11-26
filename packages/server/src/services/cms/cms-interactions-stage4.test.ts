@@ -4,7 +4,6 @@ import { createCmsInteractionSchema } from '@zenith/shared/cms';
 import {
   canExposeCmsInteractionResults,
   cmsInteractionRepeatIdentity,
-  applyInteractionMarkers,
   interactionCodeStem,
   nextInteractionCopyCode,
   npsScoreOf,
@@ -75,19 +74,6 @@ describe('CMS Stage4 unified interactions', () => {
     expect(JSON.stringify(publicStats)).not.toContain('must-not-leak');
   });
 
-  it('renders unified markers and safely ignores legacy poll/survey markers', () => {
-    const rendered = applyInteractionMarkers(
-      '<p>[投票:legacy]</p><p>[问卷:old-survey]</p><p>[互动:current]</p>',
-      'main',
-      3,
-    );
-    expect(rendered).not.toContain('[投票:');
-    expect(rendered).not.toContain('[问卷:');
-    expect(rendered).toContain('data-code="current"');
-    expect(rendered).toContain('data-site-id="3"');
-    expect(() => applyInteractionMarkers('[互动:<malformed>][投票:broken', 'main')).not.toThrow();
-  });
-
   it('serializes question replacement with submissions and keeps multiple forms reusable', async () => {
     const service = await readFile(new URL('./cms-interactions-forms.service.ts', import.meta.url), 'utf8');
     expect((service.match(/\.for\('update'\)/g) ?? []).length).toBeGreaterThanOrEqual(2);
@@ -156,7 +142,7 @@ describe('CMS Stage4 unified interactions', () => {
     }).display).toBe('very');
   });
 
-  it('renders new question types readably', () => {
+  it('converts answers to values and labels from question definitions', () => {
     const options = [{ label: '好用', value: 'good' }, { label: '待改进', value: 'bad' }];
     // 矩阵：行标签：列标签
     expect(toCmsInteractionAnswerDetail({

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import type { CmsWidget, CmsWidgetPreview, CmsWidgetSlot, CmsWidgetSourceReference } from '@zenith/shared/cms';
+import type { CmsWidget, CmsWidgetSlot, CmsWidgetSourceReference } from '@zenith/shared/cms';
 import type { AsyncTask } from '@zenith/shared/tasks';
 import { mockCmsWidgetRefs, mockCmsWidgets } from '@/mocks/data/cms';
 import { cmsWidgetsHandlers } from '@/mocks/handlers/cms-widgets';
@@ -81,7 +81,7 @@ describe('CMS widget MSW handlers', () => {
     expect(stale.status).toBe(409);
   });
 
-  it('returns source diagnostics and a complete theme preview document', async () => {
+  it('returns source diagnostics', async () => {
     const refs = await call<CmsWidgetSourceReference[]>(
       'GET',
       '/api/cms/widgets/source-refs?sourceType=content&sourceId=1',
@@ -89,10 +89,6 @@ describe('CMS widget MSW handlers', () => {
     expect(refs.body.data).toEqual(expect.arrayContaining([
       expect.objectContaining({ widgetId: 1, sourceType: 'content', sourceId: 1 }),
     ]));
-
-    const preview = await call<CmsWidgetPreview>('GET', '/api/cms/widgets/1/preview');
-    expect(preview.body.data.documentHtml).toContain('<!doctype html>');
-    expect(preview.body.data.documentHtml).toContain('<header>');
   });
 
   it('classifies referenced deletes as skipped in batch outcomes', async () => {

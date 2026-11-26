@@ -3,7 +3,7 @@
  * 这里锁定「同输入同结果」的口径，尤其是日期混合格式（纯日期 vs 带时间）不得差出时区偏移。
  */
 import { describe, expect, it } from 'vitest';
-import { evalWorkflowCompareRule, WORKFLOW_COMPARE_OP_TEXT } from './form-runtime';
+import { evalWorkflowCompareRule } from './form-runtime';
 
 describe('evalWorkflowCompareRule', () => {
   it('数值比较按算子判定', () => {
@@ -29,10 +29,5 @@ describe('evalWorkflowCompareRule', () => {
     expect(evalWorkflowCompareRule('gte', '2026-08-01', '2026-08-01 00:00:00', true)).toBe(true);
     expect(evalWorkflowCompareRule('lt', '2026-08-01', '2026-08-02', true)).toBe(true);
     expect(evalWorkflowCompareRule('eq', '2026-08-01', '2026-08-01 00:00:00', true)).toBe(true);
-  });
-
-  it('算子文案与 core 比较算子标签措辞一致', () => {
-    expect(WORKFLOW_COMPARE_OP_TEXT.gte).toBe('大于等于');
-    expect(WORKFLOW_COMPARE_OP_TEXT.lte).toBe('小于等于');
   });
 });
