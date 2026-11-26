@@ -126,6 +126,7 @@ export default withMermaid(defineConfig({
           { text: 'PWA 支持', link: '/guide/pwa' },
           { text: 'Electron 客户端', link: '/guide/electron' },
           { text: '项目维护', link: '/guide/contributing' },
+          { text: '文档维护规范', link: '/guide/documentation-standards' },
           { text: 'Demo 演示模式', link: '/guide/demo-mode' },
         ],
       },

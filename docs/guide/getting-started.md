@@ -1,6 +1,6 @@
 # 快速开始
 
-Zenith Admin 是基于 **Hono v4 + React 19 + Drizzle ORM** 的 npm monorepo 项目，当前版本为 `1.90.0`。本页用于把本地开发环境跑通；生产部署请看 [部署说明](./deployment.md) 与 [Docker 部署](./docker.md)。
+Zenith Admin 是基于 **Hono v4 + React 19 + Drizzle ORM** 的 npm monorepo 项目。本页用于把本地开发环境跑通；生产部署请看 [部署说明](./deployment.md) 与 [Docker 部署](./docker.md)。文档站首页会根据根 `package.json` 显示当前版本。
 
 ## 环境要求
 
