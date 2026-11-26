@@ -5,12 +5,14 @@ import { accessScopeKey } from '@zenith/shared/identity';
 import { ALL_PERMISSIONS } from '@zenith/shared/permissions';
 import { db } from '../../db';
 import type { DbExecutor } from '../../db/types';
-import { users, roles, userRoles, roleMenus, menus, userGroups, userGroupRoles, userGroupMembers, identityRoleVersions, identityUserPermissions } from '../../db/schema';
+import { users, roles, userRoles, roleMenus, userGroups, userGroupRoles, userGroupMembers, identityRoleVersions, identityUserPermissions } from '../../db/schema';
 import { currentUser } from '../../lib/context';
 import { exactTenantCondition } from '../../lib/tenant';
 import { getUserPermissions, runWithFreshUserPermissions } from '../../lib/permissions';
 import { loadEffectiveAccessPolicies } from './access-policy.service';
 import { getDataScopeCondition } from '../../lib/data-scope';
+import { availableNavigation, getPageReadCode, isPermissionAvailable, readPageAccessRows } from '../../lib/page-access';
+import { getTenantPackageFeatureSet } from '../../lib/tenant-package';
 
 /** All authority writers use the same tenant lock, including automatic provisioning. */
 export async function lockIdentityAuthority(tx: DbExecutor, tenantId: number | null) {
@@ -48,7 +50,7 @@ export async function assertGrantableRoles(tx: DbExecutor, roleIds: readonly num
   const ids = [...new Set(roleIds)];
   if (!ids.length) return [];
   const rows = await tx.query.roles.findMany({ where: and(inArray(roles.id, ids), exactTenantCondition(roles.tenantId, tenantId), eq(roles.status, 'enabled')),
-    with: { roleMenus: { with: { menu: true } } } });
+    with: { roleMenus: { columns: { menuId: true } } } });
   if (rows.length !== ids.length) throw new HTTPException(400, { message: '角色不存在、已停用或不属于目标租户' });
   return rows;
 }
@@ -58,26 +60,41 @@ export async function assertAutomaticRolesAllowed(tx: DbExecutor, roleIds: reado
   await lockIdentityAuthority(tx, tenantId);
   const rows = await assertGrantableRoles(tx, roleIds, tenantId);
   if (rows.some(role => ['super_admin', 'tenant_admin', 'security_admin'].includes(role.code))) throw new HTTPException(403, { message: '自动配置不允许授予管理身份' });
-  const codes = [...new Set(rows.flatMap(role => role.permissionCodes))];
+  const { codes } = await validateGrantScope(tx, tenantId, rows.flatMap(role => role.roleMenus.map(page => page.menuId)), rows.flatMap(role => role.permissionCodes));
   const policies = await loadEffectiveAccessPolicies(codes, tenantId, tx);
   if (policies.some(policy => policy.riskLevel !== 'low' || !policy.enabled || policy.mfaRequired)) throw new HTTPException(403, { message: '自动配置仅允许审定的基础权限，高危或治理能力须独立授予' });
   return rows;
 }
 
+/** Validate both sides of a grant against the same target tenant. */
+export async function validateGrantScope(tx: DbExecutor, tenantId: number | null, menuIds: readonly number[], explicitCodes: readonly string[]) {
+  const ids = [...new Set(menuIds)];
+  const [features, navigation] = await Promise.all([
+    getTenantPackageFeatureSet(tenantId, tx),
+    ids.length ? readPageAccessRows(tx) : [],
+  ]);
+  const candidates = new Map(availableNavigation(navigation, features, tenantId === null).map(page => [page.id, page]));
+  const pages = ids.map(id => {
+    const page = candidates.get(id);
+    if (page?.type !== 'menu') throw new HTTPException(400, { message: '页面不存在、已停用或超出租户套餐范围' });
+    return page;
+  });
+  const codes = [...new Set([...explicitCodes, ...pages.flatMap(page => getPageReadCode(page) ?? [])])];
+  for (const code of codes) {
+    if (!Object.hasOwn(ALL_PERMISSIONS, code)) throw new HTTPException(400, { message: `权限目录未登记 ${code}` });
+    if (!isPermissionAvailable(code, features)) throw new HTTPException(400, { message: `权限 ${code} 超出租户套餐范围` });
+  }
+  return { pages, codes };
+}
+
 export async function assertAuthorityGrant(tx: DbExecutor, input: { tenantId: number | null; permission: Permission; beneficiaryIds?: readonly number[]; roleIds?: readonly number[]; menuIds?: readonly number[]; permissionCodes?: readonly string[] }) {
   const actor = await assertAuthorityActor(tx, input.tenantId, input.permission, input.beneficiaryIds);
   const roleRows = await assertGrantableRoles(tx, input.roleIds ?? [], input.tenantId);
-  const ids = [...new Set(input.menuIds ?? [])];
-  const menuRows = ids.length ? await tx.select().from(menus).where(inArray(menus.id, ids)) : [];
-  if (menuRows.length !== ids.length || menuRows.some(menu => menu.status !== 'enabled')) throw new HTTPException(400, { message: '存在无效或停用的菜单' });
-  const codes = [...new Set([
-    ...menuRows.flatMap(menu => menu.permission ? [menu.permission] : []),
-    ...(input.permissionCodes ?? []),
-    ...roleRows.flatMap(role => role.permissionCodes),
-  ])];
-  for (const code of codes) if (!ALL_PERMISSIONS[code]) throw new HTTPException(400, { message: `权限目录未登记 ${code}` });
-  const policies = await loadEffectiveAccessPolicies(codes, input.tenantId, tx);
+  const { codes } = await validateGrantScope(tx, input.tenantId,
+    [...(input.menuIds ?? []), ...roleRows.flatMap(role => role.roleMenus.map(page => page.menuId))],
+    [...(input.permissionCodes ?? []), ...roleRows.flatMap(role => role.permissionCodes)]);
   if (!actor.platform) {
+    const policies = await loadEffectiveAccessPolicies(codes, input.tenantId, tx);
     if (roleRows.some(role => ['super_admin', 'tenant_admin', 'security_admin'].includes(role.code))) throw new HTTPException(403, { message: '管理身份只能由平台管理员任命' });
     if (policies.some(policy => policy.riskLevel !== 'low' || !policy.enabled)) throw new HTTPException(409, { message: '高危或治理能力不能通过普通直授获得，请使用独立审批或管理员任命' });
     if (codes.some(code => !actor.owned.includes(code))) throw new HTTPException(403, { message: '所授予的能力超出当前管理员可委派范围' });
@@ -115,12 +132,11 @@ export async function replaceUserRoles(tx: DbExecutor, userId: number, roleIds: 
 }
 
 export async function replaceRolePermissions(tx: DbExecutor, roleId: number, menuIds: readonly number[], permissionCodes: readonly string[], tenantId: number | null) {
+  await lockIdentityAuthority(tx, tenantId);
   await assertAuthorityGrant(tx, { tenantId, permission: 'system:role:assign', beneficiaryIds: await roleBeneficiaries(tx, roleId), menuIds, permissionCodes });
-  const rows = menuIds.length ? await tx.select({ id: menus.id, type: menus.type, permission: menus.permission }).from(menus).where(inArray(menus.id, [...menuIds])) : [];
-  const codes = [...new Set([...rows.flatMap(row => row.permission ? [row.permission] : []), ...permissionCodes])].sort();
   await tx.delete(roleMenus).where(eq(roleMenus.roleId, roleId));
   if (menuIds.length) await tx.insert(roleMenus).values([...new Set(menuIds)].map(menuId => ({ roleId, menuId })));
-  await publishRoleVersion(tx, roleId, tenantId, codes, menuIds);
+  await publishRoleVersion(tx, roleId, tenantId, permissionCodes, menuIds);
 }
 
 export async function publishRoleVersion(tx: DbExecutor, roleId: number, tenantId: number | null, codes?: readonly string[], menuIds?: readonly number[]) {
@@ -143,8 +159,7 @@ export async function publishRoleVersion(tx: DbExecutor, roleId: number, tenantI
 
 export async function replaceDirectPermissions(tx: DbExecutor, userId: number, menuIds: readonly number[], permissionCodes: readonly string[], tenantId: number | null) {
   await assertAuthorityGrant(tx, { tenantId, permission: 'system:user:assign', beneficiaryIds: [userId], menuIds, permissionCodes });
-  const rows = menuIds.length ? await tx.select({ id: menus.id, type: menus.type, permission: menus.permission }).from(menus).where(inArray(menus.id, [...menuIds])) : [];
-  const codes = [...new Set([...rows.flatMap(row => row.permission ? [row.permission] : []), ...permissionCodes])];
+  const codes = [...new Set(permissionCodes)];
   const existing = await tx.query.identityUserPermissions.findMany({ where: eq(identityUserPermissions.userId, userId) });
   const removed = existing.filter(item => !codes.includes(item.permissionCode)).map(item => item.id);
   const added = codes.filter(code => !existing.some(item => item.permissionCode === code));

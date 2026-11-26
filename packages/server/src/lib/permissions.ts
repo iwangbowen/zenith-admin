@@ -1,20 +1,21 @@
 import { eq, inArray } from 'drizzle-orm';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { DbExecutor } from '../db/types';
-import { SUPER_ADMIN_CODE } from '@zenith/shared/identity';
+import { SUPER_ADMIN_CODE, type DataScope } from '@zenith/shared/identity';
 import { db } from '../db';
 import { users, identityAccessGrants, identityAccessGrantItems } from '../db/schema';
 import { onInvalidate, onInvalidationReset, invalidationBusState } from './invalidation-bus';
 import { sendToUser } from './ws-manager';
-import { availablePermissionCodes } from '../services/identity/permission-catalog.service';
-import { enabledGroupRolesWith, extractEnabledGroupRoles } from './user-group-access';
+import { enabledGroupRolesWith } from './user-group-access';
+import { availableNavigation, getPageReadCode, isPermissionAvailable, readPageAccessRows } from './page-access';
+import { getTenantPackageFeatureSet } from './tenant-package';
 import { config } from '../config';
 import redis from './redis';
 
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 const CACHE_TTL_SECONDS = 300;
 /** Redis key：{prefix}perm:{userId}，与 session/blacklist 同一命名空间 */
-const PERM_CACHE_PREFIX = `${config.redis.keyPrefix}perm:`;
+const PERM_CACHE_PREFIX = `${config.redis.keyPrefix}perm:access:`;
 const PERM_GENERATION_KEY = `${config.redis.keyPrefix}perm-generation`;
 let cacheResetRequired = false;
 
@@ -23,21 +24,44 @@ async function readPermissionGeneration(userId: number): Promise<string> {
   return `${global ?? '0'}:${personal ?? '0'}`;
 }
 
-interface CacheEntry {
-  permissions: string[];
+interface AccessSource {
+  kind: 'role' | 'group' | 'direct' | 'approval';
+  label: string;
+  dataScope: DataScope;
+  deptScopeIds: number[];
+  permissionCodes: string[];
+  explicitPermissionCodes: string[];
   menuIds: number[];
-  timestamp: number;
-  generation: string;
-  /** 下一个临时授权时间边界；到达后不能继续使用旧缓存 */
-  nextPermissionBoundaryAt: number | null;
+  grantItem?: { grantId: number; grantItemId: number; expiresAt: string | null };
 }
 
-const freshPermissionStore = new AsyncLocalStorage<{ userId: number; permissions: string[] }>();
+interface EffectiveUserAccess {
+  permissions: string[];
+  menuIds: number[];
+  nextPermissionBoundaryAt: number | null;
+  departmentId: number | null;
+  userDataScope: DataScope | null;
+  userDeptScopeIds: number[];
+  superAdmin: boolean;
+  sources: AccessSource[];
+}
+
+interface CacheEntry extends EffectiveUserAccess {
+  timestamp: number;
+  generation: string;
+}
+
+const emptyAccess: EffectiveUserAccess = {
+  permissions: [], menuIds: [], nextPermissionBoundaryAt: null,
+  departmentId: null, userDataScope: null, userDeptScopeIds: [], superAdmin: false, sources: [],
+};
+
+const freshPermissionStore = new AsyncLocalStorage<{ userId: number; executor: DbExecutor; access: EffectiveUserAccess }>();
 
 /** Background delivery guards must not reuse a permissions snapshot taken before revocation. */
 export async function runWithFreshUserPermissions<T>(userId: number, work: () => Promise<T>, executor: DbExecutor = db): Promise<T> {
-  const { permissions } = await fetchUserPermissionData(userId, executor, true);
-  return freshPermissionStore.run({ userId, permissions }, work);
+  const access = await fetchUserPermissionData(userId, executor);
+  return freshPermissionStore.run({ userId, executor, access }, work);
 }
 
 function isCacheEntryValid(entry: CacheEntry | null | undefined): entry is CacheEntry {
@@ -97,68 +121,119 @@ export function isSuperAdmin(user: { roles: string[]; tenantId?: number | null }
 }
 
 export async function getUserPermissions(userId: number): Promise<string[]> {
-  const fresh = freshPermissionStore.getStore();
-  if (fresh?.userId === userId) return fresh.permissions;
-  return (await loadPermissionData(userId)).permissions;
+  return (await getUserEffectiveAccess(userId)).permissions;
 }
 
 export async function getUserMenuIds(userId: number): Promise<number[]> {
-  return (await loadPermissionData(userId)).menuIds;
+  return (await getUserEffectiveAccess(userId)).menuIds;
 }
 
 export async function getUserPermissionBoundary(userId: number): Promise<number | null> {
-  return (await loadPermissionData(userId)).nextPermissionBoundaryAt;
+  return (await getUserEffectiveAccess(userId)).nextPermissionBoundaryAt;
 }
 
-async function fetchUserPermissionData(userId: number, executor: DbExecutor = db, _fresh = false): Promise<{ permissions: string[]; menuIds: number[]; nextPermissionBoundaryAt: number | null }> {
+export async function getUserEffectiveAccess(userId: number, executor?: DbExecutor): Promise<EffectiveUserAccess> {
+  const fresh = freshPermissionStore.getStore();
+  if (fresh?.userId === userId && (!executor || fresh.executor === executor)) return fresh.access;
+  return executor && executor !== db ? fetchUserPermissionData(userId, executor) : loadPermissionData(userId);
+}
+
+const roleAccess = {
+  columns: { name: true, code: true, tenantId: true, permissionCodes: true, dataScope: true, status: true },
+  with: { roleMenus: { columns: { menuId: true } }, deptScopes: { columns: { deptId: true } } },
+} as const;
+
+async function fetchUserPermissionData(userId: number, executor: DbExecutor = db): Promise<EffectiveUserAccess> {
   const now = new Date();
   const user = await executor.query.users.findFirst({
-    where: eq(users.id, userId), columns: { tenantId: true, status: true },
+    where: eq(users.id, userId), columns: { tenantId: true, status: true, departmentId: true, userDataScope: true },
     with: {
-      userRoles: { with: { role: { columns: { permissionCodes: true, status: true }, with: { roleMenus: { with: { menu: { columns: { id: true, permission: true, status: true, type: true } } } } } } } },
-      directPermissions: { columns: { permissionCode: true } },
-      userMenus: { with: { menu: { columns: { id: true, permission: true, status: true, type: true } } } },
-      userGroupMembers: enabledGroupRolesWith({
-        columns: { permissionCodes: true, status: true },
-        with: { roleMenus: { with: { menu: { columns: { id: true, permission: true, status: true, type: true } } } } },
-      }),
+      userRoles: { columns: {}, with: { role: roleAccess } },
+      directPermissions: { columns: { permissionCode: true, dataScope: true, deptScopeIds: true } },
+      userMenus: { columns: { menuId: true } },
+      userDeptScopes: { columns: { deptId: true } },
+      userGroupMembers: enabledGroupRolesWith(roleAccess),
       accessGrants: {
         where: inArray(identityAccessGrants.status, ['scheduled', 'active']),
         with: {
           items: { where: inArray(identityAccessGrantItems.status, ['scheduled', 'active']) },
-          menus: { with: { menu: { columns: { id: true, permission: true, status: true, type: true } } } },
+          menus: { columns: { menuId: true } },
         },
       },
     },
   });
-  if (!user || user.status !== 'enabled') return { permissions: [], menuIds: [], nextPermissionBoundaryAt: null };
-  const granted = user.accessGrants.flatMap(grant => grant.items);
-  const active = granted.filter(item => item.startsAt <= now && (!item.expiresAt || item.expiresAt > now));
-  const nextPermissionBoundaryAt = granted.flatMap(item => [item.startsAt, item.expiresAt]).filter((date): date is Date => date !== null && date > now)
+  if (!user || user.status !== 'enabled') return emptyAccess;
+  const enabledRoles = user.userRoles.map(binding => binding.role).filter(role => role.status === 'enabled' && role.tenantId === user.tenantId);
+  const groupRoles = user.userGroupMembers.filter(({ group }) => group.status === 'enabled').flatMap(({ group }) =>
+    group.groupRoles.filter(({ role }) => role.status === 'enabled' && role.tenantId === user.tenantId).map(({ role }) => ({ role, group })));
+  const grants = user.accessGrants.filter(grant => grant.tenantId === user.tenantId);
+  const hasPages = user.userMenus.length > 0 || enabledRoles.some(role => role.roleMenus.length > 0)
+    || groupRoles.some(({ role }) => role.roleMenus.length > 0) || grants.some(grant => grant.menus.length > 0);
+  const superAdmin = user.tenantId === null && enabledRoles.some(role => role.code === SUPER_ADMIN_CODE);
+  const [features, navigation] = await Promise.all([
+    getTenantPackageFeatureSet(user.tenantId, executor === db ? undefined : executor),
+    hasPages ? readPageAccessRows(executor) : [],
+  ]);
+  const pages = new Map(availableNavigation(navigation, features, user.tenantId === null)
+    .filter(page => page.type === 'menu').map(page => [page.id, page]));
+  const canUse = (code: string) => isPermissionAvailable(code, features);
+  const sources: AccessSource[] = [];
+  const collect = (kind: AccessSource['kind'], label: string, dataScope: DataScope, deptScopeIds: number[], codes: readonly string[], pageIds: readonly number[], grantItem?: AccessSource['grantItem']) => {
+    const explicitPermissionCodes = codes.filter(canUse);
+    const permissionCodes = new Set(explicitPermissionCodes);
+    const menuIds: number[] = [];
+    for (const id of pageIds) {
+      const page = pages.get(id);
+      if (!page) continue;
+      const read = getPageReadCode(page);
+      if (read && !canUse(read)) continue;
+      if (read) permissionCodes.add(read);
+      menuIds.push(id);
+    }
+    if (kind === 'role' || kind === 'group' || menuIds.length || permissionCodes.size) {
+      sources.push({ kind, label, dataScope, deptScopeIds, explicitPermissionCodes, permissionCodes: [...permissionCodes], menuIds, grantItem });
+    }
+  };
+  for (const role of enabledRoles) {
+    collect('role', `角色：${role.name}`, role.dataScope, role.deptScopes.map(row => row.deptId), role.permissionCodes, role.roleMenus.map(row => row.menuId));
+  }
+  for (const { role, group } of groupRoles) {
+    collect('group', `角色：${role.name}（用户组：${group.name}）`, role.dataScope, role.deptScopes.map(row => row.deptId), role.permissionCodes, role.roleMenus.map(row => row.menuId));
+  }
+  collect('direct', '用户直接授权', 'self', [], [], user.userMenus.map(row => row.menuId));
+  for (const direct of user.directPermissions) {
+    collect('direct', '用户直接授权', direct.dataScope, direct.deptScopeIds, [direct.permissionCode], []);
+  }
+  const isActive = (window: { startsAt: Date; expiresAt: Date | null }) => window.startsAt <= now && (!window.expiresAt || window.expiresAt > now);
+  for (const grant of grants.filter(isActive)) {
+    const active = grant.items.filter(isActive);
+    for (const item of active) {
+      const pageIds = grant.menus.map(binding => binding.menuId).filter(id => {
+        const page = pages.get(id);
+        return page && getPageReadCode(page) === item.permissionCode;
+      });
+      collect('approval', `审批授权 #${grant.id}`, item.dataScope, item.deptScopeIds, [item.permissionCode], pageIds, {
+        grantId: grant.id, grantItemId: item.id, expiresAt: item.expiresAt?.toISOString() ?? null,
+      });
+    }
+    collect('approval', `审批授权 #${grant.id}`, 'self', [], [], grant.menus.map(row => row.menuId).filter(id => {
+      const page = pages.get(id);
+      return page && !getPageReadCode(page);
+    }));
+  }
+  const nextPermissionBoundaryAt = grants.flatMap(grant => [grant, ...grant.items])
+    .flatMap(item => [item.startsAt, item.expiresAt]).filter((date): date is Date => date !== null && date > now)
     .reduce<number | null>((boundary, date) => boundary === null ? date.getTime() : Math.min(boundary, date.getTime()), null);
-  const activeGrantMenus = user.accessGrants
-    .filter(grant => grant.status === 'active' && grant.startsAt <= now && (!grant.expiresAt || grant.expiresAt > now))
-    .flatMap(grant => grant.menus);
-  const groupRoles = extractEnabledGroupRoles(user.userGroupMembers).roles;
-  const roleMenus = user.userRoles.filter(({ role }) => role.status === 'enabled').flatMap(({ role }) => role.roleMenus);
-  const groupRoleMenus = groupRoles.flatMap(role => role.roleMenus ?? []);
-  const navigationBindings = [...user.userMenus, ...roleMenus, ...groupRoleMenus, ...activeGrantMenus]
-    .filter(({ menu }) => menu.status === 'enabled');
-  const pageReadCodes = navigationBindings
-    .map(({ menu }) => menu.permission)
-    .filter((code): code is string => typeof code === 'string' && code.length > 0);
-  const codes = [
-    ...user.userRoles.filter(({ role }) => role.status === 'enabled').flatMap(({ role }) => role.permissionCodes),
-    ...groupRoles.flatMap(role => role.permissionCodes),
-    ...pageReadCodes,
-    ...user.directPermissions.map(item => item.permissionCode), ...active.map(item => item.permissionCode),
-  ];
-  const permissions = await availablePermissionCodes(codes, user.tenantId, executor);
-  const permissionSet = new Set(permissions);
-  const explicitMenus = navigationBindings
-    .filter(({ menu }) => !menu.permission || permissionSet.has(menu.permission))
-    .map(({ menu }) => menu.id);
-  return { permissions, menuIds: [...new Set(explicitMenus)], nextPermissionBoundaryAt };
+  return {
+    permissions: [...new Set(sources.flatMap(source => source.permissionCodes))].sort(),
+    menuIds: [...new Set(sources.flatMap(source => source.menuIds))],
+    nextPermissionBoundaryAt,
+    sources,
+    departmentId: user.departmentId,
+    userDataScope: user.userDataScope,
+    userDeptScopeIds: user.userDeptScopes.map(row => row.deptId),
+    superAdmin,
+  };
 }
 
 /**

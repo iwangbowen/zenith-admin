@@ -4,13 +4,12 @@ import { eq, and, ne, inArray, notInArray, exists, type SQL } from 'drizzle-orm'
 import { hashPassword } from '../../lib/password';
 import { db } from '../../db';
 import type { DbExecutor } from '../../db/types';
-import { users, roles, departments, positions, userRoles, userPositions, userMenus, userDeptScopes, userSignatures, menus, identityUserPermissions, identityAccessGrants } from '../../db/schema';
+import { users, roles, departments, positions, userRoles, userPositions, userMenus, userDeptScopes, userSignatures, identityUserPermissions } from '../../db/schema';
 import { HTTPException } from 'hono/http-exception';
 import { exactTenantCondition, tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { reserveTenantSeats } from '../../lib/tenant-quota';
 import { enabledGroupRolesWith, extractEnabledGroupRoles } from '../../lib/user-group-access';
 import { syncUserDynamicMembershipsSafe } from './user-group-rules.service';
-import { getTenantPackageFeatureSet } from '../../lib/tenant-package';
 import { pageOffset } from '../../lib/pagination';
 import { getDataScopeCondition } from '../../lib/data-scope';
 import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
@@ -18,7 +17,7 @@ import { validatePassword } from '@zenith/shared/settings';
 import { getSettings } from '../../lib/settings';
 import { unlockUser as clearLoginChallenge, batchLoginChallengeRequired, getOnlineSessions, forceLogoutAllByUsers } from '../../lib/session-manager';
 import { batchIterable, streamToExcel, streamToCsv, formatDateTimeForExcel, type ExcelColumn } from '../../lib/excel-export';
-import { clearUserPermissionCache, getUserMenuIds, getUserPermissions } from '../../lib/permissions';
+import { clearUserPermissionCache, getUserEffectiveAccess, notifyUserPermissionsChanged } from '../../lib/permissions';
 import type { JwtPayload } from '../../middleware/auth';
 import type { AlertRecipientUser, User, CreateUserInput, UpdateUserInput } from '@zenith/shared/identity';
 import { canOverridePreference, getPreferenceValue, preferenceDefinitions, readUserPreferencesDocument, type UserPreferencesDocument } from '@zenith/shared/preferences';
@@ -640,14 +639,6 @@ export async function assignUserMenus(userId: number, menuIds: number[], permiss
   const target = await ensureUserManageable(userId);
   const uniqueMenuIds = Array.from(new Set(menuIds));
 
-  // 多租户：直授页面/能力必须落在目标用户所属租户的套餐功能范围内（与角色分配同一口径）
-  const featureSet = await getTenantPackageFeatureSet(target.tenantId);
-  if (featureSet && uniqueMenuIds.length > 0) {
-    const rows = await db.select({ featureKey: menus.featureKey }).from(menus).where(inArray(menus.id, uniqueMenuIds));
-    if (rows.some((m) => m.featureKey && !featureSet.has(m.featureKey))) {
-      throw new HTTPException(400, { message: '所选菜单超出该用户所属租户套餐功能范围，无法分配' });
-    }
-  }
   await db.transaction(async (tx) => {
     await replaceDirectPermissions(tx, userId, uniqueMenuIds, permissionCodes, target.tenantId);
     await tx.delete(userMenus).where(eq(userMenus.userId, userId));
@@ -655,7 +646,7 @@ export async function assignUserMenus(userId: number, menuIds: number[], permiss
       await tx.insert(userMenus).values(uniqueMenuIds.map((menuId) => ({ userId, menuId })));
     }
   });
-  await clearUserPermissionCache(userId);
+  await notifyUserPermissionsChanged(userId);
 }
 
 export async function assignRolesToUser(userId: number, roleIds: number[]) {
@@ -792,103 +783,55 @@ export async function updateUserDataPermission(userId: number, data: { dataScope
 
 export async function getUserEffectivePermissions(userId: number) {
   await ensureUserManageable(userId);
-  const now = new Date();
-  const user = requireRow(await db.query.users.findFirst({
-    where: eq(users.id, userId),
-    columns: { userDataScope: true },
-    with: {
-      userMenus: { columns: { menuId: true } },
-      userDeptScopes: { columns: { deptId: true } },
-      userRoles: {
-        columns: {},
-        with: {
-          role: {
-            columns: { name: true, code: true, dataScope: true, status: true, permissionCodes: true },
-            with: {
-              roleMenus: { columns: { menuId: true } },
-              deptScopes: { columns: { deptId: true } },
-            },
-          },
-        },
+  const [access, user] = await Promise.all([
+    getUserEffectiveAccess(userId),
+    db.query.users.findFirst({
+      where: eq(users.id, userId), columns: {},
+      with: {
+        userMenus: { columns: { menuId: true } },
+        directPermissions: { columns: { permissionCode: true } },
+        userGroupMembers: groupRolesWith,
       },
-      userGroupMembers: groupRolesWith,
-      accessGrants: { where: inArray(identityAccessGrants.status, ['scheduled', 'active']), columns: { id: true, status: true, startsAt: true, expiresAt: true }, with: { items: true, menus: true } },
-    },
-  }), '用户不存在');
-  const activeRoles = user.userRoles.filter(binding => binding.role.status === 'enabled');
-  const activeGrants = user.accessGrants.filter(grant => grant.startsAt <= now && (!grant.expiresAt || grant.expiresAt > now));
-  const activeItems = activeGrants.flatMap(grant => grant.items.filter(item => ['scheduled', 'active'].includes(item.status) && item.startsAt <= now && (!item.expiresAt || item.expiresAt > now)).map(item => ({ ...item, grantId: grant.id })));
-  const activeGrantMenus = activeGrants.flatMap(grant => grant.menus.map(menu => ({ ...menu, grantId: grant.id })));
-
-  const { groupMenuIds, groupDataScope, groupDeptScopeIds, groups, inheritedRoles } = extractGroupInheritance(user.userGroupMembers ?? []);
-
-  const directMenuIds = user.userMenus.map((m) => m.menuId);
-  const roleMenuIds = [...new Set(activeRoles.flatMap((ur) => ur.role.roleMenus.map((rm) => rm.menuId)))];
-  const effectiveMenuIds = await getUserMenuIds(userId);
-  const effective = new Set(effectiveMenuIds);
-  const permissionCodes = await getUserPermissions(userId);
-  const allowedCodes = new Set(permissionCodes);
-  const temporaryMenuIds = [...new Set(activeGrantMenus.map(menu => menu.menuId))];
-  const temporaryScopes = activeItems.filter(item => allowedCodes.has(item.permissionCode)).map(item => ({ grantId: item.grantId, grantItemId: item.id, permissionCode: item.permissionCode, dataScope: item.dataScope, deptScopeIds: item.deptScopeIds, expiresAt: item.expiresAt ? formatDateTime(item.expiresAt) : null }));
-  const menuSources = new Map<number, Set<string>>();
-  const permissionSources: Record<string, string[]> = {};
-  for (const code of permissionCodes) permissionSources[code] = [];
-  for (const item of activeItems) if (allowedCodes.has(item.permissionCode)) permissionSources[item.permissionCode].push(`审批授权 #${item.grantId}`);
-  const authoritative = await db.query.users.findFirst({ where: eq(users.id, userId), with: { userRoles: { with: { role: true } }, directPermissions: true, userGroupMembers: enabledGroupRolesWith({ columns: { id: true, name: true, status: true, permissionCodes: true } }) } });
-  for (const binding of authoritative?.userRoles ?? []) if (binding.role.status === 'enabled') for (const code of binding.role.permissionCodes) if (allowedCodes.has(code)) permissionSources[code].push(`角色：${binding.role.name}`);
-  for (const item of authoritative?.directPermissions ?? []) if (allowedCodes.has(item.permissionCode)) permissionSources[item.permissionCode].push('用户直接授权');
-  for (const role of extractEnabledGroupRoles(authoritative?.userGroupMembers).roles) for (const code of role.permissionCodes) if (allowedCodes.has(code)) permissionSources[code].push(`用户组继承角色：${role.name}`);
-  const addMenuSource = (menuId: number, source: string) => {
-    const sources = menuSources.get(menuId) ?? new Set<string>();
-    sources.add(source);
-    menuSources.set(menuId, sources);
-  };
-  for (const menuId of directMenuIds) addMenuSource(menuId, '用户直接授权');
-  for (const userRole of activeRoles) {
-    for (const roleMenu of userRole.role.roleMenus) addMenuSource(roleMenu.menuId, `角色：${userRole.role.name}`);
-  }
-  for (const menu of activeGrantMenus) addMenuSource(menu.menuId, `审批授权 #${menu.grantId} · 页面访问`);
-  for (const membership of user.userGroupMembers ?? []) {
-    if (membership.group.status !== 'enabled') continue;
-    for (const groupRole of membership.group.groupRoles) {
-      const role = groupRole.role;
-      if (role.status !== 'enabled') continue;
-      for (const roleMenu of role.roleMenus) {
-        addMenuSource(roleMenu.menuId, `角色：${role.name}（用户组：${membership.group.name}）`);
-      }
-    }
-  }
-  const menuSourcesResult = Object.fromEntries(
-    [...menuSources.entries()].filter(([menuId]) => effective.has(menuId)).map(([menuId, sources]) => [String(menuId), [...sources]])
-  );
-
-  const userDataScope = user.userDataScope ?? null;
-  const roleDataScope = getMostPermissiveScope(activeRoles.map((ur) => ur.role.dataScope));
-  const effectiveDataScope = getMostPermissiveScope([userDataScope, roleDataScope, groupDataScope]) ?? 'self';
-
-  const userDeptScopeIds = user.userDeptScopes.map((ds) => ds.deptId);
-  const roleDeptScopeIds = [...new Set(
-    activeRoles
-      .filter((ur) => ur.role.dataScope === 'custom')
-      .flatMap((ur) => ur.role.deptScopes.map((ds) => ds.deptId))
-  )];
+    }),
+  ]);
+  const assignment = requireRow(user, '用户不存在');
+  const { groups, inheritedRoles } = extractGroupInheritance(assignment.userGroupMembers);
+  const { permissions: permissionCodes, menuIds: effectiveMenuIds, userDataScope, userDeptScopeIds, sources } = access;
+  const roleSources = sources.filter(source => source.kind === 'role');
+  const groupSources = sources.filter(source => source.kind === 'group');
+  const temporarySources = sources.filter(source => source.kind === 'approval');
+  const sourceMenus = (items: typeof sources) => [...new Set(items.flatMap(item => item.menuIds))];
+  const sourceCodes = (items: typeof sources) => [...new Set(items.flatMap(item => item.permissionCodes))].sort();
+  const scopeDepartments = (items: typeof sources) => [...new Set(items.filter(item => item.dataScope === 'custom').flatMap(item => item.deptScopeIds))];
+  const menuSources = Object.fromEntries(effectiveMenuIds.map(id => [String(id),
+    [...new Set(sources.filter(source => source.menuIds.includes(id)).map(source => source.label))],
+  ]));
+  const permissionSources = Object.fromEntries(permissionCodes.map(code => [code,
+    [...new Set(sources.filter(source => source.permissionCodes.includes(code)).map(source =>
+      source.explicitPermissionCodes.includes(code) ? source.label : `${source.label} · 页面访问`))],
+  ]));
+  const temporaryScopes = temporarySources.flatMap(source => source.grantItem ? source.permissionCodes.map(permissionCode => ({
+    ...source.grantItem!, permissionCode, dataScope: source.dataScope, deptScopeIds: source.deptScopeIds,
+  })) : []);
+  const roleDataScope = getMostPermissiveScope(roleSources.map(source => source.dataScope));
+  const groupDataScope = getMostPermissiveScope(groupSources.map(source => source.dataScope));
+  const effectiveDataScope = getMostPermissiveScope([userDataScope, ...sources.map(source => source.dataScope)]) ?? 'self';
+  const roleDeptScopeIds = scopeDepartments(roleSources);
+  const groupDeptScopeIds = scopeDepartments(groupSources);
   const effectiveDeptScopeIds = effectiveDataScope === 'custom'
-    ? [...new Set([...(userDataScope === 'custom' ? userDeptScopeIds : []), ...roleDeptScopeIds, ...groupDeptScopeIds])]
+    ? [...new Set([...(userDataScope === 'custom' ? userDeptScopeIds : []), ...scopeDepartments(sources)])]
     : [];
 
-  const directPermissionCodes = (authoritative?.directPermissions ?? []).map(item => item.permissionCode);
-  const rolePermissionCodes = [...new Set(activeRoles.flatMap(role => role.role.permissionCodes))];
-  const groupPermissionCodes = [...new Set(extractEnabledGroupRoles(authoritative?.userGroupMembers).roles.flatMap(role => role.permissionCodes))];
   return {
-    directMenuIds,
-    roleMenuIds,
-    groupMenuIds,
+    directMenuIds: assignment.userMenus.map(item => item.menuId),
+    roleMenuIds: sourceMenus(roleSources),
+    groupMenuIds: sourceMenus(groupSources),
     effectiveMenuIds,
-    directPermissionCodes,
-    rolePermissionCodes,
-    groupPermissionCodes,
+    directPermissionCodes: [...new Set(assignment.directPermissions.map(item => item.permissionCode))],
+    rolePermissionCodes: sourceCodes(roleSources),
+    groupPermissionCodes: sourceCodes(groupSources),
     permissionCodes, permissionSources,
-    temporaryMenuIds,
+    temporaryMenuIds: sourceMenus(temporarySources),
     temporaryScopes,
     userDataScope,
     roleDataScope,
@@ -900,7 +843,7 @@ export async function getUserEffectivePermissions(userId: number) {
     effectiveDeptScopeIds,
     groups,
     inheritedRoles,
-    menuSources: menuSourcesResult,
+    menuSources,
   };
 }
 

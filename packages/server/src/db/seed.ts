@@ -153,35 +153,19 @@ async function seedRest() {
 
   // ─── 3. 角色数据（数据来源：@zenith/shared SEED_ROLES）────────────────────
   const roleRows = SEED_ROLES.map(({ id, name, code, description, status, dataScope }) => ({ id, name, code, description, status, dataScope }));
-  await db.insert(roles).overridingSystemValue().values(roleRows).onConflictDoNothing();
+  await db.transaction(async tx => {
+    const created = await tx.insert(roles).overridingSystemValue().values(roleRows).onConflictDoNothing().returning({ id: roles.id });
+    for (const { id } of created) {
+      const role = SEED_ROLES.find(item => item.id === id)!;
+      const pageIds = role.menuIds ?? [];
+      if (pageIds.length > 0) {
+        await tx.insert(roleMenus).values(pageIds.map(menuId => ({ roleId: id, menuId })));
+      }
+      await publishRoleVersion(tx, id, role.tenantId ?? null, role.permissionCodes ?? [], pageIds);
+    }
+  });
   await db.execute(sql`SELECT setval('roles_id_seq', GREATEST((SELECT MAX(id) FROM roles), 1))`);
   logger.info('  ✔ Roles seeded (onConflictDoNothing)');
-
-  // 超级管理员绑定全部菜单（联合主键去重）
-  const allMenuIds = await db.select({ id: menus.id }).from(menus);
-  if (allMenuIds.length > 0) {
-    await db.insert(roleMenus)
-      .values(allMenuIds.map((m) => ({ roleId: 1, menuId: m.id })))
-      .onConflictDoNothing();
-  }
-
-  // 其他角色按 SEED_ROLES.menuIds 绑定菜单
-  for (const role of SEED_ROLES) {
-    if (role.id === 1) continue; // 超管已全量绑定
-    if (role.menuIds && role.menuIds.length > 0) {
-      await db.insert(roleMenus)
-        .values(role.menuIds.map((menuId) => ({ roleId: role.id, menuId })))
-        .onConflictDoNothing();
-    }
-  }
-  for (const role of SEED_ROLES) {
-    const pagePermissions = SEED_MENUS.filter(menu => (role.menuIds ?? []).includes(menu.id)).flatMap(menu => menu.permission ? [menu.permission] : []);
-    const permissionCodes = role.id === 1
-      ? Object.keys(ALL_PERMISSIONS)
-      : [...new Set([...(role.permissionCodes ?? []), ...pagePermissions])];
-    await db.transaction(tx => publishRoleVersion(tx, role.id, role.tenantId ?? null, permissionCodes));
-  }
-  logger.info('  ✔ Role content and navigation seeded');
 
   // 权限治理默认策略：从共享权限注册表派生，平台级策略只补不覆盖管理员调整过的配置。
   const permissionPolicyRows = Object.entries(ALL_PERMISSIONS).map(([permissionCode, meta]) => {

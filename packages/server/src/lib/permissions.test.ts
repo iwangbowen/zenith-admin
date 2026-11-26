@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({
   findUser: vi.fn(), cache: new Map<string, string>(), bus: 'listening' as 'listening' | 'degraded',
-  navigation: [{ id: 1, parentId: 0, permission: null, status: 'enabled', type: 'directory' }, { id: 2, parentId: 1, permission: 'system:user:list', status: 'enabled', type: 'menu' }],
+  navigation: [{ id: 1, parentId: 0, permission: null as string | null, status: 'enabled', type: 'directory' }, { id: 2, parentId: 1, permission: 'system:user:list', status: 'enabled', type: 'menu' }],
   handlers: new Map<string, (message: { key?: string }) => void>(),
 }));
 vi.mock('../db', () => ({ db: { query: { users: { findFirst: state.findUser } }, select: () => ({ from: async () => state.navigation }) } }));
@@ -21,16 +21,19 @@ vi.mock('./redis', () => ({ default: {
 } }));
 
 import redis from './redis';
-import { clearUserPermissionCache, getUserMenuIds, getUserPermissions, getUserPermissionBoundary, isSuperAdmin, runWithFreshUserPermissions } from './permissions';
+import { clearUserPermissionCache, getUserEffectiveAccess, getUserMenuIds, getUserPermissions, getUserPermissionBoundary, isSuperAdmin, runWithFreshUserPermissions } from './permissions';
 
-const role = (permissionCodes: string[], status = 'enabled') => ({ role: { permissionCodes, status, roleMenus: [] } });
+const role = (permissionCodes: string[], status = 'enabled', menuIds: number[] = []) => ({ role: {
+  name: '测试角色', tenantId: null, code: 'test_role', dataScope: 'dept', deptScopes: [], permissionCodes, status, roleMenus: menuIds.map(menuId => ({ menuId })),
+} });
 function user(overrides: Record<string, unknown> = {}) {
-  return { tenantId: null, status: 'enabled', userRoles: [], userMenus: [], userGroupMembers: [], directPermissions: [], accessGrants: [], ...overrides };
+  return { tenantId: null, status: 'enabled', departmentId: null, userDataScope: null, userDeptScopes: [], userRoles: [], userMenus: [], userGroupMembers: [], directPermissions: [], accessGrants: [], ...overrides };
 }
 const now = new Date('2030-01-01T00:00:00Z');
 function item(permissionCode: string, from: number, until: number | null) {
-  return { permissionCode, status: 'active', startsAt: new Date(now.getTime() + from), expiresAt: until === null ? null : new Date(now.getTime() + until) };
+  return { id: 1, permissionCode, status: 'active', dataScope: 'self', deptScopeIds: [], startsAt: new Date(now.getTime() + from), expiresAt: until === null ? null : new Date(now.getTime() + until) };
 }
+const grant = (items: ReturnType<typeof item>[]) => ({ id: 5, tenantId: null, status: 'active', startsAt: new Date(0), expiresAt: null, items, menus: [] });
 
 beforeEach(async () => {
   vi.useRealTimers(); vi.clearAllMocks(); state.cache.clear(); state.bus = 'listening';
@@ -49,14 +52,31 @@ describe('permission source aggregation', () => {
       userRoles: [role(['system:user:list']), role(['system:user:delete'], 'disabled')],
       userGroupMembers: [{ group: { id: 1, name: '工作组', status: 'enabled', groupRoles: [role(['system:user:list', 'system:user:update'])] } }, { group: { id: 2, name: '停用组', status: 'disabled', groupRoles: [role(['system:user:create'])] } }],
       directPermissions: [{ permissionCode: 'system:role:list' }],
-      accessGrants: [{ status: 'active', items: [{ permissionCode: 'system:dict:list', status: 'active', startsAt: new Date(0), expiresAt: null }] }],
+      accessGrants: [grant([{ ...item('system:dict:list', 0, null), startsAt: new Date(0) }])],
     }));
     expect(await getUserPermissions(7)).toEqual(['system:dict:list', 'system:role:list', 'system:user:list', 'system:user:update']);
   });
-  it('explicit page grants add the page read permission, not arbitrary operation permissions', async () => {
-    state.findUser.mockResolvedValue(user({ userRoles: [role(['system:user:list'])], userMenus: [{ menu: { id: 9, permission: 'system:user:assign', status: 'enabled', type: 'menu' } }] }));
-    expect(await getUserPermissions(7)).toEqual(['system:user:assign', 'system:user:list']);
-    expect(await getUserMenuIds(7)).toEqual([9]);
+  it('projects page reads with their source scope and removes them when the last source ends', async () => {
+    state.findUser.mockResolvedValue(user({
+      userRoles: [role([], 'enabled', [2])],
+      directPermissions: [{ permissionCode: 'system:user:list', dataScope: 'self', deptScopeIds: [] }],
+    }));
+    expect((await getUserEffectiveAccess(7)).sources).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'role', dataScope: 'dept', permissionCodes: ['system:user:list'], explicitPermissionCodes: [], menuIds: [2] }),
+    ]));
+    state.findUser.mockResolvedValue(user({ directPermissions: [{ permissionCode: 'system:user:list', dataScope: 'self', deptScopeIds: [] }] }));
+    await clearUserPermissionCache(7);
+    expect(await getUserMenuIds(7)).toEqual([]);
+    expect(await getUserPermissions(7)).toEqual(['system:user:list']);
+    state.findUser.mockResolvedValue(user());
+    await clearUserPermissionCache(7);
+    expect(await getUserPermissions(7)).toEqual([]);
+  });
+  it('filters reads from pages under disabled ancestors', async () => {
+    state.navigation[0].status = 'disabled';
+    state.findUser.mockResolvedValue(user({ userMenus: [{ menuId: 2 }] }));
+    expect(await getUserMenuIds(7)).toEqual([]);
+    expect(await getUserPermissions(7)).toEqual([]);
   });
   it('operation permissions do not project menus unless the page is explicitly granted', async () => {
     state.findUser.mockResolvedValue(user({ userRoles: [role(['system:user:list', 'unregistered:capability'])] }));
@@ -65,7 +85,7 @@ describe('permission source aggregation', () => {
   });
   it('re-evaluates both activation and expiry at the exact time boundary', async () => {
     vi.useFakeTimers(); vi.setSystemTime(now);
-    state.findUser.mockResolvedValue(user({ accessGrants: [{ status: 'active', items: [item('system:user:list', 1000, 2000)] }] }));
+    state.findUser.mockResolvedValue(user({ accessGrants: [grant([item('system:user:list', 1000, 2000)])] }));
     expect(await getUserPermissions(7)).toEqual([]);
     expect(await getUserPermissionBoundary(7)).toBe(now.getTime() + 1000);
     vi.setSystemTime(now.getTime() + 1000);

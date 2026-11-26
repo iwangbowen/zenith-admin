@@ -1,5 +1,5 @@
 import type { Department, DirectorySyncSource, Position, Role, Tenant, TenantPackage } from '../identity/contracts';
-import { CMS_RAW_EXPORT_PERMISSIONS, CMS_ROOT_MENU_ID, DRIVE_ROOT_MENU_ID, DRIVE_WORKBENCH_MENU_ID, SEED_MENUS, WIKI_DOC_CENTER_MENU_ID, WIKI_ROOT_MENU_ID, collectMenuSubtreeIds, permissionCodesForPageIds } from './menus';
+import { CMS_RAW_EXPORT_PERMISSIONS, CMS_ROOT_MENU_ID, DRIVE_WORKBENCH_MENU_ID, SEED_MENUS, WIKI_DOC_CENTER_MENU_ID, collectMenuSubtreeIds, explicitPermissionCodesForPageIds } from './menus';
 import { SEED_DATE } from './_base';
 import { ALL_PERMISSIONS } from '../permissions';
 
@@ -7,28 +7,23 @@ import { ALL_PERMISSIONS } from '../permissions';
  * 知识中心「只读」菜单集：文档中心子树的页面节点。
  * 写权限（新增/编辑/删除/发布/移动）由管理员按需显式分配，空间成员角色是服务端兜底。
  */
-const WIKI_READONLY_MENU_IDS: number[] = [
-  WIKI_ROOT_MENU_ID,
-  ...collectMenuSubtreeIds(WIKI_DOC_CENTER_MENU_ID),
-];
+const WIKI_READONLY_MENU_IDS = collectMenuSubtreeIds(WIKI_DOC_CENTER_MENU_ID);
 
 /**
  * 企业网盘「个人使用」菜单集：工作台页面 + 个人空间操作权限。
  * 外链分享、彻底删除、协作空间创建与治理权限由管理员按需显式分配，节点 ACL 仍是服务端兜底。
  */
 const DRIVE_PERSONAL_PERMISSIONS: readonly string[] = [
-  'drive:node:list', 'drive:node:upload', 'drive:node:download', 'drive:node:edit', 'drive:node:delete',
+  'drive:node:upload', 'drive:node:download', 'drive:node:edit', 'drive:node:delete',
   'drive:node:grant', 'drive:recycle:list', 'drive:recycle:restore',
 ];
-const DRIVE_PERSONAL_MENU_IDS: number[] = [
-  DRIVE_ROOT_MENU_ID,
-  ...collectMenuSubtreeIds(DRIVE_WORKBENCH_MENU_ID),
-];
+const DRIVE_PERSONAL_MENU_IDS = collectMenuSubtreeIds(DRIVE_WORKBENCH_MENU_ID);
 
-const WORKFLOW_SELF_MENU_NAMES = new Set(['Workflow', 'WorkflowApprovalCenter', 'WorkflowLaunchpad', 'MyApplications', 'WorkflowCcToMe']);
-const WORKFLOW_SELF_PERMISSIONS = new Set(['workflow:instance:create', 'workflow:instance:list']);
+const WORKFLOW_SELF_MENU_NAMES = new Set(['WorkflowLaunchpad', 'MyApplications', 'WorkflowCcToMe']);
+const WORKFLOW_SELF_PERMISSIONS = ['workflow:instance:create'];
 const WORKFLOW_SELF_MENU_IDS = SEED_MENUS.filter(menu => WORKFLOW_SELF_MENU_NAMES.has(menu.name ?? '')).map(menu => menu.id);
-const CMS_PAGE_IDS = collectMenuSubtreeIds(CMS_ROOT_MENU_ID);
+const CMS_SUBTREE_IDS = new Set(collectMenuSubtreeIds(CMS_ROOT_MENU_ID));
+const CMS_PAGE_IDS = SEED_MENUS.filter(menu => menu.type === 'menu' && CMS_SUBTREE_IDS.has(menu.id)).map(menu => menu.id);
 
 // ─── 角色 ─────────────────────────────────────────────────────────────────────
 
@@ -42,7 +37,7 @@ export const SEED_ROLES: Role[] = [
     status: 'enabled',
     createdAt: SEED_DATE,
     updatedAt: SEED_DATE,
-    menuIds: SEED_MENUS.map((m) => m.id),
+    menuIds: SEED_MENUS.filter(menu => menu.type === 'menu').map(menu => menu.id),
     permissionCodes: Object.keys(ALL_PERMISSIONS),
   },
   {
@@ -75,7 +70,7 @@ export const SEED_ROLES: Role[] = [
     updatedAt: SEED_DATE,
     // 首页 + CMS 子树 + 个人中心（改密码）+ 公告中心 / 站内信（收公告与审稿 / 退回通知）
     menuIds: [1, 11, 12, 13, ...CMS_PAGE_IDS],
-    permissionCodes: permissionCodesForPageIds(CMS_PAGE_IDS, CMS_RAW_EXPORT_PERMISSIONS),
+    permissionCodes: explicitPermissionCodesForPageIds(CMS_PAGE_IDS, CMS_RAW_EXPORT_PERMISSIONS),
   },
 ];
 

@@ -19,8 +19,9 @@ function mockUser(departmentId: number | null, roles: MockRole[]) {
   return {
     departmentId,
     userDataScope: null,
-    userDeptScopes: [],
-    userRoles: roles.map((role) => ({ role: { tenantId: null, status: 'enabled', ...role } })),
+    userDeptScopeIds: [],
+    sources: roles.map((role) => ({ kind: 'role', dataScope: role.dataScope, permissionCodes: [], deptScopeIds: [] })),
+    superAdmin: roles.some(role => role.code === 'super_admin' && (role.tenantId ?? null) === null),
   };
 }
 
@@ -53,6 +54,9 @@ vi.mock('../db', () => ({
       users: { findFirst: vi.fn() },
     },
   },
+}));
+vi.mock('./permissions', () => ({
+  getUserEffectiveAccess: (_userId: number, executor: typeof db) => executor.query.users.findFirst(),
 }));
 
 const dbMock = vi.mocked(db) as unknown as {
@@ -194,7 +198,7 @@ describe('user-level data scope overrides', () => {
     dbMock.query.users.findFirst.mockResolvedValueOnce({
       ...mockUser(1, [{ dataScope: 'self', code: 'operator' }]),
       userDataScope: 'dept',
-      userDeptScopes: [],
+      userDeptScopeIds: [],
     });
     dbMock.select.mockReturnValueOnce(createChain([{ id: 1, parentId: 0 }, { id: 2, parentId: 1 }]));
     await expect(getDataScopeCondition({ currentUserId: 20, deptColumn: mockOrderTable.departmentId, ownerColumn: mockOrderTable.createdBy })).resolves.toBeDefined();
@@ -205,7 +209,7 @@ describe('user-level data scope overrides', () => {
     dbMock.query.users.findFirst.mockResolvedValueOnce({
       ...mockUser(null, [{ dataScope: 'self', code: 'operator' }]),
       userDataScope: 'custom',
-      userDeptScopes: [{ deptId: 42 }, { deptId: 43 }],
+      userDeptScopeIds: [42, 43],
     });
     await expect(getDataScopeCondition({ currentUserId: 21, deptColumn: mockOrderTable.departmentId, ownerColumn: mockOrderTable.createdBy })).resolves.toBeDefined();
   });

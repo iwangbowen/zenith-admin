@@ -12,7 +12,8 @@ import { roles, users } from '../../db/schema';
 import { currentUser } from '../../lib/context';
 import { requireRow } from '../../lib/db-assert';
 import { getUserPermissions, isSuperAdmin } from '../../lib/permissions';
-import { availablePermissionCodes } from './permission-catalog.service';
+import { availableNavigation, getPageReadCode, isPermissionAvailable, readPageAccessRows } from '../../lib/page-access';
+import { getTenantPackageFeatureSet } from '../../lib/tenant-package';
 import { tenantCondition } from '../../lib/tenant';
 import { extractEnabledGroupRoles, enabledGroupRolesWith } from '../../lib/user-group-access';
 
@@ -23,16 +24,27 @@ export async function listRolePermissionSets(): Promise<RolePermissionSet[]> {
     where: tenantCondition(roles, user),
     orderBy: [asc(roles.id)],
     columns: { id: true, name: true, code: true, status: true, tenantId: true, permissionCodes: true },
+    with: { roleMenus: { columns: { menuId: true } } },
   });
-  return Promise.all(rows.map(async (role) => ({
-    id: role.id,
-    name: role.name,
-    code: role.code,
-    status: role.status,
-    tenantId: role.tenantId,
-    superAdmin: role.code === SUPER_ADMIN_CODE && role.tenantId === null,
-    permissions: role.status === 'enabled' ? await availablePermissionCodes(role.permissionCodes, role.tenantId) : [],
+  const navigation = await readPageAccessRows(db);
+  const byTenant = new Map(await Promise.all([...new Set(rows.map(role => role.tenantId))].map(async tenantId => {
+    const features = await getTenantPackageFeatureSet(tenantId);
+    const pages = new Map(availableNavigation(navigation, features, tenantId === null).map(page => [page.id, getPageReadCode(page)]));
+    return [tenantId, { features, pages }] as const;
   })));
+  return rows.map(role => {
+    const { features, pages } = byTenant.get(role.tenantId)!;
+    const codes = new Set([...role.permissionCodes, ...role.roleMenus.flatMap(page => pages.get(page.menuId) ?? [])]);
+    return {
+      id: role.id,
+      name: role.name,
+      code: role.code,
+      status: role.status,
+      tenantId: role.tenantId,
+      superAdmin: role.code === SUPER_ADMIN_CODE && role.tenantId === null,
+      permissions: role.status === 'enabled' ? [...codes].filter(code => isPermissionAvailable(code, features)).sort() : [],
+    };
+  });
 }
 
 /** 单个用户生效的权限码：角色 + 直授菜单 + 用户组角色合并（复用登录态同一份解析与缓存） */

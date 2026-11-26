@@ -1,5 +1,8 @@
 import { publishRoleVersion } from './authority-write.service';
-import { permissionCodesForPageIds } from '@zenith/shared/seed/menus';
+import { explicitPermissionCodesForPageIds } from '@zenith/shared/seed/menus';
+import { availableNavigation, readPageAccessRows } from '../../lib/page-access';
+import { availablePermissionCodes } from './permission-catalog.service';
+import { getTenantPackageFeatureSet } from '../../lib/tenant-package';
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
 import { eq, and, ne, desc, count, inArray, or } from 'drizzle-orm';
@@ -168,15 +171,9 @@ function generateInitialPassword(): string {
   return base.join('');
 }
 
-/** 初始角色的菜单授权范围：有套餐时按套餐功能集过滤（featureKey 为空的核心菜单始终授予），否则授权全部启用菜单 */
-async function resolveInitialMenuIds(tx: DbTransaction, packageId: number | null | undefined): Promise<number[]> {
-  const all = await tx.select({ id: menus.id, featureKey: menus.featureKey }).from(menus).where(eq(menus.status, 'enabled'));
-  if (packageId != null) {
-    const rows = await tx.select({ featureKey: tenantPackageFeatures.featureKey }).from(tenantPackageFeatures).where(eq(tenantPackageFeatures.packageId, packageId));
-    const featureSet = new Set(rows.map((r) => r.featureKey));
-    return all.filter((m) => !m.featureKey || featureSet.has(m.featureKey)).map((m) => m.id);
-  }
-  return all.map((r) => r.id);
+async function resolveInitialMenuIds(tx: DbTransaction, tenantId: number): Promise<number[]> {
+  const [pages, features] = await Promise.all([readPageAccessRows(tx), getTenantPackageFeatureSet(tenantId, tx)]);
+  return availableNavigation(pages, features, false).filter(page => page.type === 'menu').map(page => page.id);
 }
 
 export const TENANT_ADMIN_ROLE_CODE = 'tenant_admin';
@@ -211,11 +208,12 @@ export async function createTenant(data: CreateTenantInput) {
       dataScope: 'all',
       tenantId: row.id,
     }).returning();
-    const menuIds = await resolveInitialMenuIds(tx, row.packageId);
+    const menuIds = await resolveInitialMenuIds(tx, row.id);
     if (menuIds.length > 0) {
       await tx.insert(roleMenus).values(menuIds.map((menuId) => ({ roleId: adminRole.id, menuId })));
     }
-    await publishRoleVersion(tx, adminRole.id, row.id, permissionCodesForPageIds(menuIds), menuIds);
+    const codes = await availablePermissionCodes(explicitPermissionCodesForPageIds(menuIds), row.id, tx);
+    await publishRoleVersion(tx, adminRole.id, row.id, codes, menuIds);
 
     // 2) 管理员账号并绑定角色
     const email = adminEmail || `${adminUsername}@${row.code}.tenant`;

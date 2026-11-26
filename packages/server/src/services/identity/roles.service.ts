@@ -6,9 +6,8 @@ import { roleContract, SUPER_ADMIN_CODE } from '@zenith/shared/identity';
 import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { db } from '../../db';
 import type { DbTransaction } from '../../db/types';
-import { roles, roleDeptScopes, userRoles, menus } from '../../db/schema';
-import { clearUserPermissionCache } from '../../lib/permissions';
-import { getTenantPackageFeatureSet } from '../../lib/tenant-package';
+import { roles, roleDeptScopes, userRoles } from '../../db/schema';
+import { clearUserPermissionCache, notifyUserPermissionsChanged } from '../../lib/permissions';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { currentUser } from '../../lib/context';
 import { forceLogoutAllByUsers } from '../../lib/session-manager';
@@ -182,18 +181,11 @@ async function ensureRoleBelongsToTenant(id: number): Promise<{ tenantId: number
 
 export async function assignRoleMenus(id: number, menuIds: number[], permissionCodes: string[] = []) {
   const { tenantId: roleTenantId } = await ensureRoleBelongsToTenant(id);
-  // 多租户：角色所属租户绑定套餐时，分配的菜单和权限都必须落在套餐功能范围内。
-  const featureSet = await getTenantPackageFeatureSet(roleTenantId);
-  if (featureSet && menuIds.length > 0) {
-    const rows = await db.select({ featureKey: menus.featureKey }).from(menus).where(inArray(menus.id, menuIds));
-    if (rows.some((m) => m.featureKey && !featureSet.has(m.featureKey))) {
-      throw new HTTPException(400, { message: '所选菜单超出当前租户套餐功能范围，无法分配' });
-    }
-  }
-  await db.transaction(async (tx) => {
+  const beneficiaries = await db.transaction(async (tx) => {
     await replaceRolePermissions(tx, id, menuIds, permissionCodes, roleTenantId);
+    return roleBeneficiaries(tx, id);
   });
-  await clearUserPermissionCache();
+  await Promise.all(beneficiaries.map(notifyUserPermissionsChanged));
 }
 
 export async function getRoleUsers(id: number) {

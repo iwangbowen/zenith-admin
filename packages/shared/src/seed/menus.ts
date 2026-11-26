@@ -114,10 +114,11 @@ export const CMS_RAW_EXPORT_PERMISSIONS: readonly string[] = [
   'cms:interaction:export-raw',
 ];
 
-/** 根据页面 ID 计算该页面集合绑定的全部权限码（页面读 + 操作），用于角色种子。 */
-export function permissionCodesForPageIds(pageIds: readonly number[], excluded: readonly string[] = []): string[] {
-  const pageNames = new Set(SEED_MENUS.filter(menu => menu.type === 'menu' && pageIds.includes(menu.id)).map(menu => menu.name).filter((name): name is string => !!name));
-  const excludedSet = new Set(excluded);
+/** 为初始角色选择操作能力。所选页面自身的读能力随页面生效。 */
+export function explicitPermissionCodesForPageIds(pageIds: readonly number[], excluded: readonly string[] = []): string[] {
+  const pages = SEED_MENUS.filter(menu => menu.type === 'menu' && pageIds.includes(menu.id));
+  const pageNames = new Set(pages.map(menu => menu.name));
+  const excludedSet = new Set([...excluded, ...pages.flatMap(page => page.permission ?? [])]);
   return Object.entries(ALL_PERMISSIONS).flatMap(([code, meta]) => {
     if (excludedSet.has(code)) return [];
     const menuNames = typeof meta.menu === 'string' ? [meta.menu] : meta.menu ?? [];
