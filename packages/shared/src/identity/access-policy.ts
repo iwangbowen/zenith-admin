@@ -73,17 +73,20 @@ export function accessScopeKey(dataScope: DataScope, deptScopeIds: readonly numb
 
 export function mergeAccessPermissionItems(items: ReadonlyArray<{
   permissionCode: string | null; permissionLabel?: string | null; dataScope?: DataScope | null; deptScopeIds: number[]; sourceRefs?: AccessSourceRef[];
+  menuId?: number | null; pageTitle?: string | null; pagePath?: string | null;
 }>) {
-  const merged = new Map<string, { permissionCode: string; permissionLabel: string | null; dataScope: DataScope; deptScopeIds: number[]; scopeKey: string; sourceRefs: AccessSourceRef[] }>();
+  const merged = new Map<string, { permissionCode: string; permissionLabel: string | null; menuId: number | null; pageTitle: string | null; pagePath: string | null; dataScope: DataScope; deptScopeIds: number[]; scopeKey: string; sourceRefs: AccessSourceRef[] }>();
   for (const item of items) {
     if (!item.permissionCode) continue;
     const dataScope = item.dataScope ?? 'self';
     const deptScopeIds = dataScope === 'custom' ? [...new Set(item.deptScopeIds)].sort((a, b) => a - b) : [];
     const scopeKey = accessScopeKey(dataScope, deptScopeIds);
-    const key = `${item.permissionCode}:${scopeKey}`;
+    const menuId = item.menuId ?? null;
+    const key = `${menuId ?? 'permission'}:${item.permissionCode}:${scopeKey}`;
     const previous = merged.get(key);
     const refs = [...(previous?.sourceRefs ?? []), ...(item.sourceRefs ?? [])];
-    merged.set(key, { permissionCode: item.permissionCode, permissionLabel: item.permissionLabel ?? null, dataScope, deptScopeIds, scopeKey,
+    merged.set(key, { permissionCode: item.permissionCode, permissionLabel: item.permissionLabel ?? null,
+      menuId, pageTitle: item.pageTitle ?? null, pagePath: item.pagePath ?? null, dataScope, deptScopeIds, scopeKey,
       sourceRefs: [...new Map(refs.map(ref => [JSON.stringify(ref), ref])).values()] });
   }
   return [...merged.values()];

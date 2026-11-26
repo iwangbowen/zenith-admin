@@ -3,12 +3,11 @@ import { HTTPException } from 'hono/http-exception';
 import { createHash } from 'node:crypto';
 import { type AccessRequest, type AccessGrant, type PermissionPolicy, accessGovernanceContract } from '@zenith/shared/identity';
 import type { AccessSourceRef, AccessWorkflowInput, AccessWorkflowPreview } from '@zenith/shared/identity';
-import { availablePermissionCodes } from './permission-catalog.service';
 import { ALL_PERMISSIONS } from '@zenith/shared/permissions';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { db } from '../../db';
 import type { DbExecutor } from '../../db/types';
-import { identityAccessGrantItems, identityAccessGrantMenus, identityAccessGrants, identityAccessRequests, identityAccessReviewItems, identityPermissionPolicies, menus, roles, users, asyncTasks } from '../../db/schema';
+import { identityAccessGrantItems, identityAccessGrants, identityAccessRequests, identityAccessReviewItems, identityPermissionPolicies, menus, roles, users, asyncTasks } from '../../db/schema';
 import { currentUser, setAuditBefore } from '../../lib/context';
 import { exactTenantCondition, getCreateTenantId, tenantCondition } from '../../lib/tenant';
 import { requireRow } from '../../lib/db-assert';
@@ -21,7 +20,7 @@ import { effectiveAccessPolicy } from '@zenith/shared/identity';
 import { getTenantPackageFeatureSet } from '../../lib/tenant-package';
 import { notifyUserPermissionsChanged } from '../../lib/permissions';
 import { notifyWithin } from '../messaging/notification-outbox.service';
-import { ACCESS_REQUEST_BIZ_TYPE, accessWorkflowInputSchema, type DataScope } from '@zenith/shared/identity';
+import { ACCESS_REQUEST_BIZ_TYPE, accessWorkflowInputSchema } from '@zenith/shared/identity';
 import { taskTransaction } from '../../lib/task-center';
 import { requireApprovedBusiness, businessApprovalKeywordCondition } from '../workflow/public/access-approval';
 import { aggregateAccessPolicies, accessPolicyBaseline, mergeAccessPermissionItems } from '@zenith/shared/identity';
@@ -29,6 +28,8 @@ import { loadEffectiveAccessPolicies, readAccessPolicySet, assertPermissionPolic
 import { resolveAccessApprovalPlan, assertAccessGrantApproversCurrent } from './access-approval.service';
 import { formatAccessRequest, formatAccessGrant, formatPermissionPolicy, formatReviewItem } from './access-formatters';
 import { assertNoOverlappingAccessRequest } from './access-reservations.service';
+import { lockIdentityAuthority, validateGrantScope } from './authority-write.service';
+import { availableNavigation, getPageReadCode, isPermissionAvailable } from '../../lib/page-access';
 export { assertNoOverlappingAccessRequest } from './access-reservations.service';
 export { revokeAccessGrant, revokeAccessGrantItem, retryAccessRequestProvision, runAccessGrantLifecycle } from './access-grants.service';
 export { getAccessReviewOptions, createAccessReviewCampaign, listReviewCampaigns, listReviewItems, decideReviewItem, retryAccessReviewCampaign, assignAccessReviewCampaign } from './access-review.service';
@@ -48,34 +49,60 @@ async function resolveRequestItems(roleSelections: AccessWorkflowInput['roleSele
     with: { deptScopes: true, roleMenus: { columns: { menuId: true } } },
   }) : [];
   if (roleRows.length !== roleIds.length) throw new HTTPException(400, { message: '存在无效或停用的角色包' });
-  const selected: Array<{ permissionCode: string; permissionLabel: string; dataScope: DataScope; deptScopeIds: number[]; sourceRefs: AccessSourceRef[] }> = [];
+  const scopeOf = (role: typeof roleRows[number]) => ({
+    dataScope: role.dataScope, deptScopeIds: role.deptScopes.map(item => item.deptId),
+    sourceRefs: [{ kind: 'role' as const, roleId: role.id, roleVersion: role.permissionVersion, label: role.name }],
+  });
   for (const role of roleRows) {
     if (['super_admin', 'tenant_admin', 'security_admin'].includes(role.code)) throw new HTTPException(400, { message: '管理身份不能作为自助权限包申请' });
     if (roleSelections.some(selection => selection.roleId === role.id && selection.version !== role.permissionVersion)) throw new HTTPException(409, { message: '角色权限包已发布新版本，请刷新后重新选择' });
-    for (const permissionCode of role.permissionCodes) selected.push({ permissionCode, permissionLabel: ALL_PERMISSIONS[permissionCode]?.label ?? permissionCode,
-      dataScope: role.dataScope, deptScopeIds: role.deptScopes.map(item => item.deptId), sourceRefs: [{ kind: 'role', roleId: role.id, roleVersion: role.permissionVersion, label: role.name }] });
   }
-  for (const permissionCode of [...new Set(permissionCodes)]) selected.push({ permissionCode, permissionLabel: ALL_PERMISSIONS[permissionCode]?.label ?? permissionCode,
-    dataScope: 'self', deptScopeIds: [], sourceRefs: [{ kind: 'direct', label: '直接申请' }] });
-
   const requestedMenuIds = [...new Set([...menuIds, ...roleRows.flatMap(role => role.roleMenus.map(item => item.menuId))])];
-  const menuRows = requestedMenuIds.length ? await executor.select({ id: menus.id, type: menus.type, status: menus.status, permission: menus.permission }).from(menus).where(inArray(menus.id, requestedMenuIds)) : [];
-  if (menuRows.length !== requestedMenuIds.length || menuRows.some(menu => menu.status !== 'enabled')) throw new HTTPException(400, { message: '存在无效的页面访问项' });
-  for (const menu of menuRows) {
-    if (!menu.permission) continue;
-    selected.push({ permissionCode: menu.permission, permissionLabel: ALL_PERMISSIONS[menu.permission]?.label ?? menu.permission,
-      dataScope: 'self', deptScopeIds: [], sourceRefs: [{ kind: 'direct', label: '页面访问' }] });
-  }
-
-  const codes = [...new Set(selected.map(item => item.permissionCode))];
-  const available = new Set(await availablePermissionCodes(codes, tenantId, executor));
-  if (codes.some(code => !available.has(code))) throw new HTTPException(400, { message: '权限不存在或超出当前租户套餐范围' });
+  const { pages } = await validateGrantScope(executor, tenantId, requestedMenuIds, [...permissionCodes, ...roleRows.flatMap(role => role.permissionCodes)]);
+  const pageById = new Map(pages.map(page => [page.id, page]));
+  const buildPageItem = (id: number) => {
+    const page = pageById.get(id)!;
+    const code = getPageReadCode(page);
+    if (!code) throw new HTTPException(400, { message: `页面「${page.title}」没有可申请的读权限` });
+    return { menuId: id, pageTitle: page.title, pagePath: page.path, permissionCode: code, permissionLabel: ALL_PERMISSIONS[code].label };
+  };
+  const readScope = { dataScope: 'self' as const, deptScopeIds: [], sourceRefs: [{ kind: 'direct' as const, label: '直接申请' }] };
+  const capability = (code: string) => ({ permissionCode: code, permissionLabel: ALL_PERMISSIONS[code].label });
+  const selected = [
+    ...permissionCodes.map(code => ({ ...capability(code), ...readScope })),
+    ...menuIds.map(id => ({ ...buildPageItem(id), ...readScope })),
+    ...roleRows.flatMap(role => [
+      ...role.permissionCodes.map(code => ({ ...capability(code), ...scopeOf(role) })),
+      ...role.roleMenus.map(page => ({ ...buildPageItem(page.menuId), ...scopeOf(role) })),
+    ]),
+  ];
   const items = mergeAccessPermissionItems(selected).map(item => ({ ...item,
     itemType: item.sourceRefs.some(source => source.kind === 'direct') ? 'permission' as const : 'role' as const,
     roleId: item.sourceRefs.length === 1 ? item.sourceRefs[0].roleId ?? null : null,
     snapshot: { permissionLabel: item.permissionLabel, sourceRefs: item.sourceRefs },
   }));
   return { items, menuIds: requestedMenuIds };
+}
+
+async function assertApprovedScopeCurrent(tx: DbExecutor, tenantId: number | null, items: ReadonlyArray<{
+  menuId: number | null; permissionCode: string; sourceRefs: AccessSourceRef[];
+}>) {
+  const { pages } = await validateGrantScope(tx, tenantId, items.flatMap(item => item.menuId ?? []), items.map(item => item.permissionCode));
+  const reads = new Map(pages.map(page => [page.id, getPageReadCode(page)]));
+  if (items.some(item => item.menuId !== null && reads.get(item.menuId) !== item.permissionCode)) {
+    throw new HTTPException(409, { message: '页面读权限已变化，请重新申请' });
+  }
+  const refs = items.flatMap(item => item.sourceRefs.filter(ref => ref.kind === 'role'));
+  const ids = [...new Set(refs.flatMap(ref => ref.roleId ?? []))];
+  if (!ids.length) return;
+  const rows = await tx.query.roles.findMany({
+    where: and(inArray(roles.id, ids), exactTenantCondition(roles.tenantId, tenantId), eq(roles.status, 'enabled')),
+    columns: { id: true, permissionVersion: true },
+  });
+  const versions = new Map(rows.map(role => [role.id, role.permissionVersion]));
+  if (refs.some(ref => ref.roleId == null || !versions.has(ref.roleId) || versions.get(ref.roleId) !== ref.roleVersion)) {
+    throw new HTTPException(409, { message: '角色权限包已变化，请重新申请' });
+  }
 }
 
 export async function getAccessWorkflowOptions() {
@@ -87,20 +114,25 @@ export async function getAccessWorkflowOptions() {
       with: { roleMenus: { columns: { menuId: true } } },
       orderBy: [asc(roles.name), asc(roles.id)],
     }),
-    db.select({ id: menus.id, parentId: menus.parentId, title: menus.title, name: menus.name, type: menus.type, permission: menus.permission, status: menus.status, featureKey: menus.featureKey })
-      .from(menus).where(eq(menus.status, 'enabled')).orderBy(asc(menus.parentId), asc(menus.sort), asc(menus.id)),
+    db.select().from(menus).orderBy(asc(menus.parentId), asc(menus.sort), asc(menus.id)),
   ]);
   const effective = await loadEffectiveAccessPolicies(Object.keys(ALL_PERMISSIONS), user.tenantId);
   const policies = new Map(effective.map(policy => [policy.permissionCode, policy]));
+  const available = availableNavigation(menuRows, featureSet, user.tenantId === null);
+  const menuIndex = new Map(available.map(menu => [menu.id, menu]));
   const roleOptions = roleRows.flatMap(role => {
     if (['super_admin', 'tenant_admin', 'security_admin'].includes(role.code)) return [];
-    const codes = role.permissionCodes;
+    const reads = role.roleMenus.map(binding => {
+      const page = menuIndex.get(binding.menuId);
+      return page ? getPageReadCode(page) : null;
+    });
+    if (reads.some(code => code === null)) return [];
+    const codes = [...new Set([...role.permissionCodes, ...reads.flatMap(code => code ?? [])])];
+    if (codes.some(code => !isPermissionAvailable(code, featureSet))) return [];
     const rolePolicies = codes.flatMap(code => { const policy = policies.get(code); return policy ? [policy] : []; });
     if (!rolePolicies.length || rolePolicies.length !== codes.length || rolePolicies.some(policy => !policy.enabled)) return [];
     return [{ id: role.id, name: role.name, code: role.code, description: role.description ?? null, dataScope: role.dataScope, version: role.permissionVersion, permissionCount: codes.length, permissionCodes: codes, menuIds: role.roleMenus.map(item => item.menuId), ...aggregateAccessPolicies(rolePolicies) }];
   });
-  const available = menuRows.filter(menu => !featureSet || !menu.featureKey || featureSet.has(menu.featureKey));
-  const menuIndex = new Map(available.map(menu => [menu.id, menu]));
   const pageByName = new Map(available.filter(menu => menu.type === 'menu' && menu.name).map(menu => [menu.name!, menu]));
   const included = new Set<number>();
   const addAncestors = (menuId: number) => {
@@ -119,7 +151,7 @@ export async function getAccessWorkflowOptions() {
 
   let permissionNodeId = -1;
   const permissionNodes = Object.entries(ALL_PERMISSIONS).flatMap(([code, meta]) => {
-    if (policies.get(code)?.enabled !== true) return [];
+    if (policies.get(code)?.enabled !== true || !isPermissionAvailable(code, featureSet)) return [];
     const menuNames = typeof meta.menu === 'string' ? [meta.menu] : meta.menu ?? [];
     const boundPages = menuNames.map(name => pageByName.get(name)).filter((page): page is NonNullable<typeof page> => !!page);
     if (boundPages.length === 0) return [];
@@ -201,7 +233,7 @@ export async function listAccessRequests(q: QueryOutputOf<typeof accessGovernanc
     count: () => db.$count(identityAccessRequests, where),
     rows: async () => db.query.identityAccessRequests.findMany({
       where,
-      with: { applicant: true, target: true, items: true, menus: { with: { menu: true } }, workflowInstance: { columns: { title: true, serialNo: true } } },
+      with: { applicant: true, target: true, items: true, workflowInstance: { columns: { title: true, serialNo: true } } },
       orderBy: [desc(identityAccessRequests.createdAt), desc(identityAccessRequests.id)],
       limit: q.pageSize,
       offset: pageOffset(q.page, q.pageSize),
@@ -214,7 +246,7 @@ export async function getAccessRequest(id: number): Promise<AccessRequest> {
   const user = currentUser();
   const row = requireRow(await db.query.identityAccessRequests.findFirst({
     where: buildWhere(eq(identityAccessRequests.id, id), tenantCondition(identityAccessRequests, user)),
-    with: { applicant: true, target: true, items: true, menus: { with: { menu: true } }, workflowInstance: { columns: { title: true, serialNo: true } } },
+    with: { applicant: true, target: true, items: true, workflowInstance: { columns: { title: true, serialNo: true } } },
   }), '权限申请不存在');
   const task = await db.query.asyncTasks.findFirst({
     where: buildWhere(eq(asyncTasks.taskType, 'identity-access-grant-apply'), eq(asyncTasks.idempotencyKey, 'identity-access-apply:' + id), exactTenantCondition(asyncTasks.tenantId, row.tenantId)),
@@ -230,7 +262,6 @@ async function enrichAccessWorkflowFormData(input: AccessWorkflowInput, caller: 
   const resolved = await resolveRequestItems(input.roleSelections, input.permissionCodes, input.menuIds, caller.tenantId, executor);
   if (resolved.items.length === 0) throw new HTTPException(400, { message: '至少申请一项有效权限' });
   const permissionCodes = resolved.items.flatMap(item => item.permissionCode ? [item.permissionCode] : []);
-  if (!permissionCodes.length) throw new HTTPException(400, { message: '请选择至少一项实际操作权限' });
   const policySnapshot = await loadEffectiveAccessPolicies(permissionCodes, caller.tenantId, executor);
   const forbidden = policySnapshot.find(policy => !policy.enabled);
   if (forbidden) throw new HTTPException(400, { message: `权限 ${forbidden.permissionCode} 不允许自助申请或已被策略停用` });
@@ -243,8 +274,8 @@ async function enrichAccessWorkflowFormData(input: AccessWorkflowInput, caller: 
     requestType: input.requestType, startMode: input.startMode, startsAt: input.startMode === 'scheduled' ? input.startsAt : null,
     validityMode: input.validityMode, expiresAt: input.expiresAt,
     menuIds: [...resolved.menuIds].sort((a, b) => a - b),
-    items: [...resolved.items].sort((a, b) => `${a.permissionCode}:${a.scopeKey}`.localeCompare(`${b.permissionCode}:${b.scopeKey}`)).map(item => ({
-      permissionCode: item.permissionCode, scopeKey: item.scopeKey,
+    items: [...resolved.items].sort((a, b) => (a.menuId ?? 0) - (b.menuId ?? 0) || `${a.permissionCode}:${a.scopeKey}`.localeCompare(`${b.permissionCode}:${b.scopeKey}`)).map(item => ({
+      menuId: item.menuId, permissionCode: item.permissionCode, scopeKey: item.scopeKey,
       sources: item.sourceRefs.map(source => [source.kind, source.roleId ?? null, source.roleVersion ?? null]).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
     })),
     policies: policySnapshot, approvalPlan,
@@ -264,7 +295,7 @@ async function enrichAccessWorkflowFormData(input: AccessWorkflowInput, caller: 
     approvalPlan,
     menuIds: resolved.menuIds,
     permissionItems: resolved.items,
-    permissionSummary: resolved.items.map(item => `${item.permissionLabel ?? item.permissionCode}（${item.permissionCode}）`).join('、'),
+    permissionSummary: resolved.items.map(item => `${item.pageTitle ?? item.permissionLabel ?? item.permissionCode}（${item.permissionCode}）`).join('、'),
     managerId: approvalPlan.steps[0]?.userId,
     securityApproverId: approvalPlan.steps[1]?.userId,
     secondSecurityApproverId: approvalPlan.steps[2]?.userId,
@@ -296,7 +327,10 @@ export async function evaluateAccessWorkflow(raw: Record<string, unknown>, calle
 }
 
 export async function normalizeAccessWorkflowFormData(raw: Record<string, unknown>, caller: AccessWorkflowCaller, executor: DbExecutor = db, requirePreview = true) {
-  if (executor !== db) await lockAccessPolicies(executor);
+  if (executor !== db) {
+    await lockIdentityAuthority(executor, caller.tenantId);
+    await lockAccessPolicies(executor);
+  }
   const parsed = accessWorkflowInputSchema.safeParse(raw);
   if (!parsed.success) throw new HTTPException(400, { message: parsed.error.issues[0]?.message ?? '权限申请表单不完整' });
   const input = parsed.data;
@@ -335,14 +369,16 @@ export async function applyApprovedAccessRequest(requestId: number, expected: { 
     const where = buildWhere(eq(identityAccessRequests.id, requestId), exactTenantCondition(identityAccessRequests.tenantId, expected.tenantId));
     const [locked] = await tx.select({ id: identityAccessRequests.id }).from(identityAccessRequests).where(where).for('update').limit(1);
     if (!locked) throw new Error('权限申请不存在或不属于当前作业租户');
-    const request = await tx.query.identityAccessRequests.findFirst({ where, with: { items: true, menus: { with: { menu: true } } } });
+    const request = await tx.query.identityAccessRequests.findFirst({ where, with: { items: true } });
     if (!request) return null;
     if (request.provisionStatus === 'succeeded') {
-      const existing = await tx.query.identityAccessGrants.findFirst({ where: eq(identityAccessGrants.requestId, requestId), with: { user: true, approver: true, revoker: true, items: true, menus: { with: { menu: true } } } });
+      const existing = await tx.query.identityAccessGrants.findFirst({ where: eq(identityAccessGrants.requestId, requestId), with: { user: true, approver: true, revoker: true, items: true } });
       return existing ? formatAccessGrant(existing) : null;
     }
     if (request.status !== 'approved' || request.provisionStatus === 'terminated') return null;
     if (!request.workflowInstanceId || expected.workflowInstanceId !== request.workflowInstanceId) throw new Error('权限申请流程关联无效');
+    await lockIdentityAuthority(tx, request.tenantId);
+    await assertApprovedScopeCurrent(tx, request.tenantId, request.items);
     await assertAccessSnapshotDuration(request.policySnapshot, request.startsAt, request.expiresAt, request.tenantId, tx);
     const approvers = new Set(request.approvalEvidence.map(evidence => evidence.actorId));
     if (approvers.has(request.targetUserId) || approvers.size !== request.approvalEvidence.length || request.approvalPlan.steps.some(step => !request.approvalEvidence.some(evidence => evidence.nodeKey === step.nodeKey && (!request.approvalPlan.mfaRequired || evidence.mfaVerifiedAt !== null)))) throw new HTTPException(409, { message: '权限审批计划尚未完整履行' });
@@ -373,12 +409,9 @@ export async function applyApprovedAccessRequest(requestId: number, expected: { 
         nextReviewAt: policy.reviewIntervalDays > 0 ? new Date(now.getTime() + policy.reviewIntervalDays * 86_400_000) : null };
     });
     if (menuItems.length > 0) await tx.insert(identityAccessGrantItems).values(menuItems).onConflictDoNothing();
-    if (request.menus.length > 0) {
-      await tx.insert(identityAccessGrantMenus).values(request.menus.map(menu => ({ grantId: grant.id, menuId: menu.menuId }))).onConflictDoNothing();
-    }
     await tx.update(identityAccessRequests).set({ status: 'approved', provisionStatus: 'succeeded', approvedAt: request.approvedAt ?? now, appliedAt: now, failureReason: null }).where(eq(identityAccessRequests.id, request.id));
     await notifyWithin(tx, 'identity.access.approved', { recipients: [{ type: 'user', id: target.id }], vars: { requestId: request.id, targetName: target.nickname || target.username, startsAt: formatDateTime(request.startsAt), expiresAt: request.expiresAt ? formatDateTime(request.expiresAt) : '永久有效', validityText: request.expiresAt ? `${formatDateTime(request.startsAt)} 至 ${formatDateTime(request.expiresAt)}` : `自 ${formatDateTime(request.startsAt)} 起永久有效` }, tenantId: request.tenantId, link: `/workflow/instance/${request.workflowInstanceId}`, dedupeKey: `identity-access-approved:${request.id}` });
-    const applied = await tx.query.identityAccessGrants.findFirst({ where: eq(identityAccessGrants.id, grant.id), with: { user: true, approver: true, revoker: true, items: true, menus: { with: { menu: true } } } });
+    const applied = await tx.query.identityAccessGrants.findFirst({ where: eq(identityAccessGrants.id, grant.id), with: { user: true, approver: true, revoker: true, items: true } });
     return applied ? formatAccessGrant(applied) : null;
   });
   const grantUserId = result?.userId;
@@ -408,7 +441,7 @@ export async function listAccessGrants(q: QueryOutputOf<typeof accessGovernanceC
     count: () => db.$count(identityAccessGrants, where),
     rows: async () => db.query.identityAccessGrants.findMany({
       where,
-      with: { user: true, approver: true, revoker: true, items: true, menus: { with: { menu: true } }, request: { columns: { workflowInstanceId: true } } },
+      with: { user: true, approver: true, revoker: true, items: true, request: { columns: { workflowInstanceId: true } } },
       orderBy: [desc(identityAccessGrants.createdAt), desc(identityAccessGrants.id)],
       limit: q.pageSize,
       offset: pageOffset(q.page, q.pageSize),
@@ -420,7 +453,7 @@ export async function listAccessGrants(q: QueryOutputOf<typeof accessGovernanceC
 export async function getAccessGrant(id: number): Promise<AccessGrant> {
   const row = await db.query.identityAccessGrants.findFirst({
     where: and(eq(identityAccessGrants.id, id), tenantCondition(identityAccessGrants, currentUser())),
-    with: { user: true, approver: true, revoker: true, items: true, menus: { with: { menu: true } }, request: { columns: { workflowInstanceId: true } } },
+    with: { user: true, approver: true, revoker: true, items: true, request: { columns: { workflowInstanceId: true } } },
   });
   return formatAccessGrant(requireRow(row, '临时授权不存在'));
 }
@@ -455,7 +488,7 @@ export async function updatePermissionPolicy(permissionCode: string, input: Upda
 export async function getUserAccessOverview(userId: number) {
   await requireTenantUser(userId, '用户不存在');
   const [grants, reviews] = await Promise.all([
-    db.query.identityAccessGrants.findMany({ where: and(eq(identityAccessGrants.userId, userId), tenantCondition(identityAccessGrants, currentUser())), with: { user: true, approver: true, revoker: true, items: true, menus: { with: { menu: true } }, request: { columns: { workflowInstanceId: true } } }, orderBy: [desc(identityAccessGrants.createdAt)] }),
+    db.query.identityAccessGrants.findMany({ where: and(eq(identityAccessGrants.userId, userId), tenantCondition(identityAccessGrants, currentUser())), with: { user: true, approver: true, revoker: true, items: true, request: { columns: { workflowInstanceId: true } } }, orderBy: [desc(identityAccessGrants.createdAt)] }),
     db.query.identityAccessReviewItems.findMany({ where: and(eq(identityAccessReviewItems.userId, userId), tenantCondition(identityAccessReviewItems, currentUser())), with: { user: true }, orderBy: [desc(identityAccessReviewItems.createdAt)] }),
   ]);
   return { userId, grants: grants.map(formatAccessGrant), reviews: reviews.map(formatReviewItem) };

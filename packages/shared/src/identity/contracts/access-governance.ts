@@ -36,6 +36,9 @@ export const accessRequestItemSchema = z.object({
   roleId: z.int().nullable().optional(),
   permissionCode: z.string(),
   permissionLabel: z.string().nullable().optional(),
+  menuId: z.int().nullable().optional(),
+  pageTitle: z.string().nullable().optional(),
+  pagePath: z.string().nullable().optional(),
   dataScope: z.enum(DATA_SCOPES).nullable().optional(),
   deptScopeIds: z.array(z.int()),
   scopeKey: z.string(), sourceRefs: z.array(accessSourceRefSchema),
@@ -85,6 +88,7 @@ export type AccessRequest = z.infer<typeof accessRequestSchema>;
 
 export const accessGrantItemSchema = z.object({
   id: z.int(), scopeKey: z.string(), sourceRefs: z.array(accessSourceRefSchema), permissionCode: z.string(), permissionLabel: z.string().nullable(),
+  menuId: z.int().nullable().optional(), pageTitle: z.string().nullable().optional(), pagePath: z.string().nullable().optional(),
   status: z.enum(ACCESS_GRANT_STATUSES), dataScope: z.enum(DATA_SCOPES), deptScopeIds: z.array(z.int()),
   startsAt: z.string(), expiresAt: z.string().nullable(), nextReviewAt: z.string().nullable(),
   revokedAt: z.string().nullable(), revokedBy: z.int().nullable(), revokeReason: z.string().nullable(),

@@ -91,4 +91,9 @@ describe('access policy template and resolved execution plan', () => {
     expect(item.scopeKey).toBe('self:');
     expect(item.sourceRefs).toHaveLength(2);
   });
+  it('keeps separate page and API grant items for the same permission', () => {
+    const capability = { permissionCode: 'example:list', deptScopeIds: [] };
+    const items = mergeAccessPermissionItems([capability, { ...capability, menuId: 3 }, { ...capability, menuId: 4 }, { ...capability, menuId: 3 }]);
+    expect(items.map(item => item.menuId)).toEqual([null, 3, 4]);
+  });
 });

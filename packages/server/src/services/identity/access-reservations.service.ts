@@ -28,8 +28,10 @@ export async function assertNoOverlappingAccessRequest(input: {
   ]);
   const conflicts = new Set<string>();
   for (const wanted of requested) {
-    if (grants.some(grant => grant.items.some(item => item.id !== input.excludeGrantItemId && ['active', 'scheduled'].includes(item.status) && (!input.expiresAt || item.startsAt < input.expiresAt) && (!item.expiresAt || item.expiresAt > input.startsAt) && item.permissionCode === wanted.permissionCode && accessScopesOverlap(wanted, item)))
-      || requests.some(request => request.items.some(item => item.permissionCode === wanted.permissionCode && accessScopesOverlap(wanted, item)))) conflicts.add(wanted.permissionLabel || wanted.permissionCode);
+    const sameScope = (item: typeof grants[number]['items'][number] | typeof requests[number]['items'][number]) =>
+      (item.menuId ?? null) === wanted.menuId && item.permissionCode === wanted.permissionCode && accessScopesOverlap(wanted, item);
+    if (grants.some(grant => grant.items.some(item => item.id !== input.excludeGrantItemId && ['active', 'scheduled'].includes(item.status) && (!input.expiresAt || item.startsAt < input.expiresAt) && (!item.expiresAt || item.expiresAt > input.startsAt) && sameScope(item)))
+      || requests.some(request => request.items.some(sameScope))) conflicts.add(wanted.pageTitle || wanted.permissionLabel || wanted.permissionCode);
   }
   if (conflicts.size) throw new HTTPException(409, { message: `以下权限已有有效授权或待处理申请，请勿重复申请：${[...conflicts].join('、')}` });
 }

@@ -31,9 +31,9 @@ function user(overrides: Record<string, unknown> = {}) {
 }
 const now = new Date('2030-01-01T00:00:00Z');
 function item(permissionCode: string, from: number, until: number | null) {
-  return { id: 1, permissionCode, status: 'active', dataScope: 'self', deptScopeIds: [], startsAt: new Date(now.getTime() + from), expiresAt: until === null ? null : new Date(now.getTime() + until) };
+  return { id: 1, menuId: null as number | null, permissionCode, status: 'active', dataScope: 'self', deptScopeIds: [], startsAt: new Date(now.getTime() + from), expiresAt: until === null ? null : new Date(now.getTime() + until) };
 }
-const grant = (items: ReturnType<typeof item>[]) => ({ id: 5, tenantId: null, status: 'active', startsAt: new Date(0), expiresAt: null, items, menus: [] });
+const grant = (items: ReturnType<typeof item>[]) => ({ id: 5, tenantId: null, status: 'active', startsAt: new Date(0), expiresAt: null, items });
 
 beforeEach(async () => {
   vi.useRealTimers(); vi.clearAllMocks(); state.cache.clear(); state.bus = 'listening';
@@ -93,6 +93,21 @@ describe('permission source aggregation', () => {
     vi.setSystemTime(now.getTime() + 2000);
     expect(await getUserPermissions(7)).toEqual([]);
     vi.useRealTimers();
+  });
+  it('activates a scheduled page by its own window and removes its read on revocation', async () => {
+    vi.useFakeTimers(); vi.setSystemTime(now);
+    const page = { ...item('system:user:list', 1000, 2000), menuId: 2, status: 'scheduled' };
+    const capability = item('system:dict:list', 0, 5000);
+    state.findUser.mockResolvedValue(user({ accessGrants: [{ ...grant([page, capability]), status: 'scheduled' }] }));
+    expect(await getUserMenuIds(7)).toEqual([]);
+    vi.setSystemTime(now.getTime() + 1000);
+    expect(await getUserMenuIds(7)).toEqual([2]);
+    expect(await getUserPermissions(7)).toEqual(['system:dict:list', 'system:user:list']);
+    // The database query excludes revoked items.
+    state.findUser.mockResolvedValue(user({ accessGrants: [grant([capability])] }));
+    await clearUserPermissionCache(7);
+    expect(await getUserMenuIds(7)).toEqual([]);
+    expect(await getUserPermissions(7)).toEqual(['system:dict:list']);
   });
 });
 

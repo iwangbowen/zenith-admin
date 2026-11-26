@@ -57,13 +57,13 @@ export async function revokeAccessGrantItemInTransaction(executor: DbExecutor, i
       .where(and(eq(identityAccessGrantItems.id, itemId), eq(identityAccessGrantItems.grantId, grant.id)));
     await refreshAccessGrantHeader(executor, grant.id, tenantId, actorId, reason);
     const names = await resolveUserNames([grant.userId], executor);
-    await notifyWithin(executor, 'identity.access.revoked', { recipients: [{ type: 'user', id: grant.userId }], vars: { grantId: grant.id, targetName: names.get(grant.userId) ?? `用户 ${grant.userId}`, reason: `${currentItem.permissionLabel ?? currentItem.permissionCode}（单项）：${reason}` }, tenantId, link: await grantSourceLink(executor, grant.requestId, tenantId), dedupeKey: `identity-access-item-revoked:${itemId}` });
+    await notifyWithin(executor, 'identity.access.revoked', { recipients: [{ type: 'user', id: grant.userId }], vars: { grantId: grant.id, targetName: names.get(grant.userId) ?? `用户 ${grant.userId}`, reason: `${currentItem.pageTitle ?? currentItem.permissionLabel ?? currentItem.permissionCode}（单项）：${reason}` }, tenantId, link: await grantSourceLink(executor, grant.requestId, tenantId), dedupeKey: `identity-access-item-revoked:${itemId}` });
   }
   return { grantId: grant.id, userId: grant.userId };
 }
 
 async function readGrant(grantId: number) {
-  return formatAccessGrant(requireRow(await db.query.identityAccessGrants.findFirst({ where: and(eq(identityAccessGrants.id, grantId), tenantCondition(identityAccessGrants, currentUser())), with: { user: true, approver: true, revoker: true, items: true, menus: { with: { menu: true } } } }), '临时授权不存在'));
+  return formatAccessGrant(requireRow(await db.query.identityAccessGrants.findFirst({ where: and(eq(identityAccessGrants.id, grantId), tenantCondition(identityAccessGrants, currentUser())), with: { user: true, approver: true, revoker: true, items: true } }), '临时授权不存在'));
 }
 
 export async function revokeAccessGrantItem(id: number, input: RevokeAccessGrantInput) {
@@ -112,7 +112,7 @@ export async function retryAccessRequestProvision(id: number) {
     await retrySystemTaskInTransaction(tx, task);
     await tx.update(identityAccessRequests).set({ provisionStatus: 'pending', failureReason: null }).where(where);
   });
-  return formatAccessRequest(requireRow(await db.query.identityAccessRequests.findFirst({ where: and(eq(identityAccessRequests.id, id), tenantCondition(identityAccessRequests, caller)), with: { applicant: true, target: true, items: true, menus: { with: { menu: true } } } }), '权限申请不存在'));
+  return formatAccessRequest(requireRow(await db.query.identityAccessRequests.findFirst({ where: and(eq(identityAccessRequests.id, id), tenantCondition(identityAccessRequests, caller)), with: { applicant: true, target: true, items: true } }), '权限申请不存在'));
 }
 
 /** 实际鉴权依据时间窗口；该任务维护展示状态、通知和跨节点刷新。 */

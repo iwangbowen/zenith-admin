@@ -157,7 +157,6 @@ async function fetchUserPermissionData(userId: number, executor: DbExecutor = db
         where: inArray(identityAccessGrants.status, ['scheduled', 'active']),
         with: {
           items: { where: inArray(identityAccessGrantItems.status, ['scheduled', 'active']) },
-          menus: { columns: { menuId: true } },
         },
       },
     },
@@ -168,7 +167,7 @@ async function fetchUserPermissionData(userId: number, executor: DbExecutor = db
     group.groupRoles.filter(({ role }) => role.status === 'enabled' && role.tenantId === user.tenantId).map(({ role }) => ({ role, group })));
   const grants = user.accessGrants.filter(grant => grant.tenantId === user.tenantId);
   const hasPages = user.userMenus.length > 0 || enabledRoles.some(role => role.roleMenus.length > 0)
-    || groupRoles.some(({ role }) => role.roleMenus.length > 0) || grants.some(grant => grant.menus.length > 0);
+    || groupRoles.some(({ role }) => role.roleMenus.length > 0) || grants.some(grant => grant.items.some(item => item.menuId != null));
   const superAdmin = user.tenantId === null && enabledRoles.some(role => role.code === SUPER_ADMIN_CODE);
   const [features, navigation] = await Promise.all([
     getTenantPackageFeatureSet(user.tenantId, executor === db ? undefined : executor),
@@ -206,20 +205,14 @@ async function fetchUserPermissionData(userId: number, executor: DbExecutor = db
   }
   const isActive = (window: { startsAt: Date; expiresAt: Date | null }) => window.startsAt <= now && (!window.expiresAt || window.expiresAt > now);
   for (const grant of grants.filter(isActive)) {
-    const active = grant.items.filter(isActive);
-    for (const item of active) {
-      const pageIds = grant.menus.map(binding => binding.menuId).filter(id => {
-        const page = pages.get(id);
-        return page && getPageReadCode(page) === item.permissionCode;
-      });
-      collect('approval', `审批授权 #${grant.id}`, item.dataScope, item.deptScopeIds, [item.permissionCode], pageIds, {
+    for (const item of grant.items.filter(isActive)) {
+      const page = item.menuId == null ? null : pages.get(item.menuId);
+      if (item.menuId != null && (!page || getPageReadCode(page) !== item.permissionCode)) continue;
+      collect('approval', `审批授权 #${grant.id}`, item.dataScope, item.deptScopeIds,
+        page ? [] : [item.permissionCode], page ? [page.id] : [], {
         grantId: grant.id, grantItemId: item.id, expiresAt: item.expiresAt?.toISOString() ?? null,
       });
     }
-    collect('approval', `审批授权 #${grant.id}`, 'self', [], [], grant.menus.map(row => row.menuId).filter(id => {
-      const page = pages.get(id);
-      return page && !getPageReadCode(page);
-    }));
   }
   const nextPermissionBoundaryAt = grants.flatMap(grant => [grant, ...grant.items])
     .flatMap(item => [item.startsAt, item.expiresAt]).filter((date): date is Date => date !== null && date > now)
@@ -252,11 +245,6 @@ function invalidateUserEntry(key?: string | null): void {
 
 onInvalidate('identity_access_grants', message => invalidateUserEntry(message.key));
 onInvalidate('identity_access_grant_items', message => {
-  const grantId = Number(message.key);
-  if (Number.isSafeInteger(grantId) && grantId > 0) void db.query.identityAccessGrants.findFirst({ where: eq(identityAccessGrants.id, grantId), columns: { userId: true } })
-    .then(grant => { if (grant) invalidateUserEntry(String(grant.userId)); }).catch(() => {});
-});
-onInvalidate('identity_access_grant_menus', message => {
   const grantId = Number(message.key);
   if (Number.isSafeInteger(grantId) && grantId > 0) void db.query.identityAccessGrants.findFirst({ where: eq(identityAccessGrants.id, grantId), columns: { userId: true } })
     .then(grant => { if (grant) invalidateUserEntry(String(grant.userId)); }).catch(() => {});

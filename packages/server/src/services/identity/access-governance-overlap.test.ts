@@ -71,4 +71,12 @@ describe('access request overlap guard', () => {
 
     await expect(assertNoOverlappingAccessRequest(input, executor)).resolves.toBeUndefined();
   });
+
+  it('allows an independent grant and another page using the same read code', async () => {
+    const executor = executorWith({ requests: [{ items: [
+      { ...requestedItem, menuId: null },
+      { ...requestedItem, menuId: 11 },
+    ] }] });
+    await expect(assertNoOverlappingAccessRequest(input, executor)).resolves.toBeUndefined();
+  });
 });

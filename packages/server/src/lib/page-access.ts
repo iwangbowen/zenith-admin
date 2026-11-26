@@ -5,7 +5,7 @@ import { config } from '../config';
 import { menus } from '../db/schema';
 import type { DbExecutor } from '../db/types';
 
-type PageRow = Pick<typeof menus.$inferSelect, 'id' | 'parentId' | 'type' | 'status' | 'featureKey' | 'path' | 'permission'>;
+type PageRow = Pick<typeof menus.$inferSelect, 'id' | 'parentId' | 'title' | 'type' | 'status' | 'featureKey' | 'path' | 'permission'>;
 
 const platformPaths = new Set(['/system/maintenance', ...Object.values(SETTINGS_MODULES)
   .flatMap(setting => setting.platformOnly && setting.page ? [setting.page] : [])]);
@@ -36,7 +36,7 @@ export function availableNavigation<T extends PageRow>(rows: readonly T[], featu
 
 export function readPageAccessRows(executor: DbExecutor): PromiseLike<PageRow[]> {
   return executor.select({
-    id: menus.id, parentId: menus.parentId, type: menus.type, status: menus.status,
+    id: menus.id, parentId: menus.parentId, title: menus.title, type: menus.type, status: menus.status,
     featureKey: menus.featureKey, path: menus.path, permission: menus.permission,
   }).from(menus);
 }
