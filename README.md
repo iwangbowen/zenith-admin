@@ -20,6 +20,94 @@
 
 ---
 
+## 界面预览
+
+### 系统管理
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="./docs/public/screenshots/users.webp" alt="用户管理" width="100%" />
+      <p align="center"><sub><b>用户管理</b> · 组织树、部门岗位、角色与账号状态</sub></p>
+    </td>
+    <td width="50%" valign="top">
+      <img src="./docs/public/screenshots/roles.webp" alt="角色管理" width="100%" />
+      <p align="center"><sub><b>角色管理</b> · 角色权限、数据范围与用户分配</sub></p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="./docs/public/screenshots/menus.webp" alt="菜单管理" width="100%" />
+      <p align="center"><sub><b>菜单管理</b> · 目录 / 页面 / 按钮三级权限模型</sub></p>
+    </td>
+    <td width="50%" valign="top">
+      <img src="./docs/public/screenshots/departments.webp" alt="部门管理" width="100%" />
+      <p align="center"><sub><b>部门管理</b> · 多级组织架构与部门负责人</sub></p>
+    </td>
+  </tr>
+</table>
+
+### 流程与自动化
+
+<p align="center">
+  <img src="./docs/public/screenshots/workflow-designer.webp" alt="可视化工作流设计器" width="100%" />
+</p>
+<p align="center"><sub><b>可视化工作流设计器</b> · 条件分支、优先级、自动审批与多级会签</sub></p>
+
+<p align="center">
+  <img src="./docs/public/screenshots/workflow-approval.webp" alt="审批流转详情" width="100%" />
+</p>
+<p align="center"><sub><b>审批流转</b> · 表单快照、审批记录与流程时间线</sub></p>
+
+### 数据与智能
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="./docs/public/screenshots/home.webp" alt="工作台首页" width="100%" />
+      <p align="center"><sub><b>工作台</b> · 登录趋势、操作分布与公告</sub></p>
+    </td>
+    <td width="50%" valign="top">
+      <img src="./docs/public/screenshots/member-dashboard.webp" alt="会员看板" width="100%" />
+      <p align="center"><sub><b>会员看板</b> · 等级、积分、钱包与签到分析</sub></p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="./docs/public/screenshots/analytics.webp" alt="行为分析" width="100%" />
+      <p align="center"><sub><b>行为分析</b> · PV / UV / 会话 / 事件趋势</sub></p>
+    </td>
+    <td width="50%" valign="top">
+      <img src="./docs/public/screenshots/ai-chat.webp" alt="智能对话" width="100%" />
+      <p align="center"><sub><b>智能对话</b> · 多模型流式回答与思维链</sub></p>
+    </td>
+  </tr>
+</table>
+
+### 内容与协作
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="./docs/public/screenshots/wiki.webp" alt="知识中心" width="100%" />
+      <p align="center"><sub><b>知识中心</b> · 空间、文档树与富文本阅读</sub></p>
+    </td>
+    <td width="50%" valign="top">
+      <img src="./docs/public/screenshots/cms-contents.webp" alt="CMS 内容管理" width="100%" />
+      <p align="center"><sub><b>CMS 内容管理</b> · 多站点、内容模型、审核发布与静态化</sub></p>
+    </td>
+  </tr>
+</table>
+
+### 深色模式
+
+<p align="center">
+  <img src="./docs/public/screenshots/dark-mode.webp" alt="深色模式" width="100%" />
+</p>
+<p align="center"><sub><b>深色模式</b> · 同一套页面与图表的暗色主题</sub></p>
+
+---
+
 ## 技术栈
 
 | 层级 | 技术 |

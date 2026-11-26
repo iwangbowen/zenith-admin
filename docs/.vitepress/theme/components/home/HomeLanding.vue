@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import HomeHero from './HomeHero.vue'
 import HomeBento from './HomeBento.vue'
+import HomeShowcase from './HomeShowcase.vue'
 import HomeStats from './HomeStats.vue'
 import HomeQuickStart from './HomeQuickStart.vue'
 import HomeStack from './HomeStack.vue'
@@ -10,6 +11,7 @@ import HomeCta from './HomeCta.vue'
 <template>
   <div class="zn-home">
     <HomeHero />
+    <HomeShowcase />
     <HomeBento />
     <HomeStats />
     <HomeQuickStart />
