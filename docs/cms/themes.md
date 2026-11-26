@@ -200,7 +200,7 @@ settingsSchema: [
 | `MediaBlock` | 内容形态区块：图集九宫格 / 音视频播放器（article/link 返回 null，公共样式在 `_shared/base.css`）。**详情模板须在正文前调用**，否则 album/media 形态丢失主图 |
 | `SearchResultList` / `SearchResultLink` | 搜索结果列表（空态文案统一；默认条目为「标题链接 + 发布日期」，需要摘要 / 栏目名的主题传 `renderItem`，条目根元素自带 `key`）与高亮标题链接（外链新窗口、不拼 baseUrl） |
 | `loadHomeBlocks` / `CmsThemeHomeBlock` | 首页栏目区块取数：解析 `themeConfig.homeChannels`（中英文逗号分隔，默认最多 6 个，可传 `maxChannels`）并发读取各栏目、过滤站内不存在的栏目 |
-| `CaptchaBox` / `CmsFollowButton`（default） | 算术验证码容器（`data-island="captcha"`）/ 关注按钮（`data-island="follow"`）：只输出容器契约，交互见 [前台交互脚本（islands）](#前台交互脚本islands) |
+| `CaptchaBox` / `CmsFollowButton`（default） | 算术验证码容器（`data-island="captcha"`）/ 关注按钮（`data-island="follow"`）：只输出容器契约，交互见 [前台交互脚本（islands）](#前台交互脚本-islands) |
 | `THEME_TOGGLE_SCRIPT` | 暗色切换脚本（唯一保留在 head 内联的可执行脚本） |
 
 五套内置主题的搜索页与 default 详情页 HTML 由 `cms-theme-markup-snapshot.test.ts` 快照锁定，改动共享件后快照必须逐字节一致或有意更新。

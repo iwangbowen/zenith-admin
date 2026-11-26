@@ -476,7 +476,7 @@ export default withMermaid(defineConfig({
     },
   },
   head: [
-    ['link', { rel: 'icon', href: '/favicon.svg' }],
+    ['link', { rel: 'icon', href: `${base}favicon.svg` }],
     ['meta', { name: 'theme-color', content: '#3b82f6' }],
   ],
 }));

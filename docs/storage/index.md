@@ -89,7 +89,7 @@ Bucket 权限探测、下载方式与浏览器直传的专题说明见[文件存
 
 默认白名单已包含 `application/msword`、`application/vnd.ms-excel`、`application/vnd.ms-powerpoint`。识别完成后仍以当前生效的 `files.uploadAllowedTypes` 为准；自定义配置移除某类 Office MIME 后，对应文件仍会被拒绝。未知、损坏或仅伪造扩展名的 CFB 容器不会回退信任上传方声明的 Office MIME。
 
-通用 `files` API 提供 `POST /api/files/quick-upload`：文件 ≤ 32 MB 时浏览器计算 SHA-256，服务端按同存储、同租户、同内容且对象仍存在时复用文件记录（文件名 / MIME 以本次上传为准回填）；未命中走正常上传。分片接口使用 `uploadId + index` 保证同一分片重传幂等。`managed_files.contentHash` 持久化内容摘要，网盘也可在此底座上实现自己的预检查与秒传，详见[企业网盘：存储集成](../drive/index.md#存储集成)。
+通用 `files` API 提供 `POST /api/files/quick-upload`：文件 ≤ 32 MB 时浏览器计算 SHA-256，服务端按同存储、同租户、同内容且对象仍存在时复用文件记录（文件名 / MIME 以本次上传为准回填）；未命中走正常上传。分片接口使用 `uploadId + index` 保证同一分片重传幂等。`managed_files.contentHash` 持久化内容摘要，网盘也可在此底座上实现自己的预检查与秒传，详见[企业网盘：存储集成](../drive/reference.md#存储集成)。
 
 ### 分片上传
 
@@ -104,7 +104,7 @@ Bucket 权限探测、下载方式与浏览器直传的专题说明见[文件存
 | DELETE | `/api/files/upload/{uploadId}` | 中止上传并清理临时目录或云端 multipart；合并中（`completing`）与已完成的会话不可中止 |
 
 服务端中转模式下，`oss`、`s3`、`cos`、`obs`、`azure`、`bos` 使用原生 multipart；`local`、`kodo`、`sftp` 使用本地暂存（`UPLOAD_TEMP_DIR`，默认
-`storage/tmp/uploads`）后流式合并——多实例部署时该目录必须是共享卷，见 [部署：多实例与本地存储](../guide/deployment.md#5-多实例与本地存储)。`uploadMode=browser-direct` 时 Kodo 走分片上传 v2，不落本地暂存。
+`storage/tmp/uploads`）后流式合并——多实例部署时该目录必须是共享卷，见 [部署：多实例与本地存储](../guide/deployment.md#多实例与本地存储)。`uploadMode=browser-direct` 时 Kodo 走分片上传 v2，不落本地暂存。
 `upload_chunks` 的唯一约束允许客户端安全重传同一分片。
 
 会话状态：`uploading` → `completing`（某次 complete 已抢占合并权，正在合并）→ `completed`；任意阶段可进入 `aborted`。
