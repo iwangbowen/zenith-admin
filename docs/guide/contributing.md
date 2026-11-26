@@ -73,7 +73,7 @@ Demo 构建与三入口启动冒烟独立执行。
 
 1. 更新根目录与各 workspace 的版本号（root、server、web、shared、analytics-sdk、electron）。
 2. 运行 `npm install --package-lock-only` 同步 lockfile。
-3. 更新 `docs/changelog/index.md` 中对应版本段落。
+3. 在 `docs/changelog/index.md` 添加当前版本的 Release Notes。
 4. 在本地按变更范围运行必要校验。
 5. 提交到 `master` 后创建并推送 `vX.Y.Z` tag。
 
@@ -113,7 +113,7 @@ tag 包含 `-beta`、`-rc` 或 `-alpha` 时，Release 标记为 prerelease。
 
 ## Changelog 维护规范
 
-`docs/changelog/index.md` 按版本倒序维护。Release 工作流通过标题 `## vX.Y.Z` 定位对应段落，因此 tag 之前需先提交 changelog。
+`docs/changelog/index.md` 是发布记录，按版本倒序维护。Release 工作流通过标题 `## vX.Y.Z` 定位对应段落，因此 tag 之前需先提交 changelog。开发规范和业务操作手册只引用当前实现文档，不引用 Changelog 作为规则来源。
 
 推荐结构：
 

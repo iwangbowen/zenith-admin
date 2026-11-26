@@ -113,4 +113,4 @@ query key 从契约派生，再加入有效用户、租户视角和模拟登录�
 
 基础入口不会自动补全所有领域的通知/任务历史或推断关系。未接入的写入点按上述清单逐模块登记，不做字符串解析、历史回填或双读兼容。
 
-可靠业务事件支持[对象关注与变化提醒](./entity-watches.md)。详情路由由 Shared 的 `entity-detail-routes.ts` 统一提供给前端与通知；没有可靠事件的对象不显示关注入口。本轮实施范围见[业务处理增强计划](./entity-relations-next-phase.md)。
+可靠业务事件支持[对象关注与变化提醒](./entity-watches.md)。详情路由由 Shared 的 `entity-detail-routes.ts` 统一提供给前端与通知；没有可靠事件的对象不显示关注入口。
