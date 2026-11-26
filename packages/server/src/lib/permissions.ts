@@ -5,7 +5,7 @@ import { SUPER_ADMIN_CODE, type DataScope } from '@zenith/shared/identity';
 import { db } from '../db';
 import { users, identityAccessGrants, identityAccessGrantItems } from '../db/schema';
 import { onInvalidate, onInvalidationReset, invalidationBusState } from './invalidation-bus';
-import { sendToUser } from './ws-manager';
+import { broadcast, sendToUser } from './ws-manager';
 import { enabledGroupRolesWith } from './user-group-access';
 import { availableNavigation, getPageReadCode, isPermissionAvailable, readPageAccessRows } from './page-access';
 import { getTenantPackageFeatureSet } from './tenant-package';
@@ -31,6 +31,7 @@ interface AccessSource {
   deptScopeIds: number[];
   permissionCodes: string[];
   explicitPermissionCodes: string[];
+  pageReads: Array<{ code: string; title: string }>;
   menuIds: number[];
   grantItem?: { grantId: number; grantItemId: number; expiresAt: string | null };
 }
@@ -181,16 +182,20 @@ async function fetchUserPermissionData(userId: number, executor: DbExecutor = db
     const explicitPermissionCodes = codes.filter(canUse);
     const permissionCodes = new Set(explicitPermissionCodes);
     const menuIds: number[] = [];
+    const pageReads: AccessSource['pageReads'] = [];
     for (const id of pageIds) {
       const page = pages.get(id);
       if (!page) continue;
       const read = getPageReadCode(page);
       if (read && !canUse(read)) continue;
-      if (read) permissionCodes.add(read);
+      if (read) {
+        permissionCodes.add(read);
+        pageReads.push({ code: read, title: page.title });
+      }
       menuIds.push(id);
     }
     if (kind === 'role' || kind === 'group' || menuIds.length || permissionCodes.size) {
-      sources.push({ kind, label, dataScope, deptScopeIds, explicitPermissionCodes, permissionCodes: [...permissionCodes], menuIds, grantItem });
+      sources.push({ kind, label, dataScope, deptScopeIds, explicitPermissionCodes, pageReads, permissionCodes: [...permissionCodes], menuIds, grantItem });
     }
   };
   for (const role of enabledRoles) {
@@ -236,6 +241,11 @@ async function fetchUserPermissionData(userId: number, executor: DbExecutor = db
 export async function notifyUserPermissionsChanged(userId: number): Promise<void> {
   await clearUserPermissionCache(userId);
   sendToUser(userId, { type: 'identity:permissions-changed', payload: { userId } });
+}
+
+export async function notifyNavigationPermissionsChanged(): Promise<void> {
+  await clearUserPermissionCache();
+  broadcast({ type: 'identity:permissions-changed', payload: { userId: null } });
 }
 
 function invalidateUserEntry(key?: string | null): void {

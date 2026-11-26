@@ -17,6 +17,7 @@ export type PermissionPolicyListQuery = NonNullable<QueryOf<typeof accessGoverna
 export const identityAccessGovernanceKeys = {
   workflowResults: contractKey(accessGovernanceContract.workflowResult),
   workflowOptions: contractKey(accessGovernanceContract.workflowOptions),
+  assignmentOptions: contractKey(accessGovernanceContract.assignmentOptions),
   all: ['identity-access-governance'] as const,
   reviewOptions: contractKey(accessGovernanceContract.reviewOptions),
   requests: contractKey(accessGovernanceContract.requestList),
@@ -43,6 +44,12 @@ export function useGovernanceRequestWorkflow(id: number | null) {
 
 export function useAccessWorkflowOptions(enabled = true, client?: ApiClient) {
   return useApiQuery(accessGovernanceContract.workflowOptions, undefined, { enabled, staleTime: 0, refetchOnMount: 'always', requestOptions: { client } });
+}
+
+export function useAssignmentScope(target: 'role' | 'user', id: number | undefined, enabled: boolean) {
+  return useApiQuery(accessGovernanceContract.assignmentOptions, { query: { target, id: id ?? 0 } }, {
+    enabled: enabled && id !== undefined, staleTime: 0, refetchOnMount: 'always',
+  });
 }
 
 export function useAccessWorkflowPreview(body: BodyOf<typeof accessGovernanceContract.workflowPreview>, enabled: boolean, client?: ApiClient) {

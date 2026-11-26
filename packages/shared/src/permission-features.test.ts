@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { isPageReadPermission, permissionFeatureKeys, permissionPageBindings } from './permission-features';
+import { buildPermissionDirectory, isPageReadPermission, permissionFeatureKeys } from './permission-features';
+import { SEED_MENUS } from './seed/menus';
 
 describe('permission feature registry', () => {
   it('maps operation permissions through their bound pages', () => {
@@ -17,7 +18,7 @@ describe('permission feature registry', () => {
   });
 
   it('keeps every page binding for shared permissions', () => {
-    const bindings = permissionPageBindings('cms:site:list');
+    const bindings = buildPermissionDirectory(SEED_MENUS).items.find(item => item.code === 'cms:site:list')!.pageBindings;
     expect(bindings.length).toBeGreaterThan(1);
     expect(bindings.map((binding) => binding.title)).toEqual(expect.arrayContaining(['站点管理', '访问统计', '数据看板', '内容工作台']));
   });

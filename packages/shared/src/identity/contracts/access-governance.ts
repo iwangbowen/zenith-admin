@@ -6,6 +6,7 @@ import { DATA_SCOPES } from '../constants';
 import { ACCESS_PROVISION_STATUSES, ACCESS_APPROVAL_POLICIES, ACCESS_GRANT_STATUSES, ACCESS_REQUEST_ITEM_TYPES, ACCESS_REQUEST_STATUSES, ACCESS_REQUEST_TYPES, ACCESS_REVIEW_DECISIONS, ACCESS_REVIEW_SCOPE_TYPES, ACCESS_REVIEW_STATUSES, ACCESS_REVIEW_SOURCE_TYPES, ACCESS_RISK_LEVELS } from '../access-governance-constants';
 import { accessSourceRefSchema, assignAccessReviewCampaignSchema, accessReviewHistorySchema, accessApprovalEvidenceSchema, accessApprovalPlanSchema, accessPolicySnapshotSchema, createAccessReviewCampaignSchema, decideAccessReviewItemSchema, revokeAccessGrantSchema, updatePermissionPolicySchema } from '../access-governance-validation';
 import { accessWorkflowPreviewInputSchema } from '../access-governance-validation';
+import { accessScopeOptionsSchema } from './access-scope';
 
 export const permissionPolicySchema = z.object({
   id: z.int(),
@@ -154,7 +155,7 @@ export type AccessReviewCampaign = z.infer<typeof accessReviewCampaignSchema>;
 const accessPolicySummaryFields = { riskLevel: z.enum(ACCESS_RISK_LEVELS), approvalPolicy: z.enum(ACCESS_APPROVAL_POLICIES), maxDurationMinutes: z.int().positive().nullable(), mfaRequired: z.boolean(), permanentAllowed: z.boolean(), emergencyAllowed: z.boolean(), maxEmergencyMinutes: z.int() };
 export const accessWorkflowOptionsSchema = z.object({
   roles: z.array(z.object({ id: z.int(), name: z.string(), code: z.string(), description: z.string().nullable().optional(), dataScope: z.enum(DATA_SCOPES), version: z.int(), permissionCount: z.int(), permissionCodes: z.array(z.string()), menuIds: z.array(z.int()), ...accessPolicySummaryFields })),
-  menus: z.array(z.object({ id: z.int(), parentId: z.int(), title: z.string(), name: z.string().nullable().optional(), type: z.enum(['directory', 'menu', 'permission']), permission: z.string().nullable().optional(), permissionLabel: z.string().nullable().optional(), requestable: z.boolean(), path: z.array(z.string()), ...accessPolicySummaryFields })),
+  scope: accessScopeOptionsSchema,
 }).meta({ id: 'IdentityAccessWorkflowOptions' });
 
 export type AccessWorkflowOptions = z.infer<typeof accessWorkflowOptionsSchema>;
@@ -220,6 +221,12 @@ export const accessGovernanceContract = defineContract('/api/access-governance',
   requestWorkflow: op.get('/requests/{id}/workflow', { access: { permission: 'system:access-governance:view' }, params: idParam, response: workflowInstanceSchema, summary: '治理人员只读查看精确关联的申请流程' }),
   workflowResult: op.get('/workflow/{id}/result', { access: 'authenticated', params: idParam, response: accessWorkflowResultSchema, summary: '按流程参与关系查看权限申请与实时授权结果' }),
   workflowOptions: op.get('/workflow-options', { access: 'authenticated', response: accessWorkflowOptionsSchema, summary: '权限申请工作流选项' }),
+  assignmentOptions: op.get('/assignment-options', {
+    access: { permission: ['system:role:assign', 'system:user:assign'] },
+    query: z.object({ target: z.enum(['role', 'user']), id: z.coerce.number().int().positive() }),
+    response: accessScopeOptionsSchema,
+    summary: '按授权对象和委派范围加载页面与权限选项',
+  }),
   workflowPreview: op.post('/workflow-preview', { access: 'authenticated', body: accessWorkflowPreviewInputSchema, response: accessWorkflowPreviewSchema, summary: '评估权限申请及实际审批计划' }),
   requestList: op.get('/requests', { access: { permission: 'system:access-governance:view' }, query: requestListQuery, response: paginated(accessRequestSchema), summary: '权限申请列表' }),
   requestRetry: op.post('/requests/{id}/retry', { access: { permission: 'system:access-governance:grant' }, params: idParam, response: accessRequestSchema, summary: '重试权限发放', audit: '重试权限发放' }),

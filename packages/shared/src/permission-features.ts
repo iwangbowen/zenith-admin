@@ -1,34 +1,7 @@
 import type { LicenseFeatureKey } from './licensing';
 import { ALL_PERMISSIONS, PERMISSION_REGISTRY_BY_DOMAIN, type PermissionDomain } from './permissions';
 import { PAGE_READ_PERMISSION_CODES } from './seed/menus/page-permissions';
-import { SEED_MENUS } from './seed/menus';
-
-const pagesByName = new Map(
-  SEED_MENUS
-    .filter((menu) => menu.type === 'menu' && menu.name)
-    .map((menu) => [menu.name!, menu] as const),
-);
-
-export interface PermissionPageBinding {
-  id: number;
-  title: string;
-  path: string | null;
-}
-
-const pageBindingsByPermission = new Map<string, readonly PermissionPageBinding[]>();
-
-for (const [code, meta] of Object.entries(ALL_PERMISSIONS)) {
-  const pageReadBindings = SEED_MENUS
-    .filter((menu) => menu.type === 'menu' && menu.permission === code)
-    .map((menu) => ({ id: menu.id, title: menu.title, path: menu.path ?? null }));
-  const menuNames = typeof meta.menu === 'string' ? [meta.menu] : meta.menu ?? [];
-  const operationBindings = menuNames.flatMap((menuName) => {
-    const menu = pagesByName.get(menuName);
-    return menu ? [{ id: menu.id, title: menu.title, path: menu.path ?? null }] : [];
-  });
-  const bindings = [...pageReadBindings, ...operationBindings];
-  pageBindingsByPermission.set(code, [...new Map(bindings.map((binding) => [binding.id, binding])).values()]);
-}
+import type { Menu, PermissionCatalog } from './identity/contracts';
 
 const domainFeature: Record<PermissionDomain, LicenseFeatureKey | null> = {
   identity: null, platform: null, messaging: null, tasks: null, biz: null,
@@ -56,12 +29,37 @@ export function permissionFeatureKeys(code: string): ReadonlySet<LicenseFeatureK
   return featureKeysByPermission.get(code) ?? new Set();
 }
 
-/** 返回权限码绑定的全部页面，页面读权限和操作权限共用此映射。 */
-export function permissionPageBindings(code: string): readonly PermissionPageBinding[] {
-  return pageBindingsByPermission.get(code) ?? [];
-}
-
 /** 权限码是否属于页面读权限。 */
 export function isPageReadPermission(code: string): boolean {
   return PAGE_READ_PERMISSION_CODES.has(code);
+}
+
+/** Resolve page labels and bindings against the supplied navigation configuration. */
+export function buildPermissionDirectory(menus: readonly Menu[]): PermissionCatalog {
+  const pages = menus.filter(menu => menu.type === 'menu');
+  const byName = new Map(pages.flatMap(page => page.name ? [[page.name, page] as const] : []));
+  const byReadCode = new Map<string, Menu[]>();
+  for (const page of pages) {
+    if (!page.permission) continue;
+    const bindings = byReadCode.get(page.permission) ?? [];
+    bindings.push(page);
+    byReadCode.set(page.permission, bindings);
+  }
+  return {
+    items: Object.entries(ALL_PERMISSIONS).map(([code, meta]) => {
+      const names = typeof meta.menu === 'string' ? [meta.menu] : meta.menu ?? [];
+      const reads = byReadCode.get(code) ?? [];
+      const related = [...reads, ...names.flatMap(name => byName.get(name) ?? [])];
+      const pageBindings = [...new Map(related.map(page => [
+        page.id, { id: page.id, title: page.title, path: page.path ?? null },
+      ])).values()];
+      const primary = pageBindings[0];
+      return {
+        code, label: meta.label, uiOnly: meta.uiOnly ?? false,
+        surface: reads.length ? 'page' : pageBindings.length ? 'operation' : 'api',
+        pageId: primary?.id ?? null, pageTitle: primary?.title ?? null, path: primary?.path ?? null,
+        pageBindings,
+      };
+    }),
+  };
 }

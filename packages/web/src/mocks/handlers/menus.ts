@@ -1,4 +1,4 @@
-import { menuContract, type Menu } from '@zenith/shared/identity';
+import { ADMIN_CONTEXT_ROUTES, PAGE_ROUTE_RULES, menuContract, menuRoutePattern, type Menu } from '@zenith/shared/identity';
 import { mock } from '@/mocks/utils/contract';
 import { requireItem } from '@/mocks/utils/crud';
 import { conflict } from '@/mocks/utils/handlers';
@@ -7,16 +7,49 @@ import { mockMenus, buildMenuTree, getNextMenuId } from '@/mocks/data/menus';
 import { mockRoles } from '@/mocks/data/roles';
 import { mockDateTime } from '@/mocks/utils/date';
 import { mockResource } from '@/mocks/utils/resource';
+import { currentMockSession, isMockPlatformAdmin, mockAvailableMenus, mockPackageFeatures, mockUserAccess } from '@/mocks/utils/auth';
 
 export const menusHandlers = [
   // 当前用户的菜单树（用于渲染侧边栏）
-  mock(menuContract.userTree, ({ ok }) => {
-    // 与真实后端对齐：禁用菜单对所有人不可见；按钮为纯权限点，不参与页面展示
-    return ok(buildMenuTree(mockMenus.filter((m) => m.status === 'enabled')));
+  mock(menuContract.userTree, ({ request, ok }) => {
+    const user = currentMockSession(request)?.user;
+    const available = mockAvailableMenus(user?.tenantId);
+    if (!user || isMockPlatformAdmin(user)) return ok(buildMenuTree(available));
+    const access = mockUserAccess(user);
+    const byId = new Map(available.map(menu => [menu.id, menu]));
+    const byName = new Map(available.map(menu => [menu.name, menu.id]));
+    const selected = new Set(available.flatMap(page => {
+      if (page.type !== 'menu') return [];
+      const rule = PAGE_ROUTE_RULES[page.name ?? ''];
+      const owner = rule ? byName.get(rule.owner) : undefined;
+      if (rule && (owner === undefined || (rule.anyPermission && !rule.anyPermission.some(code => access.permissions.includes(code))))) return [];
+      return access.menuIds.includes(page.id) || (owner !== undefined && access.menuIds.includes(owner)) ? [page.id] : [];
+    }));
+    for (const id of [...selected]) {
+      for (let parent = byId.get(byId.get(id)?.parentId ?? 0); parent; parent = byId.get(parent.parentId)) {
+        if (parent.type === 'directory') selected.add(parent.id);
+      }
+    }
+    return ok(buildMenuTree(available.filter(menu => selected.has(menu.id)).map(menu => {
+      let parentId = menu.parentId;
+      while (parentId && !selected.has(parentId)) parentId = byId.get(parentId)?.parentId ?? 0;
+      return { ...menu, parentId };
+    })));
   }),
 
-  mock(menuContract.paths, ({ ok }) => {
-    return ok([...new Set(mockMenus.filter((m) => m.type === 'menu' && m.status === 'enabled' && m.path).map((m) => m.path!))]);
+  mock(menuContract.paths, ({ request, ok }) => {
+    const tenantId = currentMockSession(request)?.user.tenantId;
+    const available = mockAvailableMenus(tenantId);
+    const names = new Set(available.filter(menu => menu.type === 'menu').map(page => page.name));
+    const features = mockPackageFeatures(tenantId);
+    return ok([
+      ...available.flatMap(menu => {
+        const owner = PAGE_ROUTE_RULES[menu.name ?? '']?.owner;
+        return !owner || names.has(owner) ? menuRoutePattern(menu) ?? [] : [];
+      }),
+      ...ADMIN_CONTEXT_ROUTES.filter(route => (!route.owner || names.has(route.owner))
+        && (!route.feature || !features || features.has(route.feature))).map(route => route.path),
+    ]);
   }),
 
   mock(menuContract.flat, ({ ok }) => {

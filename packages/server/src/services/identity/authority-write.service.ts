@@ -8,7 +8,7 @@ import type { DbExecutor } from '../../db/types';
 import { users, roles, userRoles, roleMenus, userGroups, userGroupRoles, userGroupMembers, identityRoleVersions, identityUserPermissions } from '../../db/schema';
 import { currentUser } from '../../lib/context';
 import { exactTenantCondition } from '../../lib/tenant';
-import { getUserPermissions, runWithFreshUserPermissions } from '../../lib/permissions';
+import { getUserEffectiveAccess, runWithFreshUserPermissions } from '../../lib/permissions';
 import { loadEffectiveAccessPolicies } from './access-policy.service';
 import { getDataScopeCondition } from '../../lib/data-scope';
 import { availableNavigation, getPageReadCode, isPermissionAvailable, readPageAccessRows } from '../../lib/page-access';
@@ -30,7 +30,8 @@ export async function assertAuthorityActor(tx: DbExecutor, tenantId: number | nu
   if (!account) throw new HTTPException(403, { message: '当前身份已失效，不能修改权限' });
   const platform = account.tenantId === null && account.userRoles.some(({ role }) => role.code === 'super_admin' && role.tenantId === null && role.status === 'enabled');
   if (!platform && account.tenantId !== tenantId) throw new HTTPException(403, { message: '不能跨租户修改身份权限' });
-  const owned = await runWithFreshUserPermissions(actor.userId, () => getUserPermissions(actor.userId), tx);
+  const access = await runWithFreshUserPermissions(actor.userId, () => getUserEffectiveAccess(actor.userId), tx);
+  const owned = access.permissions;
   if (!platform && !owned.includes(permission)) throw new HTTPException(403, { message: '没有当前权限变更的管理能力' });
   if (beneficiaryIds.length) {
     const scope = platform ? undefined : await getDataScopeCondition({ currentUserId: actor.userId, permissions: [permission], executor: tx, deptColumn: users.departmentId, ownerColumn: users.id });
@@ -38,7 +39,7 @@ export async function assertAuthorityActor(tx: DbExecutor, tenantId: number | nu
     const targets = await tx.select({ id: users.id }).from(users).where(and(inArray(users.id, ids), exactTenantCondition(users.tenantId, tenantId), scope));
     if (targets.length !== ids.length) throw new HTTPException(403, { message: '受益用户超出当前管理范围' });
   }
-  return { platform, owned };
+  return { platform, owned, pageIds: access.menuIds };
 }
 
 /** Profile changes permit self editing, but still require a live, current capability. */
@@ -90,7 +91,7 @@ export async function validateGrantScope(tx: DbExecutor, tenantId: number | null
 export async function assertAuthorityGrant(tx: DbExecutor, input: { tenantId: number | null; permission: Permission; beneficiaryIds?: readonly number[]; roleIds?: readonly number[]; menuIds?: readonly number[]; permissionCodes?: readonly string[] }) {
   const actor = await assertAuthorityActor(tx, input.tenantId, input.permission, input.beneficiaryIds);
   const roleRows = await assertGrantableRoles(tx, input.roleIds ?? [], input.tenantId);
-  const { codes } = await validateGrantScope(tx, input.tenantId,
+  const { pages, codes } = await validateGrantScope(tx, input.tenantId,
     [...(input.menuIds ?? []), ...roleRows.flatMap(role => role.roleMenus.map(page => page.menuId))],
     [...(input.permissionCodes ?? []), ...roleRows.flatMap(role => role.permissionCodes)]);
   if (!actor.platform) {
@@ -98,6 +99,7 @@ export async function assertAuthorityGrant(tx: DbExecutor, input: { tenantId: nu
     if (roleRows.some(role => ['super_admin', 'tenant_admin', 'security_admin'].includes(role.code))) throw new HTTPException(403, { message: '管理身份只能由平台管理员任命' });
     if (policies.some(policy => policy.riskLevel !== 'low' || !policy.enabled)) throw new HTTPException(409, { message: '高危或治理能力不能通过普通直授获得，请使用独立审批或管理员任命' });
     if (codes.some(code => !actor.owned.includes(code))) throw new HTTPException(403, { message: '所授予的能力超出当前管理员可委派范围' });
+    if (pages.some(page => !actor.pageIds.includes(page.id))) throw new HTTPException(403, { message: '所授予的页面超出当前管理员可委派范围' });
   }
 }
 

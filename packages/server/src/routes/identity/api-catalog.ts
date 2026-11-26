@@ -13,10 +13,8 @@ const getRoute = defineContractRoute(apiCatalogContract.get, {
   responses: notModifiedResponse,
   handler: (c) => catalogResponse.respond(c),
 });
-const permissionResponse = createStaticJsonResponder(() => okBody(getPermissionCatalog()));
 const permissionRoute = defineContractRoute(permissionCatalogContract.directory, {
-  responses: notModifiedResponse,
-  handler: (c) => permissionResponse.respond(c),
+  handler: async (c) => c.json(okBody(await getPermissionCatalog()), 200),
 });
 
 apiCatalogRouter.openapiRoutes([getRoute, permissionRoute] as const);

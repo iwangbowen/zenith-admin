@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDebouncedValue } from '@tanstack/react-pacer';
 import { Banner, Button, Descriptions, Form, Space, Spin, Table, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
-import { createLabelOptionsFromMap, stableStringify, type BodyOf } from '@zenith/shared/core';
+import { createLabelOptionsFromMap, flattenTree, stableStringify, type BodyOf } from '@zenith/shared/core';
 import {
   ACCESS_APPROVAL_POLICY_LABELS, ACCESS_REQUEST_TYPE_LABELS, ACCESS_RISK_LABELS, ACCESS_START_MODE_LABELS, ACCESS_VALIDITY_MODE_LABELS,
   accessApprovalPlanSchema, higherAccessRisk, stricterAccessApproval,
@@ -94,24 +94,16 @@ export default function AccessRequestWorkflowForm({ mode, value, instanceId, biz
   const permissionCodesRef = useRef<string[]>(defaults.permissionCodes ?? []);
   const [scopeVisible, setScopeVisible] = useState(false);
   const roles = optionsQuery.data?.roles ?? [];
-  const menus = useMemo(() => optionsQuery.data?.menus ?? [], [optionsQuery.data?.menus]);
-  const scopeData = useMemo(() => createAccessScopeData(optionsQuery.data?.menus ?? []), [optionsQuery.data?.menus]);
-  const pageTitleById = useMemo(() => new Map(menus.map(menu => [menu.id, menu.title])), [menus]);
-  const permissionLabelByCode = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const menu of menus) {
-      if (menu.permission) map.set(menu.permission, menu.permissionLabel ?? menu.title);
-    }
-    return map;
-  }, [menus]);
-  const selectedPageTitles = values.menuIds.map(id => pageTitleById.get(id) ?? `#${id}`);
-  const selectedPermissionLabels = values.permissionCodes.map(code => permissionLabelByCode.get(code) ?? code);
+  const options = optionsQuery.data?.scope;
+  const scopeData = useMemo(() => createAccessScopeData(options), [options]);
+  const pagesById = useMemo(() => new Map(flattenTree(options?.pages ?? []).map(page => [page.id, page])), [options]);
+  const permissionsByCode = useMemo(() => new Map(options?.permissions.map(item => [item.code, item])), [options]);
+  const selectedPageTitles = values.menuIds.map(id => pagesById.get(id)?.title ?? `#${id}`);
+  const selectedPermissionLabels = values.permissionCodes.map(code => permissionsByCode.get(code)?.label ?? code);
   const selectedRoles = roles.filter(role => values.roleIds.includes(role.id));
   const coveredPermissionCodes = useMemo(() => [...new Set((optionsQuery.data?.roles ?? []).filter(role => values.roleIds.includes(role.id)).flatMap(role => role.permissionCodes))], [optionsQuery.data?.roles, values.roleIds]);
-  const selectedMenus = menus.filter(menu => !!menu.permission
-    && (values.permissionCodes.includes(menu.permission) || values.menuIds.includes(menu.id))
-    && menu.requestable);
-  const selection = [...selectedRoles, ...selectedMenus];
+  const selectedCodes = new Set([...values.permissionCodes, ...values.menuIds.flatMap(id => pagesById.get(id)?.permission ?? [])]);
+  const selection = [...selectedRoles, ...[...selectedCodes].flatMap(code => permissionsByCode.get(code)?.policy ?? [])];
   const risk = selection.reduce<AccessRiskLevel>((level, item) => higherAccessRisk(level, item.riskLevel), 'low');
   const approval = selection.reduce<AccessApprovalPolicy>((policy, item) => stricterAccessApproval(policy, item.approvalPolicy), 'none');
   const durationLimits = selection.flatMap(item => item.maxDurationMinutes === null ? [] : [item.maxDurationMinutes]);
@@ -155,7 +147,11 @@ export default function AccessRequestWorkflowForm({ mode, value, instanceId, biz
         const fail = (message: string): never => { Toast.warning(message); return abortSubmit('invalid_access_request'); };
         const { preview: evaluated, roles: currentRoles, maxMinutes: currentLimit } = latestPreview.current;
         if (!(current.roleIds?.length || current.permissionCodes?.length || current.menuIds?.length)) fail('请选择至少一项页面、角色或操作权限');
-        if (current.roleIds.some(id => !currentRoles.some(role => role.id === id)) || current.permissionCodes.some(code => !menus.some(menu => menu.permission === code && menu.requestable))) fail('所选角色或权限已不可申请，请重新选择');
+        if (current.roleIds.some(id => !currentRoles.some(role => role.id === id))
+          || current.menuIds.some(id => !options?.selectablePageIds.includes(id))
+          || current.permissionCodes.some(code => !permissionsByCode.get(code)?.selectable)) {
+          fail('所选页面、角色或权限已不可申请，请重新选择');
+        }
         const start = (current.startMode === 'scheduled' ? pickerTime(current.startsAt) : Date.now()) ?? Number.NaN;
         const end = pickerTime(current.expiresAt) ?? Number.NaN;
         if (!start || (current.startMode === 'scheduled' && start <= Date.now())) fail('请选择晚于当前时间的预约生效时间');

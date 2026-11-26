@@ -8,7 +8,7 @@ import type { DbExecutor } from '../../db/types';
 import { tenantPackages, tenantPackageFeatures, tenants, type TenantPackageRow } from '../../db/schema';
 import { HTTPException } from 'hono/http-exception';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
-import { clearUserPermissionCache } from '../../lib/permissions';
+import { notifyNavigationPermissionsChanged } from '../../lib/permissions';
 import { isLicenseFeatureKey, type TenantPackageQuotas } from '@zenith/shared/licensing';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { tenantPackageSchema, type tenantPackageContract } from '@zenith/shared/identity';
@@ -122,7 +122,7 @@ export async function updateTenantPackage(id: number, data: Partial<TenantPackag
     const [row] = await db.update(tenantPackages).set(data).where(eq(tenantPackages.id, id)).returning();
     requireRow(row, '套餐不存在');
     // 套餐状态（启用/禁用）影响绑定租户的功能集解析（禁用=fail-closed），清空权限缓存即时生效
-    await clearUserPermissionCache();
+    await notifyNavigationPermissionsChanged();
     return getTenantPackage(id);
   } catch (err: unknown) {
     rethrowPgUniqueViolation(err, '套餐名称已存在');
@@ -136,7 +136,7 @@ export async function assignTenantPackageFeatures(id: number, features: string[]
     await setPackageFeatures(tx, id, normalized);
   });
   // 套餐功能变更会影响绑定该套餐的租户用户的有效菜单/权限，清空权限缓存使其即时生效。
-  await clearUserPermissionCache();
+  await notifyNavigationPermissionsChanged();
 }
 
 export async function deleteTenantPackage(id: number) {

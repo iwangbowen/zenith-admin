@@ -2,12 +2,12 @@ import { and, asc, desc, eq, exists, gt, inArray, isNull, lte, or, sql } from 'd
 import { HTTPException } from 'hono/http-exception';
 import { createHash } from 'node:crypto';
 import { type AccessRequest, type AccessGrant, type PermissionPolicy, accessGovernanceContract } from '@zenith/shared/identity';
-import type { AccessSourceRef, AccessWorkflowInput, AccessWorkflowPreview } from '@zenith/shared/identity';
+import type { AccessSourceRef, AccessWorkflowInput, AccessWorkflowOptions, AccessWorkflowPreview } from '@zenith/shared/identity';
 import { ALL_PERMISSIONS } from '@zenith/shared/permissions';
-import type { QueryOutputOf } from '@zenith/shared/core';
+import { flattenTree, type QueryOutputOf } from '@zenith/shared/core';
 import { db } from '../../db';
 import type { DbExecutor } from '../../db/types';
-import { identityAccessGrantItems, identityAccessGrants, identityAccessRequests, identityAccessReviewItems, identityPermissionPolicies, menus, roles, users, asyncTasks } from '../../db/schema';
+import { identityAccessGrantItems, identityAccessGrants, identityAccessRequests, identityAccessReviewItems, identityPermissionPolicies, roles, users, asyncTasks } from '../../db/schema';
 import { currentUser, setAuditBefore } from '../../lib/context';
 import { exactTenantCondition, getCreateTenantId, tenantCondition } from '../../lib/tenant';
 import { requireRow } from '../../lib/db-assert';
@@ -17,7 +17,6 @@ import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/whe
 import { buildListResult } from '../../lib/list-query';
 import { pageOffset } from '../../lib/pagination';
 import { effectiveAccessPolicy } from '@zenith/shared/identity';
-import { getTenantPackageFeatureSet } from '../../lib/tenant-package';
 import { notifyUserPermissionsChanged } from '../../lib/permissions';
 import { notifyWithin } from '../messaging/notification-outbox.service';
 import { ACCESS_REQUEST_BIZ_TYPE, accessWorkflowInputSchema } from '@zenith/shared/identity';
@@ -29,7 +28,8 @@ import { resolveAccessApprovalPlan, assertAccessGrantApproversCurrent } from './
 import { formatAccessRequest, formatAccessGrant, formatPermissionPolicy, formatReviewItem } from './access-formatters';
 import { assertNoOverlappingAccessRequest } from './access-reservations.service';
 import { lockIdentityAuthority, validateGrantScope } from './authority-write.service';
-import { availableNavigation, getPageReadCode, isPermissionAvailable } from '../../lib/page-access';
+import { getPageReadCode } from '../../lib/page-access';
+import { loadAccessScope } from './access-scope.service';
 export { assertNoOverlappingAccessRequest } from './access-reservations.service';
 export { revokeAccessGrant, revokeAccessGrantItem, retryAccessRequestProvision, runAccessGrantLifecycle } from './access-grants.service';
 export { getAccessReviewOptions, createAccessReviewCampaign, listReviewCampaigns, listReviewItems, decideReviewItem, retryAccessReviewCampaign, assignAccessReviewCampaign } from './access-review.service';
@@ -105,114 +105,33 @@ async function assertApprovedScopeCurrent(tx: DbExecutor, tenantId: number | nul
   }
 }
 
-export async function getAccessWorkflowOptions() {
+export async function getAccessWorkflowOptions(): Promise<AccessWorkflowOptions> {
   const user = currentUser();
-  const featureSet = await getTenantPackageFeatureSet(user.tenantId);
-  const [roleRows, menuRows] = await Promise.all([
+  const [roleRows, scope] = await Promise.all([
     db.query.roles.findMany({
       where: and(eq(roles.status, 'enabled'), exactTenantCondition(roles.tenantId, user.tenantId)),
       with: { roleMenus: { columns: { menuId: true } } },
       orderBy: [asc(roles.name), asc(roles.id)],
     }),
-    db.select().from(menus).orderBy(asc(menus.parentId), asc(menus.sort), asc(menus.id)),
+    loadAccessScope(user.tenantId, { kind: 'request' }),
   ]);
-  const effective = await loadEffectiveAccessPolicies(Object.keys(ALL_PERMISSIONS), user.tenantId);
-  const policies = new Map(effective.map(policy => [policy.permissionCode, policy]));
-  const available = availableNavigation(menuRows, featureSet, user.tenantId === null);
-  const menuIndex = new Map(available.map(menu => [menu.id, menu]));
+  const pages = new Map(flattenTree(scope.pages).map(page => [page.id, page]));
+  const selectable = new Set(scope.selectablePageIds);
+  const policies = new Map(scope.permissions.flatMap(item => item.selectable && item.policy ? [[item.code, item.policy] as const] : []));
   const roleOptions = roleRows.flatMap(role => {
     if (['super_admin', 'tenant_admin', 'security_admin'].includes(role.code)) return [];
-    const reads = role.roleMenus.map(binding => {
-      const page = menuIndex.get(binding.menuId);
-      return page ? getPageReadCode(page) : null;
-    });
-    if (reads.some(code => code === null)) return [];
-    const codes = [...new Set([...role.permissionCodes, ...reads.flatMap(code => code ?? [])])];
-    if (codes.some(code => !isPermissionAvailable(code, featureSet))) return [];
-    const rolePolicies = codes.flatMap(code => { const policy = policies.get(code); return policy ? [policy] : []; });
-    if (!rolePolicies.length || rolePolicies.length !== codes.length || rolePolicies.some(policy => !policy.enabled)) return [];
-    return [{ id: role.id, name: role.name, code: role.code, description: role.description ?? null, dataScope: role.dataScope, version: role.permissionVersion, permissionCount: codes.length, permissionCodes: codes, menuIds: role.roleMenus.map(item => item.menuId), ...aggregateAccessPolicies(rolePolicies) }];
+    const menuIds = role.roleMenus.map(binding => binding.menuId);
+    if (menuIds.some(id => !selectable.has(id))) return [];
+    const codes = [...new Set([...role.permissionCodes, ...menuIds.flatMap(id => pages.get(id)?.permission ?? [])])];
+    const rolePolicies = codes.flatMap(code => policies.get(code) ?? []);
+    if (!codes.length || rolePolicies.length !== codes.length) return [];
+    return [{
+      id: role.id, name: role.name, code: role.code, description: role.description, dataScope: role.dataScope,
+      version: role.permissionVersion, permissionCount: codes.length, permissionCodes: codes, menuIds,
+      ...aggregateAccessPolicies(rolePolicies),
+    }];
   });
-  const pageByName = new Map(available.filter(menu => menu.type === 'menu' && menu.name).map(menu => [menu.name!, menu]));
-  const included = new Set<number>();
-  const addAncestors = (menuId: number) => {
-    let node: typeof available[number] | undefined = menuIndex.get(menuId);
-    const visited = new Set<number>();
-    while (node && !visited.has(node.id)) {
-      visited.add(node.id);
-      included.add(node.id);
-      node = menuIndex.get(node.parentId);
-    }
-  };
-  for (const menu of available) {
-    if (menu.type !== 'menu' || !menu.permission || !policies.get(menu.permission)?.enabled) continue;
-    addAncestors(menu.id);
-  }
-
-  let permissionNodeId = -1;
-  const permissionNodes = Object.entries(ALL_PERMISSIONS).flatMap(([code, meta]) => {
-    if (policies.get(code)?.enabled !== true || !isPermissionAvailable(code, featureSet)) return [];
-    const menuNames = typeof meta.menu === 'string' ? [meta.menu] : meta.menu ?? [];
-    const boundPages = menuNames.map(name => pageByName.get(name)).filter((page): page is NonNullable<typeof page> => !!page);
-    if (boundPages.length === 0) return [];
-    return boundPages
-      .filter(page => page.permission !== code)
-      .map(page => {
-        addAncestors(page.id);
-        const path = [page.title, meta.label];
-        let ancestor = menuIndex.get(page.parentId);
-        const visited = new Set([page.id]);
-        while (ancestor && !visited.has(ancestor.id)) {
-          visited.add(ancestor.id);
-          path.unshift(ancestor.title);
-          ancestor = menuIndex.get(ancestor.parentId);
-        }
-        return {
-          id: permissionNodeId--,
-          parentId: page.id,
-          title: meta.label,
-          name: null,
-          type: 'permission' as const,
-          permission: code,
-          permissionLabel: meta.label,
-          requestable: true,
-          path,
-          riskLevel: policies.get(code)?.riskLevel ?? 'low',
-          approvalPolicy: policies.get(code)?.approvalPolicy ?? 'none',
-          maxDurationMinutes: policies.get(code)?.maxDurationMinutes ?? null,
-          mfaRequired: policies.get(code)?.mfaRequired ?? false,
-          permanentAllowed: policies.get(code)?.permanentAllowed ?? false,
-          emergencyAllowed: policies.get(code)?.emergencyAllowed ?? false,
-          maxEmergencyMinutes: policies.get(code)?.maxEmergencyMinutes ?? 60,
-        };
-      });
-  });
-
-  return {
-    roles: roleOptions,
-    menus: [
-      ...available.filter(menu => included.has(menu.id)).map(menu => {
-        const policy = menu.permission ? policies.get(menu.permission) : undefined;
-        const path = [menu.title];
-        let ancestor = menuIndex.get(menu.parentId);
-        const visited = new Set([menu.id]);
-        while (ancestor && !visited.has(ancestor.id)) {
-          visited.add(ancestor.id);
-          path.unshift(ancestor.title);
-          ancestor = menuIndex.get(ancestor.parentId);
-        }
-        return {
-          id: menu.id, parentId: menu.parentId, title: menu.title, name: menu.name ?? null, type: menu.type, permission: menu.permission,
-          permissionLabel: menu.permission ? ALL_PERMISSIONS[menu.permission]?.label ?? menu.title : null,
-          requestable: !!policy?.enabled, path,
-          riskLevel: policy?.riskLevel ?? 'low', approvalPolicy: policy?.approvalPolicy ?? 'none',
-          maxDurationMinutes: policy?.maxDurationMinutes ?? null, mfaRequired: policy?.mfaRequired ?? false,
-          permanentAllowed: policy?.permanentAllowed ?? false, emergencyAllowed: policy?.emergencyAllowed ?? false, maxEmergencyMinutes: policy?.maxEmergencyMinutes ?? 60,
-        };
-      }),
-      ...permissionNodes,
-    ],
-  };
+  return { roles: roleOptions, scope };
 }
 
 export async function listAccessRequests(q: QueryOutputOf<typeof accessGovernanceContract.requestList>) {
@@ -294,6 +213,9 @@ async function enrichAccessWorkflowFormData(input: AccessWorkflowInput, caller: 
     policySnapshot,
     approvalPlan,
     menuIds: resolved.menuIds,
+    menus: [...new Map(resolved.items.flatMap(item => item.menuId === null ? [] : [
+      [item.menuId, { menuId: item.menuId, title: item.pageTitle, path: item.pagePath }] as const,
+    ])).values()],
     permissionItems: resolved.items,
     permissionSummary: resolved.items.map(item => `${item.pageTitle ?? item.permissionLabel ?? item.permissionCode}（${item.permissionCode}）`).join('、'),
     managerId: approvalPlan.steps[0]?.userId,

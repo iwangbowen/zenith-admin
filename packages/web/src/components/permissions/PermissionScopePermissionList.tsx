@@ -224,6 +224,7 @@ export function PermissionScopePermissionList({
                         )}
                         {item.uiOnly && <Tag size="small" color="orange">仅前端</Tag>}
                         {covered.has(item.code) && <Tag size="small">角色已包含</Tag>}
+                        {item.sources?.length ? <Typography.Text type="tertiary" size="small">{item.sources.join('、')}</Typography.Text> : null}
                         {!item.requestable && <Tag size="small" color="grey">不可申请</Tag>}
                       </div>
                     );

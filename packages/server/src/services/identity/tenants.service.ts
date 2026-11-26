@@ -13,11 +13,11 @@ import type { QueryOutputOf } from '@zenith/shared/core';
 import { tenantContract } from '@zenith/shared/identity';
 import { pageOffset } from '../../lib/pagination';
 import { db } from '../../db';
-import { tenants, users, departments, roles, positions, tenantPackageFeatures, menus, userRoles, roleMenus, userSignatures } from '../../db/schema';
+import { tenants, users, departments, roles, positions, tenantPackageFeatures, userRoles, roleMenus, userSignatures } from '../../db/schema';
 import { reserveTenantSeats } from '../../lib/tenant-quota';
 import type { DbTransaction } from '../../db/types';
 import { HTTPException } from 'hono/http-exception';
-import { clearUserPermissionCache } from '../../lib/permissions';
+import { notifyNavigationPermissionsChanged } from '../../lib/permissions';
 import { forceLogoutAllByUsers } from '../../lib/session-manager';
 import { isTenantActive } from '../../lib/tenant';
 import logger from '../../lib/logger';
@@ -254,7 +254,7 @@ export async function updateTenant(id: number, data: Partial<TenantInput>) {
     await revokeTenantSessions(id);
   }
   // 租户套餐变更会影响该租户下用户的有效菜单/权限，清空权限缓存使其即时生效。
-  if ('packageId' in data) await clearUserPermissionCache();
+  if ('packageId' in data) await notifyNavigationPermissionsChanged();
   return getTenant(id);
 }
 

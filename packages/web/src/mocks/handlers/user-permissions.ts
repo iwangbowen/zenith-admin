@@ -5,10 +5,10 @@ import { mockUsers } from '@/mocks/data/users';
 import { mockRoles } from '@/mocks/data/roles';
 import { mockUserGroups } from '@/mocks/data/user-groups';
 import { mockMenus } from '@/mocks/data/menus';
+import { mockUserPageIds as userMenuMap, mockUserPermissionCodes as userPermissionMap } from '@/mocks/data/access';
+import { mockUserAccess } from '@/mocks/utils/auth';
 
 // In-memory store for user-level menu/data permissions
-const userMenuMap: Record<number, number[]> = {};
-const userPermissionMap: Record<number, string[]> = {};
 const userDataScopeMap: Record<number, DataScope | null> = {};
 const userDeptScopeMap: Record<number, number[]> = {};
 
@@ -120,7 +120,7 @@ export const userPermissionsHandlers = [
 
     const directMenuIds = userMenuMap[userId] ?? [];
     const roleMenuIds = [...new Set(userRoles.flatMap((r) => r.menuIds ?? []))];
-    const effectiveMenuIds = [...new Set([...directMenuIds, ...roleMenuIds, ...groupMenuIds])];
+    const { menuIds: effectiveMenuIds, permissions } = mockUserAccess(user);
     const menuSources = new Map<number, Set<string>>();
     const addMenuSource = (menuId: number, source: string) => {
       const sources = menuSources.get(menuId) ?? new Set<string>();
@@ -148,6 +148,14 @@ export const userPermissionsHandlers = [
       const code = mockMenus.find(menu => menu.id === id)?.permission;
       if (code) permissionSources[code] = [...new Set([...(permissionSources[code] ?? []), ...sources])];
     }
+    for (const code of userPermissionMap[userId] ?? []) {
+      permissionSources[code] = [...new Set([...(permissionSources[code] ?? []), '用户直接授权'])];
+    }
+    for (const role of userRoles.filter(role => role.status === 'enabled')) {
+      for (const code of role.permissionCodes ?? []) {
+        permissionSources[code] = [...new Set([...(permissionSources[code] ?? []), `角色：${role.name}`])];
+      }
+    }
 
     const userDataScope = userDataScopeMap[userId] ?? null;
     const roleDataScope = getMostPermissive(userRoles.map((r) => r.dataScope ?? null));
@@ -170,7 +178,7 @@ export const userPermissionsHandlers = [
       directPermissionCodes: userPermissionMap[userId] ?? [],
       rolePermissionCodes: permissionCodesOfMenus(roleMenuIds),
       groupPermissionCodes: permissionCodesOfMenus(groupMenuIds),
-      permissionCodes: Object.keys(permissionSources),
+      permissionCodes: permissions,
       permissionSources,
       temporaryMenuIds: [],
       temporaryScopes: [],

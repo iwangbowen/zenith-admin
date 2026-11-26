@@ -21,11 +21,13 @@ export type PermissionScopeItem = {
   riskLevel?: 'low' | 'high' | 'critical';
   approvalPolicy?: string;
   uiOnly?: boolean;
+  sources?: string[];
 };
 
 export type PermissionScopeData = {
   pages: Menu[];
   permissions: PermissionScopeItem[];
+  selectablePageIds?: number[];
 };
 
 export function normalizeScopeValue(value: PermissionScopeValue): PermissionScopeValue {

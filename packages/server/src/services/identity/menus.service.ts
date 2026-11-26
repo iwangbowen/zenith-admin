@@ -9,7 +9,7 @@ import { currentUser } from '../../lib/context';
 import { getEffectiveTenantId, isPlatformAdmin } from '../../lib/tenant';
 import { ALL_PERMISSIONS } from '@zenith/shared/permissions';
 import { getTenantPackageFeatureSet } from '../../lib/tenant-package';
-import { isSuperAdmin, getUserEffectiveAccess, clearUserPermissionCache } from '../../lib/permissions';
+import { isSuperAdmin, getUserEffectiveAccess, notifyNavigationPermissionsChanged } from '../../lib/permissions';
 import { formatTimestamps } from '../../lib/datetime';
 import { buildTree } from '@zenith/shared/core';
 import { isPageReadPermission } from '@zenith/shared/permission-features';
@@ -242,6 +242,7 @@ export async function createMenu(input: CreateMenuInput): Promise<Omit<Menu, 'ch
       visible: input.visible ?? true,
     })
     .returning();
+  await notifyNavigationPermissionsChanged();
   return mapMenu(row);
 }
 
@@ -261,7 +262,7 @@ export async function updateMenu(id: number, input: UpdateMenuInput): Promise<Om
     await ensureMenuParentValid(input.parentId, id);
   }
   const [row] = await db.update(menus).set({ ...input }).where(eq(menus.id, id)).returning();
-  await clearUserPermissionCache();
+  await notifyNavigationPermissionsChanged();
   return mapMenu(requireRow(row, '菜单不存在'));
 }
 
@@ -278,7 +279,7 @@ export async function reorderMenus(parentId: number, orderedIds: number[]): Prom
       await tx.update(menus).set({ sort: index }).where(eq(menus.id, orderedIds[index]));
     }
   });
-  await clearUserPermissionCache();
+  await notifyNavigationPermissionsChanged();
   return { count: orderedIds.length };
 }
 
@@ -314,7 +315,7 @@ export async function deleteMenu(id: number): Promise<void> {
     }
     await tx.delete(menus).where(inArray(menus.id, ids));
   });
-  await clearUserPermissionCache();
+  await notifyNavigationPermissionsChanged();
 }
 
 export async function getMenu(id: number) {

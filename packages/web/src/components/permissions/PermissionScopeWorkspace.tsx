@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Banner, Space, Spin, TabPane, Tabs, Tag, Typography } from '@douyinfe/semi-ui';
+import { Banner, Button, Space, Spin, TabPane, Tabs, Tag, Typography } from '@douyinfe/semi-ui';
 import type { Menu } from '@zenith/shared/identity';
 import { PermissionScopePageTree } from './PermissionScopePageTree';
 import { PermissionScopePermissionList } from './PermissionScopePermissionList';
@@ -13,6 +13,7 @@ type Props = Readonly<{
   onlySelected?: boolean;
   height?: number;
   loading?: boolean;
+  error?: string;
   coveredPermissionCodes?: string[];
   showBanner?: boolean;
   showSummary?: boolean;
@@ -58,7 +59,7 @@ function ScopeSummary({
     <Space wrap spacing={6} style={{ marginBottom: 8 }}>
       <Typography.Text strong>已选授权</Typography.Text>
       <Tag size="small" color="blue">页面 {value.pageIds.length}</Tag>
-      <Tag size="small" color="green">操作权限 {value.permissionCodes.length}</Tag>
+      <Tag size="small" color="green">独立权限 {value.permissionCodes.length}</Tag>
       {unconfigured > 0 && <Tag size="small" color="orange">{unconfigured} 个页面未配置操作</Tag>}
       {coveredPermissionCodes.length > 0 && <Typography.Text type="tertiary" size="small">角色覆盖 {coveredPermissionCodes.length} 项</Typography.Text>}
     </Space>
@@ -79,6 +80,7 @@ export function PermissionScopeWorkspace({
   onlySelected = false,
   height = 420,
   loading = false,
+  error,
   coveredPermissionCodes = [],
   showBanner = true,
   showSummary = true,
@@ -91,6 +93,13 @@ export function PermissionScopeWorkspace({
     () => data.permissions.filter(item => item.pageId === null),
     [data.permissions],
   );
+  const selectable = useMemo(() => new Set(data.selectablePageIds), [data.selectablePageIds]);
+  const selectableCodes = useMemo(() => new Set(data.permissions.filter(item => item.requestable).map(item => item.code)), [data.permissions]);
+  const availableValue = {
+    pageIds: data.selectablePageIds ? value.pageIds.filter(id => selectable.has(id)) : value.pageIds,
+    permissionCodes: value.permissionCodes.filter(code => selectableCodes.has(code)),
+  };
+  const unavailable = value.pageIds.length + value.permissionCodes.length - availableValue.pageIds.length - availableValue.permissionCodes.length;
   const pageTree = (
     <PermissionScopePageTree
       data={data}
@@ -105,6 +114,7 @@ export function PermissionScopeWorkspace({
     />
   );
 
+  if (error) return <Banner type="danger" closeIcon={null} description={error} />;
   if (loading) return <div style={{ padding: 40, textAlign: 'center' }}><Spin /></div>;
 
   return (
@@ -119,6 +129,11 @@ export function PermissionScopeWorkspace({
         />
       )}
       {showSummary && <ScopeSummary data={data} value={value} coveredPermissionCodes={coveredPermissionCodes} />}
+      {!readonly && unavailable > 0 && (
+        <Banner type="warning" closeIcon={null} description={
+          <Space wrap>当前选择含 {unavailable} 项不可用授权。<Button size="small" onClick={() => onChange(availableValue)}>移除不可用项</Button></Space>
+        } />
+      )}
       {apiOnlyItems.length === 0 ? pageTree : (
         <Tabs activeKey={activeTab} onChange={setActiveTab} collapsible="auto">
           <TabPane tab="页面与操作" itemKey="pages">{pageTree}</TabPane>

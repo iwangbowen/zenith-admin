@@ -78,6 +78,7 @@ export function PermissionScopePageTree({
   }, [data.permissions]);
   const selectedPages = useMemo(() => new Set(value.pageIds), [value.pageIds]);
   const selectedCodes = useMemo(() => new Set(value.permissionCodes), [value.permissionCodes]);
+  const selectablePages = useMemo(() => data.selectablePageIds && new Set(data.selectablePageIds), [data.selectablePageIds]);
 
   // 已授权页面首次出现或新选中时自动展开；用户手动折叠后，其他选择变化不再强行展开。
   useEffect(() => {
@@ -120,8 +121,6 @@ export function PermissionScopePageTree({
 
   const toggleItem = (item: PermissionScopeItem) => {
     if (readonly || !item.requestable) return;
-    const autoPageRead = item.surface === 'page' && item.pageId !== null && selectedPages.has(item.pageId);
-    if (autoPageRead) return;
     const next = new Set(selectedCodes);
     if (next.has(item.code)) next.delete(item.code); else next.add(item.code);
     onChange({ ...value, permissionCodes: [...next] });
@@ -162,7 +161,7 @@ export function PermissionScopePageTree({
         </div>
         {visibleItems.map(item => {
           const autoPageRead = item.surface === 'page' && selectedPages.has(page.id);
-          const checked = autoPageRead || selectedCodes.has(item.code);
+          const checked = selectedCodes.has(item.code);
           return (
             <div key={item.code} style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, padding: '2px 0' }}>
               {readonly ? (
@@ -180,7 +179,7 @@ export function PermissionScopePageTree({
               ) : (
                 <Checkbox
                   checked={checked}
-                  disabled={autoPageRead || !item.requestable}
+                  disabled={!item.requestable}
                   aria-label={`${item.label} ${item.code}`}
                   onChange={() => toggleItem(item)}
                 />
@@ -196,6 +195,7 @@ export function PermissionScopePageTree({
                 </Tag>
               )}
               {!item.requestable && <Tag size="small" color="grey">不可申请</Tag>}
+              {item.sources?.length ? <Typography.Text type="tertiary" size="small">{item.sources.join('、')}</Typography.Text> : null}
             </div>
           );
         })}
@@ -235,12 +235,12 @@ export function PermissionScopePageTree({
                 onClick={toggleExpanded}
               />
             ) : <span style={{ width: 24, flexShrink: 0 }} />}
-            <Checkbox
+            {page.type === 'menu' && <Checkbox
               checked={pageSelected}
-              disabled={readonly}
+              disabled={readonly || (selectablePages !== undefined && !selectablePages.has(page.id))}
               aria-label={`页面访问 ${page.title}`}
               onChange={() => togglePage(page.id)}
-            />
+            />}
             <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: page.type === 'directory' ? 600 : 400 }} title={page.title}>
               {page.title}
             </span>

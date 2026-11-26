@@ -14,10 +14,9 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 import { DataScopePanel } from '@/components/permissions/DataScopePanel';
 import { PermissionScopeWorkspace } from '@/components/permissions/PermissionScopeWorkspace';
-import { createAdminScopeData } from '@/components/permissions/scope-adapters';
-import { usePermissionCatalog } from '@/hooks/queries/permission-matrix';
+import { createAccessScopeData } from '@/components/permissions/scope-adapters';
+import { useAssignmentScope } from '@/hooks/queries/identity-access-governance';
 import { departmentTreeToTreeData, useDepartmentTree } from '@/hooks/queries/departments';
-import { useMenuTree } from '@/hooks/queries/menus';
 import { useAllUsers } from '@/hooks/queries/users';
 import { useEditModal } from '@/hooks/useEditModal';
 import {
@@ -57,8 +56,7 @@ export default function RolesPage() {
   const [selectedDataScope, setSelectedDataScope] = useState<string>('all');
   const [selectedDeptScopeIds, setSelectedDeptScopeIds] = useState<number[]>([]);
 
-  const menuTreeQuery = useMenuTree({ enabled: menuModalVisible });
-  const permissionCatalogQuery = usePermissionCatalog(menuModalVisible);
+  const scopeQuery = useAssignmentScope('role', menuRole?.id, menuModalVisible);
   const menuRoleDetailQuery = useRoleDetail(menuRole?.id, menuModalVisible);
   const allUsersQuery = useAllUsers({ enabled: userModalVisible });
   const roleUsersQuery = useRoleUsers(userRole?.id, userModalVisible);
@@ -95,8 +93,8 @@ export default function RolesPage() {
   }, [menuModalVisible, menuRoleDetailQuery.data]);
 
   const scopeData = useMemo(
-    () => createAdminScopeData(menuTreeQuery.data ?? [], permissionCatalogQuery.data ?? { items: [] }),
-    [menuTreeQuery.data, permissionCatalogQuery.data],
+    () => createAccessScopeData(scopeQuery.data),
+    [scopeQuery.data],
   );
 
   useEffect(() => {
@@ -284,7 +282,7 @@ export default function RolesPage() {
             onOk={handleAssignMenus}
             okText="保存"
             loading={assignMenusMutation.isPending}
-            disabled={!menuRoleDetailQuery.isSuccess}
+            disabled={!menuRoleDetailQuery.isSuccess || !scopeQuery.isSuccess || scopeQuery.isFetching}
           />
         )}
       >
@@ -295,7 +293,8 @@ export default function RolesPage() {
             setCheckedMenuIds(next.pageIds);
             setCheckedPermissionCodes(next.permissionCodes);
           }}
-          loading={menuTreeQuery.isFetching || menuRoleDetailQuery.isFetching || permissionCatalogQuery.isLoading}
+          loading={scopeQuery.isPending || menuRoleDetailQuery.isFetching}
+          error={scopeQuery.error?.message ?? menuRoleDetailQuery.error?.message}
           height={520}
         />
       </SideSheet>

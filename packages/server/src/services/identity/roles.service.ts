@@ -1,13 +1,13 @@
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
-import { eq, and, inArray } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { roleContract, SUPER_ADMIN_CODE } from '@zenith/shared/identity';
 import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { db } from '../../db';
 import type { DbTransaction } from '../../db/types';
 import { roles, roleDeptScopes, userRoles } from '../../db/schema';
-import { clearUserPermissionCache, notifyUserPermissionsChanged } from '../../lib/permissions';
+import { clearUserPermissionCache, isSuperAdmin, notifyUserPermissionsChanged } from '../../lib/permissions';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { currentUser } from '../../lib/context';
 import { forceLogoutAllByUsers } from '../../lib/session-manager';
@@ -180,7 +180,10 @@ async function ensureRoleBelongsToTenant(id: number): Promise<{ tenantId: number
 }
 
 export async function assignRoleMenus(id: number, menuIds: number[], permissionCodes: string[] = []) {
-  const { tenantId: roleTenantId } = await ensureRoleBelongsToTenant(id);
+  const { tenantId: roleTenantId, code } = await ensureRoleBelongsToTenant(id);
+  if (RESERVED_ROLE_CODES.has(code) && !isSuperAdmin(currentUser())) {
+    throw new HTTPException(403, { message: '系统角色由平台管理员维护' });
+  }
   const beneficiaries = await db.transaction(async (tx) => {
     await replaceRolePermissions(tx, id, menuIds, permissionCodes, roleTenantId);
     return roleBeneficiaries(tx, id);

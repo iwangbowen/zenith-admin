@@ -807,8 +807,10 @@ export async function getUserEffectivePermissions(userId: number) {
     [...new Set(sources.filter(source => source.menuIds.includes(id)).map(source => source.label))],
   ]));
   const permissionSources = Object.fromEntries(permissionCodes.map(code => [code,
-    [...new Set(sources.filter(source => source.permissionCodes.includes(code)).map(source =>
-      source.explicitPermissionCodes.includes(code) ? source.label : `${source.label} · 页面访问`))],
+    [...new Set(sources.flatMap(source => [
+      ...(source.explicitPermissionCodes.includes(code) ? [source.label] : []),
+      ...source.pageReads.filter(page => page.code === code).map(page => `${source.label} · 页面访问「${page.title}」`),
+    ]))],
   ]));
   const temporaryScopes = temporarySources.flatMap(source => source.grantItem ? source.permissionCodes.map(permissionCode => ({
     ...source.grantItem!, permissionCode, dataScope: source.dataScope, deptScopeIds: source.deptScopeIds,

@@ -1,8 +1,7 @@
-import { apiCatalogContract, permissionCatalogContract, permissionMatrixContract, type ApiCatalog, type PermissionCatalog, type RolePermissionSet, type UserPermissionSet } from '@zenith/shared/identity';
+import { apiCatalogContract, permissionCatalogContract, permissionMatrixContract, type ApiCatalog, type RolePermissionSet, type UserPermissionSet } from '@zenith/shared/identity';
 import { buildApiCatalog } from '@zenith/shared/permission-catalog';
-import { ALL_PERMISSIONS } from '@zenith/shared/permissions';
-import { SEED_MENUS } from '@zenith/shared/seed';
-import { isPageReadPermission, permissionPageBindings } from '@zenith/shared/permission-features';
+import { mockMenus } from '@/mocks/data/menus';
+import { buildPermissionDirectory } from '@zenith/shared/permission-features';
 import { mock } from '@/mocks/utils/contract';
 import { requireItem } from '@/mocks/utils/crud';
 import { mockRoles } from '@/mocks/data/roles';
@@ -14,7 +13,7 @@ let cachedCatalog: ApiCatalog | null = null;
 /** 角色绑定的页面读权限 + 显式操作权限（Demo 不区分套餐） */
 function permissionsOfMenuIds(menuIds: readonly number[]): string[] {
   const ids = new Set(menuIds);
-  const codes = SEED_MENUS
+  const codes = mockMenus
     .filter((menu) => ids.has(menu.id) && menu.status === 'enabled' && menu.permission)
     .map((menu) => menu.permission as string);
   return [...new Set(codes)].sort();
@@ -33,23 +32,9 @@ function toRoleSet(role: typeof mockRoles[number]): RolePermissionSet {
   };
 }
 
-function buildPermissionCatalog(): PermissionCatalog {
-  return {
-    items: Object.entries(ALL_PERMISSIONS).map(([code, meta]) => {
-      const pageBindings = permissionPageBindings(code);
-      const primaryPage = pageBindings[0];
-      return { code, label: meta.label, surface: isPageReadPermission(code) ? 'page' as const : pageBindings.length > 0 ? 'operation' as const : 'api' as const,
-        pageId: primaryPage?.id ?? null, pageTitle: primaryPage?.title ?? null, path: primaryPage?.path ?? null,
-        pageBindings: [...pageBindings], uiOnly: meta.uiOnly ?? false };
-    }),
-  };
-}
-
-let cachedPermissionCatalog: PermissionCatalog | null = null;
-
 export const permissionMatrixHandlers = [
   mock(apiCatalogContract.get, ({ ok }) => ok(cachedCatalog ??= buildApiCatalog())),
-  mock(permissionCatalogContract.directory, ({ ok }) => ok(cachedPermissionCatalog ??= buildPermissionCatalog())),
+  mock(permissionCatalogContract.directory, ({ ok }) => ok(buildPermissionDirectory(mockMenus))),
   mock(permissionMatrixContract.roles, ({ ok }) => ok(mockRoles.map(toRoleSet))),
   mock(permissionMatrixContract.user, ({ params, ok }) => {
     const user = requireItem(mockUsers, params.id, '用户不存在', { status: 404 });
@@ -63,7 +48,7 @@ export const permissionMatrixHandlers = [
       tenantId: user.tenantId ?? null,
       superAdmin,
       roles: roles.map(({ id, name, code }) => ({ id, name, code })),
-      permissions: superAdmin ? [] : [...new Set(roles.flatMap((r) => permissionsOfMenuIds(r.menuIds ?? [])))].sort(),
+      permissions: superAdmin ? [] : [...new Set(roles.filter(r => r.status === 'enabled').flatMap(r => [...(r.permissionCodes ?? []), ...permissionsOfMenuIds(r.menuIds ?? [])]))].sort(),
     };
     return ok(set);
   }),

@@ -4,6 +4,7 @@ import { defineContractRoute } from '../../lib/contract-route';
 import { idempotencyGuard } from '../../middleware/idempotency';
 import { okBody, validationHook } from '../../lib/openapi-schemas';
 import { getAccessWorkflowResult, getGovernanceRequestWorkflow } from '../../services/identity/access-workflow-query.service';
+import { getAssignmentScope } from '../../services/identity/access-scope.service';
 import {
   getAccessWorkflowOptions,
   evaluateAccessWorkflow,
@@ -37,6 +38,12 @@ const requestWorkflowRoute = defineContractRoute(accessGovernanceContract.reques
 
 const workflowOptionsRoute = defineContractRoute(accessGovernanceContract.workflowOptions, {
   handler: async (c) => c.json(okBody(await getAccessWorkflowOptions()), 200),
+});
+const assignmentOptionsRoute = defineContractRoute(accessGovernanceContract.assignmentOptions, {
+  handler: async (c) => {
+    const { target, id } = c.req.valid('query');
+    return c.json(okBody(await getAssignmentScope(target, id)), 200);
+  },
 });
 const workflowPreviewRoute = defineContractRoute(accessGovernanceContract.workflowPreview, {
   handler: async (c) => c.json(okBody(await evaluateAccessWorkflow(c.req.valid('json'))), 200),
@@ -105,6 +112,7 @@ accessGovernanceRouter.openapiRoutes([
   workflowResultRoute,
   requestWorkflowRoute,
   workflowOptionsRoute,
+  assignmentOptionsRoute,
   workflowPreviewRoute,
   reviewOptionsRoute,
   requestRetryRoute,

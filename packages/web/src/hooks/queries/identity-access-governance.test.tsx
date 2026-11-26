@@ -14,7 +14,7 @@ beforeEach(() => {
   recorder.reset();
   recorder.on('GET', '/api/access-governance/grants', empty)
     .on('GET', '/api/access-governance/policies', empty)
-    .on('GET', '/api/access-governance/workflow-options', { roles: [], menus: [] })
+    .on('GET', '/api/access-governance/workflow-options', { roles: [], scope: { pages: [], selectablePageIds: [], permissions: [] } })
     .on('GET', '/api/access-governance/users/5/overview', { userId: 5, grants: [], reviews: [] })
     .on('GET', '/api/access-governance/review-campaigns', empty)
     .on('GET', '/api/access-governance/review-items', empty)

@@ -19,6 +19,7 @@ type EffectivePermissionsPanelProps = Readonly<{
   loading?: boolean;
   /** 页面 ID → 来源说明（角色 / 用户组 / 直接授权 / 审批授权） */
   pageSources?: Record<string, string[]>;
+  permissionSources?: Record<string, string[]>;
   groups?: PermissionSourceGroups;
 }>;
 
@@ -47,6 +48,7 @@ export function EffectivePermissionsPanel({
   permissionCodes,
   loading = false,
   pageSources = {},
+  permissionSources = {},
   groups = [],
 }: EffectivePermissionsPanelProps) {
   const catalogQuery = usePermissionCatalog();
@@ -86,10 +88,10 @@ export function EffectivePermissionsPanel({
     const codeSet = new Set(permissionCodes);
     return {
       pages: base.pages,
-      permissions: base.permissions.filter(item => codeSet.has(item.code)
-        || (item.surface === 'page' && item.pageId !== null && pageSet.has(item.pageId))),
+      permissions: base.permissions.filter(item => codeSet.has(item.code))
+        .map(item => ({ ...item, sources: permissionSources[item.code] })),
     };
-  }, [catalogQuery.data, effectiveMenus, pageSet, permissionCodes]);
+  }, [catalogQuery.data, effectiveMenus, permissionCodes, permissionSources]);
 
   const summary = (
     <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginBottom: 10, fontSize: 13 }}>

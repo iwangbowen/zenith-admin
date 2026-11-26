@@ -3,10 +3,12 @@ import { identitySecurityContract, authContract, type LoginRiskEvent } from '@ze
 import { identitySecurityHandlers } from './handlers/identity-security';
 import { authHandlers } from './handlers/auth';
 import { mockUsers } from './data/users';
+import { mockRoles } from './data/roles';
 import { mockAccessToken } from './utils/auth';
 import type { HttpHandler } from 'msw';
 
 const originals = mockUsers.map((user) => ({ ...user, roles: [...user.roles] }));
+const readerId = 100_010;
 
 async function call(path: string, token?: string, body?: unknown) {
   const request = new Request(`${window.location.origin}${path}`, {
@@ -23,9 +25,15 @@ async function call(path: string, token?: string, body?: unknown) {
 
 beforeEach(() => {
   mockUsers[1].tenantId = 1;
-  mockUsers[1].roles = [{ ...mockUsers[1].roles[0], menuIds: [2020] }];
+  const reader = { ...mockUsers[1].roles[0], id: readerId, menuIds: [2020], permissionCodes: [] };
+  mockRoles.push(reader);
+  mockUsers[1].roles = [reader];
 });
-afterEach(() => { mockUsers.splice(0, mockUsers.length, ...originals.map((user) => ({ ...user, roles: [...user.roles] }))); });
+afterEach(() => {
+  const index = mockRoles.findIndex(role => role.id === readerId);
+  if (index >= 0) mockRoles.splice(index, 1);
+  mockUsers.splice(0, mockUsers.length, ...originals.map((user) => ({ ...user, roles: [...user.roles] })));
+});
 
 describe('risk event Mock authorization and tenant scope', () => {
   const path = identitySecurityContract.riskEvents.fullPath;

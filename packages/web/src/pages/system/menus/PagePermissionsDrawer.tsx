@@ -15,8 +15,8 @@ type Props = Readonly<{
 export default function PagePermissionsDrawer({ menu, visible, onClose }: Props) {
   const catalogQuery = usePermissionCatalog(visible);
   const data = useMemo(
-    () => createAdminScopeData([], catalogQuery.data ?? { items: [] }),
-    [catalogQuery.data],
+    () => createAdminScopeData(menu ? [menu] : [], catalogQuery.data ?? { items: [] }),
+    [catalogQuery.data, menu],
   );
   const items = useMemo(
     () => menu ? data.permissions.filter(item => item.pageId === menu.id) : [],

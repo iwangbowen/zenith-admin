@@ -4,7 +4,7 @@ import { mock } from '../utils/contract';
 import { matchesFilter } from '../utils/filter';
 import { badRequest, notFound } from '../utils/handlers';
 import { mockDateTime } from '../utils/date';
-import { evaluateMockAccess, mockAccessActor, mockAccessGrants, mockAccessInstances, mockAccessOptions, mockAccessPolicies, mockAccessPolicy, mockAccessResult } from '../utils/access-workflow';
+import { evaluateMockAccess, mockAccessActor, mockAccessGrants, mockAccessInstances, mockAccessOptions, mockAccessPolicies, mockAccessPolicy, mockAccessResult, mockAccessScope } from '../utils/access-workflow';
 
 function policies(): PermissionPolicy[] {
   return Object.entries(ALL_PERMISSIONS).map(([code, meta], index) => ({ ...mockAccessPolicy(code), id: index + 1,
@@ -13,6 +13,7 @@ function policies(): PermissionPolicy[] {
 }
 export const accessGovernanceHandlers = [
   mock(accessGovernanceContract.workflowOptions, ({ ok }) => ok(mockAccessOptions())),
+  mock(accessGovernanceContract.assignmentOptions, ({ ok }) => ok(mockAccessScope(true))),
   mock(accessGovernanceContract.workflowPreview, ({ body, request, ok }) => ok(evaluateMockAccess(body, mockAccessActor(request)))),
   mock(accessGovernanceContract.workflowResult, ({ params, ok }) => {
     const instance = mockAccessInstances().find(item => item.id === params.id);

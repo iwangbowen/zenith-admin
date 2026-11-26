@@ -1,9 +1,11 @@
-import { ACCESS_REQUEST_BIZ_TYPE, ACCESS_APPROVAL_STEPS, accessPolicyBaseline, aggregateAccessPolicies, buildAccessApprovalFlow, effectiveAccessPolicy, mergeAccessPermissionItems, type AccessGrant, type AccessRequest, type AccessWorkflowPreview, type PermissionPolicy, type AccessWorkflowOptions } from '@zenith/shared/identity';
+import { ACCESS_REQUEST_BIZ_TYPE, ACCESS_APPROVAL_STEPS, accessPolicyBaseline, aggregateAccessPolicies, buildAccessApprovalFlow, effectiveAccessPolicy, mergeAccessPermissionItems, type AccessGrant, type AccessRequest, type AccessWorkflowPreview, type PermissionPolicy, type AccessWorkflowOptions, type AccessScopeOptions } from '@zenith/shared/identity';
+import { buildPermissionDirectory } from '@zenith/shared/permission-features';
 import { ALL_PERMISSIONS } from '@zenith/shared/permissions';
 import type { WorkflowDefinition, WorkflowInstance } from '@zenith/shared/workflow';
 import { mockUsers } from '../data/users';
 import { mockRoles } from '../data/roles';
-import { mockMenus } from '../data/menus';
+import { buildMenuTree, mockMenus } from '../data/menus';
+import { mockAccessGrants } from '../data/access';
 import { mockWorkflowInstances } from '../data/workflow';
 import { mockDateTime } from './date';
 import { currentMockSession } from './auth';
@@ -11,55 +13,52 @@ import { MockHttpError } from './contract';
 import { badRequest } from './handlers';
 
 export const mockAccessPolicies = new Map<string, PermissionPolicy>();
-export const mockAccessGrants = new Map<number, AccessGrant>();
+export { mockAccessGrants } from '../data/access';
 export function mockAccessPolicy(code: string) { return effectiveAccessPolicy(accessPolicyBaseline(code, ALL_PERMISSIONS[code]), mockAccessPolicies.get(code)); }
 
-export function mockAccessOptions(): AccessWorkflowOptions {
-  const pages = mockMenus.filter(menu => menu.type === 'menu');
-  const pageByName = new Map(pages.flatMap(page => page.name ? [[page.name, page] as const] : []));
-  let permissionNodeId = -1;
-  const permissionNodes = Object.entries(ALL_PERMISSIONS).flatMap(([code, meta]) => {
-    const policy = mockAccessPolicy(code);
-    if (!policy.enabled) return [];
-    const menuNames = typeof meta.menu === 'string' ? [meta.menu] : meta.menu ?? [];
-    const page = menuNames.map(name => pageByName.get(name)).find(Boolean);
-    if (!page || page.permission === code) return [];
-    return [{
-      id: permissionNodeId--, parentId: page.id, name: null, title: meta.label, type: 'permission' as const, permission: code,
-      permissionLabel: meta.label, requestable: true, path: [page.title, meta.label],
-      riskLevel: policy.riskLevel, approvalPolicy: policy.approvalPolicy, maxDurationMinutes: policy.maxDurationMinutes,
-      mfaRequired: policy.mfaRequired, permanentAllowed: policy.permanentAllowed, emergencyAllowed: policy.emergencyAllowed,
-      maxEmergencyMinutes: policy.maxEmergencyMinutes,
-    }];
+export function mockAccessScope(assignment = false): AccessScopeOptions {
+  const pages = mockMenus.filter(menu => menu.status === 'enabled');
+  const permissions = buildPermissionDirectory(pages).items.map(item => {
+    const policy = mockAccessPolicy(item.code);
+    return { ...item, selectable: assignment || policy.enabled, policy };
   });
   return {
-    roles: mockRoles.filter(role => !['super_admin', 'tenant_admin', 'security_admin'].includes(role.code) && (role.permissionCodes ?? []).length).map(role => ({
-      id: role.id, name: role.name, code: role.code, dataScope: role.dataScope ?? 'self', version: role.permissionVersion ?? 1,
-      permissionCount: (role.permissionCodes ?? []).length, permissionCodes: role.permissionCodes ?? [], menuIds: role.menuIds ?? [], ...aggregateAccessPolicies((role.permissionCodes ?? []).map(mockAccessPolicy)),
-    })),
-    menus: [
-      ...mockMenus.map(menu => {
-        const policy = menu.permission && ALL_PERMISSIONS[menu.permission] ? mockAccessPolicy(menu.permission) : null;
-        return { id: menu.id, parentId: menu.parentId, name: menu.name, title: menu.title, type: menu.type, permission: menu.permission,
-          permissionLabel: menu.permission ? ALL_PERMISSIONS[menu.permission]?.label ?? menu.title : null,
-          requestable: policy?.enabled ?? false, path: [menu.title], riskLevel: policy?.riskLevel ?? 'low', approvalPolicy: policy?.approvalPolicy ?? 'none',
-          maxDurationMinutes: policy?.maxDurationMinutes ?? null, mfaRequired: policy?.mfaRequired ?? false,
-          permanentAllowed: policy?.permanentAllowed ?? false, emergencyAllowed: policy?.emergencyAllowed ?? false, maxEmergencyMinutes: policy?.maxEmergencyMinutes ?? 60 };
-      }),
-      ...permissionNodes,
-    ],
+    pages: buildMenuTree(pages),
+    selectablePageIds: pages.flatMap(page => page.type === 'menu' &&
+      (assignment || (page.permission && mockAccessPolicy(page.permission).enabled)) ? [page.id] : []),
+    permissions,
   };
+}
+
+export function mockAccessOptions(): AccessWorkflowOptions {
+  const scope = mockAccessScope();
+  const selectable = new Set(scope.selectablePageIds);
+  const roles = mockRoles.flatMap(role => {
+    if (role.status !== 'enabled' || ['super_admin', 'tenant_admin', 'security_admin'].includes(role.code)) return [];
+    const menuIds = role.menuIds ?? [];
+    if (menuIds.some(id => !selectable.has(id))) return [];
+    const readCodes = mockMenus.flatMap(menu => menuIds.includes(menu.id) && menu.permission ? [menu.permission] : []);
+    const permissionCodes = [...new Set([...(role.permissionCodes ?? []), ...readCodes])];
+    const policies = permissionCodes.map(mockAccessPolicy);
+    if (!policies.length || policies.some(policy => !policy.enabled)) return [];
+    return [{
+      id: role.id, name: role.name, code: role.code, dataScope: role.dataScope ?? 'self', version: role.permissionVersion ?? 1,
+      permissionCount: permissionCodes.length, permissionCodes, menuIds, ...aggregateAccessPolicies(policies),
+    }];
+  });
+  return { roles, scope };
 }
 
 export function evaluateMockAccess(raw: Record<string, unknown>, actorId: number): AccessWorkflowPreview {
   const roles = Array.isArray(raw.roleSelections) ? raw.roleSelections as { roleId: number }[] : [];
   const menuIds = Array.isArray(raw.menuIds) ? raw.menuIds as number[] : [];
-  const pageCodes = menuIds.flatMap(id => {
+  const roleMenuIds = roles.flatMap(selection => mockRoles.find(role => role.id === selection.roleId)?.menuIds ?? []);
+  const pageIds = [...new Set([...menuIds, ...roleMenuIds])];
+  if (pageIds.some(id => !mockMenus.some(page => page.id === id && page.type === 'menu' && page.status === 'enabled' && page.permission))) return { status: 'blocked', message: '所选页面不可申请' };
+  const pageCodes = pageIds.flatMap(id => {
     const menu = mockMenus.find(item => item.id === id);
     return menu?.permission ? [menu.permission] : [];
   });
-  const roleMenuIds = roles.flatMap(selection => mockRoles.find(role => role.id === selection.roleId)?.menuIds ?? []);
-  const pageIds = [...new Set([...menuIds, ...roleMenuIds])];
   const codes = [...new Set([...(Array.isArray(raw.permissionCodes) ? raw.permissionCodes as string[] : []), ...pageCodes, ...roles.flatMap(selection => mockRoles.find(role => role.id === selection.roleId)?.permissionCodes ?? [])])];
   if (!codes.length && !pageIds.length) return { status: 'selection_required', message: '请选择页面、角色包或操作权限' };
   if (codes.some(code => !ALL_PERMISSIONS[code] || !mockAccessPolicy(code).enabled)) return { status: 'blocked', message: '所选权限不可自助申请' };
@@ -79,22 +78,24 @@ export function prepareMockAccess(def: WorkflowDefinition, raw: Record<string, u
   const preview = evaluateMockAccess(raw, actorId);
   if (preview.status !== 'ready') throw new MockHttpError(badRequest(preview.message));
   const selections = Array.isArray(raw.roleSelections) ? raw.roleSelections as { roleId: number }[] : [];
-  const roleItems = selections.flatMap(selection => {
-    const role = mockRoles.find(item => item.id === selection.roleId);
-    return (role?.permissionCodes ?? []).map(permissionCode => ({ permissionCode, permissionLabel: ALL_PERMISSIONS[permissionCode]?.label ?? permissionCode, dataScope: role?.dataScope ?? 'self' as const,
-      deptScopeIds: [], sourceRefs: [{ kind: 'role' as const, roleId: role!.id, roleVersion: role!.permissionVersion ?? 1, label: role!.name }] }));
+  const pageItems = (ids: number[]) => mockMenus.flatMap(page => ids.includes(page.id) && page.permission ? [{
+    menuId: page.id, pageTitle: page.title, pagePath: page.path ?? null,
+    permissionCode: page.permission, permissionLabel: ALL_PERMISSIONS[page.permission]?.label ?? page.permission,
+  }] : []);
+  const capabilityItems = (codes: string[]) => codes.map(permissionCode => ({
+    permissionCode, permissionLabel: ALL_PERMISSIONS[permissionCode]?.label ?? permissionCode,
+  }));
+  const selectedRoles = selections.flatMap(selection => mockRoles.find(role => role.id === selection.roleId) ?? []);
+  const roleItems = selectedRoles.flatMap(role => {
+    const scope = { dataScope: role.dataScope ?? 'self' as const, deptScopeIds: role.deptScopeIds ?? [],
+      sourceRefs: [{ kind: 'role' as const, roleId: role.id, roleVersion: role.permissionVersion ?? 1, label: role.name }] };
+    return [...capabilityItems(role.permissionCodes ?? []), ...pageItems(role.menuIds ?? [])].map(item => ({ ...item, ...scope }));
   });
-  const menuIds = [...new Set([...(Array.isArray(raw.menuIds) ? raw.menuIds as number[] : []), ...selections.flatMap(selection => mockRoles.find(role => role.id === selection.roleId)?.menuIds ?? [])])];
-  const menus = menuIds.flatMap(id => {
-    const menu = mockMenus.find(item => item.id === id);
-    return menu ? [{ menuId: menu.id, title: menu.title, path: menu.path ?? null }] : [];
-  });
-  const pageCodes = menus.flatMap(menu => {
-    const code = mockMenus.find(item => item.id === menu.menuId)?.permission;
-    return code ? [code] : [];
-  });
-  const directItems = [...new Set([...(Array.isArray(raw.permissionCodes) ? raw.permissionCodes as string[] : []), ...pageCodes])]
-    .map(permissionCode => ({ permissionCode, permissionLabel: ALL_PERMISSIONS[permissionCode]?.label ?? permissionCode, dataScope: 'self' as const, deptScopeIds: [], sourceRefs: [{ kind: 'direct' as const, label: pageCodes.includes(permissionCode) ? '页面访问' : '直接申请' }] }));
+  const directPageIds = Array.isArray(raw.menuIds) ? raw.menuIds as number[] : [];
+  const menuIds = [...new Set([...directPageIds, ...selectedRoles.flatMap(role => role.menuIds ?? [])])];
+  const menus = pageItems(menuIds).map(item => ({ menuId: item.menuId, title: item.pageTitle, path: item.pagePath }));
+  const directItems = [...pageItems(directPageIds), ...capabilityItems(Array.isArray(raw.permissionCodes) ? raw.permissionCodes as string[] : [])]
+    .map(item => ({ ...item, dataScope: 'self' as const, deptScopeIds: [], sourceRefs: [{ kind: 'direct' as const, label: '直接申请' }] }));
   return { flowData: buildAccessApprovalFlow(preview.approvalPlan, def.flowData?.settings), formData: { ...raw, menuIds, menus,
     startsAt: raw.startMode === 'scheduled' ? raw.startsAt : mockDateTime(), targetUserId: actorId,
     targetUserName: mockUsers.find(user => user.id === actorId)?.nickname ?? String(actorId),
@@ -111,7 +112,7 @@ export function syncMockAccess(instance: WorkflowInstance): void {
   const items = value.permissionItems as AccessRequest['items'];
   mockAccessGrants.set(instance.id, { id: instance.id, userId: instance.initiatorId, userName: instance.initiatorName, requestId: instance.id, workflowInstanceId: instance.id,
     sourceType: value.requestType === 'emergency' ? 'emergency' : 'request', status: 'active', riskLevel: value.riskLevel as AccessRequest['riskLevel'], startsAt: String(value.startsAt), expiresAt: typeof value.expiresAt === 'string' ? value.expiresAt : null,
-    items: items.map(item => ({ id: instance.id * 1000 + item.id, scopeKey: item.scopeKey, sourceRefs: item.sourceRefs, permissionCode: item.permissionCode, permissionLabel: item.permissionLabel ?? null, status: 'active', dataScope: item.dataScope ?? 'self', deptScopeIds: item.deptScopeIds,
+    items: items.map(item => ({ id: instance.id * 1000 + item.id, scopeKey: item.scopeKey, sourceRefs: item.sourceRefs, permissionCode: item.permissionCode, permissionLabel: item.permissionLabel ?? null, menuId: item.menuId, pageTitle: item.pageTitle, pagePath: item.pagePath, status: 'active', dataScope: item.dataScope ?? 'self', deptScopeIds: item.deptScopeIds,
       startsAt: String(value.startsAt), expiresAt: typeof value.expiresAt === 'string' ? value.expiresAt : null, nextReviewAt: null, revokedAt: null, revokedBy: null, revokeReason: null, policySnapshot: policies.find(policy => policy.permissionCode === item.permissionCode)! })),
     menus: Array.isArray(value.menus) ? value.menus as AccessGrant['menus'] : [],
     createdAt: mockDateTime(), updatedAt: mockDateTime(), tenantId: instance.tenantId,

@@ -11,9 +11,8 @@ import { Tabs, TabPane, Toast } from '@douyinfe/semi-ui';
 import AppModal from '@/components/AppModal';
 import { EffectivePermissionsPanel } from '@/components/permissions/EffectivePermissionsPanel';
 import { PermissionScopeWorkspace } from '@/components/permissions/PermissionScopeWorkspace';
-import { createAdminScopeData } from '@/components/permissions/scope-adapters';
-import { usePermissionCatalog } from '@/hooks/queries/permission-matrix';
-import { useMenuTree } from '@/hooks/queries/menus';
+import { createAccessScopeData } from '@/components/permissions/scope-adapters';
+import { useAssignmentScope } from '@/hooks/queries/identity-access-governance';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { mediaDown } from '@/lib/breakpoints';
 import ModalFooter from '@/components/ModalFooter';
@@ -35,11 +34,10 @@ export function UserMenuPermissionModal({ userId, userName, visible, onClose }: 
   const [effectiveMenuIds, setEffectiveMenuIds] = useState<number[]>([]);
   const [activeTab, setActiveTab] = useState('direct');
   const compact = useMediaQuery(mediaDown('lg'));
-  const menuTreeQuery = useMenuTree({ enabled: visible });
-  const permissionCatalogQuery = usePermissionCatalog(visible);
+  const scopeQuery = useAssignmentScope('user', userId, visible);
   const scopeData = useMemo(
-    () => createAdminScopeData(menuTreeQuery.data ?? [], permissionCatalogQuery.data ?? { items: [] }),
-    [menuTreeQuery.data, permissionCatalogQuery.data],
+    () => createAccessScopeData(scopeQuery.data),
+    [scopeQuery.data],
   );
   const permissionsQuery = useUserEffectivePermissions(userId, visible);
   const saveMenusMutation = useSaveUserMenus();
@@ -78,7 +76,7 @@ export function UserMenuPermissionModal({ userId, userName, visible, onClose }: 
           onOk={handleSave}
           okText="保存"
           loading={saveMenusMutation.isPending}
-          disabled={!permissionsQuery.isSuccess}
+          disabled={!permissionsQuery.isSuccess || !scopeQuery.isSuccess || scopeQuery.isFetching}
         />
       )}
       width={compact ? Math.max(320, Math.floor(window.innerWidth * 0.94)) : 1180}
@@ -95,17 +93,19 @@ export function UserMenuPermissionModal({ userId, userName, visible, onClose }: 
               setDirectMenuIds(next.pageIds);
               setDirectPermissionCodes(next.permissionCodes);
             }}
-            loading={menuTreeQuery.isFetching || permissionCatalogQuery.isLoading || permissionsQuery.isFetching}
+            loading={scopeQuery.isPending || permissionsQuery.isFetching}
+            error={scopeQuery.error?.message ?? permissionsQuery.error?.message}
             height={460}
           />
         </TabPane>
         <TabPane tab="最终有效权限" itemKey="effective">
           <EffectivePermissionsPanel
-            allMenus={menuTreeQuery.data ?? []}
+            allMenus={scopeData.pages}
             pageIds={effectiveMenuIds}
             permissionCodes={permissionsQuery.data?.permissionCodes ?? []}
-            loading={menuTreeQuery.isFetching || permissionsQuery.isFetching}
+            loading={scopeQuery.isFetching || permissionsQuery.isFetching}
             pageSources={permissionsQuery.data?.menuSources}
+            permissionSources={permissionsQuery.data?.permissionSources}
             groups={groups}
           />
         </TabPane>

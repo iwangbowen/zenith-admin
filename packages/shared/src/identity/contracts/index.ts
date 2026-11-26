@@ -21,3 +21,4 @@ export * from './tenants';
 export * from './user-groups';
 export * from './user-preview';
 export * from './users';
+export * from './access-scope';
