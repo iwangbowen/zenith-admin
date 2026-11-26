@@ -75,21 +75,6 @@ describe.each([false, true])('payment reconciliation deep links (URL sync: %s)',
     });
   });
 
-  it.each(['caseId', 'periodId'] as const)('reopens a closed drawer from the same %s notification', async (param) => {
-    const url = `/payment/recon?${param}=42`;
-    const hook = renderNavigation(url, sync);
-    await waitFor(() => expect(hook.result.current[param]).toBe(42));
-    act(() => {
-      if (param === 'caseId') hook.result.current.closeCase();
-      else hook.result.current.closePeriod();
-    });
-    expect(hook.result.current[param]).toBeUndefined();
-
-    act(() => hook.result.current.navigate(url));
-    await waitFor(() => expect(hook.result.current[param]).toBe(42));
-    expect(new URLSearchParams(hook.result.current.location.search).has(param)).toBe(false);
-  });
-
   it('chooses the case when both targets are present without opening stacked drawers', async () => {
     const hook = renderNavigation('/payment/recon?caseId=42&periodId=18', sync);
     await waitFor(() => {

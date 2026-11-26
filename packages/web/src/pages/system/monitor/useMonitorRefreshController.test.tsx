@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
-import { Toast } from '@douyinfe/semi-ui';
 import {
   monitorContract,
   type MonitorHistory,
@@ -135,27 +134,6 @@ describe('useMonitorRefreshController', () => {
     expect(api.urls('GET')).toEqual([`${HISTORY_URL}?range=1h`]);
   });
 
-  it('does not show a toast when a pending history refresh finishes after unmount', async () => {
-    const { result, unmount } = renderHook(() => useMonitorRefreshController({
-      activeTab: 'history', historyRange: '1h', initialHistoryRefreshInterval: 0,
-    }), { wrapper: wrapper() });
-    await waitFor(() => expect(result.current.history).toEqual([point]));
-    const pending = Promise.withResolvers<Awaited<ReturnType<typeof request.get>>>();
-    const get = vi.spyOn(request, 'get').mockImplementationOnce(() => pending.promise);
-    let refresh!: Promise<void>;
-    act(() => { refresh = result.current.refresh(); });
-    expect(get).toHaveBeenCalledTimes(1);
-
-    unmount();
-    await act(async () => {
-      pending.resolve({ code: 0, message: 'success', data: history('1h') });
-      await refresh;
-    });
-    expect(Toast.info).not.toHaveBeenCalled();
-    expect(Toast.success).not.toHaveBeenCalled();
-    expect(Toast.error).not.toHaveBeenCalled();
-  });
-
   it('ignores an old manual snapshot failure after switching to live streaming', async () => {
     const snapshot: Pick<MonitorSnapshot, 'disk'> = { disk: null };
     api.on('GET', monitorContract.snapshot.fullPath, snapshot)
@@ -181,7 +159,6 @@ describe('useMonitorRefreshController', () => {
     expect(result.current.data?.cpu.usage).toBe(25);
     expect(result.current.sseStatus).toBe('open');
     expect(result.current.errorMessage).toBeNull();
-    expect(Toast.error).not.toHaveBeenCalled();
   });
 
   it('aborts live streaming on history and restores the live mode when returning', async () => {

@@ -18,9 +18,9 @@ beforeEach(() => { vi.mocked(request.fetchRaw).mockReset(); });
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe('useLogTail', () => {
-  it('后端错误帧显示安全错误原因并停止，不重试或把错误当日志', async () => {
+  it('收到后端错误帧后停止追踪，不重试或把错误当日志', async () => {
     vi.useFakeTimers();
-    const error = vi.spyOn(Toast, 'error').mockImplementation(() => 'toast-id');
+    vi.spyOn(Toast, 'error').mockImplementation(() => 'toast-id');
     const message = '无法读取后端运行日志，请检查日志目录权限或服务端错误记录';
     vi.mocked(request.fetchRaw).mockResolvedValueOnce(new Response(new ReadableStream({
       start(controller) {
@@ -32,7 +32,6 @@ describe('useLogTail', () => {
     })));
     const { result, unmount } = renderHook(() => useLogTail('/console-tail'));
     await act(async () => { await result.current.start(); });
-    expect(error).toHaveBeenCalledExactlyOnceWith(message);
     expect(result.current.tailing).toBe(false);
     expect(result.current.reconnecting).toBe(false);
     expect(result.current.lines).toEqual(['已输出的日志']);

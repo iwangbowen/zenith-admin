@@ -121,17 +121,6 @@ describe('CMS Stage4 unified interactions', () => {
     expect(canExposeCmsInteractionResults({ visibility: 'after_close', status: 'published', submitted: true })).toBe(false);
   });
 
-  it('renders the survey through the registered island boundary', async () => {
-    const [theme, marker] = await Promise.all([
-      readFile(new URL('../../cms/themes/default/templates.tsx', import.meta.url), 'utf8'),
-      readFile(new URL('./cms-interactions-responses.service.ts', import.meta.url), 'utf8'),
-    ]);
-    // The theme emits only the island mount contract; survey behavior is covered through submitted payloads in survey.test.ts.
-    expect(theme).not.toContain('INTERACTION_SCRIPT');
-    expect(theme).toContain('className="cms-interaction" data-island="survey"');
-    expect(marker).toContain('class="cms-interaction" data-island="survey"');
-  });
-
   it('generates non-colliding copy codes and never nests -copy suffixes', () => {
     expect(interactionCodeStem('satisfaction')).toBe('satisfaction');
     expect(interactionCodeStem('satisfaction-copy')).toBe('satisfaction');

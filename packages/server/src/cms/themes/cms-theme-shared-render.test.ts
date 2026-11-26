@@ -66,7 +66,7 @@ function base(theme: string): CmsBaseContext {
 describe('loadHomeBlocks', () => {
   it('按中英文逗号切分 homeChannels、去空白、截断上限并过滤不存在的栏目', async () => {
     const list = vi.fn(async ({ channelCode }: { channelCode?: string; limit: number }) => ({
-      channel: channelCode === 'missing' ? null : { id: 1, code: channelCode ?? '', name: channelCode ?? '', url: /${channelCode}/ },
+      channel: channelCode === 'missing' ? null : { id: 1, code: channelCode ?? '', name: channelCode ?? '', url: `/${channelCode}/` },
       list: [],
     }));
     const cms: CmsThemeDataApi = { contents: { list } };
