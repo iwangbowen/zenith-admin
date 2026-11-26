@@ -10066,6 +10066,24 @@
           "primaryKey": false,
           "notNull": false
         },
+        "menu_id": {
+          "name": "menu_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "page_title": {
+          "name": "page_title",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "page_path": {
+          "name": "page_path",
+          "type": "varchar(256)",
+          "primaryKey": false,
+          "notNull": false
+        },
         "status": {
           "name": "status",
           "type": "identity_access_grant_status",
@@ -10213,129 +10231,14 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "identity_access_grant_items_permission_scope_unique": {
-          "name": "identity_access_grant_items_permission_scope_unique",
-          "nullsNotDistinct": false,
+        "identity_access_grant_items_target_scope_unique": {
+          "name": "identity_access_grant_items_target_scope_unique",
+          "nullsNotDistinct": true,
           "columns": [
             "grant_id",
+            "menu_id",
             "permission_code",
             "scope_key"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.identity_access_grant_menus": {
-      "name": "identity_access_grant_menus",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "identity": {
-            "type": "always",
-            "name": "identity_access_grant_menus_id_seq",
-            "schema": "public",
-            "increment": "1",
-            "startWith": "1",
-            "minValue": "1",
-            "maxValue": "2147483647",
-            "cache": "1",
-            "cycle": false
-          }
-        },
-        "grant_id": {
-          "name": "grant_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "menu_id": {
-          "name": "menu_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "identity_access_grant_menus_grant_idx": {
-          "name": "identity_access_grant_menus_grant_idx",
-          "columns": [
-            {
-              "expression": "grant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "identity_access_grant_menus_menu_idx": {
-          "name": "identity_access_grant_menus_menu_idx",
-          "columns": [
-            {
-              "expression": "menu_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "identity_access_grant_menus_grant_id_identity_access_grants_id_fk": {
-          "name": "identity_access_grant_menus_grant_id_identity_access_grants_id_fk",
-          "tableFrom": "identity_access_grant_menus",
-          "tableTo": "identity_access_grants",
-          "columnsFrom": [
-            "grant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "identity_access_grant_menus_menu_id_menus_id_fk": {
-          "name": "identity_access_grant_menus_menu_id_menus_id_fk",
-          "tableFrom": "identity_access_grant_menus",
-          "tableTo": "menus",
-          "columnsFrom": [
-            "menu_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "identity_access_grant_menus_unique": {
-          "name": "identity_access_grant_menus_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "grant_id",
-            "menu_id"
           ]
         }
       },
@@ -10736,6 +10639,24 @@
           "primaryKey": false,
           "notNull": false
         },
+        "menu_id": {
+          "name": "menu_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "page_title": {
+          "name": "page_title",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "page_path": {
+          "name": "page_path",
+          "type": "varchar(256)",
+          "primaryKey": false,
+          "notNull": false
+        },
         "data_scope": {
           "name": "data_scope",
           "type": "data_scope",
@@ -10840,122 +10761,6 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.identity_access_request_menus": {
-      "name": "identity_access_request_menus",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "identity": {
-            "type": "always",
-            "name": "identity_access_request_menus_id_seq",
-            "schema": "public",
-            "increment": "1",
-            "startWith": "1",
-            "minValue": "1",
-            "maxValue": "2147483647",
-            "cache": "1",
-            "cycle": false
-          }
-        },
-        "request_id": {
-          "name": "request_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "menu_id": {
-          "name": "menu_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "identity_access_request_menus_request_idx": {
-          "name": "identity_access_request_menus_request_idx",
-          "columns": [
-            {
-              "expression": "request_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "identity_access_request_menus_menu_idx": {
-          "name": "identity_access_request_menus_menu_idx",
-          "columns": [
-            {
-              "expression": "menu_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "identity_access_request_menus_request_id_identity_access_requests_id_fk": {
-          "name": "identity_access_request_menus_request_id_identity_access_requests_id_fk",
-          "tableFrom": "identity_access_request_menus",
-          "tableTo": "identity_access_requests",
-          "columnsFrom": [
-            "request_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "identity_access_request_menus_menu_id_menus_id_fk": {
-          "name": "identity_access_request_menus_menu_id_menus_id_fk",
-          "tableFrom": "identity_access_request_menus",
-          "tableTo": "menus",
-          "columnsFrom": [
-            "menu_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "identity_access_request_menus_unique": {
-          "name": "identity_access_request_menus_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "request_id",
-            "menu_id"
-          ]
-        }
-      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false

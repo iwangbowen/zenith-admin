@@ -1390,6 +1390,9 @@ CREATE TABLE "identity_access_grant_items" (
 	"grant_id" integer NOT NULL,
 	"permission_code" varchar(128) NOT NULL,
 	"permission_label" varchar(128),
+	"menu_id" integer,
+	"page_title" varchar(64),
+	"page_path" varchar(256),
 	"status" "identity_access_grant_status" DEFAULT 'scheduled' NOT NULL,
 	"scope_key" varchar(2048) NOT NULL,
 	"source_refs" jsonb DEFAULT '[]'::jsonb NOT NULL,
@@ -1402,15 +1405,7 @@ CREATE TABLE "identity_access_grant_items" (
 	"revoked_at" timestamp with time zone,
 	"revoked_by" integer,
 	"revoke_reason" varchar(1000),
-	CONSTRAINT "identity_access_grant_items_permission_scope_unique" UNIQUE("grant_id","permission_code","scope_key")
-);
---> statement-breakpoint
-CREATE TABLE "identity_access_grant_menus" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "identity_access_grant_menus_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
-	"grant_id" integer NOT NULL,
-	"menu_id" integer NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "identity_access_grant_menus_unique" UNIQUE("grant_id","menu_id")
+	CONSTRAINT "identity_access_grant_items_target_scope_unique" UNIQUE NULLS NOT DISTINCT("grant_id","menu_id","permission_code","scope_key")
 );
 --> statement-breakpoint
 CREATE TABLE "identity_access_grants" (
@@ -1445,20 +1440,15 @@ CREATE TABLE "identity_access_request_items" (
 	"role_id" integer,
 	"permission_code" varchar(128) NOT NULL,
 	"permission_label" varchar(128),
+	"menu_id" integer,
+	"page_title" varchar(64),
+	"page_path" varchar(256),
 	"data_scope" "data_scope",
 	"dept_scope_ids" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"scope_key" varchar(2048) NOT NULL,
 	"source_refs" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"snapshot" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
-);
---> statement-breakpoint
-CREATE TABLE "identity_access_request_menus" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "identity_access_request_menus_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
-	"request_id" integer NOT NULL,
-	"menu_id" integer NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "identity_access_request_menus_unique" UNIQUE("request_id","menu_id")
 );
 --> statement-breakpoint
 CREATE TABLE "identity_access_requests" (
@@ -9846,8 +9836,6 @@ ALTER TABLE "user_identity_accounts" ADD CONSTRAINT "user_identity_accounts_user
 ALTER TABLE "user_identity_accounts" ADD CONSTRAINT "user_identity_accounts_provider_id_tenant_identity_providers_id_fk" FOREIGN KEY ("provider_id") REFERENCES "public"."tenant_identity_providers"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "identity_access_grant_items" ADD CONSTRAINT "identity_access_grant_items_grant_id_identity_access_grants_id_fk" FOREIGN KEY ("grant_id") REFERENCES "public"."identity_access_grants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "identity_access_grant_items" ADD CONSTRAINT "identity_access_grant_items_revoked_by_users_id_fk" FOREIGN KEY ("revoked_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "identity_access_grant_menus" ADD CONSTRAINT "identity_access_grant_menus_grant_id_identity_access_grants_id_fk" FOREIGN KEY ("grant_id") REFERENCES "public"."identity_access_grants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "identity_access_grant_menus" ADD CONSTRAINT "identity_access_grant_menus_menu_id_menus_id_fk" FOREIGN KEY ("menu_id") REFERENCES "public"."menus"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "identity_access_grants" ADD CONSTRAINT "identity_access_grants_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "identity_access_grants" ADD CONSTRAINT "identity_access_grants_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "identity_access_grants" ADD CONSTRAINT "identity_access_grants_request_id_identity_access_requests_id_fk" FOREIGN KEY ("request_id") REFERENCES "public"."identity_access_requests"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
@@ -9857,8 +9845,6 @@ ALTER TABLE "identity_access_grants" ADD CONSTRAINT "identity_access_grants_crea
 ALTER TABLE "identity_access_grants" ADD CONSTRAINT "identity_access_grants_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "identity_access_request_items" ADD CONSTRAINT "identity_access_request_items_request_id_identity_access_requests_id_fk" FOREIGN KEY ("request_id") REFERENCES "public"."identity_access_requests"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "identity_access_request_items" ADD CONSTRAINT "identity_access_request_items_role_id_roles_id_fk" FOREIGN KEY ("role_id") REFERENCES "public"."roles"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "identity_access_request_menus" ADD CONSTRAINT "identity_access_request_menus_request_id_identity_access_requests_id_fk" FOREIGN KEY ("request_id") REFERENCES "public"."identity_access_requests"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "identity_access_request_menus" ADD CONSTRAINT "identity_access_request_menus_menu_id_menus_id_fk" FOREIGN KEY ("menu_id") REFERENCES "public"."menus"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "identity_access_requests" ADD CONSTRAINT "identity_access_requests_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "identity_access_requests" ADD CONSTRAINT "identity_access_requests_applicant_user_id_users_id_fk" FOREIGN KEY ("applicant_user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "identity_access_requests" ADD CONSTRAINT "identity_access_requests_target_user_id_users_id_fk" FOREIGN KEY ("target_user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -11420,15 +11406,11 @@ CREATE INDEX "user_identity_accounts_user_idx" ON "user_identity_accounts" USING
 CREATE INDEX "user_identity_accounts_provider_idx" ON "user_identity_accounts" USING btree ("provider_id");--> statement-breakpoint
 CREATE INDEX "identity_access_grant_items_permission_idx" ON "identity_access_grant_items" USING btree ("permission_code");--> statement-breakpoint
 CREATE INDEX "identity_access_grant_items_lifecycle_idx" ON "identity_access_grant_items" USING btree ("status","expires_at");--> statement-breakpoint
-CREATE INDEX "identity_access_grant_menus_grant_idx" ON "identity_access_grant_menus" USING btree ("grant_id");--> statement-breakpoint
-CREATE INDEX "identity_access_grant_menus_menu_idx" ON "identity_access_grant_menus" USING btree ("menu_id");--> statement-breakpoint
 CREATE INDEX "identity_access_grants_tenant_status_idx" ON "identity_access_grants" USING btree ("tenant_id","status","expires_at");--> statement-breakpoint
 CREATE INDEX "identity_access_grants_user_status_idx" ON "identity_access_grants" USING btree ("user_id","status","starts_at","expires_at");--> statement-breakpoint
 CREATE INDEX "identity_access_grants_expiry_idx" ON "identity_access_grants" USING btree ("status","expires_at");--> statement-breakpoint
 CREATE INDEX "identity_access_request_items_request_idx" ON "identity_access_request_items" USING btree ("request_id");--> statement-breakpoint
 CREATE INDEX "identity_access_request_items_role_idx" ON "identity_access_request_items" USING btree ("role_id");--> statement-breakpoint
-CREATE INDEX "identity_access_request_menus_request_idx" ON "identity_access_request_menus" USING btree ("request_id");--> statement-breakpoint
-CREATE INDEX "identity_access_request_menus_menu_idx" ON "identity_access_request_menus" USING btree ("menu_id");--> statement-breakpoint
 CREATE INDEX "identity_access_requests_tenant_created_idx" ON "identity_access_requests" USING btree ("tenant_id","created_at" DESC NULLS LAST,"id" DESC NULLS LAST);--> statement-breakpoint
 CREATE INDEX "identity_access_requests_applicant_idx" ON "identity_access_requests" USING btree ("applicant_user_id","created_at" DESC NULLS LAST);--> statement-breakpoint
 CREATE INDEX "identity_access_requests_target_idx" ON "identity_access_requests" USING btree ("target_user_id","created_at" DESC NULLS LAST);--> statement-breakpoint

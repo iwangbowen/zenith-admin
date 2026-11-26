@@ -59,7 +59,8 @@ export async function getAssignmentScope(target: 'role' | 'user', id: number): P
     const authority = await assertAuthorityActor(tx, tenantId,
       target === 'role' ? 'system:role:assign' : 'system:user:assign',
       target === 'role' ? await roleBeneficiaries(tx, id) : [id]);
-    if (!authority.platform && subject && 'code' in subject && ['super_admin', 'security_admin', 'tenant_admin'].includes(subject.code)) {
+    const roleCode = subject && 'code' in subject ? subject.code : null;
+    if (!authority.platform && typeof roleCode === 'string' && ['super_admin', 'security_admin', 'tenant_admin'].includes(roleCode)) {
       throw new HTTPException(403, { message: '系统角色由平台管理员维护' });
     }
     return loadAccessScope(tenantId, { kind: 'assign', ...authority }, tx);

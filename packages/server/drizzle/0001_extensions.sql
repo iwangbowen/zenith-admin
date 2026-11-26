@@ -353,9 +353,3 @@ END $function$;
 CREATE TRIGGER workflow_instance_lifecycle_before BEFORE INSERT OR UPDATE OF status ON workflow_instances FOR EACH ROW EXECUTE FUNCTION workflow_record_instance_lifecycle();
 --> statement-breakpoint
 CREATE TRIGGER workflow_instance_lifecycle_after AFTER INSERT OR UPDATE OF status ON workflow_instances FOR EACH ROW EXECUTE FUNCTION workflow_append_instance_lifecycle();
---> statement-breakpoint
-
--- 授权 grant 菜单缓存失效触发器（原 0024 custom migration）
-CREATE TRIGGER identity_access_grant_menus_cache_invalidate
-  AFTER INSERT OR UPDATE OR DELETE ON "identity_access_grant_menus"
-  FOR EACH ROW EXECUTE FUNCTION notify_cache_invalidate('grant_id');

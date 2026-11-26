@@ -71,7 +71,7 @@ lazyPageComponent(m.component)（utils/page-registry.ts）解析懒加载组件
 在 <Routes> 中动态注册 <Route>；侧边栏继续使用同一用户菜单树
 ```
 
-完整菜单树（`useMenuTree()` → `GET /api/menus`）不在启动链路上：只有命中 catch-all 的 `NotFoundOrForbidden` 才会请求它，用于 403 / 404 判别。
+启动时加载当前用户的菜单树。落入兜底路由时才请求当前租户的有效路由模式目录。
 
 页面节点承载导航和读权限；操作权限只由权限注册表/权限目录承载，不生成菜单节点。`getUserMenuIds()` 只返回显式页面授权；只授予读/操作权限时页面不注册（API-only）。页面授权缺少读权限时由服务端 fail-closed，前端不自行从权限码推导页面。
 
@@ -80,7 +80,7 @@ catch-all 的 403 / 404 判别使用 `GET /api/menus/paths` 的轻量页面路�
 ### 菜单数据的加载失败语义
 
 - **用户菜单树失败**：渲染整页「导航菜单加载失败」重试页，并提供退出登录入口
-- **完整菜单树失败**：只影响 catch-all 的 403 / 404 判别精度，不阻塞任何已注册页面
+- **路由目录失败**：兜底路由显示可重试的加载失败页
 
 ### 权限变更即时生效
 
@@ -111,26 +111,24 @@ glob 命中的每个文件都是独立的动态入口：页面内部的子组件
 
 ### 无权限保护（403 / 404 判别）
 
-访问未注册路由时命中 `NotFoundOrForbidden`。它用完整菜单树构建的 `path → component` 映射做前缀匹配（如 `/system/users/123` 匹配 `/system/users`）：
+访问未注册路由时，`NotFoundOrForbidden` 用 React Router 精确匹配有效路由模式。普通路径与带参数的路径沿用注册时的模式。
 
 - 路径对应菜单页面存在、但当前用户菜单未注册 → 403
-- 路径不存在 → 404
+- 路径不存在、页面停用或超出租户可用功能 → 404
 - 固定路由与 `/` 不参与 403 判别
 
 ::: warning 页面级权限只能由动态菜单承载
 不要为菜单页面在 `App.tsx` 里另写无守卫的硬编码 `<Route>`。同一路径的硬编码路由会遮蔽动态菜单过滤，造成未授权访问。`src/App.routes.test.tsx` 覆盖该策略。
 :::
 
-### 带权限判断的固定路由
+隐藏详情页通过 Shared 的 `PAGE_ROUTE_RULES` 声明所属页面与所需能力。目录补齐用于展示导航层级。业务深链由 `ADMIN_CONTEXT_ROUTES` 声明并继续接受接口的实体级校验。
 
-少数固定路由无法由菜单承载，在 `App.tsx` 中直接用权限码判断：
+### 业务深链的访问条件
 
-| 路由 | 要求权限（或 `*`） |
+| 路由 | 访问条件 |
 | --- | --- |
 | `/report/fill/:code` | `report:fill:record:create` 或 `report:fill:record:update` |
-| `/system/firewall` | `system:firewall:view` |
-| `/system/nginx-sites` | `system:nginx:view` |
-| `/system/oauth2-apps/:id` | `system:oauth2-apps:view` |
+| `/system/oauth2-apps/:id` | 应用管理页面授权与 `system:oauth2-apps:view` |
 
 ### 按钮级权限
 
@@ -152,7 +150,7 @@ const { hasPermission, hasAnyPermission } = usePermission();
 
 ## 系统内置路由
 
-以下为后台固定注册路由（需登录，除非在匿名路由表中列出）：
+以下为后台壳层路由和业务深链（需登录，除非在匿名路由表中列出）。
 
 - `/`：首页入口 `HomeEntry`，登录落地时按默认首页偏好跳转，日常手动访问进入仪表盘
 - `/profile`：个人中心
@@ -165,7 +163,7 @@ const { hasPermission, hasAnyPermission } = usePermission();
 - `/report/dashboards/:id/view`：看板查看页
 - `/report/print/:id/design`：打印模板设计器
 - `/report/fill/:code`：填报入口（带权限判断）
-- `/system/firewall`、`/system/nginx-sites`、`/system/oauth2-apps/:id`：带权限判断
+- `/system/oauth2-apps/:id`：应用详情
 - `/public/ai-chat/:token`：公开 AI 对话分享页（在已登录路由表中注册）
 - `/oauth2/authorize`、`/enterprise/callback`、`/public/payment/link/:token`、`/public/report/:token`：独立页面，不在后台布局内
 - `/users`：重定向到 `/system/users`

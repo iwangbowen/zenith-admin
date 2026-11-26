@@ -24,6 +24,15 @@ const db = drizzle(client, { schema, casing: 'snake_case' });
 try {
   logger.info('Running migrations...');
   await migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
+  const [schemaState] = await client<{ current: boolean }[]>`
+    select exists (
+      select 1 from information_schema.columns
+      where table_schema = 'public' and table_name = 'identity_access_grant_items' and column_name = 'menu_id'
+    ) and to_regclass('public.identity_access_grant_menus') is null as current
+  `;
+  if (!schemaState.current) {
+    throw new Error('当前数据库使用旧权限基线，请在空库执行迁移和 seed。');
+  }
   logger.info('Migrations complete.');
 } catch (err) {
   logger.error('Migration failed — 服务不会启动，请修复后重跑。', err);
