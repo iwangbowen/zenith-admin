@@ -23,6 +23,7 @@ import type { OutboxEventRow } from '../../db/schema/event-outbox';
 import { escapeHtml } from '@zenith/shared/core';
 import { notifyWithin } from '../../services/messaging/notification-outbox.service';
 import { registerWorkflowEventConsumer } from '../workflow-event-consumer';
+import { findEnabledUserInTenant } from '../user-nicknames';
 
 interface NotifyContext {
   label: string;
@@ -106,6 +107,7 @@ export function registerNotificationWorkflowSubscriber(): void {
   registerWorkflowEventConsumer('workflow.notification', ['task.urged'], async (tx, event, fact) => {
     const task = event.task;
     if (!task.assigneeId || event.notify === false) return;
+    if (!await findEnabledUserInTenant(tx, task.assigneeId, fact.tenantId)) return;
 
       const { label } = loadNotifyContext(fact);
       await notifyWithin(tx, 'workflow.task.urged', {
@@ -117,7 +119,7 @@ export function registerNotificationWorkflowSubscriber(): void {
           node: task.nodeName,
           extra: event.comment ? `：${event.comment}` : '',
         },
-        tenantId: event.tenantId,
+        tenantId: fact.tenantId,
         subjectRefs: [{ type: 'workflow.instance', key: String(event.instanceId), role: 'primary' }],
         dedupeKey: `workflow-event:${event.eventId}`,
         link: pendingLink(event.instanceId, task.id),
@@ -127,12 +129,13 @@ export function registerNotificationWorkflowSubscriber(): void {
   registerWorkflowEventConsumer('workflow.notification', ['task.transferred'], async (tx, event, fact) => {
     const task = event.task;
     if (!task.assigneeId || task.status !== 'pending') return;
+    if (!await findEnabledUserInTenant(tx, task.assigneeId, fact.tenantId)) return;
 
       const { label } = loadNotifyContext(fact);
       await notifyWithin(tx, 'workflow.task.transferred', {
         recipients: [{ type: 'user', id: task.assigneeId }],
         vars: { instanceId: event.instanceId, taskId: task.id, title: label, node: task.nodeName },
-        tenantId: event.tenantId,
+        tenantId: fact.tenantId,
         subjectRefs: [{ type: 'workflow.instance', key: String(event.instanceId), role: 'primary' }],
         dedupeKey: `workflow-event:${event.eventId}`,
         link: pendingLink(event.instanceId, task.id),

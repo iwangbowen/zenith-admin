@@ -28,7 +28,7 @@ registerAsyncTaskWorker() → runAsyncTask(taskId) → handler.run(ctx)      （
    │                                     ├─ ctx.progress(): 进度 / 断点 / 心跳 / WS 推送
    │                                     ├─ ctx.reportItems(): async_task_items 行级明细 upsert
    │                                     └─ 抛错: 自动重试或 failed
-   ├─ WebSocket task:progress（经 Redis 扇出，送达持有创建者连接的 api 进程）
+   ├─ WebSocket task:changed（经 Redis 扇出，提示创建者会话重新查询进度）
    └─ system_scheduler_runs（系统调度运行日志）
 
 async-tasks-drain（每分钟，worker 执行）:
@@ -154,7 +154,7 @@ import AsyncTaskProgress from '@/components/AsyncTaskProgress';
 const { tasks, loading, refresh } = useMyAsyncTasks({ taskTypes: ['member-batch-import'] });
 ```
 
-`useMyAsyncTasks` 通过 WebSocket `task:progress` 实时更新，并在存在进行中任务时使用轮询兜底。进度单元格使用 `<AsyncTaskProgress task={task} />`：`totalCount` 有值显示百分比，无总量显示不定进度。
+`useMyAsyncTasks` 收到 WebSocket `task:changed` 后按当前会话权限重新查询，并在存在进行中任务时使用轮询兜底。进度单元格使用 `<AsyncTaskProgress task={task} />`：`totalCount` 有值显示百分比，无总量显示不定进度。
 
 ## TaskRunContext API
 
@@ -212,7 +212,7 @@ cancelled          pending / failed ─────────┘
 | `PUT` | `/api/async-tasks/types/{taskType}/config` | `system:async-task:config` | 更新类型运行时策略 |
 | `GET` | `/api/async-tasks/stats` | `system:async-task:list` | 统计概览 |
 | `GET` | `/api/async-tasks/mine` | 登录 | 我的任务列表 |
-| `GET` | `/api/async-tasks` | `system:async-task:list` | 全局任务列表，支持类型、状态、标题、内容、提交人、时间范围筛选 |
+| `GET` | `/api/async-tasks` | `system:async-task:list` | 当前访问范围内的任务，支持类型、状态、标题、内容、提交人、时间范围筛选 |
 | `GET` | `/api/async-tasks/{id}` | 创建者或 `system:async-task:list` | 任务详情 |
 | `GET` | `/api/async-tasks/{id}/items` | 创建者或 `system:async-task:list` | 任务项明细分页 |
 | `POST` | `/api/async-tasks/{id}/cancel` | 创建者或 `system:async-task:manage` | 取消任务 |
@@ -223,7 +223,9 @@ cancelled          pending / failed ─────────┘
 | `DELETE` | `/api/async-tasks/{id}` | `system:async-task:manage` | 删除任务记录 |
 | `POST` | `/api/async-tasks/cleanup` | `system:async-task:cleanup` | 立即清理过期任务记录 |
 
-WS 事件：`task:progress`，payload 为 `AsyncTask`，推送给任务创建者。
+多租户模式下，任务管理员在当前租户范围内使用查询和管理权限，创建者在相应租户范围内处理本人任务。平台超管全局视角可跨租户查询和管理，手工清理和调整类型策略也只在该视角开放。CMS 发布任务进一步执行发布中心的操作权限与站点访问规则。
+
+`task:changed` 推送给任务创建者，载荷仅含 `{ stateChanged: boolean }`，任务信息由当前会话重新查询。
 
 ## 全局任务托盘
 

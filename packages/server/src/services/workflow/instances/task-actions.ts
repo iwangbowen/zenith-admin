@@ -30,7 +30,7 @@ import { prepareApprovalFormData, normalizeInstanceFormData } from './form-deriv
 import type { MaterializeTrigger } from './materialize';
 import { recordSlotOutcome, reconcileApprovalActivation, cancelApprovalActivations } from './approval-state';
 import { workflowApprovalSlots, workflowNodeActivations } from '../../../db/schema';
-import { emitInstanceEvent, emitNodeEvent, emitTaskEvent, emitTasksEnteredEvents, lockInstanceExpecting, requireCallbackTaskContext } from './shared';
+import { emitInstanceEvent, emitNodeEvent, emitTaskEvent, emitTasksEnteredEvents, lockInstanceExpecting, requireCallbackTaskContext, requireVisibleInstance } from './shared';
 import { hasUserHandledTask } from './transfers';
 import { bridgeReportFillWorkflowOutcome } from '../../report/report-fill-workflow-bridge.service';
 import { submitReportFillSyncForWorkflowInstance } from '../../report/report-fill-task.service';
@@ -119,6 +119,7 @@ export async function listTaskSelectableNextApprovers(
     .where(eq(workflowTasks.id, taskId))
     .limit(1);
   requireRow(task, '任务不存在或无权操作');
+  const inst = await requireVisibleInstance(task.instanceId, '任务不存在或无权操作');
   if (task.assigneeId !== user.userId) {
     // 任务已转办/委派给他人：曾经手的用户返回空组而非 404（审批面板关闭前的缓存刷新会重取本查询）
     const wasMine = task.originalAssigneeId === user.userId
@@ -130,8 +131,6 @@ export async function listTaskSelectableNextApprovers(
   // 已处理（同意/拒绝/退回等）的任务无需再选下一审批人：返回空组而非 404，
   // 避免审批成功后前端 invalidateQueries 立即重取本查询时误报「任务不存在或无权操作」
   if (task.status !== 'pending') return [];
-  const [inst] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, task.instanceId)).limit(1);
-  requireRow(inst, '流程实例不存在');
   const flowData = inst.definitionSnapshot?.flowData;
   if (!flowData) return [];
   // 表单里尚未提交的可编辑值参与选边：否则审批人把分支从「无 approverSelect」改成「有」时，
@@ -655,11 +654,9 @@ export async function getOwnPendingTask(taskId: number) {
     .where(and(eq(workflowTasks.id, taskId), eq(workflowTasks.assigneeId, user.userId)))
     .limit(1);
   requireRow(task, '任务不存在或无权操作');
+  const inst = await requireVisibleInstance(task.instanceId, '任务不存在或无权操作');
   if ((task.taskKind !== 'approval' && task.taskKind !== 'suggestion') || task.slotId == null || task.activationId == null) throw new HTTPException(400, { message: '该任务没有正式审批席位，不能人工办理' });
   if (task.status !== 'pending') throw new HTTPException(400, { message: '任务尚未激活或已处理' });
-  const [inst] = await db.select().from(workflowInstances)
-    .where(eq(workflowInstances.id, task.instanceId)).limit(1);
-  if (!inst) throw new HTTPException(500, { message: '流程数据异常' });
   if (inst.status !== 'running') throw new HTTPException(400, { message: inst.status === 'suspended' ? '流程已挂起，暂不可处理' : '流程实例不在进行中' });
   return { task: { ...task, activationId: task.activationId, slotId: task.slotId, taskKind: task.taskKind }, inst, actor: { userId: user.userId, name: user.username } };
 }

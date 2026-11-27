@@ -1,18 +1,20 @@
-import { eq, and, desc, inArray, sql, type SQL } from 'drizzle-orm';
+import { eq, and, desc, exists, inArray, ne, or, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
+import type { DbExecutor } from '../../db/types';
 import { inAppMessages, inAppTemplates, users, type InAppMessageRow } from '../../db/schema';
+import { config } from '../../config';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { formatDateTime } from '../../lib/datetime';
-import { tenantScope, currentCreateTenantId } from '../../lib/tenant';
+import { exactTenantCondition, getEffectiveTenantId, tenantScope } from '../../lib/tenant';
+import { getDataScopeCondition } from '../../lib/data-scope';
 import { requireFirstRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { currentUser } from '../../lib/context';
 import { renderTemplate } from '../../lib/sms-sender';
 import { scheduleSendPerUser, scheduleSendToUsers } from '../../lib/ws-manager';
-import { ensureInAppTemplateExists } from './in-app-templates.service';
-import type { SendInAppInput, InAppMessageType, inAppMessageContract } from '@zenith/shared/messaging';
+import type { SendInAppInput, inAppMessageContract } from '@zenith/shared/messaging';
 import { notificationEventKeysInGroup } from '@zenith/shared/messaging';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import type * as z from 'zod';
@@ -34,6 +36,15 @@ function buildInboxFilterWhere(q: InAppMessageListFilter) {
 
 function buildInboxWhere(q: InAppMessageListFilter, recipientId: number) {
   return buildWhere(eq(inAppMessages.userId, recipientId), buildInboxFilterWhere(q));
+}
+
+/** 历史手工站内信的收件人必须与记录同租户，才能显示或参与管理操作。 */
+function managedRecipientCondition() {
+  if (!config.multiTenantMode) return undefined;
+  return or(ne(inAppMessages.source, 'manual'), exists(db.select({ id: users.id }).from(users).where(and(
+    eq(users.id, inAppMessages.userId),
+    sql`${users.tenantId} IS NOT DISTINCT FROM ${inAppMessages.tenantId}`,
+  ))));
 }
 
 /** 站内信联表基础查询（消息 + 模板名 + 发送人用户名） */
@@ -82,7 +93,7 @@ async function ensureInAppMessageExists(id: number, ownedBy?: number) {
     db.select().from(inAppMessages)
       .where(buildWhere(
         eq(inAppMessages.id, id),
-        ownedBy === undefined ? undefined : eq(inAppMessages.userId, ownedBy),
+        ownedBy === undefined ? managedRecipientCondition() : eq(inAppMessages.userId, ownedBy),
         tenantScope(inAppMessages),
       ))
       .limit(1),
@@ -126,7 +137,7 @@ export async function getMyInAppMessage(id: number) {
 export async function getInAppMessageBeforeAudit(id: number) {
   const row = await requireFirstRow(
     selectMessageWithJoins()
-      .where(and(eq(inAppMessages.id, id), tenantScope(inAppMessages)))
+      .where(and(eq(inAppMessages.id, id), tenantScope(inAppMessages), managedRecipientCondition()))
       .limit(1),
     '消息不存在',
   );
@@ -139,6 +150,7 @@ export async function getInAppMessageBeforeAudit(id: number) {
 export async function listAllInAppMessages(q: InAppMessageAdminListQuery) {
   const where = buildWhere(
     buildInboxFilterWhere(q),
+    managedRecipientCondition(),
     q.recipientId ? eq(inAppMessages.userId, q.recipientId) : undefined,
     q.senderId ? eq(inAppMessages.senderId, q.senderId) : undefined,
     q.source ? eq(inAppMessages.source, q.source) : undefined,
@@ -204,7 +216,7 @@ async function markUnreadMessagesRead(...conditions: (SQL | undefined)[]) {
 }
 
 export async function adminMarkAllAsRead() {
-  const result = await markUnreadMessagesRead();
+  const result = await markUnreadMessagesRead(managedRecipientCondition());
   const userIds = [...new Set(result.map((row) => row.userId))];
   if (userIds.length > 0) {
     scheduleSendToUsers(userIds.map((userId) => ({ userId })), { type: 'in-app-message:read-all', payload: {} });
@@ -269,52 +281,73 @@ export async function batchDeleteInAppMessages(ids: number[]) {
   return { count: result.length };
 }
 
-/** 发送站内信（向多名用户批量发送） */
-export async function sendInApp(input: SendInAppInput) {
-  let title = input.title ?? '';
-  let content = input.content ?? '';
-  let type: InAppMessageType = input.type;
-  let templateId: number | null = null;
-
-  if (input.templateId) {
-    const tpl = await ensureInAppTemplateExists(input.templateId);
-    if (tpl.status !== 'enabled') {
-      throw new HTTPException(400, { message: '模板已禁用' });
-    }
-    templateId = tpl.id;
-    type = tpl.type;
-    const vars = input.variables ?? {};
-    // 用户已显式填写时优先用用户输入，否则用模板渲染结果
-    if (!input.title) title = renderTemplate(tpl.title, vars);
-    if (!input.content) content = renderTemplate(tpl.content, vars);
-  }
-  if (!title || !content) {
-    throw new HTTPException(400, { message: '标题与内容不能为空' });
-  }
-
-  // 校验收件人存在
-  const recipients = await db.select({ id: users.id }).from(users).where(inArray(users.id, input.userIds));
-  if (recipients.length === 0) {
-    throw new HTTPException(400, { message: '收件人不存在' });
-  }
-
-  const me = currentUser();
-  const tenantId = currentCreateTenantId();
-  const rows = recipients.map((r) => ({
-    templateId,
-    senderId: me.userId,
-    // 手工发送必须显式写 source：列默认值是 'system'，不写会让人工群发在收件记录里被记成系统自动投递
-    source: 'manual' as const,
-    userId: r.id,
-    title,
-    content,
-    type,
-    isRead: false,
-    tenantId,
+async function manualRecipientCondition(senderId: number, executor: DbExecutor) {
+  return and(eq(users.status, 'enabled'), await getDataScopeCondition({
+    currentUserId: senderId,
+    permissions: ['system:in-app-message:send'],
+    deptColumn: users.departmentId,
+    ownerColumn: users.id,
+    executor,
   }));
-  // 取回真实行：推送载荷带 id / createdAt，客户端直接写入铃铛缓存而不必回源
-  const inserted = await db.insert(inAppMessages).values(rows)
-    .returning({ id: inAppMessages.id, userId: inAppMessages.userId, createdAt: inAppMessages.createdAt });
+}
+
+export async function listManualInAppRecipients() {
+  const actor = currentUser();
+  const tenantId = getEffectiveTenantId(actor);
+  const rows = await db.select({ id: users.id, nickname: users.nickname, username: users.username }).from(users)
+    .where(buildWhere(
+      config.multiTenantMode ? exactTenantCondition(users.tenantId, tenantId) : undefined,
+      await manualRecipientCondition(actor.userId, db),
+    ))
+    .orderBy(users.id);
+  return rows.map(({ id, nickname, username }) => ({ id, label: nickname ? `${nickname} (${username})` : username }));
+}
+
+type InAppSender = { senderId: number | null; tenantId: number | null };
+
+/** 后台调用者传入已授权业务记录的归属，服务仍校验所有收件人与模板的租户。 */
+export function sendJobInApp(input: SendInAppInput, sender: InAppSender) {
+  return writeInApp(input, sender);
+}
+
+export function sendInApp(input: SendInAppInput) {
+  const actor = currentUser();
+  return writeInApp(input, { senderId: actor.userId, tenantId: getEffectiveTenantId(actor) },
+    (tx) => manualRecipientCondition(actor.userId, tx));
+}
+
+async function writeInApp(input: SendInAppInput, { senderId, tenantId }: InAppSender, scope?: (executor: DbExecutor) => Promise<SQL | undefined>) {
+  const ids = [...new Set(input.userIds)];
+  const { inserted, templateId, title, content, type } = await db.transaction(async (tx) => {
+    const template = input.templateId ? await requireFirstRow(tx.select().from(inAppTemplates).where(buildWhere(
+      eq(inAppTemplates.id, input.templateId),
+      config.multiTenantMode ? exactTenantCondition(inAppTemplates.tenantId, tenantId) : undefined,
+    )).limit(1), '站内信模板不存在') : null;
+    if (template && template.status !== 'enabled') throw new HTTPException(400, { message: '模板已禁用' });
+
+    const variables = input.variables ?? {};
+    const title = input.title || (template ? renderTemplate(template.title, variables) : '');
+    const content = input.content || (template ? renderTemplate(template.content, variables) : '');
+    const type = template?.type ?? input.type;
+    const templateId = template?.id ?? null;
+    if (!title || !content) throw new HTTPException(400, { message: '标题与内容不能为空' });
+
+    const recipients = await tx.select({ id: users.id }).from(users).where(buildWhere(
+      inArray(users.id, ids),
+      config.multiTenantMode ? exactTenantCondition(users.tenantId, tenantId) : undefined,
+      await scope?.(tx),
+    )).orderBy(users.id).for('share');
+    if (!ids.length || recipients.length !== ids.length) {
+      throw new HTTPException(404, { message: '部分收件人不存在或超出发送范围' });
+    }
+
+    const inserted = await tx.insert(inAppMessages).values(recipients.map(({ id }) => ({
+      templateId, senderId, source: 'manual' as const, userId: id, title, content, type, tenantId,
+    }))).returning({ id: inAppMessages.id, userId: inAppMessages.userId, createdAt: inAppMessages.createdAt });
+    return { inserted, templateId, title, content, type };
+  });
+
+  // 提交后才派发。载荷对应已持久化的消息，收件方可直接更新铃铛缓存。
   scheduleSendPerUser(inserted.map((row) => ({
     userId: row.userId,
     message: {
@@ -332,12 +365,12 @@ export async function sendInApp(input: SendInAppInput) {
         readAt: null,
         source: 'manual',
         eventKey: null,
-        senderId: me.userId,
+        senderId,
         senderName: null,
         link: null,
         createdAt: formatDateTime(row.createdAt),
       },
     },
   })));
-  return { sentCount: rows.length };
+  return { sentCount: inserted.length };
 }

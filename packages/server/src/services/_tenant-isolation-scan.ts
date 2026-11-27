@@ -149,6 +149,7 @@ const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 function bodyHasGuard(fnText: string, table: string, idText: string): boolean {
   const t = escapeRe(table);
+  if (table === 'asyncTasks' && /\basyncTaskScopedWhere\(/.test(fnText)) return true;
   if (new RegExp(`tenantScope\\(\\s*${t}\\s*\\)|tenantCondition\\(\\s*${t}\\s*,|\\b${t}\\.tenantId\\b|ScopedWhere\\(\\s*${t}\\b|scopedWhere\\(\\s*${t}\\b`).test(fnText)) return true;
   if (/\.(whereId|ensure|scope)\(/.test(fnText) || /Service\.(get|update|remove|removeMany)\(/.test(fnText)) return true;
   if (new RegExp(`\\b${t}\\.(userId|ownerId|createdBy|consulteeId|principalId|memberId)\\b`).test(fnText) || /\.(userId|ownerId|createdBy|consulteeId|principalId) !==? /.test(fnText)) return true;

@@ -67,8 +67,8 @@ export function useCmsMediaTask(taskId: number | null | undefined, resourceId: n
     refetchInterval: (query) => query.state.data && !isAsyncTaskTerminal(query.state.data.status) ? 3000 : false,
     requestOptions: { silent: true },
   });
-  useTaskProgressEvents((update) => {
-    if (update.id === taskId && isAsyncTaskTerminal(update.status)) invalidateAfterCmsMediaChange(qc, resourceId, siteId);
+  useTaskProgressEvents(() => {
+    if (taskId) void task.refetch({ cancelRefetch: false });
   });
   const status = task.data?.status;
   useEffect(() => {

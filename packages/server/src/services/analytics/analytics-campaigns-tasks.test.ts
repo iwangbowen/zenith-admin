@@ -13,7 +13,7 @@ vi.mock('../../db', () => ({ db: { select, update } }));
 vi.mock('./analytics-rollup.service', () => ({ rebuildRollup: vi.fn(async () => 0) }));
 vi.mock('./analytics-segments.service', () => ({ materializeSegment: vi.fn(async () => ({ estimatedSize: 0 })) }));
 vi.mock('../messaging/email-send-logs.service', () => ({ sendEmail: vi.fn() }));
-vi.mock('../messaging/in-app-messages.service', () => ({ sendInApp: vi.fn() }));
+vi.mock('../messaging/in-app-messages.service', () => ({ sendJobInApp: vi.fn() }));
 vi.mock('../../lib/http-client', () => ({ httpPost: vi.fn() }));
 
 import { registerAnalyticsTaskHandlers } from './analytics-tasks';

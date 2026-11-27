@@ -68,15 +68,6 @@
       ]
     }
   },
-  "services/workflow/instances/task-routing.ts": {
-    "purpose": "Workflow commands verify actor existence and resolve routing or display labels; identity writes are forbidden.",
-    "tables": {
-      "users": [
-        "id",
-        "nickname"
-      ]
-    }
-  },
   "services/workflow/workflow-analytics.service.ts": {
     "purpose": "Read-only workflow aggregate labels and initiator department for operation data scope filtering.",
     "tables": {
@@ -89,16 +80,36 @@
     }
   },
   "services/workflow/workflow-assignee-resolver.service.ts": {
-    "purpose": "Approval routing uses organization, roles and department scope; workflow cannot mutate these records.",
+    "purpose": "Approval routing reads organization and role membership, including tenant-bound candidates for timeout reassignment.",
     "tables": {
       "departments": [
         "id",
         "leaderId",
-        "parentId"
+        "parentId",
+        "tenantId"
       ],
       "roleDeptScopes": [
         "deptId",
         "roleId"
+      ],
+      "roles": [
+        "code",
+        "id",
+        "status",
+        "tenantId"
+      ],
+      "userGroupMembers": [
+        "groupId",
+        "userId"
+      ],
+      "userGroupRoles": [
+        "groupId",
+        "roleId"
+      ],
+      "userGroups": [
+        "id",
+        "status",
+        "tenantId"
       ],
       "userPositions": [
         "positionId",
@@ -113,6 +124,7 @@
         "id",
         "nickname",
         "status",
+        "tenantId",
         "username"
       ]
     }

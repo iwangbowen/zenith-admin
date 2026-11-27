@@ -77,8 +77,8 @@ export async function recordTaskTransfer(
 }
 
 /** 任务全部经手人（from/to 并集），用于禁止折返校验 */
-export async function loadTaskHandledUserIds(taskId: number): Promise<Set<number>> {
-  const rows = await db
+export async function loadTaskHandledUserIds(taskId: number, executor: DbExecutor = db): Promise<Set<number>> {
+  const rows = await executor
     .select({ fromUserId: workflowTaskTransfers.fromUserId, toUserId: workflowTaskTransfers.toUserId })
     .from(workflowTaskTransfers)
     .where(eq(workflowTaskTransfers.taskId, taskId));

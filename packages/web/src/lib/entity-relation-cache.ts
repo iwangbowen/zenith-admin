@@ -21,19 +21,12 @@ export function invalidateEntityRelations(queryClient: QueryClient) {
 
 /** 单个后台壳层订阅；合并事件突发，仅任务状态/标题变化影响关系摘要，进度计数不触发回源。 */
 export function createEntityRelationEventHandler(queryClient: QueryClient) {
-  const taskStates = new Map<number, string>();
   const refresh = new Throttler(() => { void invalidateEntityRelations(queryClient); }, { wait: 200, leading: false, trailing: true });
   const schedule = () => refresh.maybeExecute();
   return {
     onMessage(message: WsMessage) {
-      if (message.type === 'task:progress') {
-        const task = message.payload;
-        const fingerprint = `${task.status}\0${task.title}`;
-        if (taskStates.get(task.id) === fingerprint) return;
-        taskStates.delete(task.id);
-        taskStates.set(task.id, fingerprint);
-        if (taskStates.size > 200) taskStates.delete(taskStates.keys().next().value!);
-        schedule();
+      if (message.type === 'task:changed') {
+        if (message.payload.stateChanged) schedule();
       } else if (message.type === 'workflow:taskCreated' || message.type === 'workflow:taskFinished'
         || message.type === 'workflow:instanceFinished' || message.type === 'in-app-message:new'
         || message.type === 'payment:success' || message.type === 'payment:closed' || message.type === 'payment:failed'
@@ -42,6 +35,6 @@ export function createEntityRelationEventHandler(queryClient: QueryClient) {
       }
     },
     reconnect: schedule,
-    dispose() { refresh.cancel(); taskStates.clear(); },
+    dispose() { refresh.cancel(); },
   };
 }

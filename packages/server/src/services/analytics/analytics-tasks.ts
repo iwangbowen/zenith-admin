@@ -7,11 +7,12 @@ import { registerTaskHandler } from '../../lib/task-center';
 import { db } from '../../db';
 import { analyticsSegmentCampaigns, analyticsSegmentMembers, inAppTemplates, members, users } from '../../db/schema';
 import { eq, inArray } from 'drizzle-orm';
+import { currentUserOrNull } from '../../lib/context';
 import { httpPost } from '../../lib/http-client';
 import { rebuildRollup } from './analytics-rollup.service';
 import { materializeSegment } from './analytics-segments.service';
 import { sendEmail } from '../messaging/email-send-logs.service';
-import { sendInApp } from '../messaging/in-app-messages.service';
+import { sendJobInApp } from '../messaging/in-app-messages.service';
 import { sendSms } from '../messaging/sms-send-logs.service';
 import { renderTemplate } from '../../lib/sms-sender';
 import { ensureShortLink } from '../short-link/short-link.service';
@@ -104,14 +105,14 @@ async function executeInAppCampaign(campaign: typeof analyticsSegmentCampaigns.$
       const userId = row.userId!;
       const name = contacts.admins.get(userId)?.name ?? String(userId);
       const variables = { name, ...extraVars };
-      const result = await sendInApp({
+      const result = await sendJobInApp({
         userIds: [userId],
         templateId: campaign.templateId ?? undefined,
         title: renderTemplate(tpl.title, variables),
         content: renderTemplate(tpl.content, variables),
         type: tpl.type,
         variables,
-      });
+      }, { tenantId: campaign.tenantId ?? null, senderId: currentUserOrNull()?.userId ?? campaign.createdBy });
       sent += result.sentCount;
     }
     processed += batch.length;

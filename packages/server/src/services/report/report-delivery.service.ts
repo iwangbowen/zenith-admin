@@ -1,10 +1,12 @@
 import { reportDeliveryRunContract } from '@zenith/shared/report';
+import { SUPER_ADMIN_CODE } from '@zenith/shared/identity';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { requireRow } from '../../lib/db-assert';
 import { and, desc, eq, gte, inArray, isNotNull, lt, lte, or, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { CronExpressionParser } from 'cron-parser';
 import * as z from 'zod';
+import { config } from '../../config';
 import { db } from '../../db';
 import {
   reportDeliveryAttempts,
@@ -14,8 +16,9 @@ import {
 import { currentUser, currentUserOrNull, hasPermission } from '../../lib/context';
 import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { sendWebhookNotification } from '../../lib/webhook-notify';
+import { inheritedTenantCondition } from '../../lib/tenant';
 import { sendEmail } from '../messaging/email-send-logs.service';
-import { sendInApp } from '../messaging/in-app-messages.service';
+import { sendJobInApp } from '../messaging/in-app-messages.service';
 import { reportScopedWhere, reportTenantScope } from './report-access';
 import { resolveReportSecret } from './report-secrets';
 import type { ReportAlertRule, ReportDashboardSubscription, ReportDeliveryAttempt, ReportDeliveryRun, ReportDeliveryStatus, ReportDeliveryTriggerType, ReportNotifyChannel, ReportScheduleMisfirePolicy } from '@zenith/shared/report';
@@ -589,6 +592,24 @@ export function computeScheduleClaim(input: {
   return { shouldExecute: true, nextRunAt: futureNextRunAt };
 }
 
+/** The recipient is the creator saved on the report rule or subscription. */
+async function reportInboxTenant(creatorId: number, reportTenantId: number | null): Promise<number | null> {
+  if (!config.multiTenantMode) return reportTenantId;
+
+  const creator = await db.query.users.findFirst({
+    where: and(eq(users.id, creatorId), eq(users.status, 'enabled'), inheritedTenantCondition(users.tenantId, reportTenantId)),
+    columns: { tenantId: true },
+    with: { userRoles: { with: { role: { columns: { code: true, status: true, tenantId: true } } } } },
+  });
+  if (creator?.tenantId === reportTenantId) return reportTenantId;
+
+  // A platform administrator may create a report while viewing a tenant; their inbox is still platform-scoped.
+  if (creator?.tenantId === null && creator.userRoles.some(({ role }) =>
+    role.code === SUPER_ADMIN_CODE && role.status === 'enabled' && role.tenantId === null)) return null;
+
+  throw new HTTPException(404, { message: '报表创建者不存在或超出投递范围' });
+}
+
 export async function dispatchNotificationChannels(input: {
   tenantId: number | null;
   runId: number;
@@ -627,7 +648,11 @@ export async function dispatchNotificationChannels(input: {
       let status: ReportDeliveryStatus = 'success';
       let errorMessage: string | null = null;
       if (channel === 'inApp') {
-        await sendInApp({ userIds: [input.createdBy!], title: input.title, content: input.text, type: input.inAppType });
+        const recipientId = input.createdBy!;
+        const tenantId = await reportInboxTenant(recipientId, input.tenantId);
+        await sendJobInApp({ userIds: [recipientId], title: input.title, content: input.text, type: input.inAppType }, {
+          tenantId, senderId: currentUserOrNull()?.userId ?? recipientId,
+        });
       } else if (channel === 'email') {
         let successCount = 0;
         const failedRecipientIndexes: number[] = [];

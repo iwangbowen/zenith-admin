@@ -3,8 +3,8 @@ import { db } from '../../../db/index';
 import { asyncTaskItems, asyncTasks } from '../../../db/schema';
 import { formatDateTime } from '../../../lib/datetime';
 import { buildWhere, dateRangeConditions } from '../../../lib/where-helpers';
-import { assertSiteAccess, ensureCmsSiteExists } from '../cms-sites.service';
-import { resolveAsyncTaskAccessScope } from '../../tasks/public/access';
+import { assertSiteAccess } from '../cms-sites.service';
+import { asyncTaskScopedWhere } from '../../tasks/public/access';
 import { defineExport } from '../../../lib/export-center/registry';
 import { RETENTION_7_DAYS } from '../../../lib/export-center/presets';
 import type { ExportColumn } from '../../../lib/export-center/types';
@@ -41,14 +41,12 @@ function positive(value: unknown): number | null {
 async function loadRows(query: Record<string, unknown>): Promise<GovernanceExportRow[]> {
   const siteId = positive(query.siteId);
   if (!siteId) return [];
-  const access = await resolveAsyncTaskAccessScope('system:async-task:list');
-  if (access.global) await ensureCmsSiteExists(siteId);
-  else await assertSiteAccess(siteId);
+  await assertSiteAccess(siteId);
   const taskId = positive(query.taskId);
   const where = buildWhere(
     eq(asyncTasks.taskType, 'cms-resource-governance'),
     sql`${asyncTasks.payload}->>'siteId' = ${String(siteId)}`,
-    access.global ? undefined : eq(asyncTasks.createdBy, access.userId),
+    await asyncTaskScopedWhere(),
     taskId ? eq(asyncTasks.id, taskId) : undefined,
     ...dateRangeConditions(
       asyncTasks.createdAt,

@@ -1,16 +1,12 @@
-import { userContract, mostPermissiveDataScope, type DataScope } from '@zenith/shared/identity';
+import { userContract, mostPermissiveDataScope } from '@zenith/shared/identity';
 import { mock } from '@/mocks/utils/contract';
 import { requireItem } from '@/mocks/utils/crud';
 import { mockUsers } from '@/mocks/data/users';
 import { mockRoles } from '@/mocks/data/roles';
 import { mockUserGroups } from '@/mocks/data/user-groups';
 import { mockMenus } from '@/mocks/data/menus';
-import { mockUserPageIds as userMenuMap, mockUserPermissionCodes as userPermissionMap } from '@/mocks/data/access';
+import { mockUserPageIds as userMenuMap, mockUserPermissionCodes as userPermissionMap, mockUserDataScopes as userDataScopeMap, mockUserDeptScopes as userDeptScopeMap } from '@/mocks/data/access';
 import { mockUserAccess } from '@/mocks/utils/auth';
-
-// In-memory store for user-level menu/data permissions
-const userDataScopeMap: Record<number, DataScope | null> = {};
-const userDeptScopeMap: Record<number, number[]> = {};
 
 const getMostPermissive = mostPermissiveDataScope;
 

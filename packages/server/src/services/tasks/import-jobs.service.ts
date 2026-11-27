@@ -23,6 +23,7 @@ import { APP_TIME_ZONE } from '../../lib/datetime';
 import { localDate, localFormat } from '../../lib/datetime-sql';
 import { retainManagedFiles } from '../files/file-gc.service';
 import { getAsyncTaskForCreator } from './async-tasks.service';
+import { asyncTaskScopedWhere } from './public/access';
 
 export { listImportEntities } from '../../lib/import-center/registry';
 
@@ -123,12 +124,9 @@ export async function getImportTaskForCreator(id: number) {
 
 /** 导入中心统计概览：任务状态、趋势、预检/导入模式与实体聚合（普通用户仅统计本人任务） */
 export async function getImportJobStats(): Promise<ImportJobStats> {
-  const user = currentUser();
-  // 与任务中心列表口径对齐：无全局任务查询权限时只统计当前用户提交的导入任务
-  const canViewAll = await hasPermission('system:async-task:list');
   const baseWhere = buildWhere(
     inArray(asyncTasks.taskType, [...IMPORT_TASK_TYPES]),
-    canViewAll ? undefined : eq(asyncTasks.createdBy, user.userId),
+    await asyncTaskScopedWhere(),
   );
   const dayMs = 24 * 60 * 60 * 1000;
   const since24h = new Date(Date.now() - dayMs);

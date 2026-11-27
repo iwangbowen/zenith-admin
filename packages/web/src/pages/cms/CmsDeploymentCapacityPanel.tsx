@@ -33,7 +33,9 @@ export default function CmsDeploymentCapacityPanel() {
   const summary = useCmsDeploymentCapacitySummary(siteId); const preview = useCmsDeploymentCleanupPreview(siteId, previewOpen);
   const save = useSaveCmsDeploymentRetentionPolicy(); const pin = usePinCmsDeployment(); const measure = useMeasureCmsDeployments(); const cleanup = useCleanupCmsDeployments();
   const taskState = useMyAsyncTasks({ taskTypes: TASK_TYPES }); const cancel = useAsyncTaskAction('cancel'); const resume = useAsyncTaskAction('resume');
-  useTaskProgressEvents(useCallback(task => { if (TASK_TYPES.includes(task.taskType) && Number(task.payload.siteId) === siteId && ['success', 'failed', 'cancelled'].includes(task.status)) invalidateCmsDeploymentRetention(qc); }, [qc, siteId]));
+  useTaskProgressEvents(useCallback(stateChanged => {
+    if (stateChanged && siteId) invalidateCmsDeploymentRetention(qc);
+  }, [qc, siteId]));
   const tasks = taskState.tasks.filter(task => Number(task.payload.siteId) === siteId).slice(0, 3);
   const confirmCleanup = () => {
     const proposed = preview.data; const proposedSite = siteId;

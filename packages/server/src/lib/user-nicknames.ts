@@ -1,10 +1,10 @@
-import { eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db';
 import { users } from '../db/schema';
 import type { DbExecutor } from '../db/types';
 import { requireRow } from './db-assert';
-import { tenantScope, optionalExactTenantCondition } from './tenant';
+import { exactTenantCondition, tenantScope, optionalExactTenantCondition } from './tenant';
 import { buildWhere, keywordCondition } from './where-helpers';
 
 /** 用户 id → 展示名（昵称，空则回退用户名） */
@@ -29,6 +29,14 @@ export async function requireTenantUser(id: number, message: string, options: { 
     .limit(1);
   const user = requireRow(row, message, options.status ?? 400);
   if (options.enabledOnly && user.status !== 'enabled') throw new HTTPException(options.status ?? 400, { message });
+  return user;
+}
+
+/** 查找指定业务租户的启用账号，供无请求用户的事务和后台投递调用。 */
+export async function findEnabledUserInTenant(executor: DbExecutor, userId: number, tenantId: number | null, lock = false) {
+  const query = executor.select({ id: users.id, nickname: users.nickname }).from(users)
+    .where(and(eq(users.id, userId), exactTenantCondition(users.tenantId, tenantId), eq(users.status, 'enabled'))).limit(1);
+  const [user] = await (lock ? query.for('share') : query);
   return user;
 }
 

@@ -26,7 +26,6 @@ export const inAppTemplateService = defineCrudService(inAppTemplateContract, {
 export const {
   list: listInAppTemplates,
   get: getInAppTemplate,
-  ensure: ensureInAppTemplateExists,
   create: createInAppTemplate,
   update: updateInAppTemplate,
   remove: deleteInAppTemplate,

@@ -25,6 +25,7 @@ import {
   inAppMessageKeys,
   useEnabledInAppTemplates,
   useInAppMessageList,
+  useManualInAppRecipients,
   useMyInAppMessageUnreadCount,
   useMyInAppMessages,
   useSendInAppMessage,
@@ -42,12 +43,26 @@ beforeEach(() => {
     .on('GET', '/api/in-app-messages', { list: [MESSAGE], total: 1, page: 1, pageSize: 10 })
     .on('GET', '/api/in-app-messages/unread-count', { count: 1 })
     .on('GET', '/api/in-app-templates', { list: [{ id: 1, name: '模板' }], total: 1, page: 1, pageSize: 100 })
-    .on('POST', '/api/in-app-messages/send', { sent: 1 })
+    .on('GET', '/api/in-app-messages/recipients', [{ id: 7, label: '通知接收人' }])
+    .on('POST', '/api/in-app-messages/send', { sentCount: 1 })
     .on('POST', '/api/in-app-messages/1/read', null)
     .on('DELETE', '/api/in-app-messages/1', null);
 });
 
 describe('管理端发送', () => {
+  it('loads options from the send-specific recipient lookup when enabled', async () => {
+    const qc = createTestQueryClient();
+    const { result, rerender } = renderHook((enabled: boolean) => useManualInAppRecipients(enabled), {
+      wrapper: createWrapper(qc), initialProps: false,
+    });
+    expect(api.countOf('GET', '/api/in-app-messages/recipients')).toBe(0);
+
+    rerender(true);
+    await waitFor(() => expect(result.current.data).toEqual([{ id: 7, label: '通知接收人' }]));
+    expect(api.countOf('GET', '/api/in-app-messages/recipients')).toBe(1);
+    expect(api.countOf('GET', '/api/users/all')).toBe(0);
+  });
+
   it('refreshes the admin list, the bell list and the unread badge, but leaves the template lookup fresh', async () => {
     const qc = createTestQueryClient();
     const { result } = renderHook(

@@ -212,7 +212,10 @@ export async function createTenant(data: CreateTenantInput) {
     if (menuIds.length > 0) {
       await tx.insert(roleMenus).values(menuIds.map((menuId) => ({ roleId: adminRole.id, menuId })));
     }
-    const codes = await availablePermissionCodes(explicitPermissionCodesForPageIds(menuIds), row.id, tx);
+    const codes = await availablePermissionCodes(explicitPermissionCodesForPageIds(menuIds, [
+      'system:async-task:cleanup',
+      'system:async-task:config',
+    ]), row.id, tx);
     await publishRoleVersion(tx, adminRole.id, row.id, codes, menuIds);
 
     // 2) 管理员账号并绑定角色

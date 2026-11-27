@@ -6,7 +6,7 @@ import { enqueueSubprocessJoin } from './async-jobs';
 import { eq, and, inArray } from 'drizzle-orm';
 import { db } from '../../../db';
 import type { DbTransaction } from '../../../db/types';
-import { workflowInstances, workflowTasks, users, workflowApprovalSlots, workflowSignGroups, workflowNodeActivations } from '../../../db/schema';
+import { workflowInstances, workflowTasks, workflowApprovalSlots, workflowSignGroups, workflowNodeActivations } from '../../../db/schema';
 import { getAncestorNodeKeys } from '../../../lib/workflow-engine';
 import { HTTPException } from 'hono/http-exception';
 import { buildStarterContext } from '../workflow-assignee-resolver.service';
@@ -27,8 +27,9 @@ import logger from '../../../lib/logger';
 import { bridgeReportFillWorkflowOutcome } from '../../report/report-fill-workflow-bridge.service';
 import { submitReportFillSyncForWorkflowInstance } from '../../report/report-fill-task.service';
 import { requireRow } from '../../../lib/db-assert';
-import { requireTenantUser } from '../../../lib/user-nicknames';
-import { tenantCondition } from '../../../lib/tenant';
+import { findEnabledUserInTenant, requireTenantUser } from '../../../lib/user-nicknames';
+import { exactTenantCondition, tenantCondition } from '../../../lib/tenant';
+import { nullableEq } from '../../../lib/where-helpers';
 
 /** 转办：将当前任务的处理人改为目标用户 */
 export async function transferTask(taskId: number, targetUserId: number, comment?: string, attachments?: WorkflowTaskAttachment[]) {
@@ -79,7 +80,7 @@ export async function transferTask(taskId: number, targetUserId: number, comment
 
 /**
  * 系统级转交（超时升级专用）：将任务转交给上级，重置提醒计数并按超时配置重新计时。
- * 不做归属校验，由超时处理器以系统身份调用；上级解析失败时由调用方兜底。
+ * 由超时处理器以系统身份调用，以实例的租户归属校验新处理人。
  */
 export async function systemTransferTaskToManager(
   task: typeof workflowTasks.$inferSelect,
@@ -88,7 +89,7 @@ export async function systemTransferTaskToManager(
   newTimeoutAt: Date | null,
   comment: string,
 ): Promise<void> {
-  // 事务：改派、留痕与事件 outbox 原子提交（超时升级由系统触发，实例状态由调用方保证）
+  // 事务：改派、留痕与事件 outbox 原子提交。
   await workflowTransaction((tx) => systemTransferTaskToManagerInTransaction(
     tx, task, inst, managerId, newTimeoutAt, comment,
   ));
@@ -102,23 +103,34 @@ export async function systemTransferTaskToManagerInTransaction(
   _newTimeoutAt: Date | null,
   comment: string,
 ): Promise<boolean> {
-    const [target] = await tx.select({ nickname: users.nickname })
-      .from(users).where(eq(users.id, managerId)).limit(1);
+    await lockInstanceExpecting(tx, inst.id, 'running', '流程实例状态已变化，无法超时改派');
+    const target = await findEnabledUserInTenant(tx, managerId, inst.tenantId, true);
+    if (!target) return false;
+    await assertAssigneesNotActiveOnNode(tx, {
+      instanceId: inst.id, nodeKey: task.nodeKey, activationId: task.activationId,
+      userIds: [target.id], excludeTaskId: task.id,
+    });
     const [row] = await tx.update(workflowTasks)
       .set({
         assigneeId: managerId,
         comment,
         originalAssigneeId: task.originalAssigneeId ?? task.assigneeId ?? null,
       })
-      .where(and(eq(workflowTasks.id, task.id), eq(workflowTasks.status, 'pending')))
+      .where(and(eq(workflowTasks.id, task.id), eq(workflowTasks.instanceId, inst.id),
+        eq(workflowTasks.status, 'pending'), nullableEq(workflowTasks.assigneeId, task.assigneeId)))
       .returning();
     if (!row) return false;
-    if (task.slotId != null) await tx.update(workflowApprovalSlots).set({ currentAssigneeId: managerId }).where(eq(workflowApprovalSlots.id, task.slotId));
+    if (task.slotId != null) {
+      const [slot] = await tx.update(workflowApprovalSlots).set({ currentAssigneeId: managerId })
+        .where(and(eq(workflowApprovalSlots.id, task.slotId), eq(workflowApprovalSlots.currentTaskId, task.id),
+          exactTenantCondition(workflowApprovalSlots.tenantId, inst.tenantId))).returning({ id: workflowApprovalSlots.id });
+      requireRow(slot, '审批席位已变化，无法超时改派', 409);
+    }
     await recordTaskTransfer(tx, {
       taskId: task.id, instanceId: inst.id, fromUserId: task.assigneeId, toUserId: managerId,
       action: 'timeout', reason: comment, operatorId: null, tenantId: inst.tenantId, businessType: inst.bizType, businessId: inst.bizId, nodeKey: task.nodeKey,
     });
-    await emitTaskEvent('task.transferred', mapTask(row, target?.nickname ?? null), {
+    await emitTaskEvent('task.transferred', mapTask(row, target.nickname), {
       definitionId: inst.definitionId,
       tenantId: inst.tenantId,
       actor: { userId: 0, name: 'system:timeout' },

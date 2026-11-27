@@ -4,7 +4,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Button, Descriptions, InputNumber, Modal, Select, SideSheet, Spin, Switch, TabPane, Tabs, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Eraser, RefreshCw, Trash2, XCircle } from 'lucide-react';
-import type { PaginatedResponse } from '@zenith/shared/core';
 import { enumValueOf } from '@zenith/shared/core';
 import { ASYNC_TASK_ITEM_STATUSES, ASYNC_TASK_STATUSES, isAsyncTaskTerminal } from '@zenith/shared/tasks';
 import type { AsyncTask, AsyncTaskItem, AsyncTaskItemStatus, AsyncTaskStatus, AsyncTaskTypeMeta, AsyncTaskTypeStat } from '@zenith/shared/tasks';
@@ -17,6 +16,9 @@ import { createOperationColumn, ResponsiveTableActions, type ResponsiveTableActi
 import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useRowSelection } from '@/components/list-page';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
+import { useAuth } from '@/hooks/useAuth';
+import { useIsPlatformAdmin } from '@/hooks/useIsPlatformAdmin';
+import { config as appConfig } from '@/config';
 import { useTaskProgressEvents } from '@/hooks/useAsyncTasks';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useListDeepLink } from '@/hooks/useListDeepLink';
@@ -97,11 +99,14 @@ function renderJson(value: Record<string, unknown> | null) {
 export default function TaskCenterPage() {
   const queryClient = useQueryClient();
   const { hasPermission } = usePermission();
+  const { user } = useAuth();
+  const isPlatformAdmin = useIsPlatformAdmin();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const canManage = hasPermission('system:async-task:manage');
-  const canCleanup = hasPermission('system:async-task:cleanup');
-  const canConfig = hasPermission('system:async-task:config');
+  const platformGlobal = !appConfig.multiTenantMode || (isPlatformAdmin && user?.viewingTenantId == null);
+  const canCleanup = platformGlobal && hasPermission('system:async-task:cleanup');
+  const canConfig = platformGlobal && hasPermission('system:async-task:config');
 
   const [activeTab, setActiveTab] = useUrlTabState(['tasks', 'types', 'stats'] as const, 'tasks');
   const [refreshInterval, setRefreshInterval] = useState(0);
@@ -120,7 +125,7 @@ export default function TaskCenterPage() {
   }));
   const [selectedTask, setDetailTask] = useState<AsyncTask | null>(null);
   const selectedTaskQuery = useAsyncTaskDetail(selectedTask?.id, selectedTask !== null);
-  const detailTask = selectedTask ? selectedTaskQuery.data ?? selectedTask : null;
+  const detailTask = selectedTask && !selectedTaskQuery.isError ? selectedTaskQuery.data ?? selectedTask : null;
   const { selectedRowKeys, setSelectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection();
 
   // 详情抽屉：任务项明细
@@ -235,13 +240,15 @@ export default function TaskCenterPage() {
     setSelectedRowKeys((prev) => prev.filter((id) => data.some((item) => item.id === id)));
   }, [data, setSelectedRowKeys]);
 
-  // 自己提交的任务走 WS 实时合并（其他用户任务靠自动刷新兜底）
+  // 自己提交的任务变化触发重读，列表和抽屉仍使用当前会话的可见范围。
   useTaskProgressEvents(
-    useCallback((task: AsyncTask) => {
-      queryClient.setQueriesData<PaginatedResponse<AsyncTask>>({ queryKey: asyncTaskKeys.lists }, (old) => (
-        old ? { ...old, list: old.list.map((item) => (item.id === task.id ? task : item)) } : old
-      ));
-      setDetailTask((prev) => (prev && prev.id === task.id ? task : prev));
+    useCallback((stateChanged: boolean) => {
+      void queryClient.invalidateQueries({ queryKey: asyncTaskKeys.lists }, { cancelRefetch: false });
+      void queryClient.invalidateQueries({ queryKey: asyncTaskKeys.details }, { cancelRefetch: false });
+      if (stateChanged) {
+        void queryClient.invalidateQueries({ queryKey: asyncTaskKeys.stats }, { cancelRefetch: false });
+        void queryClient.invalidateQueries({ queryKey: asyncTaskKeys.items }, { cancelRefetch: false });
+      }
     }, [queryClient]),
   );
 

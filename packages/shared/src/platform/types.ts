@@ -7,7 +7,6 @@ import type { MpMessageDirection, MpMessageType } from '../mp/constants';
 import type { MpKfSession } from '../mp/contracts';
 import type { DeployHostStatus, DeployRunStatus } from '../ops/constants';
 import type { DeployRunLog } from '../ops/contracts/deploy';
-import type { AsyncTask } from '../tasks/contracts';
 import type { WorkflowInstanceStatus } from '../workflow/types';
 
 // ─── 文件管理 ─────────────────────────────────────────────────────────────────
@@ -98,7 +97,7 @@ export type WsMessage =
   | { type: 'payment:failed'; payload: { orderNo: string; bizType: string; bizId: string } }
   | { type: 'payment:refunded'; payload: { orderNo: string; refundNo: string; refundAmount: number } }
   | { type: 'payment:refund-failed'; payload: { orderNo: string; refundNo: string; refundAmount: number } }
-  | { type: 'task:progress'; payload: AsyncTask }
+  | { type: 'task:changed'; payload: { stateChanged: boolean } }
   | { type: 'mp-kf:session-new'; payload: MpKfSession }
   | { type: 'mp-kf:session-update'; payload: MpKfSession }
   | { type: 'mp-kf:session-message'; payload: { sessionId: number; accountId: number; openid: string; direction: MpMessageDirection; msgType: MpMessageType; content: string | null; createdAt: string } }

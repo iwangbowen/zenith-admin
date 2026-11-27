@@ -5,12 +5,17 @@
  * 用于在创建审批任务时展开为多个 workflow_tasks 行。
  */
 import { uniquePositiveInts } from '@zenith/shared/core';
-import { and, eq, inArray, isNotNull, type SQL } from 'drizzle-orm';
+import { SUPER_ADMIN_CODE, TENANT_ADMIN_CODE } from '@zenith/shared/identity';
+import { and, asc, eq, inArray, isNotNull, type SQL } from 'drizzle-orm';
 import type { WorkflowAssigneeType, WorkflowNodeConfig, WorkflowStarterContext } from '@zenith/shared/workflow';
 import { db } from '../../db';
 import {
   departments,
   roleDeptScopes,
+  roles,
+  userGroupMembers,
+  userGroupRoles,
+  userGroups,
   userPositions,
   userRoles,
   users,
@@ -18,10 +23,13 @@ import {
 } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
 import logger from '../../lib/logger';
+import { getUserEffectiveAccess, runWithFreshUserPermissions } from '../../lib/permissions';
+import { exactTenantCondition } from '../../lib/tenant';
 import { resolveGroupMemberUserIds } from '../../lib/user-group-access';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { evaluateExpression, ExpressionError } from '../../lib/workflow-expression';
 import { decide } from '../platform/rules-runtime.service';
+import { findEnabledUserInTenant } from '../../lib/user-nicknames';
 
 export interface ResolveAssigneeContext {
   /** 流程发起人 ID（用于 initiator / initiatorLeader / initiatorDept / manager） */
@@ -90,7 +98,7 @@ async function fetchDeptParent(exec: DbExecutor, deptId: number): Promise<number
  * post / userGroup / expression 等）不会产生任何查询。批量场景（如一次实例化里
  * 解析多个节点）可通过 ResolveAssigneeContext.deptTree 复用同一实例，避免逐节点重复拉取。
  */
-export function createDeptTree(exec: DbExecutor) {
+export function createDeptTree(exec: DbExecutor, tenantId?: number | null) {
   let nodesPromise: Promise<Map<number, DeptNode>> | null = null;
   let childrenIndex: Map<number, number[]> | null = null;
 
@@ -98,7 +106,7 @@ export function createDeptTree(exec: DbExecutor) {
     nodesPromise ??= (async () => {
       const rows = await exec
         .select({ id: departments.id, parentId: departments.parentId, leaderId: departments.leaderId })
-        .from(departments);
+        .from(departments).where(tenantId === undefined ? undefined : exactTenantCondition(departments.tenantId, tenantId));
       const map = new Map<number, DeptNode>();
       for (const r of rows) map.set(r.id, { parentId: r.parentId, leaderId: r.leaderId });
       return map;
@@ -337,40 +345,60 @@ export async function buildStarterContext(
   };
 }
 
-/**
- * 解析指定用户的上级（部门负责人）。level=1 取所在部门负责人，level>1 沿部门链向上。
- * 用于超时升级「转交给上级」。找不到返回 null。
- */
-export async function resolveUserManagerId(
-  userId: number,
-  level = 1,
-  executor?: DbExecutor,
-): Promise<number | null> {
-  const exec = executor ?? db;
-  const startDeptId = await getUserDept(exec, userId);
-  if (!startDeptId) return null;
-  const lv = Math.max(1, level);
-  // level=1（超时升级的默认配置）只需一次索引查询；更深才值得走部门树
-  if (lv === 1) return fetchDeptLeader(exec, startDeptId);
-  const deptTree = createDeptTree(exec);
-  const targetDeptId = await deptTree.walkUp(startDeptId, lv - 1);
-  if (targetDeptId === null) return null;
-  return deptTree.leaderOf(targetDeptId);
+async function timeoutAdministratorIds(executor: DbExecutor, tenantId: number | null): Promise<number[]> {
+  const roleScope = and(eq(roles.code, tenantId === null ? SUPER_ADMIN_CODE : TENANT_ADMIN_CODE),
+    eq(roles.status, 'enabled'), exactTenantCondition(roles.tenantId, tenantId));
+  const userScope = and(eq(users.status, 'enabled'), exactTenantCondition(users.tenantId, tenantId));
+  const [direct, grouped] = await Promise.all([
+    executor.select({ id: users.id }).from(users).innerJoin(userRoles, eq(userRoles.userId, users.id))
+      .innerJoin(roles, eq(roles.id, userRoles.roleId)).where(and(roleScope, userScope)).orderBy(asc(users.id)),
+    tenantId === null ? [] : executor.select({ id: users.id }).from(users)
+      .innerJoin(userGroupMembers, eq(userGroupMembers.userId, users.id))
+      .innerJoin(userGroups, eq(userGroups.id, userGroupMembers.groupId))
+      .innerJoin(userGroupRoles, eq(userGroupRoles.groupId, userGroups.id))
+      .innerJoin(roles, eq(roles.id, userGroupRoles.roleId))
+      .where(and(roleScope, userScope, eq(userGroups.status, 'enabled'), exactTenantCondition(userGroups.tenantId, tenantId))),
+  ]);
+  return [...new Set([...direct, ...grouped].map(row => row.id))].sort((a, b) => a - b);
 }
 
-export async function resolveUserDeptHeadId(
-  userId: number,
-  executor?: DbExecutor,
-): Promise<number | null> {
-  const exec = executor ?? db;
-  const deptId = await getUserDept(exec, userId);
-  if (!deptId) return null;
-  const leaderId = await fetchDeptLeader(exec, deptId);
-  if (!leaderId || leaderId === userId) return null;
-  const [leader] = await exec.select({ id: users.id }).from(users)
-    .where(and(eq(users.id, leaderId), eq(users.status, 'enabled')))
-    .limit(1);
-  return leader?.id ?? null;
+/** 超时转交只从实例所属租户内的组织关系和可办理用户中选择。 */
+export async function resolveTimeoutTransferTarget(
+  tenantId: number | null,
+  assigneeId: number | null,
+  level: number,
+  excludedUserIds: ReadonlySet<number>,
+  executor: DbExecutor = db,
+) {
+  const examined = new Set(excludedUserIds);
+  if (assigneeId !== null) examined.add(assigneeId);
+  async function eligible(userId: number | null, reason: string) {
+    if (userId === null || examined.has(userId)) return null;
+    examined.add(userId);
+    if (!await findEnabledUserInTenant(executor, userId, tenantId, executor !== db)) return null;
+    const access = await runWithFreshUserPermissions(userId, () => getUserEffectiveAccess(userId), executor);
+    return access.superAdmin || access.permissions.includes('workflow:task:handle') ? { userId, reason } : null;
+  }
+
+  const [department] = assigneeId === null ? [] : await executor.select({ id: departments.id, leaderId: departments.leaderId })
+    .from(users).innerJoin(departments, eq(users.departmentId, departments.id))
+    .where(and(eq(users.id, assigneeId), exactTenantCondition(users.tenantId, tenantId),
+      exactTenantCondition(departments.tenantId, tenantId))).limit(1);
+  if (department) {
+    const headId = department.leaderId;
+    const deptTree = createDeptTree(executor, tenantId);
+    const parent = level > 1 ? await deptTree.walkUp(department.id, level - 1) : null;
+    const managerId = level <= 1 ? headId : parent === null ? null : await deptTree.leaderOf(parent);
+    const manager = await eligible(managerId, '上级');
+    if (manager) return manager;
+    const head = await eligible(headId, '部门负责人');
+    if (head) return head;
+  }
+  for (const adminId of await timeoutAdministratorIds(executor, tenantId)) {
+    const admin = await eligible(adminId, '管理员');
+    if (admin) return admin;
+  }
+  return null;
 }
 
 export async function resolveAdminUserId(executor?: DbExecutor): Promise<number | null> {

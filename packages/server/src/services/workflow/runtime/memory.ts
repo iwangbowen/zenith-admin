@@ -31,7 +31,7 @@ export interface MemoryRuntimeFacts {
   delegate(userId: number, definitionId: number, now: number): Promise<{ delegateId: number; mode: 'full' | 'suggest' } | null>;
   decide(ref: RuleRef, form: Record<string, unknown>, starter: WorkflowStarterContext): Promise<Record<string, unknown>>;
   definition(id: number): Promise<MemoryExecutionDefinition | null>;
-  timeoutTarget?(userId: number | null, level: number): Promise<number | null>;
+  timeoutTarget?(userId: number | null, level: number, excludedUserIds: ReadonlySet<number>): Promise<number | null>;
   validateUsers?(ids: number[]): Promise<void>;
 }
 type RunStatus = 'running' | 'finished' | 'rejected' | 'returned';
@@ -432,8 +432,16 @@ export class MemoryWorkflowRuntime {
     else if (action === 'remind') { task.remindCount = (task.remindCount ?? 0) + 1; task.timeoutAt = computeTimeoutAt(timeout, new Date(this.now))?.getTime() ?? null;
       await this.emit(run, task, 'waiting', '模拟超时提醒 ' + task.remindCount); }
     else if (action === 'transferToManager') {
-      const target = await this.facts.timeoutTarget?.(task.assigneeId, timeout.escalateManagerLevel ?? 1);
-      if (target) { task.assigneeId = target; task.remindCount = 0; task.timeoutAt = computeTimeoutAt(timeout, new Date(this.now))?.getTime() ?? null;
+      const excluded = new Set(task.handledBy);
+      for (const sibling of run.tasks) {
+        if (sibling.id !== task.id && sibling.activationId === task.activationId && sibling.assigneeId !== null && ['pending', 'waiting'].includes(sibling.status)) {
+          excluded.add(sibling.assigneeId);
+        }
+      }
+      const target = await this.facts.timeoutTarget?.(task.assigneeId, timeout.escalateManagerLevel ?? 1, excluded);
+      if (target) {
+        if (task.assigneeId !== null) task.handledBy = [...(task.handledBy ?? []), task.assigneeId];
+        task.assigneeId = target; task.remindCount = 0; task.timeoutAt = computeTimeoutAt(timeout, new Date(this.now))?.getTime() ?? null;
         const activation = run.activations.find(item => item.id === task.activationId)!; const slot = activation.slots.find(item => item.id === task.slotId);
         if (slot) slot.currentAssigneeId = target; await this.emit(run, task, 'entered', '超时升级转交处理人'); }
       else if (timeout.escalateFallbackAction === 'autoApprove' || timeout.escalateFallbackAction === 'autoReject') await this.finishTask(run, task, timeout.escalateFallbackAction === 'autoApprove' ? 'approved' : 'rejected', '超时无人可转，按兜底处理');

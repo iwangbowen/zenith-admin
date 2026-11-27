@@ -46,9 +46,6 @@ vi.mock('../../../member/member-wallet.service', () => ({ WALLET_RECHARGE_BIZ_TY
 vi.mock('../../../../lib/licensing', () => ({ isFeatureEnabled: async () => true }));
 vi.mock('../../../cms/cms-sites.service', () => ({ getAccessibleSiteIds: async () => state.siteIds }));
 vi.mock('../../../cms/cms-channels.service', () => ({ getAccessibleChannelIds: async () => state.channelIds }));
-vi.mock('../../../tasks/public/access', () => ({
-  resolveAsyncTaskAccessScope: async () => ({ userId: state.user.userId, global: state.permissions.has('system:async-task:list') }),
-}));
 // Preserve the production ACL SQL. Only identity expansion is replaced: it
 // normally queries role/group membership, which is independent of this suite.
 vi.mock('../../../drive/drive-access.service', async (importOriginal) => {

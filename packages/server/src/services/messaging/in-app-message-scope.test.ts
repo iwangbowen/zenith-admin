@@ -8,7 +8,6 @@ const state = vi.hoisted(() => ({ tenant: undefined as SQL | undefined, predicat
 vi.mock('../../lib/context', () => ({ currentUser: () => ({ userId: 7, tenantId: 23 }) }));
 vi.mock('../../lib/tenant', () => ({ tenantScope: () => state.tenant, currentCreateTenantId: () => 23 }));
 vi.mock('../../lib/ws-manager', () => ({ scheduleSendToUsers: state.pushed, scheduleSendPerUser: vi.fn() }));
-vi.mock('./in-app-templates.service', () => ({ ensureInAppTemplateExists: vi.fn() }));
 vi.mock('../../lib/sms-sender', () => ({ renderTemplate: vi.fn() }));
 vi.mock('../../db', () => ({ db: {
   $count: (_table: unknown, where: SQL) => { state.predicates.push(where); return Promise.resolve(45); },

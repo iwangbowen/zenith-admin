@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { WsMessage } from '@zenith/shared/platform';
 import { asyncTaskContract, type AsyncTask } from '@zenith/shared/tasks';
-import { api, contractKey } from '@/lib/contract-query';
+import { api } from '@/lib/contract-query';
 import { useWebSocket } from '@/hooks/useWebSocket';
 
 const ACTIVE_STATUSES = new Set<AsyncTask['status']>(['pending', 'running']);
@@ -16,28 +16,23 @@ export interface UseMyAsyncTasksOptions {
 }
 
 /**
- * 「我的异步任务」实时列表：WS 推送（task:progress）即时更新 + 轮询兜底。
+ * 「我的异步任务」由当前会话重新读取，WS 提示变更，轮询兜底。
  * 存在进行中任务时每 3s 轮询一次；全部结束后停止轮询，仅靠 WS/手动刷新。
  */
 export function useMyAsyncTasks(options: UseMyAsyncTasksOptions = {}) {
   const { pageSize = 20 } = options;
   const taskTypesKey = options.taskTypes?.join(',') ?? '';
-  const taskTypes = useMemo(
-    () => (taskTypesKey ? new Set(taskTypesKey.split(',')) : null),
-    [taskTypesKey],
-  );
   const queryClient = useQueryClient();
   const [manualLoading, setManualLoading] = useState(false);
-  const taskTypesRef = useRef(taskTypes);
-  taskTypesRef.current = taskTypes;
   const queryKey = useMemo(() => ['async-tasks', 'mine', { pageSize, taskTypes: taskTypesKey }] as const, [pageSize, taskTypesKey]);
 
   const tasksQuery = useQuery({
     queryKey,
     queryFn: async () => {
-      const data = await api(asyncTaskContract.mine, { query: { page: 1, pageSize } }, { silent: true });
-      const filter = taskTypesRef.current;
-      return filter ? data.list.filter((t) => filter.has(t.taskType)) : data.list;
+      const data = await api(asyncTaskContract.mine, {
+        query: { page: 1, pageSize, taskTypes: options.taskTypes?.length ? options.taskTypes : undefined },
+      }, { silent: true });
+      return data.list;
     },
     refetchInterval: (query) =>
       (query.state.data ?? []).some((t) => ACTIVE_STATUSES.has(t.status)) ? POLL_INTERVAL_MS : false,
@@ -54,21 +49,10 @@ export function useMyAsyncTasks(options: UseMyAsyncTasksOptions = {}) {
     }
   }, [refetch]);
 
-  // WS 实时推送：合并单条任务更新（新任务插入头部）
   useWebSocket(
     useCallback((message: WsMessage) => {
-      if (message.type !== 'task:progress') return;
-      const task = message.payload;
-      queryClient.setQueryData<AsyncTask>(contractKey(asyncTaskContract.detail, { params: { id: task.id } }), (previous) => previous ? task : undefined);
-      const filter = taskTypesRef.current;
-      if (filter && !filter.has(task.taskType)) return;
-      queryClient.setQueryData<AsyncTask[]>(queryKey, (prev = []) => {
-        const idx = prev.findIndex((t) => t.id === task.id);
-        if (idx === -1) return [task, ...prev];
-        const next = [...prev];
-        next[idx] = task;
-        return next;
-      });
+      if (message.type !== 'task:changed') return;
+      void queryClient.invalidateQueries({ queryKey, exact: true }, { cancelRefetch: false });
     }, [queryClient, queryKey]),
   );
 
@@ -78,18 +62,13 @@ export function useMyAsyncTasks(options: UseMyAsyncTasksOptions = {}) {
   return { tasks, loading: isLoading || manualLoading, refresh, hasActive };
 }
 
-/** 订阅任务进度 WS 事件（页面级自定义处理，如任务中心列表合并更新） */
-export function useTaskProgressEvents(onTask: (task: AsyncTask) => void) {
-  const queryClient = useQueryClient();
-  const handlerRef = useRef(onTask);
-  handlerRef.current = onTask;
+/** 订阅任务变更，调用方经当前会话的查询重新读取任务。 */
+export function useTaskProgressEvents(onChange: (stateChanged: boolean) => void) {
+  const handlerRef = useRef(onChange);
+  handlerRef.current = onChange;
   useWebSocket(
     useCallback((message: WsMessage) => {
-      if (message.type === 'task:progress') {
-        const task = message.payload;
-        queryClient.setQueryData<AsyncTask>(contractKey(asyncTaskContract.detail, { params: { id: task.id } }), (previous) => previous ? task : undefined);
-        handlerRef.current(task);
-      }
-    }, [queryClient]),
+      if (message.type === 'task:changed') handlerRef.current(message.payload.stateChanged);
+    }, []),
   );
 }

@@ -19,7 +19,7 @@ vi.mock('../../db', async () => {
   return { db };
 });
 vi.mock('../messaging/email-send-logs.service', () => ({ sendEmail: vi.fn() }));
-vi.mock('../messaging/in-app-messages.service', () => ({ sendInApp: vi.fn() }));
+vi.mock('../messaging/in-app-messages.service', () => ({ sendJobInApp: vi.fn() }));
 vi.mock('../../lib/webhook-notify', () => ({ sendWebhookNotification: vi.fn() }));
 
 import {

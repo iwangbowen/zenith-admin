@@ -125,6 +125,7 @@
         "platform"
       ],
       "dependsOn": [
+        "cms",
         "files",
         "messaging",
         "platform"
@@ -160,6 +161,7 @@
         "ai",
         "cms",
         "files",
+        "identity",
         "messaging",
         "platform",
         "tasks",
@@ -457,6 +459,15 @@
         "src/services/workflow/workflow-business-context.service.test.ts"
       ]
     },
+    "cms-tasks": {
+      "domains": [
+        "cms",
+        "tasks"
+      ],
+      "tests": [
+        "src/services/tasks/async-task-scope.integration.test.ts"
+      ]
+    },
     "messaging-tasks": {
       "domains": [
         "messaging",
@@ -465,6 +476,24 @@
       "tests": [
         "src/services/messaging/notification-outbox.service.test.ts",
         "src/lib/task-center/transaction-submit.test.ts"
+      ]
+    },
+    "workflow-messaging": {
+      "domains": [
+        "workflow",
+        "messaging"
+      ],
+      "tests": [
+        "src/services/workflow/runtime/timeout-isolation.postgres.test.ts"
+      ]
+    },
+    "report-messaging": {
+      "domains": [
+        "report",
+        "messaging"
+      ],
+      "tests": [
+        "src/services/report/report-in-app-delivery.integration.test.ts"
       ]
     },
     "log-cleanup": {

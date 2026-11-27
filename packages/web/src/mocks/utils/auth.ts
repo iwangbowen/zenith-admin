@@ -109,7 +109,7 @@ export function mockUserAccess(user: MockUser) {
     ...items.flatMap(item => item.menuId == null ? [item.permissionCode] : []),
     ...ids.flatMap(id => pages.get(id)?.permission ?? []),
   ])].filter(code => mockPermissionAvailable(code, features)).sort();
-  return { menuIds: ids, permissions: codes };
+  return { menuIds: ids, permissions: codes, roles, grants: items };
 }
 
 export function mockUserPermissions(user: MockUser): string[] {

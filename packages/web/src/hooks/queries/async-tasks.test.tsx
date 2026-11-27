@@ -22,6 +22,9 @@ import {
 
 const api = new ApiRecorder();
 vi.mock('@/utils/request', () => ({ request: createRequestMock(() => api) }));
+vi.mock('@/hooks/useWebSocket', () => ({ useWebSocket: vi.fn() }));
+
+import { useMyAsyncTasks } from '../useAsyncTasks';
 
 import {
   asyncTaskKeys,
@@ -44,6 +47,7 @@ beforeEach(() => {
   api.reset();
   api
     .on('GET', '/api/async-tasks', { list: [], total: 0, page: 1, pageSize: 10 })
+    .on('GET', '/api/async-tasks/mine', { list: [], total: 0, page: 1, pageSize: 10 })
     .on('GET', '/api/async-tasks/stats', { total: 0, running: 0 })
     .on('GET', '/api/async-tasks/types', [{ taskType: 'export', title: '导出' }])
     .on('GET', '/api/async-tasks/1/items', { list: [], total: 0, page: 1, pageSize: 10 })
@@ -61,6 +65,15 @@ it('encodes import and preview task types as one comma-separated query value acc
   const query = new URL(api.urls('GET')[0], window.location.origin).searchParams;
   expect(query.getAll('taskTypes')).toEqual(['data-import,data-import-preview']);
   expect(asyncTaskContract.list.query.parse(Object.fromEntries(query)).taskTypes).toEqual(['data-import', 'data-import-preview']);
+});
+
+it('filters owner tasks on the server before paginating the current session’s results', async () => {
+  const { result } = renderHook(() => useMyAsyncTasks({ pageSize: 10, taskTypes: [...IMPORT_TASK_TYPES] }), {
+    wrapper: createWrapper(createTestQueryClient()),
+  });
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  const query = new URL(api.urls('GET')[0], window.location.origin).searchParams;
+  expect(asyncTaskContract.mine.query.parse(Object.fromEntries(query)).taskTypes).toEqual([...IMPORT_TASK_TYPES]);
 });
 
 /** 还原 TaskCenterPage 的挂载：list / stats / types / items 同屏 */

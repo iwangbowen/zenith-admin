@@ -76,7 +76,7 @@ Sec-WebSocket-Protocol: zenith-auth, eyJ...
 | `payment:failed` | `unknown` | 支付失败 |
 | `payment:refunded` | `unknown` | 退款成功 |
 | `payment:refund-failed` | `unknown` | 退款失败 |
-| `task:progress` | `unknown` | 任务进度 |
+| `task:changed` | `{ stateChanged: boolean }` | 任务更新，按当前会话重新查询进度 |
 | `mp-kf:session-new` | `unknown` | 公众号客服新会话 |
 | `mp-kf:session-update` | `unknown` | 公众号客服会话更新 |
 | `mp-kf:session-message` | `unknown` | 公众号客服消息 |

@@ -836,6 +836,7 @@ exports[`路由表快照 > 完整路由表保持不变 1`] = `
   "GET /api/in-app-messages",
   "GET /api/in-app-messages/:id",
   "GET /api/in-app-messages/admin",
+  "GET /api/in-app-messages/recipients",
   "GET /api/in-app-messages/unread-count",
   "GET /api/in-app-templates",
   "GET /api/in-app-templates/:id",

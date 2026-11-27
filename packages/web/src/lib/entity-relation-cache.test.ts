@@ -36,19 +36,19 @@ describe('relation realtime refresh', () => {
     const key = ['relations'];
     client.setQueryDefaults(key, { meta: ENTITY_RELATION_QUERY_META });
     const events = createEntityRelationEventHandler(client);
-    const progress = (status: 'running' | 'completed', processedCount: number) => ({
-      type: 'task:progress', payload: { id: 9, title: '同步', status, processedCount },
-    }) as Extract<WsMessage, { type: 'task:progress' }>;
+    const progress = (stateChanged: boolean): WsMessage => ({
+      type: 'task:changed', payload: { stateChanged },
+    });
     vi.useFakeTimers();
     client.setQueryData(key, 1);
-    events.onMessage(progress('running', 1));
+    events.onMessage(progress(true));
     await vi.advanceTimersByTimeAsync(200);
     expect(client.getQueryState(key)?.isInvalidated).toBe(true);
     client.setQueryData(key, 2);
-    events.onMessage(progress('running', 2));
+    events.onMessage(progress(false));
     await vi.advanceTimersByTimeAsync(200);
     expect(client.getQueryState(key)?.isInvalidated).toBe(false);
-    events.onMessage(progress('completed', 3));
+    events.onMessage(progress(true));
     await vi.advanceTimersByTimeAsync(200);
     expect(client.getQueryState(key)?.isInvalidated).toBe(true);
     client.setQueryData(key, 3);

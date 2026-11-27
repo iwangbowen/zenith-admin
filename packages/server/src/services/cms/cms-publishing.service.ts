@@ -5,6 +5,7 @@ import {
   and,
   desc,
   eq,
+  getTableColumns,
   inArray,
   sql,
   type SQL,
@@ -12,7 +13,7 @@ import {
 import { HTTPException } from 'hono/http-exception';
 import dayjs from 'dayjs';
 import { createHash, randomUUID } from 'node:crypto';
-import { CMS_PUBLISH_TASK_TYPES, CMS_PUBLISH_TARGET_TYPE_LABELS, CMS_PUBLISH_TARGET_TYPES } from '@zenith/shared/cms';
+import { CMS_PUBLISH_TARGET_TYPE_LABELS, CMS_PUBLISH_TARGET_TYPES } from '@zenith/shared/cms';
 import type { CmsPublishArtifactStatus, CmsPublishSubmitInput, CmsPublishTargetType, SubmitCmsSiteGroupPublishInput } from '@zenith/shared/cms';
 import { isAsyncTaskTerminal } from '@zenith/shared/tasks';
 import { cmsPublishingContract } from '@zenith/shared/cms';
@@ -25,10 +26,10 @@ import {
   cmsPublishArtifacts,
   cmsSites,
   cmsSiteGenerations,
+  users,
   type AsyncTaskRow,
   type CmsPublishArtifactRow,
 } from '../../db/schema';
-import { pageOffset } from '../../lib/pagination';
 import type { DbTransaction } from '../../db/types';
 import { formatDateTime, formatNullableDateTime, formatTimestamps, parseDateRangeEnd, parseDateRangeStart } from '../../lib/datetime';
 import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
@@ -48,12 +49,12 @@ import {
   type TaskRunContext,
   TaskCancelledError,
 } from '../../lib/task-center';
-import { assertCompleteCmsBatch, isCmsPlatformAdmin } from './cms-access';
+import { assertCompleteCmsBatch } from './cms-access';
+import { cmsPublishingTaskScopedWhere } from './cms-publishing-access';
 import {
   assertSiteAccess,
   assertSitesAccess,
   ensureCmsSiteExists,
-  getAccessibleSiteIds,
 } from './cms-sites.service';
 import {
   assertAllCmsSiteChannelsAccess,
@@ -71,7 +72,6 @@ import { recordCmsPublishArtifact, withCmsPublishArtifactTracking } from './cms-
 import logger from '../../lib/logger';
 import {
   buildCmsPublishDedupeFingerprint,
-  canAccessCmsPublishingTask,
   CMS_REUSABLE_PUBLISH_TASK_STATUSES,
   cmsPublishingTaskSiteIds,
   remainingCmsContentTargets,
@@ -99,6 +99,11 @@ function taskTargetType(row: Pick<AsyncTaskRow, 'taskType' | 'payload'>): CmsPub
 }
 
 export type CmsPublishingListFilter = Omit<QueryOutputOf<typeof cmsPublishingContract.list>, 'page' | 'pageSize'>;
+
+const cmsPublishingTaskColumns = {
+  ...getTableColumns(asyncTasks),
+  createdByUser: { nickname: users.nickname, username: users.username },
+};
 
 async function artifactCounts(taskIds: number[]) {
   if (!taskIds.length) return new Map<number, { total: number; failed: number }>();
@@ -143,41 +148,18 @@ async function mapPublishingTasks(rows: Array<AsyncTaskRow & {
   });
 }
 
-async function hasGlobalPublishingAccess(): Promise<boolean> {
-  return isCmsPlatformAdmin() || hasPermission('system:async-task:list');
-}
-
 /** 发布任务列表 / 产物 / 日志共用的任务级范围条件：任务类型 + 归属与站点可见性 + 列表筛选 */
 export async function buildCmsPublishingWhere(query: CmsPublishingListFilter): Promise<SQL | undefined> {
-  const user = currentUser();
-  const global = await hasGlobalPublishingAccess();
-  let ownerCondition: SQL | undefined;
-  let accessibleCondition: SQL | undefined;
-  if (!global) {
-    ownerCondition = eq(asyncTasks.createdBy, user.userId);
-    const accessible = await getAccessibleSiteIds();
-    accessibleCondition = !accessible?.length
-      ? sql`false`
-      : sql`${asyncTasks.payload}->>'siteId' in (${sql.join(accessible.map((siteId) => sql`${String(siteId)}`), sql`, `)})`;
-  }
-  let siteCondition: SQL | undefined;
-  if (query.siteId) {
-    if (!global) await assertSiteAccess(query.siteId);
-    siteCondition = sql`${asyncTasks.payload}->>'siteId' = ${String(query.siteId)}`;
-  }
   let creatorCondition: SQL | undefined;
   if (query.createdBy?.trim()) {
-    const { users } = await import('../../db/schema');
     const creators = await db.select({ id: users.id }).from(users)
       .where(keywordCondition(query.createdBy, [users.username, users.nickname], 'ilike'))
       .limit(500);
     creatorCondition = creators.length ? inArray(asyncTasks.createdBy, creators.map((row) => row.id)) : sql`false`;
   }
   return buildWhere(
-    inArray(asyncTasks.taskType, [...CMS_PUBLISH_TASK_TYPES]),
-    ownerCondition,
-    accessibleCondition,
-    siteCondition,
+    await cmsPublishingTaskScopedWhere(),
+    query.siteId ? sql`${asyncTasks.payload}->>'siteId' = ${String(query.siteId)}` : undefined,
     query.targetType ? sql`${asyncTasks.payload}->>'targetType' = ${query.targetType}` : undefined,
     asyncTaskStatusCondition(query.status),
     query.taskType ? eq(asyncTasks.taskType, query.taskType) : undefined,
@@ -193,38 +175,17 @@ export async function listCmsPublishingTasks(query: QueryOutputOf<typeof cmsPubl
     page: query.page,
     pageSize: query.pageSize,
     count: () => db.$count(asyncTasks, where),
-    rows: async () => mapPublishingTasks(await db.query.asyncTasks.findMany({
-      where,
-      with: { createdByUser: { columns: { nickname: true, username: true } } },
-      orderBy: desc(asyncTasks.id),
-      limit: query.pageSize,
-      offset: pageOffset(query.page, query.pageSize),
-    })),
+    rows: async () => mapPublishingTasks(await withPagination(db.select(cmsPublishingTaskColumns).from(asyncTasks)
+      .leftJoin(users, eq(users.id, asyncTasks.createdBy))
+      .where(where).orderBy(desc(asyncTasks.id)).$dynamic(), query.page, query.pageSize)),
   });
 }
 
 async function ensurePublishingTaskAccessible(id: number, manage = false) {
-  const row = await db.query.asyncTasks.findFirst({
-    where: eq(asyncTasks.id, id),
-    with: { createdByUser: { columns: { nickname: true, username: true } } },
-  });
-  if (!row || !CMS_PUBLISH_TASK_TYPES.includes(row.taskType as (typeof CMS_PUBLISH_TASK_TYPES)[number])) {
-    throw new HTTPException(404, { message: 'CMS 发布任务不存在' });
-  }
-  const siteIds = cmsPublishingTaskSiteIds(row);
-  if (siteIds.length === 0) throw new HTTPException(403, { message: '发布任务缺少站点范围，拒绝访问' });
-  const global = isCmsPlatformAdmin() || await hasPermission(manage ? 'system:async-task:manage' : 'system:async-task:list');
-  const accessibleSiteIds = global ? [] : (await getAccessibleSiteIds() ?? []);
-  if (!canAccessCmsPublishingTask({
-    userId: currentUser().userId,
-    createdBy: row.createdBy,
-    siteIds,
-    accessibleSiteIds,
-    global,
-  })) {
-    throw new HTTPException(403, { message: '普通用户仅可访问自己提交且仍有站点权限的发布任务' });
-  }
-  return row;
+  const [row] = await db.select(cmsPublishingTaskColumns).from(asyncTasks)
+    .leftJoin(users, eq(users.id, asyncTasks.createdBy))
+    .where(and(eq(asyncTasks.id, id), await cmsPublishingTaskScopedWhere(manage ? 'manage' : 'read'))).limit(1);
+  return requireRow(row, 'CMS 发布任务不存在或无权访问');
 }
 
 function mapArtifact(row: CmsPublishArtifactRow) {
@@ -839,7 +800,8 @@ export function registerCmsPublishingTaskHandler(): void {
 
 export async function cmsPublishingAction(id: number, action: 'cancel' | 'resume' | 'restart' | 'rebuild') {
   const task = await ensurePublishingTaskAccessible(id, true);
-  if (action === 'cancel') return mapAsyncTask(await requestCancelAsyncTask(id));
+  const scope = await cmsPublishingTaskScopedWhere('manage');
+  if (action === 'cancel') return mapAsyncTask(await requestCancelAsyncTask(id, scope));
   if (action === 'resume') {
     // A checkpoint is safe only while its site fence and content snapshots
     // still describe the database.  Otherwise create a fresh task so the
@@ -852,7 +814,7 @@ export async function cmsPublishingAction(id: number, action: 'cancel' | 'resume
         eventKey: `retry:${id}:resume:${randomUUID()}`,
       });
     }
-    return mapAsyncTask(await resumeAsyncTask(id));
+    return mapAsyncTask(await resumeAsyncTask(id, scope));
   }
   if (!isAsyncTaskTerminal(task.status)) {
     throw new HTTPException(400, { message: '仅已结束的任务可以重新开始或重建' });

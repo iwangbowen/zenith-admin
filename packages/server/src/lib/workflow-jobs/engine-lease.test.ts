@@ -6,7 +6,7 @@ const model = vi.hoisted(() => {
   type Row = Record<string, unknown>;
   type Expr = { evaluate: (row: Row) => unknown };
   type Table = { tableName: string } & Record<string, unknown>;
-  const state: Record<string, Row[]> = { jobs: [], executions: [], instances: [] };
+  const state: Record<string, Row[]> = { jobs: [], executions: [], instances: [], tasks: [] };
   const expr = (evaluate: Expr['evaluate']): Expr => ({ evaluate });
   const value = (input: unknown, row: Row): unknown => input && typeof input === 'object' && 'evaluate' in input
     ? (input as Expr).evaluate(row) : input;
@@ -17,14 +17,17 @@ const model = vi.hoisted(() => {
   const table = (name: string): Table => new Proxy({ tableName: name }, {
     get: (target, key) => key === 'tableName' ? target.tableName : expr((row) => row[String(key)]),
   });
-  const tables = { workflowJobs: table('jobs'), workflowJobExecutions: table('executions'), workflowInstances: table('instances') };
+  const tables = { workflowJobs: table('jobs'), workflowJobExecutions: table('executions'), workflowInstances: table('instances'), workflowTasks: table('tasks') };
   const operations = {
     eq: (a: unknown, b: unknown) => expr((row) => scalar(a, row) === scalar(b, row)),
     ne: (a: unknown, b: unknown) => expr((row) => scalar(a, row) !== scalar(b, row)),
     gt: (a: unknown, b: unknown) => expr((row) => scalar(a, row) != null && scalar(b, row) != null && Number(scalar(a, row)) > Number(scalar(b, row))),
     lte: (a: unknown, b: unknown) => expr((row) => scalar(a, row) != null && scalar(b, row) != null && Number(scalar(a, row)) <= Number(scalar(b, row))),
     isNull: (a: unknown) => expr((row) => value(a, row) == null),
-    inArray: (a: unknown, b: unknown[]) => expr((row) => b.includes(value(a, row))),
+    inArray: (a: unknown, b: unknown[] | Query) => expr((row) => {
+      const candidates = b instanceof Query ? b.execute().map((match) => match.id) : b;
+      return candidates.includes(value(a, row));
+    }),
     notInArray: (a: unknown, b: unknown[]) => expr((row) => !b.includes(value(a, row))),
     and: (...items: unknown[]) => expr((row) => items.filter(Boolean).every((item) => value(item, row))),
     or: (...items: unknown[]) => expr((row) => items.filter(Boolean).some((item) => value(item, row))),

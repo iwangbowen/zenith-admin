@@ -22,19 +22,6 @@ export function isReusableCmsPublishTaskStatus(status: string): boolean {
   return (CMS_REUSABLE_PUBLISH_TASK_STATUSES as readonly string[]).includes(status);
 }
 
-export function canAccessCmsPublishingTask(input: {
-  userId: number;
-  createdBy: number | null;
-  siteIds: readonly number[];
-  accessibleSiteIds: readonly number[];
-  global: boolean;
-}): boolean {
-  if (input.siteIds.length === 0 || input.siteIds.some((siteId) => !Number.isInteger(siteId) || siteId <= 0)) return false;
-  if (input.global) return true;
-  return input.createdBy === input.userId
-    && input.siteIds.every((siteId) => input.accessibleSiteIds.includes(siteId));
-}
-
 export function buildCmsPublishDedupeFingerprint(
   input: CmsPublishSubmitInput,
   userId: number,

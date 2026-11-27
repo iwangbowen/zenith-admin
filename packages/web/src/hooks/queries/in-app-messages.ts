@@ -54,6 +54,10 @@ export function useInAppMessageList(params: InAppMessageListParams) {
   return useApiQuery(inAppMessageContract.adminList, { query: params }, { placeholderData: keepPreviousData });
 }
 
+export function useManualInAppRecipients(enabled: boolean) {
+  return useApiQuery(inAppMessageContract.recipients, undefined, { enabled, staleTime: 0 });
+}
+
 /**
  * 管理端写操作（发送 / 标已读 / 删除）同时改变收件记录列表与本人视角的站内信（铃铛列表、未读数、收件箱页）；
  * 模板下拉源不受影响，故不再整域广播。收件箱详情由收件箱页持有，未挂载时仅标脏。

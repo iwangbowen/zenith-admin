@@ -61,7 +61,7 @@ export function mapAsyncTaskItem(row: typeof asyncTaskItems.$inferSelect): Async
 const PUSH_THROTTLE_MS = 300;
 const lastPushAt = new Map<number, number>();
 
-/** 向任务创建者推送进度事件（task:progress）；带节流，终态/强制推送不受节流限制 */
+/** 向创建者所有会话提示重新拉取，记录读取仍由各会话的当前权限决定。 */
 export function pushTaskProgress(row: AsyncTaskRowWithCreator, opts?: { force?: boolean }): void {
   if (!row.createdBy) return;
   const now = Date.now();
@@ -70,5 +70,5 @@ export function pushTaskProgress(row: AsyncTaskRowWithCreator, opts?: { force?: 
   if (!force && now - (lastPushAt.get(row.id) ?? 0) < PUSH_THROTTLE_MS) return;
   if (terminal) lastPushAt.delete(row.id);
   else lastPushAt.set(row.id, now);
-  sendToUser(row.createdBy, { type: 'task:progress', payload: mapAsyncTask(row) });
+  sendToUser(row.createdBy, { type: 'task:changed', payload: { stateChanged: force } });
 }

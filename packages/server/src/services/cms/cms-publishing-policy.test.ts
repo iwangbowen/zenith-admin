@@ -2,23 +2,13 @@ import { describe, expect, it } from 'vitest';
 import type { CmsPublishSubmitInput } from '@zenith/shared/cms';
 import {
   buildCmsPublishDedupeFingerprint,
-  canAccessCmsPublishingTask,
   cmsPublishingTaskSiteIds,
   isReusableCmsPublishTaskStatus,
   remainingCmsContentTargets,
   stableCmsContentTargets,
 } from './cms-publishing-policy';
 
-describe('CMS publishing access and idempotency policy', () => {
-  it('limits ordinary users to their own tasks on currently authorized sites', () => {
-    const base = { userId: 7, createdBy: 7, siteIds: [2], accessibleSiteIds: [2, 3], global: false };
-    expect(canAccessCmsPublishingTask(base)).toBe(true);
-    expect(canAccessCmsPublishingTask({ ...base, createdBy: 8 })).toBe(false);
-    expect(canAccessCmsPublishingTask({ ...base, siteIds: [2, 9] })).toBe(false);
-    expect(canAccessCmsPublishingTask({ ...base, siteIds: [] })).toBe(false);
-    expect(canAccessCmsPublishingTask({ ...base, createdBy: 8, siteIds: [9], global: true })).toBe(true);
-  });
-
+describe('CMS publishing idempotency policy', () => {
   it('builds a stable active-task fingerprint without making terminal tasks permanently idempotent', () => {
     const input: CmsPublishSubmitInput = {
       siteId: 1,

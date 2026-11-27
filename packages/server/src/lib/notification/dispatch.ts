@@ -28,6 +28,7 @@ import { resolveDispatchPlan, type ChannelResolution } from './resolver';
 import { normalizeTemplateVars } from './template-vars';
 import type { ResolvedRecipient } from './types';
 import { exactTenantCondition } from '../tenant';
+import { findEnabledUserInTenant } from '../user-nicknames';
 
 /**
  * 进程内同时在飞的渠道投递上限（跨 outbox 行、跨触发入口）。
@@ -249,6 +250,12 @@ async function deliverOne(
 ): Promise<void> {
   const { channel } = resolution;
   const base = dispatchRowBase(row, recipient, channel);
+  const workflowTaskNotification = eventKey === 'workflow.task.transferred' || eventKey === 'workflow.task.urged';
+  if (workflowTaskNotification && (recipient.type !== 'user' || !await findEnabledUserInTenant(db, recipient.id, row.tenantId))) {
+    records.push({ ...base, decision: 'suppressed', reasonCode: 'source_unavailable', reasonDetail: null });
+    summary.suppressed += 1;
+    return;
+  }
   const adapter = getNotificationAdapter(channel);
   if (!adapter) {
     records.push({ ...base, decision: 'suppressed', reasonCode: 'channel_unavailable', reasonDetail: null });

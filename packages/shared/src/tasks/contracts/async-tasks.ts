@@ -169,7 +169,7 @@ export const asyncTaskTypeParam = z.object({
 export const asyncTaskContract = defineContract('/api/async-tasks', {
   types: op.get('/types', { access: 'authenticated', response: z.array(asyncTaskTypeMetaSchema), summary: '已注册的任务类型（含生效策略）' }),
   updateTypePolicy: op.put('/types/{taskType}/config', {
-    access: { permission: 'system:async-task:config' }, audit: '更新任务类型策略',
+    access: { permission: 'system:async-task:config', platformOnly: 'multi-tenant' }, audit: '更新任务类型策略',
     params: asyncTaskTypeParam,
     body: updateAsyncTaskTypePolicySchema,
     response: asyncTaskTypeMetaSchema,
@@ -177,8 +177,8 @@ export const asyncTaskContract = defineContract('/api/async-tasks', {
   }),
   stats: op.get('/stats', { access: { permission: 'system:async-task:list' }, response: asyncTaskStatsSchema, summary: '任务中心统计概览' }),
   mine: op.get('/mine', { access: 'authenticated', query: asyncTaskListQuery, response: paginated(asyncTaskSchema), summary: '我的任务列表（业务页面进度展示）' }),
-  list: op.get('/', { access: { permission: 'system:async-task:list' }, query: asyncTaskListQuery, response: paginated(asyncTaskSchema), summary: '全局任务列表（任务中心）' }),
-  cleanup: op.post('/cleanup', { access: { permission: 'system:async-task:cleanup' }, audit: '清理异步任务记录', response: asyncTaskCleanupResultSchema, summary: '立即清理超过保留期的已结束任务' }),
+  list: op.get('/', { access: { permission: 'system:async-task:list' }, query: asyncTaskListQuery, response: paginated(asyncTaskSchema), summary: '当前范围内的任务列表' }),
+  cleanup: op.post('/cleanup', { access: { permission: 'system:async-task:cleanup', platformOnly: 'multi-tenant' }, audit: '清理异步任务记录', response: asyncTaskCleanupResultSchema, summary: '立即清理超过保留期的已结束任务' }),
   batchCancel: op.post('/batch-cancel', { access: { permission: 'system:async-task:manage' }, audit: '批量取消异步任务', body: batchIdsBody, response: asyncTaskBatchResultSchema, summary: '批量取消任务' }),
   batchDelete: op.post('/batch-delete', { access: { permission: 'system:async-task:manage' }, audit: '批量删除异步任务', body: batchIdsBody, response: asyncTaskBatchResultSchema, summary: '批量删除任务记录（仅已结束）' }),
   detail: op.get('/{id}', { access: 'authenticated', params: idParam, response: asyncTaskSchema, summary: '任务详情（创建者本人或管理员）' }),

@@ -4,7 +4,7 @@ import { hostname } from 'node:os';
 import { and, asc, eq, gt, inArray, isNull, lte, ne, notInArray, or, sql, type SQL } from 'drizzle-orm';
 import type { WorkflowJobType } from '@zenith/shared/workflow';
 import { db } from '../../db';
-import { workflowJobs, workflowJobExecutions, type WorkflowJobRow, type NewWorkflowJob } from '../../db/schema';
+import { workflowJobs, workflowJobExecutions, workflowInstances, workflowTasks, type WorkflowJobRow, type NewWorkflowJob } from '../../db/schema';
 import type { DbExecutor, DbTransaction } from '../../db/types';
 import { registerSystemLedgerWorker } from '../pg-boss-scheduler';
 import logger from '../logger';
@@ -100,7 +100,7 @@ export async function cancelJobs(
   if (executor === db) return db.transaction((tx) => cancelJobs(filter, tx));
   const conds: SQL[] = [inArray(workflowJobs.status, ['pending', 'running', 'paused'])];
   if (filter.taskId != null) conds.push(eq(workflowJobs.taskId, filter.taskId));
-  if (filter.instanceId != null) conds.push(eq(workflowJobs.instanceId, filter.instanceId));
+  if (filter.instanceId != null) conds.push(instanceJobScope(executor, filter.instanceId));
   if (filter.jobType != null) conds.push(eq(workflowJobs.jobType, filter.jobType));
   if (filter.jobTypes?.length) conds.push(inArray(workflowJobs.jobType, [...filter.jobTypes]));
   if (conds.length === 1) return 0;
@@ -116,6 +116,14 @@ export async function cancelJobs(
   return jobs.length;
 }
 
+function instanceJobScope(executor: DbExecutor, instanceId: number) {
+  // Earlier reminder and transfer continuations stored only their task ID.
+  return or(eq(workflowJobs.instanceId, instanceId), and(
+    eq(workflowJobs.jobType, 'task_timeout'), isNull(workflowJobs.instanceId), isNull(workflowJobs.tenantId),
+    inArray(workflowJobs.taskId, executor.select({ id: workflowTasks.id }).from(workflowTasks).where(eq(workflowTasks.instanceId, instanceId))),
+  ))!;
+}
+
 export async function pauseInstanceJobs(tx: DbExecutor, instanceId: number, jobTypes: readonly WorkflowJobType[]): Promise<void> {
   const jobs = await tx.select({
     id: workflowJobs.id,
@@ -123,7 +131,7 @@ export async function pauseInstanceJobs(tx: DbExecutor, instanceId: number, jobT
     generation: workflowJobs.generation,
     leaseToken: workflowJobs.leaseToken,
   }).from(workflowJobs)
-    .where(and(eq(workflowJobs.instanceId, instanceId), inArray(workflowJobs.jobType, [...jobTypes]),
+    .where(and(instanceJobScope(tx, instanceId), inArray(workflowJobs.jobType, [...jobTypes]),
       inArray(workflowJobs.status, ['pending', 'running']))).orderBy(asc(workflowJobs.id)).for('update');
   if (!jobs.length) return;
   for (const job of jobs) {
@@ -152,7 +160,7 @@ export async function resumeInstanceJobs(tx: DbExecutor, instanceId: number, job
     status: 'pending', generation: sql`${workflowJobs.generation} + 1`, ...clearedLease,
     runAt: sql`clock_timestamp() + coalesce(${workflowJobs.pausedRemainingMs}, 0) * interval '1 millisecond'`,
     pausedRemainingMs: null,
-  }).where(and(eq(workflowJobs.instanceId, instanceId), inArray(workflowJobs.jobType, [...jobTypes]), eq(workflowJobs.status, 'paused')))
+  }).where(and(instanceJobScope(tx, instanceId), inArray(workflowJobs.jobType, [...jobTypes]), eq(workflowJobs.status, 'paused')))
     .returning({ id: workflowJobs.id, runAt: workflowJobs.runAt });
 }
 
@@ -217,14 +225,22 @@ export async function claimDueWorkflowJobs(available: number, lane?: 'flow' | 'o
 async function claimJob(jobId: number, executor?: DbTransaction): Promise<ClaimedJob | null> {
   const claim = async (tx: DbTransaction) => {
     const token = randomUUID();
-    const [job] = await tx.update(workflowJobs).set({
+    const [claimed] = await tx.update(workflowJobs).set({
       status: 'running', lockedAt: dbNow, lockedBy: WORKER_ID, leaseToken: token,
       leaseUntil: sql`clock_timestamp() + ${WORKFLOW_JOB_LEASE_MS} * interval '1 millisecond'`,
       executionDeadline: sql`clock_timestamp() + ${workflowJobs.executionTimeoutMs} * interval '1 millisecond'`,
       attempts: sql`${workflowJobs.attempts} + 1`,
     }).where(and(eq(workflowJobs.id, jobId), eq(workflowJobs.status, 'pending'), lte(workflowJobs.runAt, dbNow),
       sql`${workflowJobs.attempts} < ${workflowJobs.maxAttempts}`)).returning();
-    if (!job) return null;
+    if (!claimed) return null;
+    let job = claimed;
+    // 老版续期作业只记录 taskId。领取事务不锁实例，补齐后业务事务仍按实例 → 作业加锁。
+    if (job.jobType === 'task_timeout' && job.instanceId === null && job.tenantId === null && job.taskId !== null) {
+      const [scope] = await tx.select({ instanceId: workflowTasks.instanceId, nodeKey: workflowTasks.nodeKey, tenantId: workflowInstances.tenantId })
+        .from(workflowTasks).innerJoin(workflowInstances, eq(workflowInstances.id, workflowTasks.instanceId))
+        .where(eq(workflowTasks.id, job.taskId)).limit(1);
+      if (scope) [job] = await tx.update(workflowJobs).set(scope).where(eq(workflowJobs.id, job.id)).returning();
+    }
     const [execution] = await tx.insert(workflowJobExecutions).values({
       jobId: job.id, jobType: job.jobType, attempt: job.attempts, generation: job.generation,
       leaseToken: token, status: 'running', scheduledAt: job.runAt, startedAt: job.lockedAt, tenantId: job.tenantId,

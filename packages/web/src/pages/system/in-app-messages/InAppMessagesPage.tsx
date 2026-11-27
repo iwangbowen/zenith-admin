@@ -16,6 +16,7 @@ import {
   useDeleteInAppMessage,
   useEnabledInAppTemplates,
   useInAppMessageList,
+  useManualInAppRecipients,
   useMarkAllInAppMessagesRead,
   useMarkInAppMessageRead,
   useSendInAppMessage,
@@ -102,14 +103,12 @@ export default function InAppMessagesPage() {
     onSaved: () => globalThis.dispatchEvent(new CustomEvent('in-app-messages:refresh')),
     labelWidth: 120,
   });
-  const templatesQuery = useEnabledInAppTemplates(sendModal.visible);
-  const usersQuery = useAllUsers({ enabled: sendModal.visible });
-  // 收件人筛选的用户源与发送弹窗共用同一份查询（key 相同）；选项数组要 memo，
-  // 否则关键字每敲一个字整条工具栏都会重渲染（FilterSelect 是 memo 组件）
-  const filterUsersQuery = useAllUsers();
+  const templatesQuery = useEnabledInAppTemplates(sendModal.visible && can('system:in-app-template:list'));
+  const recipientsQuery = useManualInAppRecipients(sendModal.visible && can('system:in-app-message:send'));
+  const filterUsersQuery = useAllUsers({ enabled: can('system:user:list') });
   const userOptions = useMemo(() => toUserOptions(filterUsersQuery.data ?? []), [filterUsersQuery.data]);
   const templates = templatesQuery.data?.list ?? [];
-  const users = usersQuery.data ?? [];
+  const recipientOptions = useMemo(() => (recipientsQuery.data ?? []).map(({ id, label }) => ({ value: id, label })), [recipientsQuery.data]);
   const markReadMutation = useMarkInAppMessageRead();
   const markAllReadMutation = useMarkAllInAppMessagesRead();
   const deleteMutation = useDeleteInAppMessage();
@@ -234,7 +233,7 @@ export default function InAppMessagesPage() {
             {/* 收件人标签是「昵称 (用户名)」，比普通选项长一倍：上限只给 2，剩下的收进 +N 气泡，
                 否则 3 枚以上就把 550px 的选择框撑满，标签只能截成一串「张工·采购申...」 */}
             <Form.Select field="userIds" label="收件人" multiple filter style={{ width: '100%' }}
-              optionList={users.map((u) => ({ label: `${u.nickname || u.username} (${u.username})`, value: u.id }))}
+              optionList={recipientOptions} loading={recipientsQuery.isFetching}
               placeholder="请选择收件人"
               maxTagCount={2} showRestTagsPopover
               rules={[{ required: true, message: '请选择收件人' }]} />

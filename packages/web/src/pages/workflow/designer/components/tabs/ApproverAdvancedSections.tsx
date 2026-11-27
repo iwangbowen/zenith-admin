@@ -262,7 +262,7 @@ export default function ApproverAdvancedSections({
                     <Typography.Text type="tertiary" size="small">1 = 直属上级</Typography.Text>
                   </div>
                   <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginTop: 6 }}>
-                    找不到指定上级时会依次尝试部门负责人、系统管理员。
+                    找不到可办理的上级时，依次尝试流程所属租户的部门负责人、管理员。
                   </Typography.Text>
                   <div style={{ marginTop: 8 }}>
                     <div className="fd-field-label">仍无人可转时</div>

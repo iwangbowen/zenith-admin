@@ -17,7 +17,7 @@ beforeEach(() => {
     const rows = queryIndex++ === 0
       ? [{ id: 1, instanceId: 20, nodeKey: 'approve' }, { id: 2, instanceId: 20, nodeKey: 'approve' }]
       : [{ id: 20, definitionSnapshot: { flowData: { nodes: [], edges: [] } } }];
-    const query = { from: () => query, where: async () => rows };
+    const query = { from: () => query, innerJoin: () => query, where: async () => rows };
     return query;
   });
 });

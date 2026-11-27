@@ -1,12 +1,14 @@
 import type { SignatureInput } from '@zenith/shared/core';
 // ─── 批量审批与跨实例批量操作（拆分自 workflow-instances.service.ts）───
-import { eq, and, inArray } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { db } from '../../../db';
 import { workflowInstances, workflowTasks } from '../../../db/schema';
 import type { WorkflowFlowData, WorkflowBatchActionResult, WorkflowUrgeBatchResult } from '@zenith/shared/workflow';
 import { findNextApproverSelectNodes } from '@zenith/shared/workflow';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../../lib/context';
+import { tenantCondition } from '../../../lib/tenant';
+import { buildWhere } from '../../../lib/where-helpers';
 import { urgeInstance } from './cc-urge';
 import { withdrawInstance } from './lifecycle';
 import { approveTaskInBatch, rejectTask } from './task-actions';
@@ -32,13 +34,16 @@ async function planBatchTasks(taskIds: number[], opts: { checkApproverSelect: bo
   const precheckFailures = new Map<number, string>();
   if (uniqueIds.length === 0) return { groups, precheckFailures };
 
+  const scope = tenantCondition(workflowInstances, user);
   const taskRows = await db
     .select({ id: workflowTasks.id, nodeKey: workflowTasks.nodeKey, instanceId: workflowTasks.instanceId })
     .from(workflowTasks)
-    .where(and(
+    .innerJoin(workflowInstances, eq(workflowInstances.id, workflowTasks.instanceId))
+    .where(buildWhere(
       inArray(workflowTasks.id, uniqueIds),
       eq(workflowTasks.assigneeId, user.userId),
       eq(workflowTasks.status, 'pending'),
+      scope,
     ));
   const taskById = new Map(taskRows.map((t) => [t.id, t]));
 
@@ -48,7 +53,7 @@ async function planBatchTasks(taskIds: number[], opts: { checkApproverSelect: bo
     const instRows = await db
       .select({ id: workflowInstances.id, definitionSnapshot: workflowInstances.definitionSnapshot, formData: workflowInstances.formData })
       .from(workflowInstances)
-      .where(inArray(workflowInstances.id, instanceIds));
+      .where(buildWhere(inArray(workflowInstances.id, instanceIds), scope));
     contextByInstance = new Map(instRows.map((r) => [
       r.id,
       r.definitionSnapshot?.flowData

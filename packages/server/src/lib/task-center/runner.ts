@@ -495,13 +495,13 @@ export async function runAsyncTask(taskId: number, dispatchToken?: string): Prom
 }
 
 /** 取消任务：pending 直接终止；running 置协作式取消标记，由 handler 在处理间隙退出 */
-export async function requestCancelAsyncTask(taskId: number): Promise<AsyncTaskRow> {
-  const [pendingRow] = await completeAsyncTasks({ status: 'cancelled', cancelRequested: true, completedAt: new Date() }, and(eq(asyncTasks.id, taskId), eq(asyncTasks.status, 'pending')));
+export async function requestCancelAsyncTask(taskId: number, scope?: SQL): Promise<AsyncTaskRow> {
+  const [pendingRow] = await completeAsyncTasks({ status: 'cancelled', cancelRequested: true, completedAt: new Date() }, buildWhere(eq(asyncTasks.id, taskId), eq(asyncTasks.status, 'pending'), scope));
   if (pendingRow) {
     pushTaskProgress(pendingRow, { force: true });
     return pendingRow;
   }
-  const [runningRow] = await transitionAsyncTasks({ cancelRequested: true }, and(eq(asyncTasks.id, taskId), eq(asyncTasks.status, 'running')));
+  const [runningRow] = await transitionAsyncTasks({ cancelRequested: true }, buildWhere(eq(asyncTasks.id, taskId), eq(asyncTasks.status, 'running'), scope));
   if (runningRow) {
     pushTaskProgress(runningRow, { force: true });
     return runningRow;
@@ -510,23 +510,23 @@ export async function requestCancelAsyncTask(taskId: number): Promise<AsyncTaskR
 }
 
 /** 断点恢复：保留进度与 checkpoint，从中断处继续（failed / cancelled 可用） */
-export async function resumeAsyncTask(taskId: number): Promise<AsyncTaskRow> {
-  const [maybeRow] = await transitionAsyncTasks({ status: 'pending', dispatchToken: randomUUID(), cancelRequested: false, errorMessage: null, completedAt: null, heartbeatAt: null, nextRunAt: null }, and(eq(asyncTasks.id, taskId), inArray(asyncTasks.status, ['failed', 'cancelled'])));
+export async function resumeAsyncTask(taskId: number, scope?: SQL): Promise<AsyncTaskRow> {
+  const [maybeRow] = await transitionAsyncTasks({ status: 'pending', dispatchToken: randomUUID(), cancelRequested: false, errorMessage: null, completedAt: null, heartbeatAt: null, nextRunAt: null }, buildWhere(eq(asyncTasks.id, taskId), inArray(asyncTasks.status, ['failed', 'cancelled']), scope));
   const row = requireRow(maybeRow, '仅失败或已取消的任务可以断点恢复', 400);
   await enqueueCommittedTask(row);
   return row;
 }
 
 /** 重新开始：清空进度 / 断点 / 结果 / 明细，从头执行（任意已结束状态可用） */
-export async function restartAsyncTask(taskId: number): Promise<AsyncTaskRow> {
-  const row = await db.transaction((tx) => restartAsyncTaskInTransaction(tx, taskId));
+export async function restartAsyncTask(taskId: number, scope?: SQL): Promise<AsyncTaskRow> {
+  const row = await db.transaction((tx) => restartAsyncTaskInTransaction(tx, taskId, scope));
   await enqueueCommittedTask(row);
   return row;
 }
 
-export async function restartAsyncTaskInTransaction(executor: DbTransaction, taskId: number): Promise<AsyncTaskRow> {
+export async function restartAsyncTaskInTransaction(executor: DbTransaction, taskId: number, scope?: SQL): Promise<AsyncTaskRow> {
   const [maybeExisting] = await executor.select().from(asyncTasks)
-    .where(eq(asyncTasks.id, taskId)).limit(1);
+    .where(buildWhere(eq(asyncTasks.id, taskId), scope)).limit(1);
   const existing = requireRow(maybeExisting, '任务不存在');
   await lockTaskAdmission(executor, existing.taskType, existing.createdBy, existing.tenantId);
   const policy = await getTaskTypePolicy(executor, existing.taskType);
@@ -559,7 +559,7 @@ export async function restartAsyncTaskInTransaction(executor: DbTransaction, tas
       heartbeatAt: null,
       nextRunAt: null,
     })
-    .where(and(eq(asyncTasks.id, taskId), inArray(asyncTasks.status, TERMINAL_STATUSES)))
+    .where(buildWhere(eq(asyncTasks.id, taskId), inArray(asyncTasks.status, TERMINAL_STATUSES), scope))
     .returning();
   const row = requireRow(maybeRow, '仅已结束的任务可以重新开始', 400);
   await resetTaskState(executor, existing);

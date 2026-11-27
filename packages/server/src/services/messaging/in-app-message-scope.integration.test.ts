@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../lib/ws-manager', () => ({ scheduleSendToUsers: vi.fn(), scheduleSendPerUser: vi.fn() }));
-vi.mock('./in-app-templates.service', () => ({ ensureInAppTemplateExists: vi.fn() }));
 vi.mock('../../lib/sms-sender', () => ({ renderTemplate: vi.fn() }));
 
 /** 显式启用；真实 PostgreSQL 隔离事务 fixture，测试末尾整体回滚，不持久化用户和消息。 */

@@ -7,7 +7,7 @@ import {
   listMyInAppMessages, getMyInAppMessage, markAsRead, markAllAsRead, unreadCount,
   deleteInAppMessage, sendInApp, batchMarkAsRead, batchDeleteInAppMessages,
   listAllInAppMessages, adminDeleteInAppMessage, adminMarkAsRead, adminMarkAllAsRead,
-  getInAppMessageBeforeAudit,
+  getInAppMessageBeforeAudit, listManualInAppRecipients,
 } from '../../services/messaging/in-app-messages.service';
 
 const inAppMessagesRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -26,6 +26,10 @@ const detailRoute = defineContractRoute(inAppMessageContract.detail, {
 
 const sendRoute = defineContractRoute(inAppMessageContract.send, {
   handler: async (c) => c.json(okBody(await sendInApp(c.req.valid('json')), '发送成功'), 200),
+});
+
+const recipientOptionsRoute = defineContractRoute(inAppMessageContract.recipients, {
+  handler: async (c) => c.json(okBody(await listManualInAppRecipients()), 200),
 });
 
 const markReadRoute = defineContractRoute(inAppMessageContract.markRead, {
@@ -95,7 +99,7 @@ const adminDeleteRoute = defineContractRoute(inAppMessageContract.adminRemove, {
 
 inAppMessagesRouter.openapiRoutes([
   listRoute, adminListRoute, adminMarkAllReadRoute, adminMarkReadRoute, adminDeleteRoute,
-  unreadCountRoute, sendRoute, markAllReadRoute, batchReadRoute, batchDeleteRoute,
+  unreadCountRoute, recipientOptionsRoute, sendRoute, markAllReadRoute, batchReadRoute, batchDeleteRoute,
   detailRoute, markReadRoute, deleteRoute,
 ] as const);
 
