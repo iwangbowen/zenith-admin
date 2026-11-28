@@ -55,8 +55,8 @@ export function useSaveMenu() {
     invalidate: (qc, saved) => {
       void qc.invalidateQueries({ queryKey: menuKeys.detail(saved.id) });
       void qc.invalidateQueries({ queryKey: menuKeys.tree });
-      invalidateCurrentUserAccess(qc, true);
     },
+    onSuccess: (_saved, _variables, _result, { client }) => invalidateCurrentUserAccess(client, true),
   });
 }
 
@@ -65,8 +65,8 @@ export function useDeleteMenu() {
     invalidate: (qc, _output, { params }) => {
       qc.removeQueries({ queryKey: menuKeys.detail(params.id) });
       void qc.invalidateQueries({ queryKey: menuKeys.tree });
-      invalidateCurrentUserAccess(qc, true);
     },
+    onSuccess: (_output, _variables, _result, { client }) => invalidateCurrentUserAccess(client, true),
   });
 }
 
@@ -84,19 +84,26 @@ export function useReorderMenus() {
  * 刷新当前登录者的导航树与权限码快照。客户端无法判断本次变更是否覆盖自己，
  * 统一无条件失效：无活跃订阅的查询仅被标脏，不产生额外请求。
  */
-export function invalidateCurrentUserAccess(qc: QueryClient, navigationChanged = false): void {
+export async function invalidateCurrentUserAccess(qc: QueryClient, navigationChanged = false): Promise<void> {
   void qc.invalidateQueries({ queryKey: menuKeys.userTree });
-  if (navigationChanged) {
-    void qc.invalidateQueries({ queryKey: menuKeys.paths });
-    void import('./identity-access-governance').then(({ identityAccessGovernanceKeys }) => {
-      void qc.invalidateQueries({ queryKey: identityAccessGovernanceKeys.workflowOptions });
-      void qc.invalidateQueries({ queryKey: identityAccessGovernanceKeys.assignmentOptions });
-    });
-    void import('./permission-matrix').then(({ apiCatalogKeys }) => {
-      void qc.invalidateQueries({ queryKey: apiCatalogKeys.permissions });
-    });
-  }
   void qc.invalidateQueries({ queryKey: authKeys.me });
   // 豁免 / 查看明文都是权限，权限来源变了脱敏视角随之变化
   void qc.invalidateQueries({ queryKey: dataMaskKeys.effective });
+
+  if (!navigationChanged) return;
+  void qc.invalidateQueries({ queryKey: menuKeys.paths });
+  try {
+    await Promise.all([
+      import('./identity-access-governance').then(({ identityAccessGovernanceKeys }) => {
+        void qc.invalidateQueries({ queryKey: identityAccessGovernanceKeys.workflowOptions });
+        void qc.invalidateQueries({ queryKey: identityAccessGovernanceKeys.assignmentOptions });
+      }),
+      import('./permission-matrix').then(({ apiCatalogKeys }) => {
+        void qc.invalidateQueries({ queryKey: apiCatalogKeys.permissions });
+      }),
+    ]);
+  } catch {
+    // 权限数据可能已变更，按需模块不可用时刷新已有查询。
+    void qc.invalidateQueries();
+  }
 }

@@ -8,6 +8,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
+import { accessGovernanceContract, permissionCatalogContract } from '@zenith/shared/identity';
 import {
   ApiRecorder,
   createRequestMock,
@@ -20,6 +21,7 @@ import {
 const api = new ApiRecorder();
 vi.mock('@/utils/request', () => ({ request: createRequestMock(() => api) }));
 
+import { contractKey } from '@/lib/contract-query';
 import { dataMaskKeys, useDataMaskFields, useEffectiveMask, useSaveDataMaskPolicy } from './data-mask';
 import { roleKeys, useAllRoles } from './roles';
 import {
@@ -178,9 +180,15 @@ describe('payment-sharing：新增分账单不改变分账方名单', () => {
   });
 });
 
-describe('tenant-packages：分配功能只影响列表与详情', () => {
-  it('leaves the package dropdown untouched', async () => {
+describe('tenant-packages：分配功能刷新权限视图并保留下拉源', () => {
+  it('invalidates permission caches before the mutation settles and keeps the package dropdown fresh', async () => {
     const qc = createTestQueryClient();
+    const permissionKeys = [
+      contractKey(accessGovernanceContract.workflowOptions),
+      contractKey(accessGovernanceContract.assignmentOptions, { query: { target: 'role', id: 1 } }),
+      contractKey(permissionCatalogContract.directory),
+    ];
+    for (const key of permissionKeys) qc.setQueryData(key, []);
     const { result } = renderHook(
       () => ({
         detail: useTenantPackageDetail(1),
@@ -196,6 +204,7 @@ describe('tenant-packages：分配功能只影响列表与详情', () => {
 
     const fetches = observeFetches(qc);
     await result.current.assignFeatures.mutateAsync({ params: { id: 1 }, body: { features: ['wiki', 'workflow'] } });
+    for (const key of permissionKeys) expect(qc.getQueryState(key)?.isInvalidated).toBe(true);
     await waitFor(() => expect(fetches.countOf(tenantPackageKeys.detail(1))).toBe(1));
 
     expect(fetches.countOf(tenantPackageKeys.lookup)).toBe(0);

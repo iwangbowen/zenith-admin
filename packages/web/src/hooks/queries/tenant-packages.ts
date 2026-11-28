@@ -24,7 +24,7 @@ export function useAssignTenantPackageFeatures() {
     invalidate: (qc, _output, { params }) => {
       void qc.invalidateQueries({ queryKey: tenantPackageKeys.lists });
       void qc.invalidateQueries({ queryKey: tenantPackageKeys.detail(params.id) });
-      invalidateCurrentUserAccess(qc, true);
     },
+    onSuccess: (_output, _variables, _result, { client }) => invalidateCurrentUserAccess(client, true),
   });
 }
