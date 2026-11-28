@@ -5,10 +5,12 @@ import { scheduleSendToUsers } from '../../lib/ws-manager';
 import { invalidateConversationMembers } from '../../lib/chat-member-cache';
 import { currentUser } from '../../lib/context';
 import { requireRow } from '../../lib/db-assert';
+import { exactTenantCondition } from '../../lib/tenant';
+import { findEnabledUserInTenant } from '../../lib/user-nicknames';
 import { formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { HTTPException } from 'hono/http-exception';
 import type { ChatConversation } from '@zenith/shared/chat';
-import { fetchUserBrief, getUserNickname, listConversationMemberIds, requireGroupMember } from './chat-shared';
+import { fetchUserBrief, getUserNickname, listConversationMemberIds, requireChatGroup, requireGroupMember } from './chat-shared';
 import { appendSystemMessage } from './chat-messages.service';
 
 // ─── 创建群聊 ──────────────────────────────────────────────────────────────────
@@ -21,24 +23,23 @@ export async function createGroupConversation(name: string, memberIds: number[] 
   const uniqueIds = [...new Set(memberIds)].filter((id) => id !== me.userId);
   const validMembers = uniqueIds.length > 0
     ? await db.query.users.findMany({
-        where: and(inArray(users.id, uniqueIds), eq(users.status, 'enabled')),
+        where: and(inArray(users.id, uniqueIds), eq(users.status, 'enabled'), exactTenantCondition(users.tenantId, me.tenantId)),
         columns: { id: true, nickname: true },
       })
     : [];
+  if (validMembers.length !== uniqueIds.length) throw new HTTPException(400, { message: '群成员须为同租户的启用账号' });
   if (validMembers.length + 1 > 20) {
     throw new HTTPException(400, { message: '群成员已达上限（20人）' });
   }
 
-  const [conv] = await db.insert(chatConversations).values({
-    type: 'group',
-    name,
-    tenantId: me.tenantId,
-  }).returning();
-
-  await db.insert(chatConversationMembers).values([
-    { conversationId: conv.id, userId: me.userId, role: 'owner' as const },
-    ...validMembers.map((u) => ({ conversationId: conv.id, userId: u.id })),
-  ]);
+  const conv = await db.transaction(async (tx) => {
+    const [created] = await tx.insert(chatConversations).values({ type: 'group', name, tenantId: me.tenantId }).returning();
+    await tx.insert(chatConversationMembers).values([
+      { conversationId: created.id, userId: me.userId, role: 'owner' as const },
+      ...validMembers.map((u) => ({ conversationId: created.id, userId: u.id })),
+    ]);
+    return created;
+  });
 
   await appendSystemMessage(conv.id, `${myNickname ?? '群主'} 创建了群聊`);
   if (validMembers.length > 0) {
@@ -69,28 +70,15 @@ export async function createGroupConversation(name: string, memberIds: number[] 
 // ─── 添加群成员 ──────────────────────────────────────────────────────────────
 
 export async function addGroupMember(conversationId: number, targetUserId: number): Promise<void> {
-  const me = currentUser();
-
-  const conv = await db.query.chatConversations.findFirst({
-    where: eq(chatConversations.id, conversationId),
+  const { conversation } = await requireGroupMember(conversationId, ['owner', 'admin', 'member'], {
+    notGroup: '只有群聊才能添加成员', forbidden: '无权操作该群聊',
   });
-  const conversation = requireRow(conv, '会话不存在');
-  if (conversation.type !== 'group') throw new HTTPException(400, { message: '只有群聊才能添加成员' });
-
-  // 鉴权：操作者需是成员
-  const isMember = await db.query.chatConversationMembers.findFirst({
-    where: and(
-      eq(chatConversationMembers.conversationId, conversationId),
-      eq(chatConversationMembers.userId, me.userId),
-    ),
-  });
-  requireRow(isMember, '无权操作该群聊', 403);
 
   // 成员上限
   const memberCount = await db.$count(chatConversationMembers, eq(chatConversationMembers.conversationId, conversationId));
   if (memberCount >= 20) throw new HTTPException(400, { message: '群成员已达上限（20人）' });
 
-  const target = await fetchUserBrief(targetUserId);
+  const target = await fetchUserBrief(targetUserId, conversation.tenantId);
   const targetUser = requireRow(target, '用户不存在');
 
   // 幂等插入
@@ -116,15 +104,9 @@ export async function addGroupMember(conversationId: number, targetUserId: numbe
 // ─── 群成员列表 ──────────────────────────────────────────────────────────────
 
 export async function listGroupMembers(conversationId: number) {
-  const me = currentUser();
-
-  const isMember = await db.query.chatConversationMembers.findFirst({
-    where: and(
-      eq(chatConversationMembers.conversationId, conversationId),
-      eq(chatConversationMembers.userId, me.userId),
-    ),
+  const { conversation } = await requireGroupMember(conversationId, ['owner', 'admin', 'member'], {
+    notGroup: '仅群聊支持该操作', forbidden: '无权访问该会话',
   });
-  requireRow(isMember, '无权访问该会话', 403);
 
   const rows = await db
     .select({
@@ -134,7 +116,7 @@ export async function listGroupMembers(conversationId: number) {
     })
     .from(chatConversationMembers)
     .innerJoin(users, eq(chatConversationMembers.userId, users.id))
-    .where(eq(chatConversationMembers.conversationId, conversationId))
+    .where(and(eq(chatConversationMembers.conversationId, conversationId), exactTenantCondition(users.tenantId, conversation.tenantId)))
     .orderBy(
       sql`case when ${chatConversationMembers.role} = 'owner' then 0 when ${chatConversationMembers.role} = 'admin' then 1 else 2 end`,
       asc(chatConversationMembers.joinedAt),
@@ -146,12 +128,13 @@ export async function listGroupMembers(conversationId: number) {
 
 // ─── 移除群成员 ──────────────────────────────────────────────────────────────
 
+/** 以群成员关系判定移除目标，通知文案只解析同租户的昵称。 */
 export async function removeGroupMember(conversationId: number, targetUserId: number): Promise<void> {
   const me = currentUser();
   const myNickname = await getUserNickname(me.userId);
 
   // 操作者必须是群主或管理员
-  const { member: operatorMember } = await requireGroupMember(conversationId, ['owner', 'admin'], {
+  const { conversation, member: operatorMember } = await requireGroupMember(conversationId, ['owner', 'admin'], {
     notGroup: '只有群聊才能移除成员', forbidden: '只有群主或管理员才能移除成员',
   });
   if (targetUserId === me.userId) {
@@ -173,10 +156,7 @@ export async function removeGroupMember(conversationId: number, targetUserId: nu
     throw new HTTPException(403, { message: '管理员不能移除其他管理员' });
   }
 
-  const targetUser = await db.query.users.findFirst({
-    where: eq(users.id, targetUserId),
-    columns: { nickname: true },
-  });
+  const targetUser = await fetchUserBrief(targetUserId, conversation.tenantId);
 
   await db.delete(chatConversationMembers).where(and(
     eq(chatConversationMembers.conversationId, conversationId),
@@ -244,6 +224,7 @@ export async function updateGroupInfo(
 
 // ─── 转让群主 ─────────────────────────────────────────────────────────────────
 
+/** 群主只能转让给群聊所属租户的启用成员。 */
 export async function transferGroupOwnership(conversationId: number, newOwnerId: number): Promise<void> {
   const me = currentUser();
   const myNickname = await getUserNickname(me.userId);
@@ -252,7 +233,7 @@ export async function transferGroupOwnership(conversationId: number, newOwnerId:
     throw new HTTPException(400, { message: '不能转让给自己' });
   }
 
-  await requireGroupMember(conversationId, ['owner'], {
+  const { conversation } = await requireGroupMember(conversationId, ['owner'], {
     notGroup: '只有群聊才能转让群主', forbidden: '只有群主才能转让群主',
   });
 
@@ -264,25 +245,24 @@ export async function transferGroupOwnership(conversationId: number, newOwnerId:
   });
   requireRow(targetMember, '目标用户不在群聊中');
 
-  const newOwner = await db.query.users.findFirst({
-    where: eq(users.id, newOwnerId),
-    columns: { nickname: true },
-  });
-
-  // 事务：当前群主降为 member，新群主升为 owner
-  await db.transaction(async (tx) => {
-    await tx.update(chatConversationMembers)
+  const newOwner = await db.transaction(async (tx) => {
+    const target = requireRow(await findEnabledUserInTenant(tx, newOwnerId, conversation.tenantId, true), '目标成员不存在或已停用');
+    const [outgoing] = await tx.update(chatConversationMembers)
       .set({ role: 'member' })
       .where(and(
         eq(chatConversationMembers.conversationId, conversationId),
         eq(chatConversationMembers.userId, me.userId),
-      ));
-    await tx.update(chatConversationMembers)
+        eq(chatConversationMembers.role, 'owner'),
+      )).returning({ userId: chatConversationMembers.userId });
+    requireRow(outgoing, '只有群主才能转让群主', 403);
+    const [incoming] = await tx.update(chatConversationMembers)
       .set({ role: 'owner' })
       .where(and(
         eq(chatConversationMembers.conversationId, conversationId),
         eq(chatConversationMembers.userId, newOwnerId),
-      ));
+      )).returning({ userId: chatConversationMembers.userId });
+    requireRow(incoming, '目标用户不在群聊中');
+    return target;
   });
 
   // 通知所有成员（角色变更走 member-update：前端会刷新会话列表 myRole 与成员面板）
@@ -292,7 +272,7 @@ export async function transferGroupOwnership(conversationId: number, newOwnerId:
 
   await appendSystemMessage(
     conversationId,
-    `${myNickname ?? '原群主'} 将群主转让给 ${newOwner?.nickname ?? '新群主'}`,
+    `${myNickname ?? '原群主'} 将群主转让给 ${newOwner.nickname ?? '新群主'}`,
   );
 }
 
@@ -300,15 +280,6 @@ export async function transferGroupOwnership(conversationId: number, newOwnerId:
 
 /** 永久禁言的哨兵时间（年份 >= 9000 视为永久） */
 const MUTE_FOREVER = new Date('9999-12-31T00:00:00Z');
-
-async function getGroupConversation(conversationId: number) {
-  const conv = await db.query.chatConversations.findFirst({
-    where: eq(chatConversations.id, conversationId),
-  });
-  const conversation = requireRow(conv, '会话不存在');
-  if (conversation.type !== 'group') throw new HTTPException(400, { message: '仅群聊支持该操作' });
-  return conversation;
-}
 
 async function getConversationMember(conversationId: number, userId: number) {
   return db.query.chatConversationMembers.findFirst({
@@ -333,7 +304,7 @@ function formatMuteDuration(minutes: number): string {
 /** 设置/取消群管理员（群主专属） */
 export async function setMemberRole(conversationId: number, targetUserId: number, role: 'admin' | 'member'): Promise<void> {
   const me = currentUser();
-  await getGroupConversation(conversationId);
+  await requireChatGroup(conversationId);
 
   const operator = await getConversationMember(conversationId, me.userId);
   if (operator?.role !== 'owner') {
@@ -368,7 +339,7 @@ export async function setMemberRole(conversationId: number, targetUserId: number
 /** 禁言/解除禁言群成员（群主/管理员；管理员不能禁言管理员） */
 export async function muteMember(conversationId: number, targetUserId: number, mute: boolean, durationMinutes?: number): Promise<void> {
   const me = currentUser();
-  await getGroupConversation(conversationId);
+  await requireChatGroup(conversationId);
 
   const operator = await getConversationMember(conversationId, me.userId);
   if (operator?.role !== 'owner' && operator?.role !== 'admin') {
@@ -409,7 +380,7 @@ export async function muteMember(conversationId: number, targetUserId: number, m
 /** 开启/关闭全员禁言（群主/管理员；群主与管理员不受禁言限制） */
 export async function setMuteAll(conversationId: number, muteAll: boolean): Promise<void> {
   const me = currentUser();
-  const conv = await getGroupConversation(conversationId);
+  const conv = await requireChatGroup(conversationId);
 
   const operator = await getConversationMember(conversationId, me.userId);
   if (operator?.role !== 'owner' && operator?.role !== 'admin') {

@@ -20,6 +20,7 @@ import type { JwtPayload } from '../../middleware/auth';
 import { currentUserOrNull, hasPermission, isSuperAdmin } from '../../lib/context';
 import { getUserPermissions, isSuperAdmin as isSuperAdminUser } from '../../lib/permissions';
 import { getUserEnabledGroupIds } from '../../lib/user-group-access';
+import { exactTenantCondition, inheritedTenantCondition } from '../../lib/tenant';
 import {
   EMPTY_SUBJECTS,
   computeNodeRole,
@@ -55,59 +56,64 @@ export async function loadDriveSubjects(): Promise<DriveSubjectSet> {
   if (!user) return EMPTY_SUBJECTS;
   let pending = subjectCache.get(user);
   if (!pending) {
-    pending = buildSubjects(user.userId, isSuperAdmin() ? Promise.resolve(true) : hasPermission(DRIVE_ADMIN_PERMISSION));
+    pending = buildSubjects(user.userId, user.tenantId, isSuperAdmin() ? Promise.resolve(true) : hasPermission(DRIVE_ADMIN_PERMISSION));
     subjectCache.set(user, pending);
   }
   return pending;
 }
 
 /**
- * 以任意用户身份构造主体集合（无需请求上下文）：外链按创建者视角裁剪子树、后台任务复核权限时使用。
- * 用户不存在返回空主体（任何节点都不可见）。
+ * 外链和后台任务按资源租户校验主体。平台超管可代表平台访问租户资源。
  */
-export async function loadDriveSubjectsForUser(userId: number): Promise<DriveSubjectSet> {
+export async function loadDriveSubjectsForUser(userId: number, resourceTenantId: number | null): Promise<DriveSubjectSet> {
   const [row] = await db.select({ id: users.id, tenantId: users.tenantId }).from(users)
-    .where(and(eq(users.id, userId), eq(users.status, 'enabled'))).limit(1);
+    .where(and(eq(users.id, userId), eq(users.status, 'enabled'), inheritedTenantCondition(users.tenantId, resourceTenantId))).limit(1);
   if (!row) return EMPTY_SUBJECTS;
   const roleCodes = await db.select({ code: roles.code }).from(userRoles)
     .innerJoin(roles, eq(roles.id, userRoles.roleId))
-    .where(and(eq(userRoles.userId, userId), eq(roles.status, 'enabled')));
-  const isAdmin = isSuperAdminUser({ roles: roleCodes.map((r) => r.code), tenantId: row.tenantId ?? null })
+    .where(and(eq(userRoles.userId, userId), eq(roles.status, 'enabled'), exactTenantCondition(roles.tenantId, row.tenantId)));
+  const isPlatformAdmin = isSuperAdminUser({ roles: roleCodes.map((r) => r.code), tenantId: row.tenantId });
+  if (row.tenantId !== resourceTenantId && !isPlatformAdmin) return EMPTY_SUBJECTS;
+  const isAdmin = isPlatformAdmin
     ? Promise.resolve(true)
     : getUserPermissions(userId).then((perms) => perms.includes(DRIVE_ADMIN_PERMISSION));
-  return buildSubjects(userId, isAdmin);
+  return buildSubjects(userId, row.tenantId, isAdmin);
 }
 
-async function buildSubjects(userId: number, isAdminPromise: Promise<boolean>): Promise<DriveSubjectSet> {
-  const [userRow, directRoles, groupIds, isAdmin] = await Promise.all([
-    db.select({ departmentId: users.departmentId }).from(users).where(eq(users.id, userId)).limit(1),
+/** 部门链、角色和用户组取自主体账号本身的租户。 */
+async function buildSubjects(userId: number, tenantId: number | null, isAdminPromise: Promise<boolean>): Promise<DriveSubjectSet> {
+  const [[userRow], directRoles, groupIds, isAdmin] = await Promise.all([
+    db.select({ departmentId: users.departmentId }).from(users)
+      .where(and(eq(users.id, userId), eq(users.status, 'enabled'), exactTenantCondition(users.tenantId, tenantId))).limit(1),
     db.select({ roleId: userRoles.roleId }).from(userRoles)
       .innerJoin(roles, eq(roles.id, userRoles.roleId))
-      .where(and(eq(userRoles.userId, userId), eq(roles.status, 'enabled'))),
-    getUserEnabledGroupIds(userId),
+      .where(and(eq(userRoles.userId, userId), eq(roles.status, 'enabled'), exactTenantCondition(roles.tenantId, tenantId))),
+    getUserEnabledGroupIds(userId, tenantId),
     isAdminPromise,
   ]);
+  if (!userRow) return EMPTY_SUBJECTS;
   const groupRoles = groupIds.length
     ? await db.select({ roleId: userGroupRoles.roleId }).from(userGroupRoles)
       .innerJoin(roles, eq(roles.id, userGroupRoles.roleId))
       .innerJoin(userGroups, eq(userGroups.id, userGroupRoles.groupId))
-      .where(and(inArray(userGroupRoles.groupId, groupIds), eq(roles.status, 'enabled'), eq(userGroups.status, 'enabled')))
+      .where(and(inArray(userGroupRoles.groupId, groupIds), eq(roles.status, 'enabled'), eq(userGroups.status, 'enabled'), exactTenantCondition(roles.tenantId, tenantId)))
     : [];
-  const departmentId = userRow[0]?.departmentId ?? null;
+  const departmentChain = userRow.departmentId ? await loadDepartmentChain(userRow.departmentId, tenantId) : [];
   return {
     userId,
     user: new Set([userId]),
-    department: new Set(departmentId ? await loadDepartmentChain(departmentId) : []),
+    department: new Set(departmentChain),
     role: new Set([...directRoles.map((r) => r.roleId), ...groupRoles.map((r) => r.roleId)]),
     user_group: new Set(groupIds),
-    departmentId,
+    departmentId: departmentChain[0] ?? null,
     isAdmin,
   };
 }
 
 /** 部门及其全部上级部门 id（自下而上） */
-export async function loadDepartmentChain(departmentId: number): Promise<number[]> {
-  const rows = await db.select({ id: departments.id, parentId: departments.parentId }).from(departments);
+export async function loadDepartmentChain(departmentId: number, tenantId: number | null): Promise<number[]> {
+  const rows = await db.select({ id: departments.id, parentId: departments.parentId }).from(departments)
+    .where(exactTenantCondition(departments.tenantId, tenantId));
   const parents = new Map(rows.map((r) => [r.id, r.parentId]));
   const chain: number[] = [];
   const seen = new Set<number>();

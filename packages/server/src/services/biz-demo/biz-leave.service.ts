@@ -17,7 +17,7 @@ import { db } from '../../db';
 import { bizLeaves, tenants, workflowInstances, type BizLeaveRow } from '../../db/schema';
 import { currentUser, currentUserDetail } from '../../lib/context';
 import { formatDate, parseDateRangeStart } from '../../lib/datetime';
-import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
+import { exactTenantCondition, tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { keywordCondition, buildWhere, withPagination } from '../../lib/where-helpers';
 import { startWorkflowForBiz, resolveBizDefinitionId } from '../../lib/workflow-biz-bridge';
 import { buildListResult } from '../../lib/list-query';
@@ -64,17 +64,17 @@ function findOwnLeave(id: number) {
   );
 }
 
-async function ensureLeaveDefinitionId(): Promise<number> {
-  // 统一走 bridge 的健壮解析：同名多发布取最新并告警，避免随机命中旧定义
-  return resolveBizDefinitionId({ name: LEAVE_WORKFLOW_NAME, formType: 'external' });
+function ensureLeaveDefinitionId(tenantId: number | null): Promise<number> {
+  return resolveBizDefinitionId({ name: LEAVE_WORKFLOW_NAME, formType: 'external', tenantId });
 }
 
 /** 查找该请假单当前**活跃**的流程实例（与 bridge 幂等去重口径一致）；终态实例不算占用，允许重新发起 */
-async function findExistingLeaveWorkflow(leaveId: number) {
+async function findExistingLeaveWorkflow(leaveId: number, tenantId: number | null) {
   const [instance] = await db.select().from(workflowInstances)
     .where(and(
       eq(workflowInstances.bizType, BIZ_LEAVE_TYPE),
       eq(workflowInstances.bizId, String(leaveId)),
+      exactTenantCondition(workflowInstances.tenantId, tenantId),
       inArray(workflowInstances.status, [...WORKFLOW_ACTIVE_INSTANCE_STATUSES]),
     ))
     .orderBy(desc(workflowInstances.id))
@@ -82,12 +82,13 @@ async function findExistingLeaveWorkflow(leaveId: number) {
   return instance ?? null;
 }
 
-async function linkLeaveWorkflow(leaveId: number, instance: { id: number; status: WorkflowInstanceStatus }) {
+/** 只将同租户的审批实例关联到当前申请人的请假单。 */
+async function linkLeaveWorkflow(leaveId: number, instance: { id: number; status: WorkflowInstanceStatus; tenantId: number | null }) {
   await db.update(bizLeaves).set({
     status: 'pending',
     workflowInstanceId: instance.id,
     workflowStatus: instance.status,
-  }).where(eq(bizLeaves.id, leaveId));
+  }).where(and(findOwnLeave(leaveId), exactTenantCondition(bizLeaves.tenantId, instance.tenantId)));
 }
 
 // ─── 业务逻辑 ─────────────────────────────────────────────────────────────────
@@ -138,7 +139,7 @@ export function leaveWorkflowVariables(data: BodyOf<typeof bizLeaveContract.work
 }
 
 export async function previewBizLeaveWorkflow(data: BodyOf<typeof bizLeaveContract.workflowPreview>) {
-  return previewBusinessWorkflow(await ensureLeaveDefinitionId(), leaveWorkflowVariables(data));
+  return previewBusinessWorkflow(await ensureLeaveDefinitionId(getCreateTenantId(currentUser())), leaveWorkflowVariables(data));
 }
 
 export async function getBizLeaveWorkflowContext(id: number, instanceId?: number) {
@@ -210,16 +211,19 @@ export async function submitBizLeave(id: number) {
   const user = currentUser();
   const [leave] = await db.select().from(bizLeaves).where(findOwnLeave(id)).limit(1);
   requireRow(leave, '请假单不存在');
+  if (leave.tenantId !== getCreateTenantId(user)) {
+    throw new HTTPException(400, { message: '请选择请假单所属的租户视角后提交' });
+  }
   if (leave.status !== 'draft') {
     if (leave.workflowInstanceId) return getBizLeave(id);
-    const existingWorkflow = await findExistingLeaveWorkflow(id);
+    const existingWorkflow = await findExistingLeaveWorkflow(id, leave.tenantId);
     if (existingWorkflow) {
       await linkLeaveWorkflow(id, existingWorkflow);
       return getBizLeave(id);
     }
     throw new HTTPException(400, { message: '该请假单已提交，无法重复提交' });
   }
-  const definitionId = await ensureLeaveDefinitionId();
+  const definitionId = await ensureLeaveDefinitionId(leave.tenantId);
   const [claimed] = await db.update(bizLeaves).set({
     status: 'pending',
     workflowStatus: 'running',
@@ -227,7 +231,7 @@ export async function submitBizLeave(id: number) {
   if (!claimed) {
     const [fresh] = await db.select().from(bizLeaves).where(findOwnLeave(id)).limit(1);
     if (fresh?.workflowInstanceId) return getBizLeave(id);
-    const existingWorkflow = await findExistingLeaveWorkflow(id);
+    const existingWorkflow = await findExistingLeaveWorkflow(id, leave.tenantId);
     if (existingWorkflow) {
       await linkLeaveWorkflow(id, existingWorkflow);
       return getBizLeave(id);
@@ -237,7 +241,7 @@ export async function submitBizLeave(id: number) {
 
   const applicant = user.username || '我';
   try {
-    const existingWorkflow = await findExistingLeaveWorkflow(id);
+    const existingWorkflow = await findExistingLeaveWorkflow(id, claimed.tenantId);
     const instance = existingWorkflow ?? await startWorkflowForBiz({
       definitionId,
       title: `${LEAVE_TYPE_TEXT[claimed.leaveType] ?? '请假'}申请 - ${applicant} - ${formatDate(claimed.startDate)}`,
@@ -251,7 +255,7 @@ export async function submitBizLeave(id: number) {
     await db.update(bizLeaves).set({
       status: 'draft',
       workflowStatus: null,
-    }).where(and(eq(bizLeaves.id, id), isNull(bizLeaves.workflowInstanceId)));
+    }).where(and(findOwnLeave(id), isNull(bizLeaves.workflowInstanceId)));
     throw err;
   }
   return getBizLeave(id);

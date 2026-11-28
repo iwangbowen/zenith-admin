@@ -13,7 +13,7 @@ import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { currentUser } from '../../lib/context';
-import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
+import { exactTenantCondition, tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { pickEntity } from '../../lib/entity-map';
 
 export function mapIotDeviceGroup(row: IotDeviceGroupRow, extra?: { deviceCount?: number; deviceIds?: number[] }) {
@@ -84,45 +84,49 @@ export async function getIotDeviceGroup(id: number) {
   });
 }
 
-async function ensureDevicesExist(deviceIds: number[]): Promise<void> {
+async function ensureDevicesExist(executor: DbExecutor, deviceIds: number[], tenantId: number | null): Promise<void> {
   if (deviceIds.length === 0) return;
-  const rows = await db.select({ id: iotDevices.id }).from(iotDevices)
-    .where(and(inArray(iotDevices.id, deviceIds), tenantCondition(iotDevices, currentUser())));
-  if (rows.length !== new Set(deviceIds).size) throw new HTTPException(400, { message: '存在无效的设备' });
+  const rows = await executor.select({ id: iotDevices.id }).from(iotDevices)
+    .where(and(inArray(iotDevices.id, deviceIds), exactTenantCondition(iotDevices.tenantId, tenantId)));
+  if (rows.length !== deviceIds.length) throw new HTTPException(400, { message: '存在无效或不属于分组租户的设备' });
 }
 
-/** 先删后插，原子性替换组成员 */
-async function setGroupMembers(executor: DbExecutor, groupId: number, deviceIds: number[]): Promise<void> {
+/** 在同一事务内校验设备归属并替换组成员。 */
+async function setGroupMembers(executor: DbExecutor, group: Pick<IotDeviceGroupRow, 'id' | 'tenantId'>, deviceIds: number[]): Promise<void> {
+  const ids = [...new Set(deviceIds)];
+  await ensureDevicesExist(executor, ids, group.tenantId);
+  const groupId = group.id;
   await executor.delete(iotDeviceGroupMembers).where(eq(iotDeviceGroupMembers.groupId, groupId));
-  if (deviceIds.length > 0) {
-    await executor.insert(iotDeviceGroupMembers).values(deviceIds.map((deviceId) => ({ groupId, deviceId })));
+  if (ids.length > 0) {
+    await executor.insert(iotDeviceGroupMembers).values(ids.map((deviceId) => ({ groupId, deviceId })));
   }
 }
 
 export async function createIotDeviceGroup(data: CreateIotDeviceGroupInput) {
-  await ensureDevicesExist(data.deviceIds);
   const row = await db.transaction(async (tx) => {
     const [created] = await tx.insert(iotDeviceGroups).values({
       name: data.name,
       description: data.description ?? null,
       tenantId: getCreateTenantId(currentUser()),
     }).returning();
-    await setGroupMembers(tx, created.id, data.deviceIds);
+    await setGroupMembers(tx, created, data.deviceIds);
     return created;
   });
   return getIotDeviceGroup(row.id);
 }
 
 export async function updateIotDeviceGroup(id: number, data: UpdateIotDeviceGroupInput) {
-  await ensureIotDeviceGroupExists(id);
-  if (data.deviceIds !== undefined) await ensureDevicesExist(data.deviceIds);
+  const where = buildGroupWhere({ id });
+  const patch = {
+    ...(data.name !== undefined ? { name: data.name } : {}),
+    ...(data.description !== undefined ? { description: data.description } : {}),
+  };
   await db.transaction(async (tx) => {
-    const [updated] = await tx.update(iotDeviceGroups).set({
-      ...(data.name !== undefined ? { name: data.name } : {}),
-      ...(data.description !== undefined ? { description: data.description } : {}),
-    }).where(eq(iotDeviceGroups.id, id)).returning();
-    requireRow(updated, '设备分组不存在');
-    if (data.deviceIds !== undefined) await setGroupMembers(tx, id, data.deviceIds);
+    const [updated] = Object.keys(patch).length > 0
+      ? await tx.update(iotDeviceGroups).set(patch).where(where).returning()
+      : await tx.select().from(iotDeviceGroups).where(where).limit(1).for('update');
+    const group = requireRow(updated, '设备分组不存在');
+    if (data.deviceIds !== undefined) await setGroupMembers(tx, group, data.deviceIds);
   });
   return getIotDeviceGroup(id);
 }

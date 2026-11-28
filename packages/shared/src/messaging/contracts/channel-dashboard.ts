@@ -106,5 +106,5 @@ export type ChannelDashboard = z.infer<typeof channelDashboardSchema>;
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 
 export const channelDashboardContract = defineContract('/api/channels', {
-  dashboard: op.get('/dashboard', { access: { permission: 'channel:dashboard' }, response: channelDashboardSchema, summary: '频道数据看板' }),
+  dashboard: op.get('/dashboard', { access: { platformOnly: 'multi-tenant', permission: 'channel:dashboard' }, response: channelDashboardSchema, summary: '频道数据看板' }),
 }, { tags: ['Channels'] });

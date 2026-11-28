@@ -27,12 +27,29 @@ import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult, listRows } from '../../lib/list-query';
 import { currentUser } from '../../lib/context';
+import { exactTenantCondition, isPlatformAdmin } from '../../lib/tenant';
+import { config } from '../../config';
 import { formatDateTime, formatNullableDateTime, formatTimestamps, parseDateTimeInput } from '../../lib/datetime';
 import { broadcast, scheduleBroadcast, scheduleSendToUsers } from '../../lib/ws-manager';
 import { keywordCondition, withPagination, buildWhere } from '../../lib/where-helpers';
 import { sanitizeCmsHtml } from '../cms/cms-html-sanitizer';
 import logger from '../../lib/logger';
 import { collectScheduledJobs, listOverdueScheduledJobs, type ScheduledMonitorQuery } from '../../lib/job-monitor/scheduled';
+
+/** 频道为平台资源。租户账号通过用户侧入口消费启用频道。 */
+export async function ensurePlatformChannel(channelId: number, options: { enabledOnly?: boolean } = {}): Promise<ChannelRow> {
+  return requireRow(await db.query.channels.findFirst({
+    where: buildWhere(eq(channels.id, channelId), exactTenantCondition(channels.tenantId, null),
+      options.enabledOnly ? eq(channels.status, 'enabled') : undefined),
+  }), '频道不存在');
+}
+
+/** 频道导出由通用导出接口执行，沿用频道管理的授权规则。 */
+export function assertPlatformChannelManagement(user = currentUser()): void {
+  if (config.multiTenantMode && !isPlatformAdmin(user)) {
+    throw new HTTPException(403, { message: '仅平台管理员可管理频道' });
+  }
+}
 
 export function channelScheduledMessageDueCondition(asOf: Date) {
   return and(eq(channelMessages.status, 'scheduled'), lte(channelMessages.scheduledAt, asOf));
@@ -110,7 +127,7 @@ let cachedSystemChannelId: number | null = null;
 export async function getSystemChannelId(): Promise<number | null> {
   if (cachedSystemChannelId != null) return cachedSystemChannelId;
   const ch = await db.query.channels.findFirst({
-    where: eq(channels.code, SYSTEM_CHANNEL_CODE),
+    where: and(eq(channels.code, SYSTEM_CHANNEL_CODE), exactTenantCondition(channels.tenantId, null)),
     columns: { id: true },
   });
   cachedSystemChannelId = ch?.id ?? null;
@@ -182,7 +199,8 @@ export async function publishTargeted(channelId: number, userIds: number[], inpu
 }
 
 export async function getSystemChannelIdWithin(tx: DbTransaction): Promise<number | null> {
-  const [row] = await tx.select({ id: channels.id }).from(channels).where(eq(channels.code, SYSTEM_CHANNEL_CODE)).limit(1);
+  const [row] = await tx.select({ id: channels.id }).from(channels)
+    .where(and(eq(channels.code, SYSTEM_CHANNEL_CODE), exactTenantCondition(channels.tenantId, null))).limit(1);
   return row?.id ?? null;
 }
 
@@ -283,7 +301,7 @@ export async function listMyChannels(): Promise<Channel[]> {
   const me = currentUser().userId;
   const subscriptions = await loadSubscriptionMap(me);
   const chs = await db.query.channels.findMany({
-    where: eq(channels.status, 'enabled'),
+    where: and(eq(channels.status, 'enabled'), exactTenantCondition(channels.tenantId, null)),
     orderBy: [desc(channels.builtin), channels.id],
   });
   const visible = chs.filter((ch) => ch.type === 'system' || subscriptions.has(ch.id));
@@ -292,6 +310,7 @@ export async function listMyChannels(): Promise<Channel[]> {
 
 /** 频道消息流（仅当前用户可见的消息，分页，按时间倒序） */
 export async function listChannelMessages(channelId: number, q: QueryOutputOf<typeof channelContract.messages>) {
+  await ensurePlatformChannel(channelId, { enabledOnly: true });
   const { page, pageSize } = q;
   const me = currentUser().userId;
   const sub = await db.query.channelSubscriptions.findFirst({
@@ -330,6 +349,7 @@ export async function listChannelMessages(channelId: number, q: QueryOutputOf<ty
 
 /** 标记频道已读：更新订阅已读基线 + 把定向消息收件人标记已读 */
 export async function markChannelRead(channelId: number): Promise<void> {
+  await ensurePlatformChannel(channelId, { enabledOnly: true });
   const me = currentUser().userId;
   const now = new Date();
 
@@ -417,7 +437,7 @@ async function countSubscribers(ch: ChannelRow, userCount: number): Promise<numb
 
 export async function listChannelsAdmin(q: QueryOutputOf<typeof channelContract.list>) {
   const { page, pageSize } = q;
-  const where = keywordCondition(q.keyword, [channels.name, channels.code], 'ilike');
+  const where = buildWhere(exactTenantCondition(channels.tenantId, null), keywordCondition(q.keyword, [channels.name, channels.code], 'ilike'));
   return buildListResult({
     page,
     pageSize,
@@ -453,7 +473,7 @@ export async function listChannelsAdmin(q: QueryOutputOf<typeof channelContract.
 }
 
 export async function getChannelBeforeAudit(id: number): Promise<ChannelAdmin> {
-  const ch = requireRow(await db.query.channels.findFirst({ where: eq(channels.id, id) }), '频道不存在');
+  const ch = await ensurePlatformChannel(id);
   const userCount = await db.$count(users);
   const [subscriberCount, messageCount] = await Promise.all([
     countSubscribers(ch, userCount),
@@ -470,6 +490,7 @@ export async function createChannel(input: CreateChannelInput): Promise<ChannelA
       avatar: input.avatar ?? null,
       description: input.description ?? null,
       type: 'business',
+      tenantId: null,
       builtin: false,
       status: 'enabled',
     }).returning();
@@ -481,13 +502,13 @@ export async function createChannel(input: CreateChannelInput): Promise<ChannelA
 }
 
 export async function updateChannel(id: number, input: UpdateChannelInput): Promise<ChannelAdmin> {
-  requireRow(await db.query.channels.findFirst({ where: eq(channels.id, id) }), '频道不存在');
   const [row] = await db.update(channels).set({
     ...(input.name === undefined ? {} : { name: input.name }),
     ...(input.avatar === undefined ? {} : { avatar: input.avatar }),
     ...(input.description === undefined ? {} : { description: input.description }),
     ...(input.status === undefined ? {} : { status: input.status }),
-  }).where(eq(channels.id, id)).returning();
+  }).where(and(eq(channels.id, id), exactTenantCondition(channels.tenantId, null))).returning();
+  requireRow(row, '频道不存在');
   const userCount = await db.$count(users);
   const [subscriberCount, messageCount] = await Promise.all([
     countSubscribers(row, userCount),
@@ -497,9 +518,9 @@ export async function updateChannel(id: number, input: UpdateChannelInput): Prom
 }
 
 export async function deleteChannel(id: number): Promise<void> {
-  const ch = requireRow(await db.query.channels.findFirst({ where: eq(channels.id, id) }), '频道不存在');
+  const ch = await ensurePlatformChannel(id);
   if (ch.builtin) throw new HTTPException(400, { message: '内置系统号不可删除' });
-  await db.delete(channels).where(eq(channels.id, id));
+  await db.delete(channels).where(and(eq(channels.id, id), exactTenantCondition(channels.tenantId, null)));
 }
 
 // ─── 群发受众展开 ──────────────────────────────────────────────────────────────
@@ -570,7 +591,7 @@ function buildPublishPayload(input: PublishChannelInput, publishedById: number):
 
 /** 管理员群发：文本/图片/图文 + 受众(全员/用户/部门/角色) + 立即/定时/草稿 */
 export async function publishToChannel(id: number, input: PublishChannelInput): Promise<ChannelMessage> {
-  requireRow(await db.query.channels.findFirst({ where: eq(channels.id, id) }), '频道不存在');
+  await ensurePlatformChannel(id);
   const me = currentUser();
   const payload = buildPublishPayload(input, me.userId);
 
@@ -588,7 +609,7 @@ export async function publishToChannel(id: number, input: PublishChannelInput): 
 
 /** 测试发送：仅定向发给当前操作管理员本人，用于群发前预览确认 */
 export async function testSend(id: number, input: PublishChannelInput): Promise<ChannelMessage> {
-  requireRow(await db.query.channels.findFirst({ where: eq(channels.id, id) }), '频道不存在');
+  await ensurePlatformChannel(id);
   const me = currentUser();
   const payload = buildPublishPayload(input, me.userId);
   const msg = await publishTargeted(id, [me.userId], payload);
@@ -619,6 +640,7 @@ async function saveDeferredMessage(channelId: number, input: PublishChannelInput
 
 /** 真正投递一条延迟消息：改 sent + 写 targets + WS 推送 */
 async function deliverDeferredRow(row: ChannelMessageRow): Promise<void> {
+  await ensurePlatformChannel(row.channelId);
   await db.update(channelMessages).set({ status: 'sent' }).where(eq(channelMessages.id, row.id));
   const msg = mapChannelMessage({ ...row, status: 'sent' }, false);
   if (row.audienceType === 'broadcast') {
@@ -656,6 +678,7 @@ export async function listChannelMessageRecords(
   channelId: number,
   q: QueryOutputOf<typeof channelMessageContract.adminMessages>,
 ): Promise<PaginatedResponse<ChannelMessage>> {
+  await ensurePlatformChannel(channelId);
   const { page, pageSize } = q;
   const where = buildWhere(
     eq(channelMessages.channelId, channelId),
@@ -674,12 +697,14 @@ export async function listChannelMessageRecords(
 
 export async function getChannelMessageBeforeAudit(messageId: number): Promise<ChannelMessage> {
   const row = requireRow(await db.query.channelMessages.findFirst({ where: eq(channelMessages.id, messageId) }), '消息不存在');
+  await ensurePlatformChannel(row.channelId);
   return mapChannelMessage(row, true);
 }
 
 /** 取出一条可编辑的延迟消息（草稿/定时），已发拒绝 */
 async function ensureDeferredMessage(messageId: number): Promise<ChannelMessageRow> {
   const row = requireRow(await db.query.channelMessages.findFirst({ where: eq(channelMessages.id, messageId) }), '消息不存在');
+  await ensurePlatformChannel(row.channelId);
   if (row.status === 'sent') throw new HTTPException(400, { message: '已发送的消息不可修改' });
   return row;
 }
@@ -721,6 +746,7 @@ export async function publishDeferredMessageNow(messageId: number): Promise<Chan
 /** 撤回一条已发送的群发/客服消息（F）：标记 retractedAt + WS 通知客户端移除 */
 export async function retractMessage(messageId: number): Promise<void> {
   const row = requireRow(await db.query.channelMessages.findFirst({ where: eq(channelMessages.id, messageId) }), '消息不存在');
+  await ensurePlatformChannel(row.channelId);
   if (row.status !== 'sent') throw new HTTPException(400, { message: '仅已发送的消息可撤回' });
   if (row.direction !== 'out') throw new HTTPException(400, { message: '仅频道发出的消息可撤回' });
   if (row.retractedAt != null) return;
@@ -740,7 +766,7 @@ export async function retractMessage(messageId: number): Promise<void> {
 
 export async function subscribeChannel(channelId: number): Promise<boolean> {
   const me = currentUser().userId;
-  const ch = requireRow(await db.query.channels.findFirst({ where: eq(channels.id, channelId) }), '频道不存在');
+  const ch = await ensurePlatformChannel(channelId, { enabledOnly: true });
   if (ch.type === 'system') throw new HTTPException(400, { message: '系统号默认全员订阅，无需操作' });
   const inserted = await db.insert(channelSubscriptions)
     .values({ channelId, userId: me, lastReadAt: null })
@@ -752,7 +778,7 @@ export async function subscribeChannel(channelId: number): Promise<boolean> {
 
 export async function unsubscribeChannel(channelId: number): Promise<void> {
   const me = currentUser().userId;
-  const ch = requireRow(await db.query.channels.findFirst({ where: eq(channels.id, channelId) }), '频道不存在');
+  const ch = await ensurePlatformChannel(channelId);
   if (ch.type === 'system') throw new HTTPException(400, { message: '系统号不可退订' });
   await db.delete(channelSubscriptions).where(and(
     eq(channelSubscriptions.channelId, channelId),
@@ -768,6 +794,7 @@ export async function listDiscoverableChannels(keyword?: string): Promise<Channe
     where: and(
       eq(channels.status, 'enabled'),
       eq(channels.type, 'business'),
+      exactTenantCondition(channels.tenantId, null),
       keywordCondition(keyword, [channels.name, channels.description], 'ilike'),
     ),
     orderBy: [channels.id],
@@ -785,7 +812,7 @@ function mapSubscriber(u: { id: number; nickname: string | null; username: strin
 /** 订阅者列表：系统号=全员用户（只读）；运营号=订阅表用户。分页 + 按名称搜索。 */
 export async function listChannelSubscribers(channelId: number, q: QueryOutputOf<typeof channelContract.subscribers>): Promise<PaginatedResponse<ChannelSubscriber>> {
   const { page, pageSize } = q;
-  const ch = requireRow(await db.query.channels.findFirst({ where: eq(channels.id, channelId) }), '频道不存在');
+  const ch = await ensurePlatformChannel(channelId);
   const nameWhere = keywordCondition(q.keyword, [users.nickname, users.username], 'ilike');
 
   if (ch.type === 'system') {
@@ -800,10 +827,12 @@ export async function listChannelSubscribers(channelId: number, q: QueryOutputOf
   }
 
   const where = buildWhere(eq(channelSubscriptions.channelId, channelId), nameWhere);
+  const subscribed = exists(db.select({ id: channelSubscriptions.userId }).from(channelSubscriptions)
+    .where(and(eq(channelSubscriptions.channelId, channelId), eq(channelSubscriptions.userId, users.id))));
   return buildListResult({
     page,
     pageSize,
-    count: () => db.$count(channelSubscriptions, where),
+    count: () => db.$count(users, and(nameWhere, subscribed)),
     rows: () => withPagination(db.select({
       id: users.id, nickname: users.nickname, username: users.username, avatar: users.avatar,
       subscribedAt: channelSubscriptions.subscribedAt, isMuted: channelSubscriptions.isMuted,
@@ -817,7 +846,7 @@ export async function listChannelSubscribers(channelId: number, q: QueryOutputOf
 
 /** 运营号批量添加订阅者 */
 export async function addChannelSubscribers(channelId: number, userIds: number[]): Promise<void> {
-  const ch = requireRow(await db.query.channels.findFirst({ where: eq(channels.id, channelId) }), '频道不存在');
+  const ch = await ensurePlatformChannel(channelId);
   if (ch.type === 'system') throw new HTTPException(400, { message: '系统号默认全员订阅，无需添加' });
   const unique = [...new Set(userIds)].filter((x) => x > 0);
   if (unique.length === 0) return;
@@ -828,7 +857,7 @@ export async function addChannelSubscribers(channelId: number, userIds: number[]
 
 /** 运营号移除订阅者 */
 export async function removeChannelSubscriber(channelId: number, userId: number): Promise<void> {
-  const ch = requireRow(await db.query.channels.findFirst({ where: eq(channels.id, channelId) }), '频道不存在');
+  const ch = await ensurePlatformChannel(channelId);
   if (ch.type === 'system') throw new HTTPException(400, { message: '系统号不可移除订阅者' });
   await db.delete(channelSubscriptions).where(and(
     eq(channelSubscriptions.channelId, channelId),
@@ -838,7 +867,8 @@ export async function removeChannelSubscriber(channelId: number, userId: number)
 
 /** 导出订阅者（全部，不分页） */
 export async function exportChannelSubscribers(channelId: number, keyword?: string): Promise<ChannelSubscriber[]> {
-  const ch = requireRow(await db.query.channels.findFirst({ where: eq(channels.id, channelId) }), '频道不存在');
+  assertPlatformChannelManagement();
+  const ch = await ensurePlatformChannel(channelId);
   const nameWhere = keywordCondition(keyword, [users.nickname, users.username], 'ilike');
 
   if (ch.type === 'system') {

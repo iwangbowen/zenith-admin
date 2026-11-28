@@ -18,6 +18,7 @@ import { registerWorkflowEventConsumer } from './workflow-event-consumer';
 import type { DbTransaction } from '../db/types';
 import type { ConsumerResult } from './domain-events';
 import logger from './logger';
+import { exactTenantCondition } from './tenant';
 import { createInstance } from '../services/workflow/workflow-instances.service';
 
 export interface StartWorkflowForBizInput {
@@ -56,14 +57,11 @@ export async function startWorkflowForBiz(input: StartWorkflowForBizInput) {
 }
 
 /**
- * 按名称解析业务接入的流程定义 ID（业务模块发起前调用）。
- *
- * 同名已发布定义可能同时存在多个（种子数据 + 运营复制/重建是常态）：
- * 无排序的 limit(1) 会随机命中旧版本，业务单据被静默路由到错误流程。
- * 这里固定取**最新发布**（id 最大）并对多匹配记录警告，提示运营收敛重名。
+ * 按业务记录租户与名称解析已发布定义。同名匹配按 ID 降序取首条并记录告警。
  */
 export async function resolveBizDefinitionId(params: {
   name: string;
+  tenantId: number | null;
   /** 预期表单类型，默认 external（业务系统主导） */
   formType?: WorkflowFormType;
 }): Promise<number> {
@@ -75,6 +73,7 @@ export async function resolveBizDefinitionId(params: {
       eq(workflowDefinitions.name, params.name),
       eq(workflowDefinitions.status, 'published'),
       eq(workflowDefinitions.formType, formType),
+      exactTenantCondition(workflowDefinitions.tenantId, params.tenantId),
     ))
     .orderBy(desc(workflowDefinitions.id))
     .limit(2);

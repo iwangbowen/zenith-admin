@@ -188,6 +188,7 @@ async function approveUserTask(taskId: number, comment: string | undefined, atta
     await assertSelectedNextApprovers(flowData, task.nodeKey, selectedNextApprovers, db, {
       formData: effectiveFormData,
       initiatorId: inst.initiatorId,
+      tenantId: inst.tenantId,
     });
   }
   if (nodeCfg?.operations?.includes('opinionRequired') && !comment?.trim()) {
@@ -320,7 +321,7 @@ export async function approveTaskCore(
     }
 
     const formData = mergedFormData;
-    const starter = await buildStarterContext(inst.initiatorId, tx);
+    const starter = await buildStarterContext(inst.initiatorId, inst.tenantId, tx);
     // 选定的下一节点审批人固化进实例快照：后续由触发器作业 / 子流程推进时仍能解析出同一批人
     const effectiveFlowData = options?.selectedNextApprovers && Object.keys(options.selectedNextApprovers).length > 0
       ? await applySelectedNextApproversToFlow(flowData, options.selectedNextApprovers, tx)
@@ -548,7 +549,7 @@ export async function rejectTaskCore(
     }
 
     const formData = (inst.formData ?? {}) as Record<string, unknown>;
-    const starter = await buildStarterContext(inst.initiatorId, tx);
+    const starter = await buildStarterContext(inst.initiatorId, inst.tenantId, tx);
     let returnTrigger: MaterializeTrigger | null = null;
     const targetCfg = flowData.nodes.find((n) => n.data.key === targetNodeKey)?.data;
     if (targetCfg && (targetCfg.type === 'approve' || targetCfg.type === 'handler')) {

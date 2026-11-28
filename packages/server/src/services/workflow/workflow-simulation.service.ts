@@ -10,11 +10,12 @@ import { edgeHasCondition, evaluateCondition, evaluateConditionGroups, validateF
 import { MemoryWorkflowRuntime } from './runtime/memory';
 import { createSimulationFacts } from './runtime/simulation-facts';
 import { analyzeWorkflowHealth } from '../../lib/workflow-health';
-import { tenantCondition } from '../../lib/tenant';
+import { getCreateTenantId, tenantCondition } from '../../lib/tenant';
 import { buildStarterContext } from './workflow-assignee-resolver.service';
 import { resolveFormSnapshot } from './workflow-forms.service';
 import type { SimulateWorkflowInput, WorkflowConditionGroup, WorkflowEdge, WorkflowEdgeCondition, WorkflowFlowData, WorkflowHealthCheckInput, WorkflowDefinitionHealthReport, WorkflowNodeConfig, WorkflowSimulationEdgeResult, WorkflowSimulationHealthIssue, WorkflowSimulationBlockingPoint, WorkflowSimulationResult, WorkflowSimulationTimelineItem, WorkflowStarterContext } from '@zenith/shared/workflow';
 import { requireRow } from '../../lib/db-assert';
+import { requireTenantUser } from '../../lib/user-nicknames';
 import { buildWhere } from '../../lib/where-helpers';
 
 function isWorkflowFlowData(value: unknown): value is WorkflowFlowData {
@@ -47,6 +48,12 @@ function findDefinition(definitionId: number) {
   return buildWhere(eq(workflowDefinitions.id, definitionId), tenantCondition(workflowDefinitions, currentUser()));
 }
 
+async function resolveSimulationForm(definitionId: number | null | undefined) {
+  if (!definitionId) return null;
+  const [definition] = await db.select({ formId: workflowDefinitions.formId, tenantId: workflowDefinitions.tenantId })
+    .from(workflowDefinitions).where(findDefinition(definitionId)).limit(1);
+  return definition ? resolveFormSnapshot(definition.formId, definition.tenantId) : null;
+}
 
 /** 网关类节点：其无条件出边才具有「默认兜底分支」语义 */
 const GATEWAY_NODE_TYPES = new Set(['exclusiveGateway', 'inclusiveGateway', 'parallelGateway', 'routeGateway']);
@@ -312,10 +319,7 @@ async function resolveFormFieldMeta(input: WorkflowHealthCheckInput): Promise<{ 
     return { keys: keys.size > 0 ? keys : null, types: types.size > 0 ? types : null };
   };
   if (input.formFields && input.formFields.length > 0) return build(input.formFields);
-  if (!input.definitionId) return { keys: null, types: null };
-  const [def] = await db.select({ formId: workflowDefinitions.formId }).from(workflowDefinitions).where(findDefinition(input.definitionId)).limit(1);
-  if (!def?.formId) return { keys: null, types: null };
-  const snap = await resolveFormSnapshot(def.formId);
+  const snap = await resolveSimulationForm(input.definitionId);
   if (!snap || snap.fields.length === 0) return { keys: null, types: null };
   return build(snap.fields);
 }
@@ -413,8 +417,10 @@ function annotateSimulationTimings(flowData: WorkflowFlowData, timeline: Workflo
 export async function simulateWorkflow(input: SimulateWorkflowInput): Promise<WorkflowSimulationResult> {
   const flowData = await resolveFlowData(input);
   const requestUser = currentUser();
+  const tenantId = getCreateTenantId(requestUser);
   const initiatorId = input.starterUserId ?? requestUser.userId;
-  const starter = await buildStarterContext(initiatorId);
+  if (input.starterUserId !== undefined) await requireTenantUser(initiatorId, '发起人不存在', { tenantId, enabledOnly: true });
+  const starter = await buildStarterContext(initiatorId, tenantId);
   const maxSteps = input.options?.maxSteps ?? 100;
   const formData = { ...(input.formData ?? {}) };
   const validation = validateFlowData(flowData);
@@ -434,8 +440,8 @@ export async function simulateWorkflow(input: SimulateWorkflowInput): Promise<Wo
     };
   }
 
-  const fields = input.formFields ?? (input.definitionId ? (await resolveFormSnapshot((await db.select({ formId: workflowDefinitions.formId }).from(workflowDefinitions).where(findDefinition(input.definitionId)).limit(1))[0]?.formId))?.fields : undefined) ?? [];
-  const runtime = new MemoryWorkflowRuntime(createSimulationFacts(), { maxSteps, seed: input.options?.seed, now: input.options?.now });
+  const fields = input.formFields ?? (await resolveSimulationForm(input.definitionId))?.fields ?? [];
+  const runtime = new MemoryWorkflowRuntime(createSimulationFacts(tenantId), { maxSteps, seed: input.options?.seed, now: input.options?.now });
   try {
     await runtime.start({ id: input.definitionId ?? 0, flowData, fields }, formData, initiatorId, input.selectedInitiatorApprovers);
     await runtime.replay(input.decisions ?? [], input.options?.autoApprove ?? false);

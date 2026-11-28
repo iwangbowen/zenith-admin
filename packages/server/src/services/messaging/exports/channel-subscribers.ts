@@ -1,5 +1,5 @@
 import { HTTPException } from 'hono/http-exception';
-import { exportChannelSubscribers } from '../channel.service';
+import { assertPlatformChannelManagement, exportChannelSubscribers } from '../channel.service';
 import { asString } from '../../../lib/export-center/query-normalize';
 import { defineExport } from '../../../lib/export-center/registry';
 import { RETENTION_7_DAYS } from '../../../lib/export-center/presets';
@@ -25,6 +25,7 @@ export const channelSubscribersExportDefinition = defineExport({
   sourcePath: '/system/channels',
   sheetName: '频道订阅者',
   permissions: { export: 'channel:channel:list' },
+  authorizeDownload: async (_query, user) => { assertPlatformChannelManagement(user); },
   execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
   retention: RETENTION_7_DAYS,
   columns,

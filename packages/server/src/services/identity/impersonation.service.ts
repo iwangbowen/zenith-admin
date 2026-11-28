@@ -119,7 +119,7 @@ export async function startImpersonation(input: StartImpersonationInput, client:
     expiresAt,
   }).returning();
 
-  const roleCodes = (await getUserRoles(target.id)).map((r) => r.code);
+  const roleCodes = (await getUserRoles(target.id, target.tenantId)).map((r) => r.code);
   const accessToken = await signToken<JwtPayload>({
     userId: target.id,
     username: target.username,

@@ -17,6 +17,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db';
 import { userGroupMembers, userGroups, users } from '../db/schema';
 import type { DbExecutor } from '../db/types';
+import { optionalExactTenantCondition } from './tenant';
 
 interface RoleSelection {
   /** 必须包含 status: true——extract 依赖它过滤禁用角色 */
@@ -96,11 +97,11 @@ export async function resolveGroupMemberUserIds(
 }
 
 /** 用户 → 所属**启用**用户组 ID（报表 ACL 等按组授权的主体加载用）。 */
-export async function getUserEnabledGroupIds(userId: number): Promise<number[]> {
+export async function getUserEnabledGroupIds(userId: number, tenantId?: number | null): Promise<number[]> {
   const rows = await db
     .select({ groupId: userGroupMembers.groupId })
     .from(userGroupMembers)
     .innerJoin(userGroups, eq(userGroups.id, userGroupMembers.groupId))
-    .where(and(eq(userGroupMembers.userId, userId), eq(userGroups.status, 'enabled')));
+    .where(and(eq(userGroupMembers.userId, userId), eq(userGroups.status, 'enabled'), optionalExactTenantCondition(userGroups.tenantId, tenantId)));
   return rows.map((r) => r.groupId);
 }

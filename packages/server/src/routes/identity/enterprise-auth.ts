@@ -23,9 +23,9 @@ const authUrlRoute = defineContractRoute(enterpriseAuthContract.authUrl, {
   middleware: [] as const,
   handler: async (c) => {
     const { id } = c.req.valid('param');
-    const { redirect } = c.req.valid('query');
+    const { redirect, tenantCode } = c.req.valid('query');
     const { ip, ua } = getClientInfo(c);
-    return c.json(okBody(await generateEnterpriseAuthUrl(id, { ip, ua, redirectTo: redirect })), 200);
+    return c.json(okBody(await generateEnterpriseAuthUrl(id, { ip, ua, tenantCode, redirectTo: redirect })), 200);
   },
 });
 

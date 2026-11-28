@@ -42,7 +42,7 @@ export async function jumpInstance(id: number, targetNodeKey: string, comment?: 
     throw new HTTPException(400, { message: '只能强制跳转到审批/办理节点' });
   }
   const formData = (inst.formData ?? {}) as Record<string, unknown>;
-  const starter = await buildStarterContext(inst.initiatorId);
+  const starter = await buildStarterContext(inst.initiatorId, inst.tenantId);
   const note = `[管理员强制跳转至「${targetNode.data.label}」]${comment ? ' ' + comment : ''}`;
   const instance = await workflowTransaction(async (tx) => {
     await lockInstanceExpecting(tx, id, 'running', '流程状态已变化，无法跳转');
@@ -173,7 +173,7 @@ export async function recallTask(taskId: number, comment?: string) {
   await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date(), comment: '[撤回重审] 原审批链作废' }).where(and(eq(workflowTasks.instanceId, inst.id), inArray(workflowTasks.status, ['pending', 'waiting'])));
   await tx.update(workflowTasks).set({ comment: `[已撤回${comment ? `：${comment}` : ''}] ${freshTask.comment ?? ''}` }).where(eq(workflowTasks.id, task.id));
   await killInstanceTokens(tx, inst.id);
-  const starter = await buildStarterContext(inst.initiatorId, tx);
+  const starter = await buildStarterContext(inst.initiatorId, inst.tenantId, tx);
   const materialized = await advanceAndMaterialize({ kind: 'enterNode', nodeKey: task.nodeKey }, { instanceId: inst.id, initiatorId: inst.initiatorId, executor: tx, flowData, formData: (inst.formData ?? {}) as Record<string, unknown>, starter, tenantId: inst.tenantId });
   await tx.update(workflowInstances).set({ currentNodeKey: materialized.currentNodeKeys[0] ?? task.nodeKey }).where(eq(workflowInstances.id, inst.id));
   await emitMaterializedAdvanceEvents(mapInstance(inst), inst, materialized.createdTasks, actor, tx);
@@ -212,7 +212,7 @@ export async function skipStuckToken(tokenId: number, reason?: string, previewTo
     await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date(), comment: note })
       .where(and(eq(workflowTasks.instanceId, inst.id), eq(workflowTasks.nodeKey, tok.nodeKey), inArray(workflowTasks.status, ['pending', 'waiting'])));
     const formData = (inst.formData ?? {}) as Record<string, unknown>;
-    const starter = await buildStarterContext(inst.initiatorId, tx);
+    const starter = await buildStarterContext(inst.initiatorId, inst.tenantId, tx);
     const materialized = await advanceAndMaterialize({ kind: 'advanceNode', nodeKey: tok.nodeKey }, {
       instanceId: inst.id, initiatorId: inst.initiatorId, executor: tx, flowData, formData, settings: flowData.settings, starter, tenantId: inst.tenantId,
     });

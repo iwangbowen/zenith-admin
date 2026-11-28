@@ -11,11 +11,11 @@ export { type AssigneeRuntimeResult, type AssigneeEmptiedReason, type AssigneeRu
 
 export async function applyAssigneeRuntimeStrategies(
   task: TaskAction, userIds: number[],
-  ctx: { instanceId: number; initiatorId: number; executor: DbExecutor; formData?: Record<string, unknown>; settings?: WorkflowFlowData['settings'] },
+  ctx: { instanceId: number; initiatorId: number; tenantId: number | null; executor: DbExecutor; formData?: Record<string, unknown>; settings?: WorkflowFlowData['settings'] },
 ) {
   return applyRuntimeAssigneePolicy(task, userIds, {
     initiatorId: ctx.initiatorId, settings: ctx.settings,
-    resolve: config => resolveAssigneeIds(config, { initiatorId: ctx.initiatorId, executor: ctx.executor, formData: ctx.formData, instanceId: ctx.instanceId }),
+    resolve: config => resolveAssigneeIds(config, { initiatorId: ctx.initiatorId, tenantId: ctx.tenantId, executor: ctx.executor, formData: ctx.formData, instanceId: ctx.instanceId }),
     collectDedup: (mode, nodeKey) => collectDedupApprovers(ctx.executor, ctx.instanceId, mode, nodeKey),
   });
 }

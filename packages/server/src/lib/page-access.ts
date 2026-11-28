@@ -7,7 +7,7 @@ import type { DbExecutor } from '../db/types';
 
 type PageRow = Pick<typeof menus.$inferSelect, 'id' | 'parentId' | 'title' | 'type' | 'status' | 'featureKey' | 'path' | 'permission'>;
 
-const platformPaths = new Set(['/system/maintenance', ...Object.values(SETTINGS_MODULES)
+const platformPaths = new Set(['/system/maintenance', '/system/channels', '/system/channel-cs', '/system/channel-dashboard', ...Object.values(SETTINGS_MODULES)
   .flatMap(setting => setting.platformOnly && setting.page ? [setting.page] : [])]);
 
 export function isPermissionAvailable(code: string, features: ReadonlySet<string> | null): boolean {

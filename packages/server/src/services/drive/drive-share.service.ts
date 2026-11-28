@@ -448,7 +448,7 @@ function assertShareUsable(share: DriveShareLinkRow, action: string, existingSes
 async function loadShareRoot(share: DriveShareLinkRow, subjects?: DriveSubjectSet): Promise<DriveNodeRow> {
   const [node] = await db.select().from(driveNodes).where(eq(driveNodes.id, share.nodeId)).limit(1);
   if (!node || node.deletedAt) throw new HTTPException(404, { message: '分享的文件已被删除' });
-  const creator = subjects ?? await loadDriveSubjectsForUser(share.createdBy ?? 0);
+  const creator = subjects ?? await loadDriveSubjectsForUser(share.createdBy ?? 0, share.tenantId);
   await ensureNodeRole(node, 'editor', '分享者已无权分享该文件', creator);
   return node;
 }
@@ -578,7 +578,7 @@ async function resolveShareSession(token: string, sessionToken: string, action: 
   const session = await readSession(sessionToken);
   if (session.shareId !== share.id || session.nodeId !== share.nodeId) throw new HTTPException(401, { message: '访问会话无效' });
   if (session.sessionVersion !== share.sessionVersion) throw new HTTPException(401, { message: '分享设置已更新，请重新验证' });
-  const subjects = await loadDriveSubjectsForUser(share.createdBy ?? 0);
+  const subjects = await loadDriveSubjectsForUser(share.createdBy ?? 0, share.tenantId);
   const node = await loadShareRoot(share, subjects);
   return { share, node, subjects };
 }

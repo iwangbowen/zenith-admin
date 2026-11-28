@@ -21,7 +21,7 @@ import { buildListResult } from '../../lib/list-query';
 import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { currentUser } from '../../lib/context';
-import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
+import { exactTenantCondition, tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { clearOnlineKeys, generateDeviceSecret, generateDeviceSn, getOnlineMap, invalidateIotDeviceAuthCache } from './iot-access.service';
 import { recordIotLifecycleEvent } from './iot-events.service';
 import { invalidateThingModelCache } from './iot-model.service';
@@ -303,25 +303,29 @@ export async function getIotDevice(id: number) {
   });
 }
 
-/** 先删后插，原子性更新设备的分组关联 */
-async function setDeviceGroups(executor: DbExecutor, deviceId: number, groupIds: number[]): Promise<void> {
+/** 在设备写入事务内校验分组归属并替换关联。 */
+async function setDeviceGroups(executor: DbExecutor, device: Pick<IotDeviceRow, 'id' | 'tenantId'>, groupIds: number[]): Promise<void> {
+  const ids = [...new Set(groupIds)];
+  await ensureGroupsExist(executor, ids, device.tenantId);
+  const deviceId = device.id;
   await executor.delete(iotDeviceGroupMembers).where(eq(iotDeviceGroupMembers.deviceId, deviceId));
-  if (groupIds.length > 0) {
-    await executor.insert(iotDeviceGroupMembers).values(groupIds.map((groupId) => ({ groupId, deviceId })));
+  if (ids.length > 0) {
+    await executor.insert(iotDeviceGroupMembers).values(ids.map((groupId) => ({ groupId, deviceId })));
   }
 }
 
-async function ensureGroupsExist(groupIds: number[] | undefined): Promise<void> {
-  if (!groupIds || groupIds.length === 0) return;
-  const rows = await db.select({ id: iotDeviceGroups.id }).from(iotDeviceGroups)
-    .where(inArray(iotDeviceGroups.id, groupIds));
-  if (rows.length !== new Set(groupIds).size) throw new HTTPException(400, { message: '存在无效的设备分组' });
+async function ensureGroupsExist(executor: DbExecutor, groupIds: number[], tenantId: number | null): Promise<void> {
+  if (groupIds.length === 0) return;
+  const rows = await executor.select({ id: iotDeviceGroups.id }).from(iotDeviceGroups)
+    .where(and(inArray(iotDeviceGroups.id, groupIds), exactTenantCondition(iotDeviceGroups.tenantId, tenantId)));
+  if (rows.length !== groupIds.length) throw new HTTPException(400, { message: '存在无效或不属于设备租户的分组' });
 }
 
 export async function createIotDevice(data: CreateIotDeviceInput) {
-  await ensureIotProductExists(data.productId);
-  await ensureGroupsExist(data.groupIds);
-  await ensureIotTopologyValid(data);
+  const tenantId = getCreateTenantId(currentUser());
+  const product = await ensureIotProductExists(data.productId);
+  if (product.tenantId !== tenantId) throw new HTTPException(400, { message: '产品与设备必须属于同一租户' });
+  await ensureIotTopologyValid(data, tenantId);
   const sn = data.sn ?? generateDeviceSn();
   try {
     const row = await db.transaction(async (tx) => {
@@ -338,10 +342,10 @@ export async function createIotDevice(data: CreateIotDeviceInput) {
         address: data.address ?? null,
         firmwareVersion: data.firmwareVersion ?? null,
         remark: data.remark ?? null,
-        tenantId: getCreateTenantId(currentUser()),
+        tenantId,
       }).returning();
       await tx.insert(iotDeviceState).values({ deviceId: created.id });
-      if (data.groupIds?.length) await setDeviceGroups(tx, created.id, data.groupIds);
+      if (data.groupIds?.length) await setDeviceGroups(tx, created, data.groupIds);
       return created;
     });
     return mapIotDevice(row);
@@ -352,17 +356,19 @@ export async function createIotDevice(data: CreateIotDeviceInput) {
 }
 
 export async function updateIotDevice(id: number, data: UpdateIotDeviceInput) {
-  if (data.productId !== undefined) await ensureIotProductExists(data.productId);
-  await ensureGroupsExist(data.groupIds);
+  const before = await ensureIotDeviceExists(id);
+  if (data.productId !== undefined) {
+    const product = await ensureIotProductExists(data.productId);
+    if (product.tenantId !== before.tenantId) throw new HTTPException(400, { message: '产品与设备必须属于同一租户' });
+  }
   if (data.nodeType !== undefined || data.gatewayId !== undefined) {
-    const before = await ensureIotDeviceExists(id);
     await ensureIotTopologyValid({
       nodeType: data.nodeType ?? before.nodeType,
       gatewayId: data.gatewayId !== undefined ? data.gatewayId : before.gatewayId,
-    }, id);
+    }, before.tenantId, id);
   }
-  const row = await db.transaction(async (tx) => {
-    const [updated] = await tx.update(iotDevices).set({
+  const where = buildDeviceWhere({ id });
+  const patch = {
       ...(data.productId !== undefined ? { productId: data.productId } : {}),
       ...(data.name !== undefined ? { name: data.name } : {}),
       ...(data.status !== undefined ? { status: data.status } : {}),
@@ -375,9 +381,13 @@ export async function updateIotDevice(id: number, data: UpdateIotDeviceInput) {
       ...(data.address !== undefined ? { address: data.address } : {}),
       ...(data.firmwareVersion !== undefined ? { firmwareVersion: data.firmwareVersion } : {}),
       ...(data.remark !== undefined ? { remark: data.remark } : {}),
-    }).where(buildDeviceWhere({ id })).returning();
+  };
+  const row = await db.transaction(async (tx) => {
+    const [updated] = Object.keys(patch).length > 0
+      ? await tx.update(iotDevices).set(patch).where(where).returning()
+      : await tx.select().from(iotDevices).where(where).limit(1).for('update');
     const existing = requireRow(updated, '设备不存在');
-    if (data.groupIds !== undefined) await setDeviceGroups(tx, id, data.groupIds);
+    if (data.groupIds !== undefined) await setDeviceGroups(tx, existing, data.groupIds);
     return existing;
   });
   invalidateIotDeviceAuthCache([row.sn]);

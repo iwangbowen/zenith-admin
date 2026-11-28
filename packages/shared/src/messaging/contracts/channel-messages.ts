@@ -38,16 +38,16 @@ export const channelAdminMessageListQuery = paginationQuery.extend({
 // ─── 契约：群发 / 消息记录管理 / 群发模板 ─────────────────────────────────────
 
 export const channelMessageContract = defineContract('/api/channels', {
-  publish: op.post('/{id}/publish', { access: { permission: 'channel:message:publish' }, audit: '频道群发', params: idParam, body: publishChannelSchema, response: channelMessageSchema, summary: '向频道群发消息' }),
-  testSend: op.post('/{id}/test-send', { access: { permission: 'channel:message:publish' }, audit: '测试发送频道消息', params: idParam, body: publishChannelSchema, response: channelMessageSchema, summary: '测试发送（仅发给本人）' }),
-  audienceEstimate: op.post('/audience-estimate', { access: { permission: 'channel:message:publish' }, body: audienceEstimateSchema, response: channelAudienceEstimateSchema, summary: '预估群发受众人数' }),
-  adminMessages: op.get('/admin/{id}/messages', { access: { permission: 'channel:message:publish' }, params: idParam, query: channelAdminMessageListQuery, response: paginated(channelMessageSchema), summary: '频道群发消息记录（含草稿 / 定时）' }),
-  updateDraft: op.put('/admin/messages/{id}', { access: { permission: 'channel:message:publish' }, audit: '编辑草稿消息', params: idParam, body: publishChannelSchema, response: channelMessageSchema, summary: '编辑草稿 / 定时消息' }),
-  removeDraft: op.delete('/admin/messages/{id}', { access: { permission: 'channel:message:publish' }, audit: '删除草稿消息', params: idParam, summary: '删除草稿 / 取消定时' }),
-  publishDraftNow: op.post('/admin/messages/{id}/publish', { access: { permission: 'channel:message:publish' }, audit: '立即发送草稿', params: idParam, response: channelMessageSchema, summary: '立即发送草稿 / 定时消息' }),
-  retract: op.post('/admin/messages/{id}/retract', { access: { permission: 'channel:message:publish' }, audit: '撤回消息', params: idParam, summary: '撤回已发送的群发 / 客服消息' }),
-  templates: op.get('/templates', { access: { permission: 'channel:message:publish' }, response: z.array(channelMessageTemplateSchema), summary: '群发消息模板列表' }),
-  createTemplate: op.post('/templates', { access: { permission: 'channel:message:publish' }, audit: '新建群发模板', body: createChannelTemplateSchema, response: channelMessageTemplateSchema, summary: '新建群发模板' }),
-  updateTemplate: op.put('/templates/{id}', { access: { permission: 'channel:message:publish' }, audit: '编辑群发模板', params: idParam, body: updateChannelTemplateSchema, response: channelMessageTemplateSchema, summary: '编辑群发模板' }),
-  removeTemplate: op.delete('/templates/{id}', { access: { permission: 'channel:message:publish' }, audit: '删除群发模板', params: idParam, summary: '删除群发模板' }),
+  publish: op.post('/{id}/publish', { access: { platformOnly: 'multi-tenant', permission: 'channel:message:publish' }, audit: '频道群发', params: idParam, body: publishChannelSchema, response: channelMessageSchema, summary: '向频道群发消息' }),
+  testSend: op.post('/{id}/test-send', { access: { platformOnly: 'multi-tenant', permission: 'channel:message:publish' }, audit: '测试发送频道消息', params: idParam, body: publishChannelSchema, response: channelMessageSchema, summary: '测试发送（仅发给本人）' }),
+  audienceEstimate: op.post('/audience-estimate', { access: { platformOnly: 'multi-tenant', permission: 'channel:message:publish' }, body: audienceEstimateSchema, response: channelAudienceEstimateSchema, summary: '预估群发受众人数' }),
+  adminMessages: op.get('/admin/{id}/messages', { access: { platformOnly: 'multi-tenant', permission: 'channel:message:publish' }, params: idParam, query: channelAdminMessageListQuery, response: paginated(channelMessageSchema), summary: '频道群发消息记录（含草稿 / 定时）' }),
+  updateDraft: op.put('/admin/messages/{id}', { access: { platformOnly: 'multi-tenant', permission: 'channel:message:publish' }, audit: '编辑草稿消息', params: idParam, body: publishChannelSchema, response: channelMessageSchema, summary: '编辑草稿 / 定时消息' }),
+  removeDraft: op.delete('/admin/messages/{id}', { access: { platformOnly: 'multi-tenant', permission: 'channel:message:publish' }, audit: '删除草稿消息', params: idParam, summary: '删除草稿 / 取消定时' }),
+  publishDraftNow: op.post('/admin/messages/{id}/publish', { access: { platformOnly: 'multi-tenant', permission: 'channel:message:publish' }, audit: '立即发送草稿', params: idParam, response: channelMessageSchema, summary: '立即发送草稿 / 定时消息' }),
+  retract: op.post('/admin/messages/{id}/retract', { access: { platformOnly: 'multi-tenant', permission: 'channel:message:publish' }, audit: '撤回消息', params: idParam, summary: '撤回已发送的群发 / 客服消息' }),
+  templates: op.get('/templates', { access: { platformOnly: 'multi-tenant', permission: 'channel:message:publish' }, response: z.array(channelMessageTemplateSchema), summary: '群发消息模板列表' }),
+  createTemplate: op.post('/templates', { access: { platformOnly: 'multi-tenant', permission: 'channel:message:publish' }, audit: '新建群发模板', body: createChannelTemplateSchema, response: channelMessageTemplateSchema, summary: '新建群发模板' }),
+  updateTemplate: op.put('/templates/{id}', { access: { platformOnly: 'multi-tenant', permission: 'channel:message:publish' }, audit: '编辑群发模板', params: idParam, body: updateChannelTemplateSchema, response: channelMessageTemplateSchema, summary: '编辑群发模板' }),
+  removeTemplate: op.delete('/templates/{id}', { access: { platformOnly: 'multi-tenant', permission: 'channel:message:publish' }, audit: '删除群发模板', params: idParam, summary: '删除群发模板' }),
 }, { auditModule: '消息渠道', tags: ['Channels'] });

@@ -5,9 +5,12 @@ import type {
 } from '@zenith/shared/messaging';
 import type { PublishChannelInput } from '@zenith/shared/mp';
 import type { ChatMessageExtra } from '@zenith/shared/chat';
-import { mock } from '@/mocks/utils/contract';
+import { accessPlatformOnly, type AnyOperation } from '@zenith/shared/core';
+import { config } from '@/config';
+import { mock as mockContract, type MockResolver } from '@/mocks/utils/contract';
+import { currentMockSession, isMockPlatformAdmin } from '@/mocks/utils/auth';
 import { removeByIds, requireItem } from '@/mocks/utils/crud';
-import { badRequest, nextIdFrom } from '@/mocks/utils/handlers';
+import { badRequest, forbidden, nextIdFrom, unauthorized } from '@/mocks/utils/handlers';
 import { removeWhere } from '@/mocks/utils/array';
 import {
   mockChannels, mockChannelMessages, mockChannelMenus, mockChannelAutoReplies, mockChannelQuickReplies,
@@ -17,6 +20,17 @@ import {
 } from '@/mocks/data/channels';
 import { mockDateTime } from '@/mocks/utils/date';
 import { filterByKeyword, matchesFilter } from '@/mocks/utils/filter';
+
+function mock<Op extends AnyOperation>(operation: Op, resolve: MockResolver<Op>) {
+  return mockContract(operation, (context) => {
+    if (config.multiTenantMode && accessPlatformOnly(operation.access)) {
+      const session = currentMockSession(context.request);
+      if (!session) return unauthorized('请先登录');
+      if (!isMockPlatformAdmin(session.user)) return forbidden('仅平台管理员可执行此操作');
+    }
+    return resolve(context);
+  });
+}
 
 const CURRENT_USER_NAME = '超级管理员';
 let nextMenuId = 1000;

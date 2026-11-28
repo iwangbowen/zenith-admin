@@ -6,7 +6,7 @@ import { db } from '../../db';
 import { mpFans, mpTags } from '../../db/schema';
 import type { MpFanRow } from '../../db/schema';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
-import { tenantScope, currentCreateTenantId } from '../../lib/tenant';
+import { exactTenantCondition, tenantScope, currentCreateTenantId } from '../../lib/tenant';
 import { ensureMpAccountExists } from './mp-account.service';
 import { getFollowerOpenids, batchGetFanInfo, getWechatBlacklist, batchBlacklistFans, batchUnblacklistFans, WechatApiError } from '../../lib/wechat';
 import { mpFanSchema, type UpdateMpFanInput, type MpFanSubscribe, type mpFanContract } from '@zenith/shared/mp';
@@ -115,6 +115,7 @@ export async function listMpFans(q: QueryOutputOf<typeof mpFanContract.list>) {
   });
 }
 
+/** 粉丝标签与粉丝记录必须归属同一公众号和租户。 */
 export async function updateMpFan(id: number, data: UpdateMpFanInput) {
   const fan = await ensureMpFanExists(id);
   const patch: Partial<typeof mpFans.$inferInsert> = {};
@@ -122,7 +123,7 @@ export async function updateMpFan(id: number, data: UpdateMpFanInput) {
   if (data.tagIds !== undefined) {
     if (data.tagIds.length > 0) {
       const valid = await db.select({ id: mpTags.id }).from(mpTags)
-        .where(and(eq(mpTags.accountId, fan.accountId), inArray(mpTags.id, data.tagIds)));
+        .where(and(eq(mpTags.accountId, fan.accountId), exactTenantCondition(mpTags.tenantId, fan.tenantId), inArray(mpTags.id, data.tagIds)));
       const validIds = new Set(valid.map((t) => t.id));
       const invalid = data.tagIds.filter((t) => !validIds.has(t));
       if (invalid.length > 0) throw new HTTPException(400, { message: '包含无效或不属于该公众号的标签' });
@@ -132,7 +133,8 @@ export async function updateMpFan(id: number, data: UpdateMpFanInput) {
     }
   }
   if (Object.keys(patch).length === 0) return mapMpFan(fan); // 空更新直接返回，避免 Drizzle "No values to set"
-  const [row] = await db.update(mpFans).set(patch).where(eq(mpFans.id, id)).returning();
+  const [row] = await db.update(mpFans).set(patch)
+    .where(and(eq(mpFans.id, id), exactTenantCondition(mpFans.tenantId, fan.tenantId))).returning();
   return mapMpFan(row ?? fan);
 }
 

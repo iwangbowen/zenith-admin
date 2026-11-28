@@ -1,7 +1,7 @@
 import { bindWorkflowAttachments } from './workflow-attachments.service';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import { db } from '../../db';
-import { workflowComments, workflowInstances, workflowTasks } from '../../db/schema';
+import { users, workflowComments, workflowInstances, workflowTasks } from '../../db/schema';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser, setAuditSubjects } from '../../lib/context';
 import { isSuperAdmin } from '../../lib/permissions';
@@ -10,6 +10,7 @@ import { workflowCommentSchema, type WorkflowComment, type CreateWorkflowComment
 import { notify } from '../messaging/notification-outbox.service';
 import { loadWorkflowUserDisplays } from './workflow-user-helpers';
 import { requireRow } from '../../lib/db-assert';
+import { exactTenantCondition } from '../../lib/tenant';
 import { requireVisibleInstance } from './instances/shared';
 import { pickEntity } from '../../lib/entity-map';
 
@@ -43,11 +44,11 @@ async function assertParticipant(instanceId: number): Promise<typeof workflowIns
 }
 
 /** 详情场景：加载实例评论（调用方已完成访问控制） */
-export async function loadInstanceCommentsForDetail(instanceId: number): Promise<WorkflowComment[]> {
+export async function loadInstanceCommentsForDetail(instanceId: number, tenantId: number | null): Promise<WorkflowComment[]> {
   const rows = await db
     .select()
     .from(workflowComments)
-    .where(eq(workflowComments.instanceId, instanceId))
+    .where(and(eq(workflowComments.instanceId, instanceId), exactTenantCondition(workflowComments.tenantId, tenantId)))
     .orderBy(asc(workflowComments.id));
   if (rows.length === 0) return [];
   const nameIds = rows.flatMap((r) => [r.userId, ...(Array.isArray(r.mentions) ? r.mentions : [])]);
@@ -72,10 +73,11 @@ export async function loadInstanceCommentsForDetail(instanceId: number): Promise
 }
 
 export async function listInstanceComments(instanceId: number): Promise<WorkflowComment[]> {
-  await assertParticipant(instanceId);
-  return loadInstanceCommentsForDetail(instanceId);
+  const inst = await assertParticipant(instanceId);
+  return loadInstanceCommentsForDetail(instanceId, inst.tenantId);
 }
 
+/** 回复引用在同一实例及租户内解析，提及限实例租户的启用账号。 */
 export async function addInstanceComment(instanceId: number, input: CreateWorkflowCommentInput): Promise<WorkflowComment> {
   const inst = await assertParticipant(instanceId);
   setAuditSubjects([{ type: 'workflow.instance', key: String(inst.id), role: 'primary' }], inst.tenantId);
@@ -85,11 +87,17 @@ export async function addInstanceComment(instanceId: number, input: CreateWorkfl
   }
   const user = currentUser();
   const mentions = [...new Set(input.mentions ?? [])].filter((v) => v > 0);
-  // 回复引用：父评论必须属于同一实例（防跨实例引用泄露）
+  if (mentions.length > 0) {
+    const available = await db.select({ id: users.id }).from(users).where(and(
+      inArray(users.id, mentions), eq(users.status, 'enabled'), exactTenantCondition(users.tenantId, inst.tenantId),
+    ));
+    if (available.length !== mentions.length) throw new HTTPException(400, { message: '提及的用户须为流程所属租户的启用账号' });
+  }
   let parentRow: CommentRow | null = null;
   if (input.parentId) {
     const [parent] = await db.select().from(workflowComments)
-      .where(and(eq(workflowComments.id, input.parentId), eq(workflowComments.instanceId, instanceId)))
+      .where(and(eq(workflowComments.id, input.parentId), eq(workflowComments.instanceId, instanceId),
+        exactTenantCondition(workflowComments.tenantId, inst.tenantId)))
       .limit(1);
     parentRow = requireRow(parent, '被回复的评论不存在', 400);
   }

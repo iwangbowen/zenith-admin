@@ -11,6 +11,7 @@ import type { WorkflowAssigneeType, WorkflowNodeConfig, WorkflowStarterContext }
 import { db } from '../../db';
 import {
   departments,
+  positions,
   roleDeptScopes,
   roles,
   userGroupMembers,
@@ -24,7 +25,7 @@ import {
 import type { DbExecutor } from '../../db/types';
 import logger from '../../lib/logger';
 import { getUserEffectiveAccess, runWithFreshUserPermissions } from '../../lib/permissions';
-import { exactTenantCondition } from '../../lib/tenant';
+import { exactTenantCondition, optionalExactTenantCondition } from '../../lib/tenant';
 import { resolveGroupMemberUserIds } from '../../lib/user-group-access';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { evaluateExpression, ExpressionError } from '../../lib/workflow-expression';
@@ -34,6 +35,8 @@ import { findEnabledUserInTenant } from '../../lib/user-nicknames';
 export interface ResolveAssigneeContext {
   /** 流程发起人 ID（用于 initiator / initiatorLeader / initiatorDept / manager） */
   initiatorId: number;
+  /** 流程实例或预览所属的业务租户。 */
+  tenantId: number | null;
   /** 数据库执行器，未指定时使用全局 db */
   executor?: DbExecutor;
   /** 表单数据（formUser / formDepartment 等策略使用） */
@@ -68,25 +71,25 @@ interface DeptNode {
 }
 
 /** 单点查部门负责人（单跳路径专用；多跳请走 DeptTree） */
-async function fetchDeptLeader(exec: DbExecutor, deptId: number): Promise<number | null> {
+async function fetchDeptLeader(exec: DbExecutor, deptId: number, tenantId: number | null): Promise<number | null> {
   const [row] = await exec.select({ leaderId: departments.leaderId })
-    .from(departments).where(eq(departments.id, deptId)).limit(1);
+    .from(departments).where(and(eq(departments.id, deptId), exactTenantCondition(departments.tenantId, tenantId))).limit(1);
   return row?.leaderId ?? null;
 }
 
 /** 批量查多个部门的负责人（一次 IN 查询替代逐部门查询） */
-async function fetchDeptLeaders(exec: DbExecutor, deptIds: readonly number[]): Promise<number[]> {
+async function fetchDeptLeaders(exec: DbExecutor, deptIds: readonly number[], tenantId: number | null): Promise<number[]> {
   const uniq = uniquePositiveIds(deptIds);
   if (uniq.length === 0) return [];
   const rows = await exec.select({ leaderId: departments.leaderId })
-    .from(departments).where(inArray(departments.id, uniq));
+    .from(departments).where(and(inArray(departments.id, uniq), exactTenantCondition(departments.tenantId, tenantId)));
   return rows.map((r) => r.leaderId).filter((id): id is number => id !== null);
 }
 
 /** 单点查上级部门 ID；已到顶层（parentId 为 0/null）或部门不存在时返回 null */
-async function fetchDeptParent(exec: DbExecutor, deptId: number): Promise<number | null> {
+async function fetchDeptParent(exec: DbExecutor, deptId: number, tenantId: number | null): Promise<number | null> {
   const [row] = await exec.select({ parentId: departments.parentId })
-    .from(departments).where(eq(departments.id, deptId)).limit(1);
+    .from(departments).where(and(eq(departments.id, deptId), exactTenantCondition(departments.tenantId, tenantId))).limit(1);
   const parentId = row?.parentId ?? null;
   return parentId === 0 ? null : parentId;
 }
@@ -98,7 +101,7 @@ async function fetchDeptParent(exec: DbExecutor, deptId: number): Promise<number
  * post / userGroup / expression 等）不会产生任何查询。批量场景（如一次实例化里
  * 解析多个节点）可通过 ResolveAssigneeContext.deptTree 复用同一实例，避免逐节点重复拉取。
  */
-export function createDeptTree(exec: DbExecutor, tenantId?: number | null) {
+export function createDeptTree(exec: DbExecutor, tenantId: number | null) {
   let nodesPromise: Promise<Map<number, DeptNode>> | null = null;
   let childrenIndex: Map<number, number[]> | null = null;
 
@@ -106,7 +109,7 @@ export function createDeptTree(exec: DbExecutor, tenantId?: number | null) {
     nodesPromise ??= (async () => {
       const rows = await exec
         .select({ id: departments.id, parentId: departments.parentId, leaderId: departments.leaderId })
-        .from(departments).where(tenantId === undefined ? undefined : exactTenantCondition(departments.tenantId, tenantId));
+        .from(departments).where(exactTenantCondition(departments.tenantId, tenantId));
       const map = new Map<number, DeptNode>();
       for (const r of rows) map.set(r.id, { parentId: r.parentId, leaderId: r.leaderId });
       return map;
@@ -192,10 +195,12 @@ export function createDeptTree(exec: DbExecutor, tenantId?: number | null) {
 
 export type DeptTree = ReturnType<typeof createDeptTree>;
 
-/** 取得用户所在部门 */
-async function getUserDept(exec: DbExecutor, userId: number): Promise<number | null> {
+/** 仅通过业务租户内的账号与部门关系解析发起人部门。 */
+async function getUserDept(exec: DbExecutor, userId: number, tenantId: number | null): Promise<number | null> {
   const [row] = await exec.select({ deptId: users.departmentId })
-    .from(users).where(eq(users.id, userId)).limit(1);
+    .from(users).innerJoin(departments, eq(departments.id, users.departmentId))
+    .where(and(eq(users.id, userId), exactTenantCondition(users.tenantId, tenantId),
+      exactTenantCondition(departments.tenantId, tenantId))).limit(1);
   return row?.deptId ?? null;
 }
 
@@ -203,13 +208,13 @@ function uniquePositiveIds(ids: readonly number[] | null | undefined): number[] 
   return uniquePositiveInts(ids);
 }
 
-async function enabledUserIds(exec: DbExecutor, ids: readonly number[]): Promise<number[]> {
+async function enabledUserIds(exec: DbExecutor, ids: readonly number[], tenantId?: number | null): Promise<number[]> {
   const uniq = uniquePositiveIds(ids);
   if (uniq.length === 0) return [];
   const rows = await exec
     .select({ id: users.id })
     .from(users)
-    .where(and(inArray(users.id, uniq), eq(users.status, 'enabled')));
+    .where(and(inArray(users.id, uniq), eq(users.status, 'enabled'), optionalExactTenantCondition(users.tenantId, tenantId)));
   return rows.map((row) => row.id);
 }
 
@@ -326,16 +331,21 @@ export async function filterSelectedApproverIds(
  */
 export async function buildStarterContext(
   initiatorId: number,
+  tenantId: number | null,
   executor?: DbExecutor,
 ): Promise<WorkflowStarterContext> {
   const exec = executor ?? db;
-  const deptTree = createDeptTree(exec);
-  const deptId = await getUserDept(exec, initiatorId);
+  const deptTree = createDeptTree(exec, tenantId);
+  const deptId = await getUserDept(exec, initiatorId, tenantId);
   // 祖先链与角色/岗位三路并行；发起人无部门时完全不触碰部门表
   const [deptIds, roleRows, postRows] = await Promise.all([
     deptId ? deptTree.ancestors(deptId) : Promise.resolve<number[]>([]),
-    exec.select({ roleId: userRoles.roleId }).from(userRoles).where(eq(userRoles.userId, initiatorId)),
-    exec.select({ positionId: userPositions.positionId }).from(userPositions).where(eq(userPositions.userId, initiatorId)),
+    exec.select({ roleId: userRoles.roleId }).from(userRoles)
+      .innerJoin(roles, eq(roles.id, userRoles.roleId)).innerJoin(users, eq(users.id, userRoles.userId))
+      .where(and(eq(userRoles.userId, initiatorId), exactTenantCondition(roles.tenantId, tenantId), exactTenantCondition(users.tenantId, tenantId))),
+    exec.select({ positionId: userPositions.positionId }).from(userPositions)
+      .innerJoin(positions, eq(positions.id, userPositions.positionId)).innerJoin(users, eq(users.id, userPositions.userId))
+      .where(and(eq(userPositions.userId, initiatorId), exactTenantCondition(positions.tenantId, tenantId), exactTenantCondition(users.tenantId, tenantId))),
   ]);
   return {
     userId: initiatorId,
@@ -401,14 +411,15 @@ export async function resolveTimeoutTransferTarget(
   return null;
 }
 
-export async function resolveAdminUserId(executor?: DbExecutor): Promise<number | null> {
+export async function resolveAdminUserId(tenantId: number | null, executor?: DbExecutor): Promise<number | null> {
   const exec = executor ?? db;
+  const scope = and(eq(users.status, 'enabled'), exactTenantCondition(users.tenantId, tenantId));
   const [admin] = await exec.select({ id: users.id }).from(users)
-    .where(and(eq(users.username, 'admin'), eq(users.status, 'enabled')))
+    .where(and(eq(users.username, 'admin'), scope))
     .limit(1);
   if (admin) return admin.id;
   const [firstEnabled] = await exec.select({ id: users.id }).from(users)
-    .where(eq(users.status, 'enabled'))
+    .where(scope)
     .limit(1);
   return firstEnabled?.id ?? null;
 }
@@ -453,7 +464,7 @@ export async function resolveAssigneeIds(
 
   const result = new Set<number>();
   // 惰性部门树：仅在走到部门相关分支时才真正查询；批量解析可由调用方通过 ctx 复用
-  const deptTree = ctx.deptTree ?? createDeptTree(exec);
+  const deptTree = ctx.deptTree ?? createDeptTree(exec, ctx.tenantId);
 
   switch (type) {
     case 'user':
@@ -535,9 +546,9 @@ export async function resolveAssigneeIds(
         break;
       }
       // 未指定：取发起人部门的负责人（单跳，走索引查询）
-      const deptId = await getUserDept(exec, ctx.initiatorId);
+      const deptId = await getUserDept(exec, ctx.initiatorId, ctx.tenantId);
       if (deptId) {
-        const leader = await fetchDeptLeader(exec, deptId);
+        const leader = await fetchDeptLeader(exec, deptId, ctx.tenantId);
         if (leader) result.add(leader);
       }
       break;
@@ -555,12 +566,12 @@ export async function resolveAssigneeIds(
     case 'initiatorLeader':
     case 'manager': {
       // 直属主管：发起人所在部门的负责人；managerLevel > 1 时往上走 deptParent 链
-      const startDeptId = await getUserDept(exec, ctx.initiatorId);
+      const startDeptId = await getUserDept(exec, ctx.initiatorId, ctx.tenantId);
       if (!startDeptId) break;
       const level = Math.max(1, node.managerLevel ?? 1);
       if (level === 1) {
         // 单跳：一次索引查询即可，不值得拉整棵树
-        const leader = await fetchDeptLeader(exec, startDeptId);
+        const leader = await fetchDeptLeader(exec, startDeptId, ctx.tenantId);
         if (leader) result.add(leader);
         break;
       }
@@ -573,7 +584,7 @@ export async function resolveAssigneeIds(
     }
     case 'initiatorDept': {
       // 发起人部门主管/全员（兼容旧字段语义：取整个部门的启用用户）
-      const deptId = await getUserDept(exec, ctx.initiatorId);
+      const deptId = await getUserDept(exec, ctx.initiatorId, ctx.tenantId);
       if (deptId) {
         const rows = await exec
           .select({ id: users.id })
@@ -593,7 +604,7 @@ export async function resolveAssigneeIds(
       // endType=topLevel  → 一直到没有上级
       // endType=level     → 走到第 multiLevelEndLevel 层为止
       // endType=role      → 一直走，遇到具备 multiLevelEndRoleId 角色的负责人即停
-      const startDeptId = await getUserDept(exec, ctx.initiatorId);
+      const startDeptId = await getUserDept(exec, ctx.initiatorId, ctx.tenantId);
       if (!startDeptId) break;
       const endType = node.multiLevelEndType ?? 'topLevel';
       const endLevel = node.multiLevelEndLevel ?? 99;
@@ -637,7 +648,7 @@ export async function resolveAssigneeIds(
       const level = Math.max(1, node.formDeptHeadLevel ?? 1);
       if (level === 1) {
         // 单跳：一次 IN 查询批量取负责人，替代逐部门查询
-        (await fetchDeptLeaders(exec, deptIds)).forEach((id) => result.add(id));
+        (await fetchDeptLeaders(exec, deptIds, ctx.tenantId)).forEach((id) => result.add(id));
         break;
       }
       for (const startDeptId of deptIds) {
@@ -693,11 +704,11 @@ export async function resolveAssigneeIds(
     }
     case 'startUserDeptResponsible': {
       // 发起人部门的分管领导 → 取上一级部门的负责人（两次单跳索引查询）
-      const startDeptId = await getUserDept(exec, ctx.initiatorId);
+      const startDeptId = await getUserDept(exec, ctx.initiatorId, ctx.tenantId);
       if (!startDeptId) break;
-      const parentDeptId = await fetchDeptParent(exec, startDeptId);
+      const parentDeptId = await fetchDeptParent(exec, startDeptId, ctx.tenantId);
       if (parentDeptId === null) break;
-      const leader = await fetchDeptLeader(exec, parentDeptId);
+      const leader = await fetchDeptLeader(exec, parentDeptId, ctx.tenantId);
       if (leader) result.add(leader);
       break;
     }
@@ -729,5 +740,6 @@ export async function resolveAssigneeIds(
     }
   }
 
-  return [...result];
+  const eligible = new Set(await enabledUserIds(exec, [...result], ctx.tenantId));
+  return [...result].filter((id) => eligible.has(id));
 }

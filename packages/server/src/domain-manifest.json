@@ -181,6 +181,7 @@
         "chat",
         "cms",
         "files",
+        "identity",
         "mp",
         "ops",
         "platform",
@@ -423,6 +424,10 @@
     }
   },
   "integrationGroups": {
+    "tenant-isolation": {
+      "domains": ["biz-demo", "chat", "drive", "identity", "iot", "messaging", "mp", "payment", "workflow"],
+      "tests": ["src/services/tenant-isolation.integration.test.ts"]
+    },
     "identity-workflow": {
       "domains": [
         "identity",

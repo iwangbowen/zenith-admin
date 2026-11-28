@@ -78,6 +78,8 @@ Windows PowerShell 可用 `cmd /c npm.cmd ...` 执行上述 npm 命令。
 真实数据库用例保留显式环境开关与隔离数据，默认跳过的用例不计入已验证的数据库行为。完整领域契约不替代
 真实 Service 的事务、租户隔离和并发测试。
 
+双租户回归使用已迁移的本地隔离数据库 `zenith_tenant_review`。设置 `TENANT_ISOLATION_TEST_DATABASE_URL` 后执行 `npm run test:server:domain -- --group tenant-isolation`。测试使用真实 PostgreSQL 和内存 Redis 替身，覆盖同租户操作、跨租户拒绝与平台授权。
+
 ### 路由快照
 
 领域路径库存位于 `src/__snapshots__/domains/`，完整应用库存位于 `src/__snapshots__/app.contract.test.ts.snap`。

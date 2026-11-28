@@ -273,7 +273,7 @@ export async function createTransfer(input: CreatePaymentTransferInput & { idemp
   const config = await resolvePaymentChannelConfig({
     channel: input.channel,
     channelConfigId: applicationRoute.channelConfigId,
-    scope: tenantCondition(paymentChannelConfigs, user),
+    tenantId: applicationRoute.tenantId,
   });
   const capability = await assertEffectivePaymentOperation({ configRow: config, operation: 'transfer.create', currency: input.currency });
   assertTransferLimits(capability, input.amount, input.receiverName);
@@ -374,7 +374,7 @@ export async function approveTransfer(id: number, input: ApprovePaymentTransferI
   const config = await resolvePaymentChannelConfig({
     channel: row.channel,
     channelConfigId: row.channelConfigId,
-    scope: tenantCondition(paymentChannelConfigs, user),
+    tenantId: row.tenantId,
   });
   const capability = await assertEffectivePaymentOperation({ configRow: config, operation: 'transfer.create', currency: row.currency });
   assertTransferLimits(capability, row.amount, row.receiverName);

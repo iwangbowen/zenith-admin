@@ -7,10 +7,12 @@ import { chatConversationMembers, chatConversations, chatGroupInvites, chatGroup
 import type { ChatGroupInviteRow } from '../../db/schema/chat';
 import { currentUser } from '../../lib/context';
 import { requireRow } from '../../lib/db-assert';
+import { exactTenantCondition } from '../../lib/tenant';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { scheduleSendToUsers } from '../../lib/ws-manager';
 import { invalidateConversationMembers } from '../../lib/chat-member-cache';
 import type { ChatGroupInvite, ChatGroupJoinRequest, ChatInviteInfo } from '@zenith/shared/chat';
+import { requireChatGroup } from './chat-shared';
 
 const MAX_GROUP_MEMBERS = 20;
 const INVITE_TTL_DAYS = 7;
@@ -26,13 +28,6 @@ function mapInvite(row: ChatGroupInviteRow): ChatGroupInvite {
     enabled: row.enabled,
     createdAt: formatDateTime(row.createdAt),
   };
-}
-
-async function getGroupOrThrow(conversationId: number) {
-  const conv = await db.query.chatConversations.findFirst({ where: eq(chatConversations.id, conversationId) });
-  const conversation = requireRow(conv, '会话不存在');
-  if (conversation.type !== 'group') throw new HTTPException(400, { message: '仅群聊支持该操作' });
-  return conversation;
 }
 
 async function ensureGroupManager(conversationId: number, userId: number) {
@@ -67,7 +62,7 @@ async function managerIdsOf(conversationId: number): Promise<number[]> {
 /** 获取当前有效邀请（没有则生成，默认 7 天有效、不限次数）；群主/管理员 */
 export async function getOrCreateInvite(conversationId: number): Promise<ChatGroupInvite> {
   const me = currentUser();
-  await getGroupOrThrow(conversationId);
+  await requireChatGroup(conversationId);
   await ensureGroupManager(conversationId, me.userId);
 
   const existing = await db.query.chatGroupInvites.findFirst({
@@ -93,7 +88,7 @@ export async function getOrCreateInvite(conversationId: number): Promise<ChatGro
 /** 重置邀请链接（作废旧链接并生成新链接）；群主/管理员 */
 export async function resetInvite(conversationId: number): Promise<ChatGroupInvite> {
   const me = currentUser();
-  await getGroupOrThrow(conversationId);
+  await requireChatGroup(conversationId);
   await ensureGroupManager(conversationId, me.userId);
 
   await db.update(chatGroupInvites)
@@ -127,7 +122,7 @@ async function getValidInvite(token: string) {
 export async function getInviteInfo(token: string): Promise<ChatInviteInfo> {
   const me = currentUser();
   const invite = await getValidInvite(token);
-  const conv = await getGroupOrThrow(invite.conversationId);
+  const conv = await requireChatGroup(invite.conversationId);
 
   const [memberCount, myMembership] = await Promise.all([
     db.$count(chatConversationMembers, eq(chatConversationMembers.conversationId, conv.id)),
@@ -148,20 +143,29 @@ export async function getInviteInfo(token: string): Promise<ChatInviteInfo> {
   };
 }
 
-async function addMemberViaInvite(conversationId: number, userId: number, inviteId: number): Promise<void> {
-  const memberCount = await db.$count(chatConversationMembers, eq(chatConversationMembers.conversationId, conversationId));
-  if (memberCount >= MAX_GROUP_MEMBERS) throw new HTTPException(400, { message: `群成员已达上限（${MAX_GROUP_MEMBERS}人）` });
-
-  const user = await db.query.users.findFirst({
-    where: eq(users.id, userId),
-    columns: { id: true, nickname: true, avatar: true },
+/** 直接入群和审批入群都校验目标账号归属，并原子记录邀请使用次数。 */
+async function addMemberViaInvite(conversationId: number, tenantId: number | null, userId: number, inviteId: number | null): Promise<void> {
+  const targetUser = await db.transaction(async (tx) => {
+    const [group] = await tx.select({ id: chatConversations.id }).from(chatConversations).where(and(
+      eq(chatConversations.id, conversationId), exactTenantCondition(chatConversations.tenantId, tenantId),
+    )).limit(1).for('update');
+    requireRow(group, '会话不存在');
+    const memberCount = await tx.$count(chatConversationMembers, eq(chatConversationMembers.conversationId, conversationId));
+    if (memberCount >= MAX_GROUP_MEMBERS) throw new HTTPException(400, { message: `群成员已达上限（${MAX_GROUP_MEMBERS}人）` });
+    const [user] = await tx.select({ id: users.id, nickname: users.nickname, avatar: users.avatar }).from(users).where(and(
+      eq(users.id, userId), eq(users.status, 'enabled'), exactTenantCondition(users.tenantId, tenantId),
+    )).limit(1).for('share');
+    requireRow(user, '用户不存在或已停用');
+    const [inserted] = await tx.insert(chatConversationMembers).values({ conversationId, userId })
+      .onConflictDoNothing().returning({ userId: chatConversationMembers.userId });
+    if (!inserted) return null;
+    if (inviteId !== null) {
+      await tx.update(chatGroupInvites).set({ usedCount: sql`${chatGroupInvites.usedCount} + 1` })
+        .where(and(eq(chatGroupInvites.id, inviteId), eq(chatGroupInvites.conversationId, conversationId)));
+    }
+    return user;
   });
-  const targetUser = requireRow(user, '用户不存在');
-
-  await db.insert(chatConversationMembers).values({ conversationId, userId });
-  await db.update(chatGroupInvites)
-    .set({ usedCount: sql`${chatGroupInvites.usedCount} + 1` })
-    .where(eq(chatGroupInvites.id, inviteId));
+  if (!targetUser) return;
   invalidateConversationMembers(conversationId);
 
   // 复用现有系统消息 + WS 事件链路
@@ -181,7 +185,7 @@ async function addMemberViaInvite(conversationId: number, userId: number, invite
 export async function joinByInvite(token: string, message?: string): Promise<{ joined: boolean }> {
   const me = currentUser();
   const invite = await getValidInvite(token);
-  const conv = await getGroupOrThrow(invite.conversationId);
+  const conv = await requireChatGroup(invite.conversationId);
 
   const existingMember = await db.query.chatConversationMembers.findFirst({
     where: and(
@@ -192,7 +196,7 @@ export async function joinByInvite(token: string, message?: string): Promise<{ j
   if (existingMember) throw new HTTPException(400, { message: '你已在该群聊中' });
 
   if (!conv.joinApproval) {
-    await addMemberViaInvite(conv.id, me.userId, invite.id);
+    await addMemberViaInvite(conv.id, conv.tenantId, me.userId, invite.id);
     return { joined: true };
   }
 
@@ -224,7 +228,7 @@ export async function joinByInvite(token: string, message?: string): Promise<{ j
 /** 待审批入群申请列表；群主/管理员 */
 export async function listJoinRequests(conversationId: number): Promise<ChatGroupJoinRequest[]> {
   const me = currentUser();
-  await getGroupOrThrow(conversationId);
+  await requireChatGroup(conversationId);
   await ensureGroupManager(conversationId, me.userId);
 
   const rows = await db.query.chatGroupJoinRequests.findMany({
@@ -252,6 +256,7 @@ export async function handleJoinRequest(requestId: number, approve: boolean): Pr
   const me = currentUser();
   const req = await db.query.chatGroupJoinRequests.findFirst({ where: eq(chatGroupJoinRequests.id, requestId) });
   const request = requireRow(req, '申请不存在');
+  const conv = await requireChatGroup(request.conversationId);
   if (request.status !== 'pending') throw new HTTPException(400, { message: '该申请已处理' });
   await ensureGroupManager(request.conversationId, me.userId);
 
@@ -263,7 +268,7 @@ export async function handleJoinRequest(requestId: number, approve: boolean): Pr
       ),
     });
     if (!alreadyIn) {
-      await addMemberViaInvite(request.conversationId, request.userId, request.inviteId ?? 0);
+      await addMemberViaInvite(conv.id, conv.tenantId, request.userId, request.inviteId);
     }
   }
 
@@ -281,7 +286,7 @@ export async function handleJoinRequest(requestId: number, approve: boolean): Pr
 /** 开启/关闭入群审批；群主/管理员 */
 export async function setJoinApproval(conversationId: number, enabled: boolean): Promise<void> {
   const me = currentUser();
-  const conv = await getGroupOrThrow(conversationId);
+  const conv = await requireChatGroup(conversationId);
   await ensureGroupManager(conversationId, me.userId);
   if (conv.joinApproval === enabled) return;
   await db.update(chatConversations)

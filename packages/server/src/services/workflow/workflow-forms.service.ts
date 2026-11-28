@@ -1,11 +1,11 @@
 import { workflowFormContract } from '@zenith/shared/workflow';
 import type { QueryOutputOf } from '@zenith/shared/core';
-import { asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import { workflowForms, workflowDefinitions } from '../../db/schema';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../lib/context';
-import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
+import { exactTenantCondition, tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { pageOffset } from '../../lib/pagination';
@@ -51,20 +51,26 @@ export async function ensureFormExists(id: number) {
   return requireFirstRow(db.select().from(workflowForms).where(findForm(id)).limit(1), '表单不存在');
 }
 
-/**
- * 解析表单字段快照：实例发起时使用，用当前表单内容冻结进实例。
- * 不做租户过滤（表单已由流程定义绑定，内部解析）。
- */
-export async function resolveFormSnapshot(
-  formId: number | null | undefined,
+/** 读取流程定义所属租户的表单，供预览、发布和实例快照使用。 */
+export async function loadDefinitionForm(
+  formId: number | null | undefined, tenantId: number | null,
   executor: DbExecutor = db,
-): Promise<{ fields: WorkflowFormField[]; settings?: WorkflowFormSettings; name: string } | null> {
+) {
   if (!formId) return null;
   const [row] = await executor
-    .select({ schema: workflowForms.schema, name: workflowForms.name })
+    .select({ schema: workflowForms.schema, name: workflowForms.name, status: workflowForms.status })
     .from(workflowForms)
-    .where(eq(workflowForms.id, formId))
+    .where(and(eq(workflowForms.id, formId), exactTenantCondition(workflowForms.tenantId, tenantId)))
     .limit(1);
+  return row ?? null;
+}
+
+/** 解析同租户表单字段及设置。 */
+export async function resolveFormSnapshot(
+  formId: number | null | undefined, tenantId: number | null,
+  executor: DbExecutor = db,
+): Promise<{ fields: WorkflowFormField[]; settings?: WorkflowFormSettings; name: string } | null> {
+  const row = await loadDefinitionForm(formId, tenantId, executor);
   if (!row) return null;
   const schema = (row.schema ?? null) as WorkflowFormSchema | null;
   return { fields: schema?.fields ?? [], settings: schema?.settings, name: row.name };

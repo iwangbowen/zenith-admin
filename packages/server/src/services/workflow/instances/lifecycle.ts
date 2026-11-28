@@ -87,6 +87,7 @@ export async function createInstance(data: { definitionId: number; title: string
   requireRow(def, '流程定义不存在或未发布');
   const normalizedBizType = data.bizType?.trim() || null;
   const normalizedBizId = data.bizId?.trim() || null;
+  const tenantId = getCreateTenantId(user);
   const launchData = { ...data, bizType: normalizedBizType, bizId: normalizedBizId };
   assertLaunchMatchesFormType(def, launchData);
   if (!skipScopeCheck) await assertWorkflowInitiatorScope(def, user);
@@ -101,15 +102,15 @@ export async function createInstance(data: { definitionId: number; title: string
     formData = prepared.formData;
     baseFlowData = prepared.flowData;
   }
-  const resolvedFormSnapshot = await resolveFormSnapshot(def.formId);
+  const resolvedFormSnapshot = await resolveFormSnapshot(def.formId, def.tenantId);
   const formSnapshot = buildInstanceFormSnapshot(def, resolvedFormSnapshot);
 
-  const existingBizInstance = await findInstanceByBusinessKey(normalizedBizType, normalizedBizId);
+  const existingBizInstance = await findInstanceByBusinessKey(normalizedBizType, normalizedBizId, tenantId);
   if (existingBizInstance) return mapInstance(existingBizInstance);
   formData = await resolveWorkflowFormSignatures(formSnapshot, formData, {}, callerOverride ? { userId: user.userId, tenantId: user.tenantId ?? null } : undefined);
   // 服务端权威派生值：公式/天数/明细聚合在入库前重算（客户端提交值不可信，条件分级依赖它）
   formData = normalizeInstanceFormData(formSnapshot, formData);
-  const starter = data.asDraft ? undefined : await buildStarterContext(user.userId);
+  const starter = data.asDraft ? undefined : await buildStarterContext(user.userId, tenantId);
   const flowData = data.asDraft ? baseFlowData : await applyInitiatorSelectedApprovers(
     baseFlowData, data.selectedInitiatorApprovers, { formData, formFields: formSnapshot?.fields, starter },
   );
@@ -203,7 +204,7 @@ export async function createInstance(data: { definitionId: number; title: string
     instanceId = created.instanceId;
   } catch (err) {
     if (normalizedBizType && normalizedBizId && isPgUniqueViolation(err)) {
-      const existing = await findInstanceByBusinessKey(normalizedBizType, normalizedBizId);
+      const existing = await findInstanceByBusinessKey(normalizedBizType, normalizedBizId, tenantId);
       if (existing) return mapInstance(existing);
     }
     throw err;
@@ -281,12 +282,14 @@ export async function emitMaterializedAdvanceEvents(
 async function findInstanceByBusinessKey(
   bizType: string | null,
   bizId: string | null,
+  tenantId: number | null,
 ): Promise<typeof workflowInstances.$inferSelect | null> {
   if (!bizType || !bizId) return null;
   const [existing] = await db.select().from(workflowInstances)
     .where(and(
       eq(workflowInstances.bizType, bizType),
       eq(workflowInstances.bizId, bizId),
+      exactTenantCondition(workflowInstances.tenantId, tenantId),
       inArray(workflowInstances.status, [...WORKFLOW_ACTIVE_INSTANCE_STATUSES]),
     ))
     .orderBy(desc(workflowInstances.id))
@@ -387,8 +390,9 @@ export async function getDraftEditor(id: number) {
   if (inst.status !== 'draft' && inst.status !== 'returned') throw new HTTPException(409, { message: '申请已提交，不能继续编辑' });
   const [def] = await db.select().from(workflowDefinitions).where(buildWhere(eq(workflowDefinitions.id, inst.definitionId), tenantCondition(workflowDefinitions, currentUser()), eq(workflowDefinitions.status, 'published'))).limit(1);
   requireRow(def, '流程已停用，暂时不能提交', 409);
-  const snapshot = await resolveFormSnapshot(def.formId);
-  const [form] = def.formId ? await db.select({ revision: workflowForms.revision }).from(workflowForms).where(eq(workflowForms.id, def.formId)).limit(1) : [];
+  const snapshot = await resolveFormSnapshot(def.formId, def.tenantId);
+  const [form] = def.formId ? await db.select({ revision: workflowForms.revision }).from(workflowForms)
+    .where(and(eq(workflowForms.id, def.formId), exactTenantCondition(workflowForms.tenantId, def.tenantId))).limit(1) : [];
   const definition = { ...toDefinitionSnapshot(def), formFields: snapshot?.fields ?? [], formSettings: snapshot?.settings ?? null };
   const instance = mapInstance(inst, { includeDefinitionSnapshot: true });
   return { instance, definition, formRevision: form?.revision ?? null, versionChanged: inst.definitionSnapshot.version !== def.version || inst.draftFormRevision !== (form?.revision ?? null) };
@@ -484,12 +488,12 @@ export async function submitDraftInstance(id: number, input: BodyOf<typeof workf
     baseFlowData = prepared.flowData;
   }
   assertLaunchMatchesFormType(def, { bizType: inst.bizType, bizId: inst.bizId, formData: (inst.formData ?? {}) as Record<string, unknown> });
-  const resolvedFormSnapshot = await resolveFormSnapshot(def.formId);
+  const resolvedFormSnapshot = await resolveFormSnapshot(def.formId, def.tenantId);
   const formSnapshot = buildInstanceFormSnapshot(def, resolvedFormSnapshot);
   formData = await resolveWorkflowFormSignatures(formSnapshot, formData, recordFormData(inst.formData));
   // 提交与重提同样在入库前重算派生值：草稿期内客户端可能未计算或未提交公式字段
   formData = normalizeInstanceFormData(formSnapshot, formData);
-  const starter = await buildStarterContext(user.userId);
+  const starter = await buildStarterContext(user.userId, inst.tenantId);
   const flowData = await applyInitiatorSelectedApprovers(
     baseFlowData, input.selectedInitiatorApprovers ?? inst.draftIntent?.selectedInitiatorApprovers, { formData, formFields: formSnapshot?.fields, starter },
   );

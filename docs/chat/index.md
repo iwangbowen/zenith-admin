@@ -58,6 +58,8 @@ Zenith Admin 的会话中心（即时通讯）提供后台用户之间的单聊�
 
 ## 会话与群组
 
+聊天目录、单聊以及群成员管理使用账号实际租户。邀请链接仅在群聊所属租户内可查看和使用。群主转让须选择同租户的启用成员，移除成员的系统消息使用同租户的昵称。
+
 ### 单聊
 
 单聊通过 `POST /api/chat/conversations/direct` 创建或获取。服务端会校验目标用户存在，并在当前用户与目标用户之间复用已有 `direct` 会话。用户搜索接口 `GET /api/chat/users` 只返回启用状态、非机器人用户，并排除当前登录用户。
@@ -315,8 +317,8 @@ POST /api/public/chat/webhook/{token}
 
 聊天页的频道视图复用消息气泡组件展示 `channel_messages`，并把 `news` 图文消息映射为 `card` 样式。系统号（`system`）只读接收通知；运营号（`business`）支持订阅用户与客服双向会话：
 
-- 会员侧：`GET /api/channels/{id}/messages` 拉取消息，`POST /api/channels/{id}/send` 发送咨询，`GET /api/channels/{id}/menus` 获取底部菜单，`POST /api/channels/{id}/rate` 评价客服会话。
-- 客服侧：`/api/channels/cs/*` 按 `channel:cs` 权限提供可服务频道、会话聚合、消息流、回复、指派 / 转接、解决会话、标签与快捷回复管理。
+- 登录用户可通过 `GET /api/channels/{id}/messages` 拉取消息，通过 `POST /api/channels/{id}/send` 发送咨询，通过 `GET /api/channels/{id}/menus` 获取底部菜单，通过 `POST /api/channels/{id}/rate` 评价客服会话。
+- 多租户部署下，`/api/channels/cs/*` 限平台超管。客服权限、可服务频道和会话范围见[通知中心](../notification/index.md#频道、客服与数据看板)。
 - 实时同步：`channel:message` 追加或更新会员侧消息，`channel:message-retract` 标记撤回，`channel:cs-message` 通知客服工作台刷新；客服待回复数按最近一次人工回复计算。
 
 ---

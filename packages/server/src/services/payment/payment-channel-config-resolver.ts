@@ -1,5 +1,4 @@
 import { and, eq } from 'drizzle-orm';
-import type { SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { PAYMENT_CHANNEL_LABELS } from '@zenith/shared/payment';
 import type { PaymentChannel } from '@zenith/shared/payment';
@@ -8,6 +7,7 @@ import { requireRow } from '../../lib/db-assert';
 import { paymentChannelConfigs } from '../../db/schema';
 import type { PaymentChannelConfigRow } from '../../db/schema';
 import { config } from '../../config';
+import { exactTenantCondition } from '../../lib/tenant';
 
 export function assertPaymentEngineConfig(row: PaymentChannelConfigRow, options?: { recovery?: boolean }): void {
   if (config.payment.engineMode === 'off' && !options?.recovery) {
@@ -21,16 +21,22 @@ export function assertPaymentEngineConfig(row: PaymentChannelConfigRow, options?
   }
 }
 
+/** 按资金业务所属租户和支付渠道解析启用的商户配置。 */
 export async function resolvePaymentChannelConfig(input: {
   channel: PaymentChannel;
   channelConfigId?: number;
-  scope?: SQL;
+  tenantId: number | null;
 }): Promise<PaymentChannelConfigRow> {
+  const scope = and(
+    eq(paymentChannelConfigs.channel, input.channel),
+    eq(paymentChannelConfigs.status, 'enabled'),
+    exactTenantCondition(paymentChannelConfigs.tenantId, input.tenantId),
+  );
   if (input.channelConfigId) {
     const [row] = await db
       .select()
       .from(paymentChannelConfigs)
-      .where(and(eq(paymentChannelConfigs.id, input.channelConfigId), eq(paymentChannelConfigs.status, 'enabled'), input.scope))
+      .where(and(eq(paymentChannelConfigs.id, input.channelConfigId), scope))
       .limit(1);
     requireRow(row, '支付渠道配置不存在');
     assertPaymentEngineConfig(row);
@@ -40,12 +46,7 @@ export async function resolvePaymentChannelConfig(input: {
   const [row] = await db
     .select()
     .from(paymentChannelConfigs)
-    .where(and(
-      eq(paymentChannelConfigs.channel, input.channel),
-      eq(paymentChannelConfigs.isDefault, true),
-      eq(paymentChannelConfigs.status, 'enabled'),
-      input.scope,
-    ))
+    .where(and(eq(paymentChannelConfigs.isDefault, true), scope))
     .limit(1);
   if (!row) {
     throw new HTTPException(400, {

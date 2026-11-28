@@ -345,8 +345,11 @@ describe('createIdentityProvider（归属与默认角色）', () => {
 
 describe('handleEnterpriseOidcCallback（SSO 复用 MFA 决策）', () => {
   function mockOidcExchange() {
-    vi.mocked(redis.get).mockResolvedValueOnce(JSON.stringify({ providerId: 1, ip: '1.1.1.1', ua: 'ua', redirectTo: '/home' }));
-    dbMock.query.tenantIdentityProviders.findFirst.mockResolvedValueOnce({ ...provider(), tenant: null });
+    const row = provider();
+    vi.mocked(redis.get).mockResolvedValueOnce(JSON.stringify({ providerId: row.id, tenantId: row.tenantId, ip: '1.1.1.1', ua: 'ua', redirectTo: '/home' }));
+    dbMock.query.tenantIdentityProviders.findFirst.mockResolvedValueOnce({
+      ...row, tenant: { name: 'Tenant', code: 'tenant', status: 'enabled', expireAt: null },
+    });
     vi.mocked(httpPost).mockResolvedValue({ ok: true, status: 200, url: 'u', json: async () => ({ access_token: 'at' }) } as never);
     vi.mocked(httpGet).mockResolvedValue({ ok: true, status: 200, url: 'u', json: async () => oidcProfile } as never);
     // 已绑定账号

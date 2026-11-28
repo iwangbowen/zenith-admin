@@ -80,12 +80,16 @@
     }
   },
   "services/workflow/workflow-assignee-resolver.service.ts": {
-    "purpose": "Approval routing reads organization and role membership, including tenant-bound candidates for timeout reassignment.",
+    "purpose": "Approval routing reads organization, roles and positions within the workflow tenant.",
     "tables": {
       "departments": [
         "id",
         "leaderId",
         "parentId",
+        "tenantId"
+      ],
+      "positions": [
+        "id",
         "tenantId"
       ],
       "roleDeptScopes": [
@@ -136,6 +140,16 @@
         "id",
         "nickname",
         "username"
+      ]
+    }
+  },
+  "services/workflow/workflow-comments.service.ts": {
+    "purpose": "Comment mentions verify that recipients are enabled accounts in the instance tenant.",
+    "tables": {
+      "users": [
+        "id",
+        "status",
+        "tenantId"
       ]
     }
   },

@@ -1,5 +1,6 @@
 import { listRows } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
+import { exactTenantCondition } from '../../lib/tenant';
 import { and, desc, eq, gt, gte, isNotNull, isNull, lte, or } from 'drizzle-orm';
 import { db } from '../../db';
 import { users, loginLogs, tenants, operationLogs, passwordResetTokens, type UserRow } from '../../db/schema';
@@ -33,13 +34,14 @@ import { consumeSessionConflictTicket, enforceSessionLimit, findConflictingSessi
 
 // ─── 获取用户角色列表 ─────────────────────────────────────────────────────────
 
-export async function getUserRoles(userId: number) {
+/** 角色取自已验证账号的实际租户，登录和续签共用该边界。 */
+export async function getUserRoles(userId: number, tenantId: number | null) {
   const result = await db.query.users.findFirst({
-    where: eq(users.id, userId),
+    where: and(eq(users.id, userId), exactTenantCondition(users.tenantId, tenantId)),
     columns: {},
     with: { userRoles: { columns: {}, with: { role: true } } },
   });
-  return (result?.userRoles ?? []).map(({ role: r }) => ({
+  return (result?.userRoles ?? []).filter(({ role }) => role.tenantId === tenantId).map(({ role: r }) => ({
     id: r.id,
     name: r.name,
     code: r.code,
@@ -196,7 +198,7 @@ export async function finalizeLogin(
   input: LoginClient,
   options: { logMessage: string; requirePasswordChange?: boolean; sessionPolicy?: SessionConcurrencyPolicy; evictOthers?: boolean },
 ) {
-  const userRoleList = await getUserRoles(user.id);
+  const userRoleList = await getUserRoles(user.id, user.tenantId);
   const { browser, os } = resolveReportedClient(input, input.ua);
   const { accessToken, refreshToken, tokenId } = await issueTokens(user, userRoleList.map((r) => r.code), { os });
 
@@ -509,7 +511,7 @@ export async function refreshAccessToken(token: string, clientInfo?: { ip: strin
   }
   const u = verdict.row;
   const dbTenantId = verdict.tenantId;
-  const userRoleList = await getUserRoles(payload.userId);
+  const userRoleList = await getUserRoles(payload.userId, dbTenantId);
   if (payload.viewingTenantId != null) {
     if (!isSuperAdmin({
       roles: userRoleList.filter((role) => role.status === 'enabled').map((role) => role.code),
@@ -695,7 +697,7 @@ export async function getMyProfile() {
 }
 
 export async function updateMyProfile(data: UpdateProfileInput) {
-  const userId = currentUser().userId;
+  const { userId, tenantId } = currentUser();
   const [emailDup, phoneDup] = await Promise.all([
     data.email
       ? db.select({ id: users.id }).from(users).where(eq(users.email, data.email)).limit(1)
@@ -708,7 +710,7 @@ export async function updateMyProfile(data: UpdateProfileInput) {
   if (phoneDup[0] && phoneDup[0].id !== userId) throw new HTTPException(400, { message: '手机号已被使用' });
   const [[updated], userRoleList] = await Promise.all([
     db.update(users).set({ ...data }).where(eq(users.id, userId)).returning(),
-    getUserRoles(userId),
+    getUserRoles(userId, tenantId),
   ]);
   const { password: _pw, ...userInfo } = updated;
   return { ...userInfo, roles: userRoleList, ...formatTimestamps(updated) };

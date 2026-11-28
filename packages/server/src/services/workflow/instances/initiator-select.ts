@@ -72,12 +72,13 @@ export async function assertSelectedNextApprovers(
     formData?: Readonly<Record<string, unknown>>;
     /** 条件规则引用发起人维度（部门 / 角色 / 岗位）时才需要 */
     initiatorId?: number;
+    tenantId?: number | null;
   } = {},
 ): Promise<void> {
   // 与引擎选边同源：条件分支只对命中（或尚不确定）的分支要求选人，
   // 否则「未经过分支上的 approverSelect」会被误判为必填，甚至把选人结果应用到错误分支。
   const starter = context.initiatorId != null && flowUsesStarterConditions(flowData)
-    ? await buildStarterContext(context.initiatorId, executor)
+    ? await buildStarterContext(context.initiatorId, context.tenantId ?? null, executor)
     : undefined;
   const selectNodes = findNextApproverSelectNodes(flowData, fromNodeKey, { formData: context.formData, starter });
   if (selectNodes.length === 0) return;

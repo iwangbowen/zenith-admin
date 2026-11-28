@@ -34,6 +34,8 @@
 
 `POST /api/mp/fans/sync` 通过 `user/get` + `user/info/batchget` 分页拉取粉丝并 upsert（不覆盖本地备注 / 标签）。粉丝列表支持按昵称 / openid / 备注关键词、关注状态、标签、黑名单状态筛选。
 
+编辑粉丝标签时，每个标签须与粉丝归属同一公众号及租户。
+
 ---
 
 ## 黑名单

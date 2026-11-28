@@ -164,7 +164,7 @@ async function applyNodeFailurePolicy(input: {
         : [];
 
       if (input.task && affectedTasks.length === 0) return null;
-      const starter = await buildStarterContext(lockedInst.initiatorId, tx);
+      const starter = await buildStarterContext(lockedInst.initiatorId, lockedInst.tenantId, tx);
       const formData = (lockedInst.formData ?? {}) as Record<string, unknown>;
 
       // Saga 反序回滚：本节点失败且开启 sagaRollback 时，先对此前已成功副作用倒序补偿
@@ -225,7 +225,7 @@ async function applyNodeFailurePolicy(input: {
       // notify / compensate / retry(耗尽) / 默认 → 挂起为待人工修复工单；compensate 额外入队反向动作 job
       const ticketAction = policy.action === 'compensate' ? 'compensate' : policy.action === 'fallback' ? 'fallback' : 'notify';
       const compensationCfg = policy.action === 'compensate' ? policy.compensation : undefined;
-      const adminId = await resolveAdminUserId(tx);
+      const adminId = await resolveAdminUserId(lockedInst.tenantId, tx);
       if (!adminId) {
         await recordCompensation(tx, { instanceId: lockedInst.id, nodeKey: input.nodeKey, nodeName: input.nodeName, errorMessage: `${input.errorMessage}；未找到管理员`, action: ticketAction, status: 'terminated', tenantId: lockedInst.tenantId });
         const row = await markInstanceRejected(tx, { instanceId: lockedInst.id, comment: errorComment, killTokens: true, actorId: input.actor.userId });
@@ -290,7 +290,7 @@ export async function resumeInstanceForCompensation(id: number): Promise<{ resum
       .where(and(eq(workflowTasks.id, currentTicket.repairTaskId), eq(workflowTasks.activationId, currentTicket.repairActivationId), eq(workflowTasks.status, 'pending'))).returning();
     requireRow(repair, '修复任务已变化，不能重复推进', 409);
 
-    const starter = await buildStarterContext(inst.initiatorId, tx);
+    const starter = await buildStarterContext(inst.initiatorId, inst.tenantId, tx);
     const formData = (inst.formData ?? {}) as Record<string, unknown>;
     const materialized = await advanceAndMaterialize({ kind: 'advanceNode', nodeKey: failedNodeKey }, {
       instanceId: inst.id, initiatorId: inst.initiatorId, executor: tx, flowData, formData, settings: flowData.settings, starter, tenantId: inst.tenantId,
@@ -370,7 +370,7 @@ export async function handleNodeExecutionError(input: {
       }
 
       if (action === 'toAdmin') {
-        const adminId = await resolveAdminUserId(tx);
+        const adminId = await resolveAdminUserId(lockedInst.tenantId, tx);
         if (!adminId) {
           const catchTask = await insertCatchTask(tx, { instanceId: lockedInst.id, nodeKey: catchCfg.key, nodeName: catchCfg.label, assigneeId: null, status: 'rejected', comment: `${errorComment}；未找到管理员`, actionAt: new Date() });
           const row = await markInstanceRejected(tx, { instanceId: lockedInst.id, comment: errorComment, killTokens: true, actorId: input.actor.userId });
@@ -387,7 +387,7 @@ export async function handleNodeExecutionError(input: {
 
       const catchTask = await insertCatchTask(tx, { instanceId: lockedInst.id, nodeKey: catchCfg.key, nodeName: catchCfg.label, assigneeId: null, status: 'approved', comment: errorComment, actionAt: new Date() });
       const formData = (lockedInst.formData ?? {}) as Record<string, unknown>;
-      const starter = await buildStarterContext(lockedInst.initiatorId, tx);
+      const starter = await buildStarterContext(lockedInst.initiatorId, lockedInst.tenantId, tx);
       const materialized = await advanceAndMaterialize(
         { kind: 'enterNode', nodeKey: catchCfg.key, consumeNodeKey: input.nodeKey },
         {

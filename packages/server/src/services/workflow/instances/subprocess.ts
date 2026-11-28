@@ -95,9 +95,9 @@ async function createChildInstanceAndMaterialize(
 ): Promise<typeof workflowInstances.$inferSelect> {
   const flowData = def.flowData as WorkflowFlowData;
   assertLaunchMatchesFormType(def, {});
-  const childResolvedFormSnapshot = await resolveFormSnapshot(def.formId);
+  const childResolvedFormSnapshot = await resolveFormSnapshot(def.formId, def.tenantId);
   const childFormSnapshot = buildInstanceFormSnapshot(def, childResolvedFormSnapshot);
-  const childStarter = await buildStarterContext(childInitiatorId);
+  const childStarter = await buildStarterContext(childInitiatorId, parentInst.tenantId);
   childFormData = normalizeInstanceFormData(childFormSnapshot, childFormData);
 
   const childInst = await workflowTransaction(async (tx) => {

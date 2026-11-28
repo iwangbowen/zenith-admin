@@ -10,7 +10,7 @@ vi.mock('../../db', () => ({ db: {
 } }));
 vi.mock('../../lib/context', () => ({ currentUser: () => ({ userId: 7, username: '张三', roles: [], tenantId: null }) }));
 vi.mock('../../lib/workflow-token-engine', () => ({ advanceTokens: vi.fn() }));
-vi.mock('../../lib/tenant', () => ({ tenantCondition: vi.fn() }));
+vi.mock('../../lib/tenant', () => ({ tenantCondition: vi.fn(), getCreateTenantId: () => null }));
 vi.mock('../../lib/user-nicknames', () => ({ resolveUserNames: mocks.names }));
 vi.mock('./workflow-forms.service', () => ({ resolveFormSnapshot: vi.fn() }));
 vi.mock('./workflow-launch-access', () => ({ assertWorkflowInitiatorScope: vi.fn() }));

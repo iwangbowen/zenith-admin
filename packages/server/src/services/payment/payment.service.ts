@@ -81,11 +81,6 @@ export function buildAdapterContext(config: PaymentChannelConfigRow): AdapterCon
   return { config, secrets, notifyUrl: resolveNotifyUrl(config.channel, config) };
 }
 
-async function resolveChannelConfig(channel: PaymentChannel, channelConfigId?: number, tenantId?: number | null): Promise<PaymentChannelConfigRow> {
-  const tc = channelConfigTenantCondition(tenantId) ?? (currentUserOrNull() ? tenantCondition(paymentChannelConfigs, currentUser()) : undefined);
-  return resolvePaymentChannelConfig({ channel, channelConfigId, scope: tc });
-}
-
 async function assertPaymentOperation(
   configRow: PaymentChannelConfigRow,
   operation: Parameters<typeof assertEffectivePaymentOperation>[0]['operation'],
@@ -146,11 +141,6 @@ async function getOrderRowByNo(orderNo: string): Promise<PaymentOrderRow> {
   const [row] = await db.select().from(paymentOrders).where(and(eq(paymentOrders.orderNo, orderNo), tc)).limit(1);
   requireRow(row, '支付订单不存在');
   return row;
-}
-
-function channelConfigTenantCondition(tenantId: number | null | undefined) {
-  if (tenantId === undefined || !config.multiTenantMode) return undefined;
-  return exactTenantCondition(paymentChannelConfigs.tenantId, tenantId);
 }
 
 async function buildOrderIdWhere(id: number) {
@@ -447,7 +437,7 @@ export async function createPayment(input: InternalCreatePaymentInput): Promise<
   tenantId = resolved.tenantId;
   const currency = input.currency ?? 'CNY';
   const scope: PaymentOrderScope = { tenantId, appId, currency };
-  const config = await resolveChannelConfig(channel, channelConfigId, tenantId);
+  const config = await resolvePaymentChannelConfig({ channel, channelConfigId, tenantId });
   if ((config.tenantId ?? null) !== tenantId) {
     throw new HTTPException(400, { message: '支付应用、商户配置与订单租户不一致' });
   }

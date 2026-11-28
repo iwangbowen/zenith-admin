@@ -8,6 +8,7 @@ import { scheduleSendToUsers } from '../../lib/ws-manager';
 import { invalidateConversationMembers } from '../../lib/chat-member-cache';
 import { currentUser } from '../../lib/context';
 import { requireRow } from '../../lib/db-assert';
+import { exactTenantCondition } from '../../lib/tenant';
 import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { HTTPException } from 'hono/http-exception';
 import type { ChatConversation, ChatReadState } from '@zenith/shared/chat';
@@ -201,6 +202,7 @@ export async function listConversations(): Promise<ChatConversation[]> {
 
 // ─── 获取/创建单聊会话 ──────────────────────────────────────────────────────
 
+/** 目录选人与单聊以账号所属租户为准。 */
 export async function getOrCreateDirectConversation(targetUserId: number): Promise<ChatConversation> {
   const me = currentUser();
   if (targetUserId === me.userId) {
@@ -208,7 +210,7 @@ export async function getOrCreateDirectConversation(targetUserId: number): Promi
   }
 
   const targetUserRow = await db.query.users.findFirst({
-    where: eq(users.id, targetUserId),
+    where: and(eq(users.id, targetUserId), exactTenantCondition(users.tenantId, me.tenantId)),
     columns: { id: true, nickname: true, avatar: true, phone: true, email: true, departmentId: true },
     with: {
       department: { columns: { name: true } },
@@ -243,6 +245,7 @@ export async function getOrCreateDirectConversation(targetUserId: number): Promi
         eq(chatConversationMembers.userId, targetUserId),
         inArray(chatConversationMembers.conversationId, myConvIds),
         eq(chatConversations.type, 'direct'),
+        exactTenantCondition(chatConversations.tenantId, me.tenantId),
       ))
       .limit(1);
 
@@ -259,15 +262,14 @@ export async function getOrCreateDirectConversation(targetUserId: number): Promi
     }
   }
 
-  const [conv] = await db.insert(chatConversations).values({
-    type: 'direct',
-    tenantId: me.tenantId,
-  }).returning();
-
-  await db.insert(chatConversationMembers).values([
-    { conversationId: conv.id, userId: me.userId },
-    { conversationId: conv.id, userId: targetUserId },
-  ]);
+  const conv = await db.transaction(async (tx) => {
+    const [created] = await tx.insert(chatConversations).values({ type: 'direct', tenantId: me.tenantId }).returning();
+    await tx.insert(chatConversationMembers).values([
+      { conversationId: created.id, userId: me.userId },
+      { conversationId: created.id, userId: targetUserId },
+    ]);
+    return created;
+  });
 
   return {
     id: conv.id,

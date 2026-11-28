@@ -6,6 +6,7 @@ import { chatConversationMembers, chatConversations, chatMessages, users } from 
 import { currentUser } from '../../lib/context';
 import { requireRow } from '../../lib/db-assert';
 import { formatTimestamps } from '../../lib/datetime';
+import { exactTenantCondition, optionalExactTenantCondition } from '../../lib/tenant';
 import type { ChatMessage, ChatReactionGroup } from '@zenith/shared/chat';
 
 /** 生成排除当前用户已删除消息的 SQL 条件 */
@@ -59,10 +60,10 @@ export function rowSender(r: { msg: { senderId: number | null }; nickname: strin
     : null;
 }
 
-/** 按 id 加载用户的展示信息（昵称/头像） */
-export function fetchUserBrief(userId: number) {
+/** 加载用户的昵称和头像。成员选取时传入会话归属租户。 */
+export function fetchUserBrief(userId: number, tenantId?: number | null) {
   return db.query.users.findFirst({
-    where: eq(users.id, userId),
+    where: and(eq(users.id, userId), optionalExactTenantCondition(users.tenantId, tenantId)),
     columns: { id: true, nickname: true, avatar: true },
   });
 }
@@ -96,8 +97,17 @@ export async function ensureConversationMember(conversationId: number) {
 
 type ChatMemberRole = (typeof chatConversationMembers.$inferSelect)['role'];
 
+/** 群聊归属与操作者账号的租户一致。 */
+export async function requireChatGroup(conversationId: number, messages: { notGroup?: string; notFound?: string } = {}) {
+  const conversation = requireRow(await db.query.chatConversations.findFirst({
+    where: and(eq(chatConversations.id, conversationId), exactTenantCondition(chatConversations.tenantId, currentUser().tenantId)),
+  }), messages.notFound ?? '会话不存在');
+  if (conversation.type !== 'group') throw new HTTPException(400, { message: messages.notGroup ?? '仅群聊支持该操作' });
+  return conversation;
+}
+
 /**
- * 群聊管理动作的前置校验：会话必须存在且为群聊，当前用户须是成员且角色在 `roles` 内（群主 / 管理员）。
+ * 群聊管理动作校验会话租户以及操作者在群内的角色。
  * 返回会话与本人成员行，供后续业务使用；文案由调用方按动作给出。
  */
 export async function requireGroupMember(
@@ -106,9 +116,7 @@ export async function requireGroupMember(
   messages: { readonly notGroup: string; readonly forbidden: string; readonly notFound?: string },
 ) {
   const me = currentUser();
-  const conv = await db.query.chatConversations.findFirst({ where: eq(chatConversations.id, conversationId) });
-  const conversation = requireRow(conv, messages.notFound ?? '会话不存在');
-  if (conversation.type !== 'group') throw new HTTPException(400, { message: messages.notGroup });
+  const conversation = await requireChatGroup(conversationId, messages);
   const member = await db.query.chatConversationMembers.findFirst({
     where: and(
       eq(chatConversationMembers.conversationId, conversationId),

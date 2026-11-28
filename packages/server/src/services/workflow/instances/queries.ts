@@ -557,7 +557,7 @@ async function loadInstanceDetail(id: number, business?: { bizType: string; bizI
     }).from(workflowInstances)
       .where(eq(workflowInstances.parentInstanceId, id))
       .orderBy(workflowInstances.id),
-    loadInstanceCommentsForDetail(id),
+    loadInstanceCommentsForDetail(id, row.tenantId),
     loadInstanceConsultsForDetail(id),
     loadApprovalActivations(db, id, user.userId, isMonitor || (await getUserPermissions(user.userId)).includes('workflow:instance:cancel')),
   ]);
@@ -591,14 +591,14 @@ async function loadInstanceDetail(id: number, business?: { bizType: string; bizI
     const fromKeys = [...new Set(activeTokens.map(token => token.nodeKey))];
     if (fromKeys.length > 0) {
       try {
-        const starter = await buildStarterContext(row.initiatorId);
+        const starter = await buildStarterContext(row.initiatorId, row.tenantId);
         const formData = (row.formData ?? {}) as Record<string, unknown>;
         const path = predictRemainingPath(snapshot.flowData, fromKeys, formData, starter, {
           formFields: normalizeWorkflowFormSnapshot(row.formSnapshot)?.fields ?? [],
         });
-        const deptTree = createDeptTree(db);
+        const deptTree = createDeptTree(db, row.tenantId);
         predictedPath = await enrichPredictedApprovers(path, snapshot.flowData, {
-          resolve: config => resolveAssigneeIds(config, { initiatorId: row.initiatorId, instanceId: id, formData, deptTree }),
+          resolve: config => resolveAssigneeIds(config, { initiatorId: row.initiatorId, tenantId: row.tenantId, instanceId: id, formData, deptTree }),
           names: resolveUserNames,
           initiatorId: row.initiatorId,
         });

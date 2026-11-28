@@ -138,7 +138,7 @@ export default function LoginPage({ onLogin, onVerifyMfa, onRegister }: Readonly
   // 会话并发拒绝模式：凭据已通过但名额已满 → 弹层确认后凭票据兑换；弹层组件按需加载
   const [sessionConflict, setSessionConflict] = useState<SessionConflict | null>(mfaHandoff?.sessionConflict ?? null);
   const [conflictResolving, setConflictResolving] = useState(false);
-  const [directoryProvider, setDirectoryProvider] = useState<TenantIdentityProviderSummary | null>(null);
+  const [directoryProvider, setDirectoryProvider] = useState<{ provider: TenantIdentityProviderSummary; tenantCode?: string } | null>(null);
   const [directoryMounted, setDirectoryMounted] = useState(false);
   const [directoryLoginLoading, setDirectoryLoginLoading] = useState(false);
 
@@ -190,7 +190,7 @@ export default function LoginPage({ onLogin, onVerifyMfa, onRegister }: Readonly
   const oauthProvidersQuery = useOAuthProviders();
   const allowRegistration = publicSettingsQuery.data?.auth.allowRegistration ?? false;
   const forgotPasswordEnabled = publicSettingsQuery.data?.auth.forgotPasswordEnabled ?? false;
-  const enterpriseProviders = enterpriseProvidersQuery.data?.providers ?? [];
+  const enterpriseProviders = debouncedTenantCode === loginForm.values.tenantCode ? (enterpriseProvidersQuery.data?.providers ?? []) : [];
   // 加载中 / 后端不可达 / 未启用任何提供方 → 空数组 → 不渲染「其他方式登录」
   const oauthProviders = oauthProvidersQuery.data ?? [];
 
@@ -541,13 +541,16 @@ export default function LoginPage({ onLogin, onVerifyMfa, onRegister }: Readonly
   };
 
   const handleEnterpriseLogin = async (provider: TenantIdentityProviderSummary) => {
+    const tenantCode = debouncedTenantCode || undefined;
     if (provider.type === 'ldap' || provider.type === 'ad') {
       setDirectoryMounted(true);
-      setDirectoryProvider(provider);
+      setDirectoryProvider({ provider, tenantCode });
       return;
     }
     try {
-      const { authUrl } = await api(enterpriseAuthContract.authUrl, { params: { id: provider.id }, query: { redirect: redirectTo } }, { silent: true });
+      const { authUrl } = await api(enterpriseAuthContract.authUrl, {
+        params: { id: provider.id }, query: { redirect: redirectTo, tenantCode },
+      }, { silent: true });
       globalThis.location.href = authUrl;
     } catch (err) {
       Toast.warning((err instanceof ApiError && err.message) || '该企业登录方式暂不可用，请联系管理员配置');
@@ -561,7 +564,8 @@ export default function LoginPage({ onLogin, onVerifyMfa, onRegister }: Readonly
     try {
       const { loginResult, redirectTo: nextRedirect } = await api(enterpriseAuthContract.ldapLogin, {
         body: {
-          providerId: directoryProvider.id,
+          providerId: directoryProvider.provider.id,
+          tenantCode: directoryProvider.tenantCode,
           username: values.username,
           password: values.password,
           redirectTo,
@@ -788,7 +792,7 @@ export default function LoginPage({ onLogin, onVerifyMfa, onRegister }: Readonly
       {directoryMounted && (
         <Suspense fallback={null}>
           <DirectoryLoginModal
-            provider={directoryProvider}
+            provider={directoryProvider?.provider ?? null}
             loading={directoryLoginLoading}
             onCancel={() => setDirectoryProvider(null)}
             onSubmit={handleDirectoryLogin}

@@ -12,6 +12,7 @@
  */
 import { HTTPException } from 'hono/http-exception';
 import { requireRow } from '../../lib/db-assert';
+import { exactTenantCondition } from '../../lib/tenant';
 import { and, count, eq, inArray } from 'drizzle-orm';
 import type { IotGatewayBatchInput, IotGatewayEventInput } from '@zenith/shared/iot';
 import { db } from '../../db';
@@ -21,16 +22,17 @@ import { getOnlineMap, isDeviceOnline, touchDevice } from './iot-access.service'
 import { ingestTelemetry } from './iot-telemetry.service';
 import { ingestIotDeviceEvents } from './iot-events.service';
 
-/** 创建/更新设备时的拓扑归属校验（gatewayId 指向真实网关；防自挂/环） */
+/** 创建和更新设备时校验同租户网关及拓扑层级。 */
 export async function ensureIotTopologyValid(
   data: { nodeType?: string; gatewayId?: number | null },
+  tenantId: number | null,
   selfId?: number,
 ): Promise<void> {
   if (data.nodeType === 'sub') {
     if (!data.gatewayId) throw new HTTPException(400, { message: '子设备必须指定所属网关' });
     if (selfId && data.gatewayId === selfId) throw new HTTPException(400, { message: '子设备不能挂在自身之下' });
     const [maybeGateway] = await db.select({ id: iotDevices.id, nodeType: iotDevices.nodeType })
-      .from(iotDevices).where(eq(iotDevices.id, data.gatewayId)).limit(1);
+      .from(iotDevices).where(and(eq(iotDevices.id, data.gatewayId), exactTenantCondition(iotDevices.tenantId, tenantId))).limit(1);
     const gateway = requireRow(maybeGateway, '指定的网关不存在', 400);
     if (gateway.nodeType !== 'gateway') throw new HTTPException(400, { message: '所属设备不是网关（仅支持一层拓扑）' });
   }

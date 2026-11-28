@@ -18,39 +18,40 @@ import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import {
   channels, channelMessages, channelMenus, channelAutoReplies, channelMessageTargets, channelQuickReplies,
-  channelConversations, users, menus, roleMenus, userRoles,
+  channelConversations, users, menus, roles, roleMenus, userRoles,
   type ChannelMenuRow, type ChannelAutoReplyRow, type ChannelQuickReplyRow, type ChannelConversationRow, type ChannelRow,
 } from '../../db/schema';
 import type { ChatCard, ChatMessageExtra } from '@zenith/shared/chat';
 import type { ChannelMenu, ChannelAutoReply, ChannelConversation, ChannelMessage, ChannelMessageType, ChannelQuickReply, ChannelCsAgent, ChannelCsPerformance, ChannelRichReplyExtra, CreateChannelAutoReplyInput, UpdateChannelAutoReplyInput, CreateChannelQuickReplyInput, UpdateChannelQuickReplyInput, channelCsContract } from '@zenith/shared/messaging';
 import type { QueryOutputOf } from '@zenith/shared/core';
+import { SUPER_ADMIN_CODE } from '@zenith/shared/identity';
 import type { SaveChannelMenusInput } from '@zenith/shared/mp';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../lib/context';
 import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { broadcast, scheduleSendToUsers } from '../../lib/ws-manager';
-import { htmlToPlainExcerpt, mapChannelMessage } from './channel.service';
+import { ensurePlatformChannel, htmlToPlainExcerpt, mapChannelMessage } from './channel.service';
 import { sanitizeCmsHtml } from '../cms/cms-html-sanitizer';
 import { resolveUserNames } from '../../lib/user-nicknames';
+import { exactTenantCondition } from '../../lib/tenant';
+import { config } from '../../config';
 import { withPagination } from '../../lib/where-helpers';
 
 // ─── 频道前置校验 ──────────────────────────────────────────────────────────────
 
-async function ensureChannel(channelId: number): Promise<ChannelRow> {
-  return requireRow(await db.query.channels.findFirst({ where: eq(channels.id, channelId) }), '频道不存在');
-}
-
-async function ensureBusinessChannel(channelId: number): Promise<ChannelRow> {
-  const ch = await ensureChannel(channelId);
+/** 客服和用户侧共用平台运营号校验。 */
+async function ensureBusinessChannel(channelId: number, enabledOnly = false): Promise<ChannelRow> {
+  const ch = await ensurePlatformChannel(channelId, { enabledOnly });
   if (ch.type !== 'business') throw new HTTPException(400, { message: '仅运营号支持该操作' });
   return ch;
 }
 
 // ─── 用户名批量解析 ────────────────────────────────────────────────────────────
 
-async function getUserName(userId: number): Promise<string | null> {
+/** 消息署名读取已认证发送者自身租户中的账号。 */
+async function getUserName(userId: number, tenantId: number | null): Promise<string | null> {
   const u = await db.query.users.findFirst({
-    where: eq(users.id, userId),
+    where: and(eq(users.id, userId), exactTenantCondition(users.tenantId, tenantId)),
     columns: { nickname: true, username: true },
   });
   return u?.nickname ?? u?.username ?? null;
@@ -76,7 +77,7 @@ function mapMenu(row: ChannelMenuRow): ChannelMenu {
 
 /** 读取某频道的底部菜单（树形：一级 + children 二级）。订阅用户与管理后台共用。 */
 export async function getChannelMenus(channelId: number): Promise<ChannelMenu[]> {
-  await ensureChannel(channelId);
+  await ensurePlatformChannel(channelId);
   const rows = await db.query.channelMenus.findMany({
     where: eq(channelMenus.channelId, channelId),
     orderBy: [asc(channelMenus.sort), asc(channelMenus.id)],
@@ -137,7 +138,7 @@ function mapAutoReply(row: ChannelAutoReplyRow): ChannelAutoReply {
 }
 
 export async function listChannelAutoReplies(channelId: number): Promise<ChannelAutoReply[]> {
-  await ensureChannel(channelId);
+  await ensurePlatformChannel(channelId);
   const rows = await db.query.channelAutoReplies.findMany({
     where: eq(channelAutoReplies.channelId, channelId),
     orderBy: [asc(channelAutoReplies.sort), asc(channelAutoReplies.id)],
@@ -147,6 +148,7 @@ export async function listChannelAutoReplies(channelId: number): Promise<Channel
 
 export async function getChannelAutoReplyBeforeAudit(id: number): Promise<ChannelAutoReply> {
   const row = requireRow(await db.query.channelAutoReplies.findFirst({ where: eq(channelAutoReplies.id, id) }), '自动回复规则不存在');
+  await ensurePlatformChannel(row.channelId);
   return mapAutoReply(row);
 }
 
@@ -168,6 +170,7 @@ export async function createChannelAutoReply(channelId: number, input: CreateCha
 
 export async function updateChannelAutoReply(id: number, input: UpdateChannelAutoReplyInput): Promise<ChannelAutoReply> {
   const existing = requireRow(await db.query.channelAutoReplies.findFirst({ where: eq(channelAutoReplies.id, id) }), '自动回复规则不存在');
+  await ensurePlatformChannel(existing.channelId);
   const [row] = await db.update(channelAutoReplies).set({
     ...(input.keyword === undefined ? {} : { keyword: existing.matchType === 'keyword' ? input.keyword : null }),
     ...(input.keywordMode === undefined ? {} : { keywordMode: input.keywordMode }),
@@ -181,7 +184,8 @@ export async function updateChannelAutoReply(id: number, input: UpdateChannelAut
 }
 
 export async function deleteChannelAutoReply(id: number): Promise<void> {
-  requireRow(await db.query.channelAutoReplies.findFirst({ where: eq(channelAutoReplies.id, id) }), '自动回复规则不存在');
+  const row = requireRow(await db.query.channelAutoReplies.findFirst({ where: eq(channelAutoReplies.id, id) }), '自动回复规则不存在');
+  await ensurePlatformChannel(row.channelId);
   await db.delete(channelAutoReplies).where(eq(channelAutoReplies.id, id));
 }
 
@@ -284,7 +288,7 @@ export async function sendUserMessage(
   content: string,
 ): Promise<{ message: ChannelMessage; autoReply: ChannelMessage | null }> {
   const me = currentUser();
-  await ensureBusinessChannel(channelId);
+  await ensureBusinessChannel(channelId, true);
 
   const [inRow] = await db.insert(channelMessages).values({
     channelId,
@@ -298,7 +302,7 @@ export async function sendUserMessage(
     senderUserId: me.userId,
   }).returning();
 
-  const myName = await getUserName(me.userId);
+  const myName = await getUserName(me.userId, me.tenantId);
   const inMsg = mapChannelMessage(inRow, true, myName);
   // 回推自己（多标签页同步；视图按 id 去重）
   scheduleSendToUsers([{ userId: me.userId }], { type: 'channel:message', payload: inMsg });
@@ -328,12 +332,11 @@ async function activateConversationOnUserMessage(channelId: number, userId: numb
     });
 }
 
-/** 客服回复某用户：写 out 定向消息 + WS 推送该用户。 */
+/** 平台客服按该频道的会话定位咨询者，再定向回复。 */
 export async function replyAsAgent(channelId: number, userId: number, content: string): Promise<ChannelMessage> {
   const agent = currentUser();
-  await ensureBusinessChannel(channelId);
-  requireRow(await db.query.users.findFirst({ where: eq(users.id, userId), columns: { id: true } }), '用户不存在');
-  const agentName = await getUserName(agent.userId);
+  await requireChannelConversation(channelId, userId);
+  const agentName = await getUserName(agent.userId, agent.tenantId);
   const msg = await deliverOut(channelId, userId, content, agent.userId, agentName);
   // 会话治理：客服回复 → 待处理转为处理中（已解决的也重新进入处理中）
   await db.insert(channelConversations).values({ channelId, userId, status: 'processing' })
@@ -346,8 +349,7 @@ export async function replyAsAgent(channelId: number, userId: number, content: s
 
 /** 关注运营号时触发「关注欢迎语」自动回复（首次订阅后由路由层调用）。 */
 export async function handleSubscribeAutoReply(channelId: number): Promise<void> {
-  const ch = await db.query.channels.findFirst({ where: eq(channels.id, channelId), columns: { type: true } });
-  if (!ch || ch.type !== 'business') return;
+  await ensureBusinessChannel(channelId, true);
   const matched = await matchAutoReply(channelId, '', 'subscribe');
   if (!matched) return;
   const args = buildAutoReplyArgs(matched);
@@ -359,7 +361,7 @@ export async function handleSubscribeAutoReply(channelId: number): Promise<void>
 /** 客服可服务的运营号列表（启用的 business 频道）。 */
 export async function listCsChannels(): Promise<{ id: number; name: string; avatar: string | null }[]> {
   const rows = await db.query.channels.findMany({
-    where: and(eq(channels.type, 'business'), eq(channels.status, 'enabled')),
+    where: and(eq(channels.type, 'business'), eq(channels.status, 'enabled'), exactTenantCondition(channels.tenantId, null)),
     orderBy: [channels.id],
     columns: { id: true, name: true, avatar: true },
   });
@@ -473,31 +475,48 @@ async function upsertConversation(channelId: number, userId: number, set: Partia
   return row;
 }
 
-/** 指派 / 转接会话给某客服（assigneeId 为 null = 取消指派）。 */
-export async function assignConversation(channelId: number, userId: number, assigneeId: number | null): Promise<void> {
+/** 平台客服以频道和咨询者组成的会话为操作单位。 */
+async function requireChannelConversation(channelId: number, userId: number): Promise<void> {
   await ensureBusinessChannel(channelId);
+  const where = and(eq(channelConversations.channelId, channelId), eq(channelConversations.userId, userId));
+  if (await db.query.channelConversations.findFirst({ where, columns: { userId: true } })) return;
+  requireRow(await db.query.channelMessages.findFirst({
+    where: and(eq(channelMessages.channelId, channelId), eq(channelMessages.direction, 'in'), eq(channelMessages.senderUserId, userId)),
+    columns: { id: true },
+  }), '会话不存在');
+}
+
+/** 指派或转接给可服务平台频道的启用客服。空值取消指派。 */
+export async function assignConversation(channelId: number, userId: number, assigneeId: number | null): Promise<void> {
+  await requireChannelConversation(channelId, userId);
   if (assigneeId != null) {
-    requireRow(await db.query.users.findFirst({ where: eq(users.id, assigneeId), columns: { id: true } }), '指派的客服不存在');
+    const agents = await listCsAgents();
+    if (!agents.some((agent) => agent.id === assigneeId)) throw new HTTPException(400, { message: '指派的客服不可用' });
   }
   await upsertConversation(channelId, userId, { assigneeId });
 }
 
 /** 标记会话已解决。 */
 export async function resolveConversation(channelId: number, userId: number): Promise<void> {
-  await ensureBusinessChannel(channelId);
+  await requireChannelConversation(channelId, userId);
   await upsertConversation(channelId, userId, { status: 'resolved', resolvedAt: new Date() });
 }
 
 /** 设置会话标签（整体替换）。 */
 export async function setConversationTags(channelId: number, userId: number, tags: string[]): Promise<void> {
-  await ensureBusinessChannel(channelId);
+  await requireChannelConversation(channelId, userId);
   await upsertConversation(channelId, userId, { tags });
 }
 
-/** 可指派的客服列表（拥有 channel:cs 权限的用户）。 */
+/** 可指派客服满足工作台权限，多租户部署下须为平台超管。 */
 export async function listCsAgents(): Promise<ChannelCsAgent[]> {
-  const rows = await db.selectDistinct({ id: users.id, nickname: users.nickname, username: users.username, avatar: users.avatar })
-    .from(users)
+  const base = db.selectDistinct({ id: users.id, nickname: users.nickname, username: users.username, avatar: users.avatar })
+    .from(users);
+  const rows = config.multiTenantMode
+    ? await base.innerJoin(userRoles, eq(userRoles.userId, users.id)).innerJoin(roles, eq(roles.id, userRoles.roleId))
+      .where(and(eq(users.status, 'enabled'), exactTenantCondition(users.tenantId, null),
+        exactTenantCondition(roles.tenantId, null), eq(roles.code, SUPER_ADMIN_CODE), eq(roles.status, 'enabled')))
+    : await base
     .innerJoin(userRoles, eq(userRoles.userId, users.id))
     .innerJoin(roleMenus, eq(roleMenus.roleId, userRoles.roleId))
     .innerJoin(menus, eq(menus.id, roleMenus.menuId))
@@ -508,7 +527,7 @@ export async function listCsAgents(): Promise<ChannelCsAgent[]> {
 /** 用户对客服会话评价（用户端调用，currentUser 即被服务用户）。 */
 export async function rateConversation(channelId: number, rating: number, comment: string | null): Promise<void> {
   const me = currentUser().userId;
-  await ensureBusinessChannel(channelId);
+  await ensureBusinessChannel(channelId, true);
   requireRow(await db.query.channelConversations.findFirst({
     where: and(eq(channelConversations.channelId, channelId), eq(channelConversations.userId, me)),
   }), '会话不存在');

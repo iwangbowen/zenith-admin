@@ -3,6 +3,7 @@ import { db } from '../../db';
 import { departments, users } from '../../db/schema';
 import { currentUser } from '../../lib/context';
 import { keywordCondition, buildWhere } from '../../lib/where-helpers';
+import { exactTenantCondition } from '../../lib/tenant';
 
 // ─── 获取可聊天的用户列表 ──────────────────────────────────────────────────────
 
@@ -15,7 +16,7 @@ export async function listChatUsers(keyword?: string) {
     .where(buildWhere(
       ne(users.id, me.userId),
       eq(users.status, 'enabled'),
-      me.tenantId ? eq(users.tenantId, me.tenantId) : undefined,
+      exactTenantCondition(users.tenantId, me.tenantId),
       keywordCondition(keyword, [users.nickname, users.username], 'ilike'),
     ))
     .limit(50);
@@ -34,7 +35,7 @@ export async function getChatOrgData() {
       .from(departments)
       .where(buildWhere(
         eq(departments.status, 'enabled'),
-        me.tenantId ? eq(departments.tenantId, me.tenantId) : undefined,
+        exactTenantCondition(departments.tenantId, me.tenantId),
       ))
       .orderBy(asc(departments.sort), asc(departments.id)),
     db
@@ -46,7 +47,7 @@ export async function getChatOrgData() {
       .where(buildWhere(
         ne(users.id, me.userId),
         eq(users.status, 'enabled'),
-        me.tenantId ? eq(users.tenantId, me.tenantId) : undefined,
+        exactTenantCondition(users.tenantId, me.tenantId),
       ))
       .orderBy(asc(users.id)),
   ]);

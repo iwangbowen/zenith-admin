@@ -187,6 +187,10 @@
 
 频道体系使用 `channels`、`channel_messages`、`channel_subscriptions`、`channel_message_targets`、`channel_menus`、`channel_auto_replies`、`channel_quick_replies`、`channel_conversations`、`channel_message_templates`。
 
+系统号和运营号属于平台，`channels.tenant_id` 为 `NULL`。多租户部署中，频道管理、订阅者增删与导出、群发及测试发送、客服工作台和数据看板由平台超管操作。单租户部署按各操作的权限码授权。订阅者导出在查询和下载时校验平台权限。
+
+各租户的用户可订阅启用的运营号、接收该频道的广播及发给本人的定向消息。自动欢迎语发给本次订阅人。客服操作以平台频道内的咨询会话为范围，指派目标须在可服务的启用客服名单中。
+
 主要能力：
 
 - 用户侧：我的频道、频道消息、已读、可订阅频道、订阅/退订、用户向频道发消息、会话评价。

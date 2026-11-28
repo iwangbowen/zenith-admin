@@ -54,7 +54,7 @@ function createLdapConnector(source: DirectorySyncSourceRow): DirectoryConnector
   if (!providerId) throw new HTTPException(400, { message: '同步源未绑定企业身份源' });
 
   async function fetchSnapshot(limit: number): Promise<DirectorySnapshot> {
-    const provider = await getUsableDirectoryProvider(providerId!);
+    const provider = await getUsableDirectoryProvider(providerId!, source.tenantId);
     const entries = await searchDirectoryEntries(provider, { mode: 'sync', limit });
     const users: DirectoryExtUser[] = [];
     const deptNames = new Map<string, DirectoryExtDept>();

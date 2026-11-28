@@ -21,12 +21,13 @@ import { formatTimestamps } from '../../lib/datetime';
 import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { TtlCache } from '../../lib/ttl-cache';
+import { tenantScope } from '../../lib/tenant';
 import { invalidateAnomalyBaselines } from './iot-anomaly.service';
 
-/** 轻量存在性校验（无租户条件；管理端路由的访问边界由 devices 服务的 ensureIotProductExists 把守） */
+/** 管理端物模型操作只读取当前视角可访问的产品。 */
 async function ensureProductRow(productId: number): Promise<void> {
   const [row] = await db.select({ id: iotProducts.id }).from(iotProducts)
-    .where(eq(iotProducts.id, productId)).limit(1);
+    .where(and(eq(iotProducts.id, productId), tenantScope(iotProducts))).limit(1);
   requireRow(row, '产品不存在');
 }
 

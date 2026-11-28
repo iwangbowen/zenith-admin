@@ -45,10 +45,10 @@ export type EnterpriseLoginResult = z.infer<typeof enterpriseLoginResultSchema>;
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 
 export const enterpriseDiscoveryQuery = z.object({
-  tenantCode: z.string().optional(),
+  tenantCode: z.string().max(50).optional(),
 });
 
-export const enterpriseAuthUrlQuery = z.object({
+export const enterpriseAuthUrlQuery = enterpriseDiscoveryQuery.extend({
   redirect: z.string().optional().meta({ description: '登录成功后的回跳地址' }),
 });
 

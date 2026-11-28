@@ -283,7 +283,7 @@ export async function reduceSignTask(groupId: number, targetSlotIds: number[], c
     }
     // 减签触发节点完成：推进流程（checkNodeCompletion 已跳过本节点剩余 pending/waiting 任务）
     const formData = (inst.formData ?? {}) as Record<string, unknown>;
-    const starter = await buildStarterContext(inst.initiatorId, tx);
+    const starter = await buildStarterContext(inst.initiatorId, inst.tenantId, tx);
     const materialized = await advanceAndMaterialize({ kind: 'advanceNode', nodeKey: task.nodeKey }, {
       instanceId: inst.id,
       initiatorId: inst.initiatorId,

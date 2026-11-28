@@ -78,6 +78,7 @@ const AD_DEFAULT_MAPPING: Required<IdentityProviderAttributeMapping> = {
 
 interface EnterpriseAuthStatePayload {
   providerId: number;
+  tenantId: number | null;
   redirectTo?: string | null;
   ip: string;
   ua: string;
@@ -319,15 +320,16 @@ export async function getIdentityProviderBeforeAudit(id: number) {
   return row ? mapIdentityProvider(row) : null;
 }
 
+async function findEnterpriseLoginTenant(tenantCode?: string | null): Promise<number | null | undefined> {
+  if (!tenantCode) return null;
+  const [tenant] = await db.select({ id: tenants.id, status: tenants.status, expireAt: tenants.expireAt })
+    .from(tenants).where(eq(tenants.code, tenantCode)).limit(1);
+  return tenant && isTenantActive(tenant) ? tenant.id : undefined;
+}
+
 export async function discoverEnterpriseIdentityProviders(tenantCode?: string | null) {
-  let tenantId: number | null = null;
-  if (tenantCode) {
-    const [tenant] = await db.select().from(tenants).where(eq(tenants.code, tenantCode)).limit(1);
-    if (!tenant || !isTenantActive(tenant)) {
-      return { tenantCode, providers: [] };
-    }
-    tenantId = tenant.id;
-  }
+  const tenantId = await findEnterpriseLoginTenant(tenantCode);
+  if (tenantId === undefined) return { tenantCode, providers: [] };
 
   const rows = await db
     .select({
@@ -352,13 +354,20 @@ function assertProviderUsable(row: ProviderRow): ProviderRow {
   return row;
 }
 
-/** 公开登录流程用：不依赖请求用户，只校验身份源与租户可用 */
-async function getUsableProvider(id: number) {
+/** 按登录状态或同步源的租户归属加载可用身份源。 */
+async function getUsableProvider(id: number, tenantId: number | null) {
   const row = requireRow(await db.query.tenantIdentityProviders.findFirst({
-    where: eq(tenantIdentityProviders.id, id),
+    where: and(eq(tenantIdentityProviders.id, id), exactTenantCondition(tenantIdentityProviders.tenantId, tenantId)),
     with: { tenant: { columns: { name: true, code: true, status: true, expireAt: true } } },
   }), '身份源不存在');
   return assertProviderUsable(row);
+}
+
+/** 公开登录与身份源发现使用同一个租户编码。空编码表示平台登录。 */
+async function getEnterpriseLoginProvider(id: number, tenantCode?: string | null) {
+  const tenantId = await findEnterpriseLoginTenant(tenantCode);
+  if (tenantId === undefined) throw new HTTPException(404, { message: '身份源不存在' });
+  return getUsableProvider(id, tenantId);
 }
 
 /** 管理侧操作（测试连接 / 目录搜索 / 同步）用：先限定调用者租户作用域，再校验可用 */
@@ -366,9 +375,9 @@ async function getManageableUsableProvider(id: number) {
   return assertProviderUsable(await getManageableProvider(id));
 }
 
-/** 供通讯录同步连接器复用：加载可用的 LDAP/AD 身份源（含启用与租户校验） */
-export async function getUsableDirectoryProvider(id: number) {
-  const provider = await getUsableProvider(id);
+/** 通讯录同步连接器只加载与同步源同租户的 LDAP/AD 身份源。 */
+export async function getUsableDirectoryProvider(id: number, tenantId: number | null) {
+  const provider = await getUsableProvider(id, tenantId);
   ensureDirectoryProvider(provider);
   return provider;
 }
@@ -604,8 +613,8 @@ function createSamlClient(
   });
 }
 
-export async function generateEnterpriseAuthUrl(providerId: number, client: { ip: string; ua: string; redirectTo?: string | null }) {
-  const provider = await getUsableProvider(providerId);
+export async function generateEnterpriseAuthUrl(providerId: number, client: { ip: string; ua: string; tenantCode?: string; redirectTo?: string | null }) {
+  const provider = await getEnterpriseLoginProvider(providerId, client.tenantCode);
   if (isDirectoryProviderType(provider.type)) {
     throw new HTTPException(400, { message: 'LDAP/AD 身份源不支持跳转授权，请使用目录账号密码登录' });
   }
@@ -614,6 +623,7 @@ export async function generateEnterpriseAuthUrl(providerId: number, client: { ip
     let samlRequestId: string | undefined;
     const payload: EnterpriseAuthStatePayload = {
       providerId: provider.id,
+      tenantId: provider.tenantId,
       redirectTo: client.redirectTo ?? null,
       ip: client.ip,
       ua: client.ua,
@@ -634,6 +644,7 @@ export async function generateEnterpriseAuthUrl(providerId: number, client: { ip
   const state = randomToken();
   const payload: EnterpriseAuthStatePayload = {
     providerId: provider.id,
+    tenantId: provider.tenantId,
     redirectTo: client.redirectTo ?? null,
     ip: client.ip,
     ua: client.ua,
@@ -1031,6 +1042,7 @@ const completeEnterpriseLogin = completeLoginWithMfa;
 
 export async function handleEnterpriseLdapLogin(input: {
   providerId: number;
+  tenantCode?: string;
   username: string;
   password: string;
   redirectTo?: string | null;
@@ -1039,7 +1051,7 @@ export async function handleEnterpriseLdapLogin(input: {
   deviceInfo?: DeviceInfo;
   deviceId?: string;
 }) {
-  const provider = await getUsableProvider(input.providerId);
+  const provider = await getEnterpriseLoginProvider(input.providerId, input.tenantCode);
   ensureDirectoryProvider(provider);
   const lockKey = `enterprise:${provider.id}:${input.username.toLowerCase()}`;
   // 失败防护按「账号 × 来源」计数：企业 LDAP 没有验证码环节，只节流失败的那个来源，
@@ -1127,13 +1139,18 @@ export async function handleEnterpriseLdapLogin(input: {
   return { loginResult, redirectTo: input.redirectTo ?? null };
 }
 
-export async function handleEnterpriseOidcCallback(code: string, state: string, deviceInfo?: DeviceInfo, deviceId?: string) {
-  const stateKey = `${OIDC_STATE_PREFIX}${state}`;
+async function consumeEnterpriseAuthState(stateKey: string): Promise<EnterpriseAuthStatePayload> {
   const raw = await redis.get(stateKey);
   if (!raw) throw new HTTPException(400, { message: '企业登录状态已过期，请重新发起登录' });
   await redis.del(stateKey);
   const payload = JSON.parse(raw) as EnterpriseAuthStatePayload;
-  const provider = await getUsableProvider(payload.providerId);
+  if (payload.tenantId === undefined) throw new HTTPException(400, { message: '企业登录状态已过期，请重新发起登录' });
+  return payload;
+}
+
+export async function handleEnterpriseOidcCallback(code: string, state: string, deviceInfo?: DeviceInfo, deviceId?: string) {
+  const payload = await consumeEnterpriseAuthState(`${OIDC_STATE_PREFIX}${state}`);
+  const provider = await getUsableProvider(payload.providerId, payload.tenantId);
   if (provider.type !== 'oidc') throw new HTTPException(400, { message: '身份源类型不匹配' });
   const token = await exchangeOidcCode(provider, code);
   const profile = await loadOidcProfile(provider, token);
@@ -1150,13 +1167,8 @@ export async function handleEnterpriseOidcCallback(code: string, state: string, 
 export async function handleEnterpriseSamlAcs(samlResponse: string, relayState: string) {
   if (!samlResponse) throw new HTTPException(400, { message: 'SAMLResponse 不能为空' });
   if (!relayState) throw new HTTPException(400, { message: 'RelayState 不能为空' });
-  const stateKey = `${SAML_STATE_PREFIX}${relayState}`;
-  const raw = await redis.get(stateKey);
-  if (!raw) throw new HTTPException(400, { message: '企业登录状态已过期，请重新发起登录' });
-  await redis.del(stateKey);
-
-  const payload = JSON.parse(raw) as EnterpriseAuthStatePayload;
-  const provider = await getUsableProvider(payload.providerId);
+  const payload = await consumeEnterpriseAuthState(`${SAML_STATE_PREFIX}${relayState}`);
+  const provider = await getUsableProvider(payload.providerId, payload.tenantId);
   if (provider.type !== 'saml') throw new HTTPException(400, { message: '身份源类型不匹配' });
 
   let profile: Profile | null;

@@ -10,6 +10,7 @@ import { mock } from '@/mocks/utils/contract';
 import { requireItem } from '@/mocks/utils/crud';
 import { badRequest, nextIdFrom } from '@/mocks/utils/handlers';
 import { mockUsers } from '@/mocks/data/users';
+import { mockTenants } from '@/mocks/data/tenants';
 import { mockDateTime } from '@/mocks/utils/date';
 import { filterByKeyword } from '@/mocks/utils/filter';
 import { mockResource } from '@/mocks/utils/resource';
@@ -164,6 +165,12 @@ function enterpriseLoginResult(tokenPrefix: string): LoginResponse {
   };
 }
 
+function loginProviders(tenantCode?: string | null) {
+  const tenant = tenantCode ? mockTenants.find(item => item.code === tenantCode && item.status === 'enabled') : null;
+  if (tenantCode && !tenant) return [];
+  return providers.filter(item => item.status === 'enabled' && item.tenantId === (tenant?.id ?? null));
+}
+
 export const identityProvidersHandlers = [
   mock(identityProviderContract.list, ({ query, ok, paginate }) => {
     const { keyword, type, status } = query;
@@ -237,15 +244,15 @@ export const identityProvidersHandlers = [
 
   mock(enterpriseAuthContract.providers, ({ query, ok }) => {
     const tenantCode = query.tenantCode ?? null;
-    const visible = providers
-      .filter((item) => item.status === 'enabled' && (tenantCode ? item.tenantId === 1 : item.tenantId === null))
+    const visible = loginProviders(tenantCode)
       .map(({ id, name, code, type }) => ({ id, name, code, type }));
     return ok({ tenantCode, providers: visible });
   }),
 
   mock(enterpriseAuthContract.ldapLogin, ({ body, ok }) => {
-    const provider = providers.find((item) => item.id === body.providerId);
-    if (!provider || (provider.type !== 'ldap' && provider.type !== 'ad')) {
+    const provider = loginProviders(body.tenantCode).find(item => item.id === body.providerId);
+    if (!provider) return badRequest('身份源不存在', { status: 404 });
+    if (provider.type !== 'ldap' && provider.type !== 'ad') {
       return badRequest('身份源不可用', { status: 400 });
     }
     if (!body.username || !body.password) {
@@ -257,10 +264,12 @@ export const identityProvidersHandlers = [
     }, '登录成功');
   }),
 
-  mock(enterpriseAuthContract.authUrl, ({ params, ok }) => {
-    const provider = providers.find((item) => item.id === params.id);
+  mock(enterpriseAuthContract.authUrl, ({ params, query, ok }) => {
+    const provider = loginProviders(query.tenantCode).find(item => item.id === params.id);
+    if (!provider) return badRequest('身份源不存在', { status: 404 });
+    if (provider.type === 'ldap' || provider.type === 'ad') return badRequest('LDAP/AD 身份源使用目录密码登录');
     return ok({
-      authUrl: provider?.type === 'saml'
+      authUrl: provider.type === 'saml'
         ? `/enterprise/callback?samlTicket=demo-saml-ticket-${params.id}`
         : `/enterprise/callback?code=demo-code&state=demo-state-${params.id}`,
       state: `demo-state-${params.id}`,

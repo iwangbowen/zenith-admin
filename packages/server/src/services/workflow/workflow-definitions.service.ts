@@ -11,7 +11,7 @@ import type { WorkflowFormSchema, WorkflowCustomFormConfig, WorkflowFormType } f
 export function mapDefinition(
   row: typeof workflowDefinitions.$inferSelect & {
     category?: { name: string | null; color: string | null; icon: string | null } | null;
-    form?: { name: string | null; schema: unknown } | null;
+    form?: { name: string | null; schema: unknown; tenantId: number | null } | null;
     printTemplate?: { name: string } | null;
   },
   createdByName?: string | null,
@@ -20,7 +20,8 @@ export function mapDefinition(
   const initiatorScopeIds = Array.isArray(row.initiatorScopeIds)
     ? row.initiatorScopeIds.map(Number).filter((v) => Number.isInteger(v) && v > 0)
     : null;
-  const formSchema = (row.form?.schema ?? null) as WorkflowFormSchema | null;
+  const form = row.form?.tenantId === row.tenantId ? row.form : null;
+  const formSchema = (form?.schema ?? null) as WorkflowFormSchema | null;
   return {
     id: row.id,
     name: row.name,
@@ -34,7 +35,7 @@ export function mapDefinition(
     flowData: design ? design.normalizeFlow(sanitizeFlowDataForRead(row.flowData)) : sanitizeFlowDataForRead(row.flowData),
     ...(design ? { designPolicy: { description: design.description, lockedSettings: design.lockedSettings } } : {}),
     formId: row.formId ?? null,
-    formName: row.form?.name ?? null,
+    formName: form?.name ?? null,
     formFields: formSchema?.fields ?? null,
     formSettings: formSchema?.settings ?? null,
     formType: (row.formType ?? 'designer') as WorkflowFormType,
@@ -81,7 +82,7 @@ import { eq, and, desc, inArray, ne, type SQL } from 'drizzle-orm';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { db } from '../../db';
 import { pageOffset } from '../../lib/pagination';
-import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
+import { exactTenantCondition, tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
 import { applyFlowAssigneeNames, collectFlowAssigneeIds, normalizeDefinitionFlowData, sanitizeFlowDataForRead } from '../../lib/workflow-flow-normalize';
@@ -92,7 +93,7 @@ import { WORKFLOW_SCHEMA_VERSION, collectReferencedFormFieldKeys } from '@zenith
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../lib/context';
 import type { DbExecutor } from '../../db/types';
-import { ensureFormExists, resolveFormSnapshot } from './workflow-forms.service';
+import { loadDefinitionForm } from './workflow-forms.service';
 import { loadEntityPrintTemplate } from '../report/report-print.service';
 
 export type WorkflowDefinitionStatus = 'draft' | 'published' | 'disabled';
@@ -174,7 +175,7 @@ export async function listDefinitions(query: QueryOutputOf<typeof workflowDefini
       with: {
         createdByUser: { columns: { nickname: true } },
         category: { columns: { name: true, color: true, icon: true } },
-        form: { columns: { name: true, schema: true } },
+        form: { columns: { name: true, schema: true, tenantId: true } },
       },
       orderBy: desc(workflowDefinitions.id),
       limit: pageSize,
@@ -195,7 +196,7 @@ export async function listPublishedDefinitions() {
       ),
       with: {
         category: { columns: { name: true, color: true, icon: true } },
-        form: { columns: { name: true, schema: true } },
+        form: { columns: { name: true, schema: true, tenantId: true } },
       },
       orderBy: desc(workflowDefinitions.updatedAt),
     }),
@@ -237,7 +238,7 @@ export async function getDefinition(id: number) {
     with: {
       createdByUser: { columns: { nickname: true } },
       category: { columns: { name: true, color: true, icon: true } },
-      form: { columns: { name: true, schema: true } },
+      form: { columns: { name: true, schema: true, tenantId: true } },
       printTemplate: { columns: { name: true } },
     },
   }), '流程定义不存在');
@@ -257,8 +258,10 @@ export async function createDefinition(data: {
   const scopeType = data.initiatorScopeType ?? 'all';
   const scopeIds = scopeType === 'all' ? null : normalizeScopeIds(data.initiatorScopeIds);
   const formType = data.formType ?? 'designer';
-  if (formType === 'designer' && data.formId != null) await ensureFormExists(data.formId);
   const tenantId = getCreateTenantId(user);
+  if (formType === 'designer' && data.formId != null) {
+    requireRow(await loadDefinitionForm(data.formId, tenantId), '表单不存在');
+  }
   await ensurePrintTemplateBindable(data.printTemplateId, tenantId);
   // 禁止经 create 直接发布：发布必须走 publishDefinition（含 validateFlowData 校验与版本快照）
   const initialStatus = (data.status ?? 'draft') === 'published' ? 'draft' : (data.status ?? 'draft');
@@ -288,7 +291,9 @@ export async function updateDefinition(id: number, data: Partial<{
   if (data.printTemplateId !== undefined) await ensurePrintTemplateBindable(data.printTemplateId, existing.tenantId ?? null);
   // 解析最终的表单类型（本次更新值优先，否则取库中现值），用于条件写入两类表单字段
   const nextFormType = (data.formType ?? existing.formType ?? 'designer') as WorkflowFormType;
-  if (nextFormType === 'designer' && data.formId != null) await ensureFormExists(data.formId);
+  if (nextFormType === 'designer' && data.formId != null) {
+    requireRow(await loadDefinitionForm(data.formId, existing.tenantId), '表单不存在');
+  }
   const updateData: Record<string, unknown> = { ...data };
   if (data.flowData !== undefined) {
     const design = getWorkflowDefinitionBusinessAdapter({ formType: nextFormType, customForm: data.customForm === undefined ? existing.customForm as WorkflowCustomFormConfig | null : data.customForm })?.definitionDesign;
@@ -327,12 +332,13 @@ export async function updateDefinition(id: number, data: Partial<{
 }
 
 /** 发布前校验：结构体检硬门禁 + 表单绑定/业务表单配置完整性（publish / enable 共用） */
-async function assertPublishable(def: typeof workflowDefinitions.$inferSelect): Promise<void> {
+async function assertPublishable(def: typeof workflowDefinitions.$inferSelect, executor: DbExecutor = db) {
   const flowData = def.flowData as WorkflowFlowData | null;
   if (!flowData?.nodes) throw new HTTPException(400, { message: '请先在设计器中设计流程' });
   // designer 表单门禁：流程引用了表单字段却未绑定表单（分支条件/审批人字段等运行时必然解析失败）→ 阻断；
   // 绑定的表单已被停用/删除 → 阻断，避免发布后发起页无表单可渲染
   const formType = (def.formType ?? 'designer') as WorkflowFormType;
+  const form = formType === 'designer' ? await loadDefinitionForm(def.formId, def.tenantId, executor) : null;
   if (formType === 'designer') {
     if (def.formId == null) {
       const referenced = [...collectReferencedFormFieldKeys(flowData)];
@@ -342,17 +348,16 @@ async function assertPublishable(def: typeof workflowDefinitions.$inferSelect): 
         throw new HTTPException(400, { message: `流程的分支条件/审批人配置引用了表单字段（${head}${suffix}），但未绑定表单，请先在「表单」步骤选择表单` });
       }
     } else {
-      const [maybeForm] = await db.select({ name: workflowForms.name, status: workflowForms.status })
-        .from(workflowForms).where(eq(workflowForms.id, def.formId)).limit(1);
-      const form = requireRow(maybeForm, '绑定的表单不存在，请在「表单」步骤重新选择', 400);
-      if (form.status === 'disabled') {
-        throw new HTTPException(400, { message: `绑定的表单「${form.name}」已停用，请启用该表单或更换后再发布` });
+      const boundForm = requireRow(form, '绑定的表单不存在，请在「表单」步骤重新选择', 400);
+      if (boundForm.status === 'disabled') {
+        throw new HTTPException(400, { message: `绑定的表单「${boundForm.name}」已停用，请启用该表单或更换后再发布` });
       }
     }
   }
   // 发布前健康硬门禁：结构非法或存在 critical 体检问题（审批人无法解析 / 表达式非法 / 网关无出口等）一律拦截
-  const knownFields = def.formId ? new Set((await resolveFormSnapshot(def.formId))?.fields.map((f) => f.key).filter((k): k is string => !!k) ?? []) : null;
-  const report = analyzeWorkflowHealth(flowData, knownFields && knownFields.size > 0 ? knownFields : null);
+  const schema = form?.schema as WorkflowFormSchema | null | undefined;
+  const knownFields = new Set(schema?.fields.map((f) => f.key).filter((k): k is string => !!k));
+  const report = analyzeWorkflowHealth(flowData, knownFields.size > 0 ? knownFields : null);
   const criticals = report.checks.flatMap((c) => c.issues).filter((i) => i.severity === 'critical');
   if (criticals.length > 0) {
     const head = criticals.slice(0, 3).map((i) => i.message).join('；');
@@ -360,16 +365,6 @@ async function assertPublishable(def: typeof workflowDefinitions.$inferSelect): 
     throw new HTTPException(400, { message: `发布前体检未通过：${head}${suffix}` });
   }
   validateBusinessFormConfigForPublish(formType, def.customForm);
-}
-
-/** 读取表单库行，构造发布版本的表单 schema 冻结快照（无绑定表单返回 null） */
-async function loadFormSchemaSnapshot(
-  tx: DbExecutor,
-  formId: number | null,
-): Promise<{ name: string | null; schema: unknown } | null> {
-  if (formId == null) return null;
-  const [form] = await tx.select({ name: workflowForms.name, schema: workflowForms.schema })
-    .from(workflowForms).where(eq(workflowForms.id, formId)).limit(1);
   return form ? { name: form.name, schema: form.schema } : null;
 }
 
@@ -385,7 +380,7 @@ export async function publishDefinition(id: number) {
       if (design) locked.flowData = design.normalizeFlow(locked.flowData as WorkflowFlowData | null);
     }
     requireRow(locked, '流程定义不存在');
-    await assertPublishable(locked);
+    const formSchema = await assertPublishable(locked, tx);
     const flowData = await pinWorkflowNumbering(tx, { ...locked, customForm: locked.customForm as WorkflowCustomFormConfig | null, flowData: locked.flowData as WorkflowFlowData });
     const newVersion = locked.version + 1;
     await tx.insert(workflowDefinitionVersions).values({
@@ -399,7 +394,7 @@ export async function publishDefinition(id: number) {
       formType: locked.formType,
       customForm: locked.customForm,
       // 冻结表单 schema：表单库后续编辑不影响该版本的历史查看/对比
-      formSchema: await loadFormSchemaSnapshot(tx, locked.formId),
+      formSchema,
       publishedBy: user?.userId ?? null,
       tenantId: locked.tenantId,
     });
@@ -418,7 +413,8 @@ export async function listVersions(definitionId: number, query: QueryOutputOf<ty
   // 校验定义存在 + 租户可见
   const [def] = await db.select().from(workflowDefinitions).where(findDefinition(definitionId)).limit(1);
   requireRow(def, '流程定义不存在');
-  const where = eq(workflowDefinitionVersions.definitionId, definitionId);
+  const where = and(eq(workflowDefinitionVersions.definitionId, definitionId),
+    exactTenantCondition(workflowDefinitionVersions.tenantId, def.tenantId));
   return buildListResult({
     page,
     pageSize,
@@ -437,7 +433,7 @@ export async function listVersions(definitionId: number, query: QueryOutputOf<ty
         const forms = await db
           .select({ id: workflowForms.id, name: workflowForms.name, schema: workflowForms.schema })
           .from(workflowForms)
-          .where(inArray(workflowForms.id, formIds));
+          .where(and(inArray(workflowForms.id, formIds), exactTenantCondition(workflowForms.tenantId, def.tenantId)));
         for (const f of forms) formMap.set(f.id, { name: f.name, schema: f.schema });
       }
       return rows.map((r) => mapDefinitionVersion(
@@ -450,14 +446,19 @@ export async function listVersions(definitionId: number, query: QueryOutputOf<ty
   });
 }
 
+/** 恢复的版本必须与流程定义同租户，并继续引用同租户表单。 */
 export async function restoreVersion(definitionId: number, versionId: number) {
   const where = findDefinition(definitionId);
   const [def] = await db.select().from(workflowDefinitions).where(where).limit(1);
   requireRow(def, '流程定义不存在');
   const [ver] = await db.select().from(workflowDefinitionVersions)
-    .where(and(eq(workflowDefinitionVersions.id, versionId), eq(workflowDefinitionVersions.definitionId, definitionId)))
+    .where(and(eq(workflowDefinitionVersions.id, versionId), eq(workflowDefinitionVersions.definitionId, definitionId),
+      exactTenantCondition(workflowDefinitionVersions.tenantId, def.tenantId)))
     .limit(1);
   requireRow(ver, '历史版本不存在');
+  if (ver.formType === 'designer' && ver.formId !== null) {
+    requireRow(await loadDefinitionForm(ver.formId, def.tenantId), '表单不存在');
+  }
   const [updated] = await db.update(workflowDefinitions).set({
     name: ver.name,
     description: ver.description,
@@ -478,13 +479,13 @@ export async function duplicateDefinition(id: number) {
   const where = findDefinition(id);
   const src = requireRow(await db.query.workflowDefinitions.findFirst({
     where,
-    with: { form: { columns: { name: true, description: true, schema: true } } },
+    with: { form: { columns: { name: true, description: true, schema: true, tenantId: true } } },
   }), '流程定义不存在');
   const user = currentUser();
   const tenantId = getCreateTenantId(user);
   const newId = await db.transaction(async (tx) => {
     let newFormId: number | null = null;
-    if (src.formId != null && src.form) {
+    if (src.formId != null && src.form && src.form.tenantId === src.tenantId) {
       const [newForm] = await tx.insert(workflowForms).values({
         name: `${src.form.name ?? '表单'} 副本`,
         code: null,
@@ -519,7 +520,7 @@ export async function exportDefinition(id: number) {
     where: findDefinition(id),
     with: {
       category: { columns: { name: true } },
-      form: { columns: { name: true, description: true, schema: true } },
+      form: { columns: { name: true, description: true, schema: true, tenantId: true } },
     },
   }), '流程定义不存在');
   return {
@@ -529,7 +530,7 @@ export async function exportDefinition(id: number) {
     flowData: sanitizeFlowDataForRead(row.flowData),
     formType: (row.formType ?? 'designer') as WorkflowFormType,
     customForm: (row.customForm ?? null) as WorkflowCustomFormConfig | null,
-    form: row.form
+    form: row.form && row.form.tenantId === row.tenantId
       ? { name: row.form.name ?? '表单', description: row.form.description ?? null, schema: (row.form.schema ?? null) as WorkflowFormSchema | null }
       : null,
     exportedAt: formatDateTime(new Date()),
@@ -722,7 +723,7 @@ export async function getWorkflowDefinitionBeforeAudit(id: number) {
     with: {
       createdByUser: { columns: { nickname: true } },
       category: { columns: { name: true, color: true, icon: true } },
-      form: { columns: { name: true, schema: true } },
+      form: { columns: { name: true, schema: true, tenantId: true } },
     },
   });
   if (!row) return null;
@@ -736,7 +737,7 @@ export async function getWorkflowDefinitionsBeforeAudit(ids: number[]) {
     with: {
       createdByUser: { columns: { nickname: true } },
       category: { columns: { name: true, color: true, icon: true } },
-      form: { columns: { name: true, schema: true } },
+      form: { columns: { name: true, schema: true, tenantId: true } },
     },
     orderBy: desc(workflowDefinitions.id),
   });

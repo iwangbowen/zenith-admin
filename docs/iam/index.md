@@ -239,6 +239,8 @@ MFA 当前落库类型包括 `totp`、`passkey`、`recovery_code`，接口实现
 - **同步覆盖邮箱受控**：管理员触发的目录同步允许按邮箱关联既有账号，但只有开启 `autoLinkByEmail` 的身份源才会用目录邮箱覆盖本地邮箱（邮箱是找回密码的凭证通道）。
 - **SSO 复用 MFA 决策**：LDAP / OIDC / SAML 登录在签发 token 前执行与密码登录相同的 `shouldRequireMfa`，命中时返回 `mfaRequired` 挑战（SAML 通过一次性票据带回前端），由 `POST /api/auth/mfa/verify` 完成。
 
+身份源发现、OIDC/SAML 授权链接与 LDAP/AD 登录使用同一个 `tenantCode`。空编码选择平台身份源。回调从服务端登录状态中读取身份源 ID 和租户 ID，并重新检查两者的归属与状态。登录、续签、个人资料和模拟登录读取账号实际租户内的角色。
+
 管理端接口：
 
 - `GET /api/identity-providers`、`GET /api/identity-providers/{id}`
@@ -263,6 +265,8 @@ MFA 当前落库类型包括 `totp`、`passkey`、`recovery_code`，接口实现
 - 拉取型：`ldap`、`dingtalk`、`wechat_work`、`feishu`，支持手动、定时、预览差异与连接测试。
 - 回调型：`dingtalk`、`wechat_work`、`feishu`，公开回调路径为 `/api/directory-sync/callbacks/{key}`，通过源配置中的 token/AES key 校验。
 - 推送型：`scim`，路径为 `/api/directory-sync/scim/{key}/v2/...`，实现 `ServiceProviderConfig` 与 `Users` 的查询、创建、更新、Patch、删除。
+
+LDAP/AD 同步以同步源记录的租户匹配身份源。连接测试、预览、手动同步和定时同步加载同租户且启用的身份源。
 
 同步源表 `directory_sync_sources` 记录匹配键、字段映射、范围配置、冲突策略、生命周期策略、是否同步部门、Cron、熔断阈值、回调随机路径段与最近同步状态。同步运行写 `directory_sync_runs` 与 `directory_sync_run_items`，冲突进入 `directory_sync_conflicts`，外部用户/部门与本地对象的绑定分别写 `directory_sync_user_links`、`directory_sync_dept_links`。
 

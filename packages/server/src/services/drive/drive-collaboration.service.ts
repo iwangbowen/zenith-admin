@@ -91,13 +91,17 @@ export async function dispatchDriveSubscriptionChanges(): Promise<number> {
   const head = await latestActivityId();
   const subscriptions = await db.select().from(driveNodeSubscriptions).where(lt(driveNodeSubscriptions.lastActivityId, head))
     .orderBy(asc(driveNodeSubscriptions.lastActivityId)).limit(100);
-  const userSubjects = new Map<number, ReturnType<typeof loadDriveSubjectsForUser>>();
+  const userSubjects = new Map<string, ReturnType<typeof loadDriveSubjectsForUser>>();
   let delivered = 0;
   await mapWithConcurrency(subscriptions, 5, async (subscription) => {
     const [root] = await db.select().from(driveNodes).where(eq(driveNodes.id, subscription.nodeId));
     if (!root) return;
-    let loading = userSubjects.get(subscription.userId);
-    if (!loading) { loading = loadDriveSubjectsForUser(subscription.userId); userSubjects.set(subscription.userId, loading); }
+    const key = `${subscription.userId}:${root.tenantId}`;
+    let loading = userSubjects.get(key);
+    if (!loading) {
+      loading = loadDriveSubjectsForUser(subscription.userId, root.tenantId);
+      userSubjects.set(key, loading);
+    }
     const subjects = await loading;
     const rootRole = (await resolveNodeRoles([root], subjects)).get(root.id)?.role;
     const nodesInScope = db.select({ id: driveNodes.id }).from(driveNodes).where(and(
@@ -151,7 +155,7 @@ export async function readableDriveCommentRecipients(node: DriveNodeRow, ids: nu
     inArray(users.id, candidates), eq(users.status, 'enabled'), exactTenantCondition(users.tenantId, node.tenantId),
   ));
   for (const { id } of eligible) {
-    const subjects = await loadDriveSubjectsForUser(id);
+    const subjects = await loadDriveSubjectsForUser(id, node.tenantId);
     const role = (await resolveNodeRoles([node], subjects)).get(node.id)?.role;
     if (driveRoleAtLeast(role, 'viewer')) recipients.push(id);
   }

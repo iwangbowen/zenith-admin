@@ -21,7 +21,7 @@ import { optionalExactTenantCondition } from '../../../lib/tenant';
 import { executeWorkflow, planRuntimeActivation, runtimeTaskIdentity, type RuntimeTrigger } from '../runtime/execute';
 import { expandRuntimeTasks, type ExpandedTaskRows, type ExpandedTaskRow } from '../runtime/expand-tasks';
 
-type ExpandTasksContext = { instanceId: number; initiatorId: number; executor: DbExecutor; formData?: Record<string, unknown>; settings?: WorkflowFlowData['settings']; selectedNextApprovers?: Record<string, number[]>; flowData?: WorkflowFlowData };
+type ExpandTasksContext = { instanceId: number; initiatorId: number; tenantId: number | null; executor: DbExecutor; formData?: Record<string, unknown>; settings?: WorkflowFlowData['settings']; selectedNextApprovers?: Record<string, number[]>; flowData?: WorkflowFlowData };
 
 async function expandTasksToRows(
   tasks: TaskAction[],
@@ -29,7 +29,7 @@ async function expandTasksToRows(
 ): Promise<ExpandedTaskRows> {
   // 本次物化内所有节点共享一棵惰性部门树：不涉及部门的节点不触发查询，
   // 涉及的多个节点也只拉取一次部门表
-  const deptTree = createDeptTree(ctx.executor);
+  const deptTree = createDeptTree(ctx.executor, ctx.tenantId);
 
   // 审批代理（离岗委托）：按需懒加载本实例的 definitionId，将待办自动转交给代理人
   let cachedDefinitionId: number | null = null;
@@ -59,23 +59,14 @@ async function expandTasksToRows(
   };
 
   // 异常提醒统一走通知中心：与本次物化同事务登记，提交后由补投 cron 派发（事务回滚则不发）
-  let cachedTenantId: number | null | undefined;
   const notifyNodeException = async (nodeName: string, detail: string, userIds: number[]) => {
     const recipients = [...new Set(userIds)];
     if (recipients.length === 0) return;
     try {
-      if (cachedTenantId === undefined) {
-        const [r] = await ctx.executor
-          .select({ tenantId: workflowInstances.tenantId })
-          .from(workflowInstances)
-          .where(eq(workflowInstances.id, ctx.instanceId))
-          .limit(1);
-        cachedTenantId = r?.tenantId ?? null;
-      }
       await notifyWithin(ctx.executor, 'workflow.node.exception', {
         recipients: recipients.map((id) => ({ type: 'user' as const, id })),
         vars: { instanceId: ctx.instanceId, node: nodeName, detail },
-        tenantId: cachedTenantId,
+        tenantId: ctx.tenantId,
         subjectRefs: [{ type: 'workflow.instance', key: String(ctx.instanceId), role: 'primary' }],
         link: `/workflow/applications?instanceId=${ctx.instanceId}`,
       });
@@ -85,8 +76,8 @@ async function expandTasksToRows(
   return expandRuntimeTasks(tasks, {
     instanceId: ctx.instanceId, initiatorId: ctx.initiatorId, flowData: ctx.flowData,
     ports: {
-      resolve: config => resolveAssigneeIds(config, { initiatorId: ctx.initiatorId, executor: ctx.executor, formData: ctx.formData, instanceId: ctx.instanceId, selectedNextApprovers: ctx.selectedNextApprovers?.[config.key], deptTree }),
-      admin: () => resolveAdminUserId(ctx.executor),
+      resolve: config => resolveAssigneeIds(config, { initiatorId: ctx.initiatorId, tenantId: ctx.tenantId, executor: ctx.executor, formData: ctx.formData, instanceId: ctx.instanceId, selectedNextApprovers: ctx.selectedNextApprovers?.[config.key], deptTree }),
+      admin: () => resolveAdminUserId(ctx.tenantId, ctx.executor),
       applyPolicy: (task, ids) => applyAssigneeRuntimeStrategies(task, ids, ctx),
       delegate: applyDelegations, notifyException: notifyNodeException,
       now: () => new Date(), random: Math.random, callbackId: () => randomBytes(16).toString('hex'),
@@ -209,7 +200,7 @@ export async function advanceAndMaterialize(
       const [token] = await exec.insert(workflowTokens).values({ instanceId: ctx.instanceId, nodeKey: spec.nodeKey, status: 'active', branchPath: spec.branchPath, parentTokenId: spec.parentTokenId, scopeKey: ctx.scopeKey ?? null, tenantId: ctx.tenantId ?? null }).returning();
       return token.id;
     },
-    expand: tasks => expandTasksToRows(tasks, ctx),
+    expand: tasks => expandTasksToRows(tasks, { ...ctx, tenantId: ctx.tenantId ?? null }),
     materialize: async (taskRows, tokens) => {
       const createdTasks: typeof workflowTasks.$inferSelect[] = [];
       const rowsByNode = new Map<string, ExpandedTaskRow[]>();

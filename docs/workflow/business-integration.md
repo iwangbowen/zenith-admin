@@ -39,7 +39,7 @@
 | `startWorkflowForBiz` | 保存业务数据后发起流程，并写入 `bizType`、`bizId`、路由变量和优先级 |
 | `onWorkflowResult` | 监听指定 `bizType` 的创建、通过、驳回、撤回事件，回写业务状态 |
 | `getWorkflowStatusByBiz` | 按业务键批量查询工作流状态（每个 bizId 取最新一条实例） |
-| `resolveBizDefinitionId` | 按名称、已发布状态和表单类型解析定义；多条匹配时选 ID 最大的定义并记录警告 |
+| `resolveBizDefinitionId` | 按业务租户、名称、已发布状态和表单类型解析定义，多条匹配时选 ID 最大的定义并记录警告 |
 
 幂等与重新发起语义：
 
@@ -140,6 +140,8 @@ export function registerBizLeaveSubscribers() {
 保存、提交、重新编辑和审批结果变化后，业务详情、列表和流程上下文应一起刷新。预览失败应在流程区域显示可重试的错误，不能伪装成空审批链。
 
 ## 参考实现
+
+请假示例在申请人和请假单租户范围内提交与更新关联。请假审批的定义与活跃实例按请假单租户定位。
 
 内置两条 `external` 流程统一在 `packages/shared/src/seed/workflow.ts` 定义，DB 初始化与 Demo 的流程配置、路由变量和快照同源：
 

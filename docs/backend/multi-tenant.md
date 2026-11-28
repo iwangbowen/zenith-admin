@@ -31,8 +31,11 @@ JWT 可携带 `viewingTenantId`。平台超管未指定租户视角时可以查�
 | `getCreateTenantId(user)` | 写入数据时计算 `tenantId` |
 | `tenantScope(table)` | 基于 `currentUser()` 的零参上下文生成查询条件 |
 | `currentCreateTenantId()` | 基于 `currentUser()` 的零参上下文计算创建租户 |
+| `exactTenantCondition(column, tenantId)` | 匹配已确认的资源归属。`null` 匹配平台记录 |
 
 Service、导出定义和后台任务应优先复用这些工具，避免手写 `tenant_id` 过滤。
+
+请求视角决定可访问的资源。关联和后台处理从已授权的资源记录取得业务租户，例如用设备租户校验分组、用流程定义租户读取表单版本、用同步源租户读取身份源。平台超管在全局视角操作资源时，关联对象仍须满足该资源的归属规则。
 
 ## 创建和查询语义
 

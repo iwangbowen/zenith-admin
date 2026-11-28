@@ -425,6 +425,7 @@ export const syncIdentityProviderUsersSchema = z.object({
 
 export const enterpriseLdapLoginSchema = z.object({
   providerId: z.number().int().positive(),
+  tenantCode: z.string().max(50).optional(),
   username: z.string().min(1, '请输入目录账号').max(128),
   password: z.string().min(1, '请输入目录密码').max(512),
   redirectTo: z.string().max(512).nullable().optional(),
