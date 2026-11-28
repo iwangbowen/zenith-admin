@@ -19,6 +19,7 @@ import type {
 } from '@zenith/shared/messaging';
 import type { MonitorAlertNotifyStatus } from '@zenith/shared/platform';
 import { db } from '../db';
+import type { DbExecutor } from '../db/types';
 import { notificationDispatches, users } from '../db/schema';
 import logger from './logger';
 import { buildWhere } from './where-helpers';
@@ -69,6 +70,10 @@ export interface AlertDispatchResult {
   error: string | null;
 }
 
+export type QueuedAlertDispatch =
+  | { result: AlertDispatchResult }
+  | { outboxId: number; channels: NotificationChannel[]; logTag: string };
+
 const SUPPORTED_CHANNELS: readonly string[] = ['inapp', 'email', 'webhook', 'chat'];
 
 function isSupportedChannel(value: string): value is NotificationChannel {
@@ -81,7 +86,7 @@ function isSupportedChannel(value: string): value is NotificationChannel {
  * 新模型直接使用稳定用户 ID；尚未迁移的告警域仍可传邮箱 / 用户名标识。
  * 停用账号不再接收告警。租户为空的平台级规则不限制租户范围。
  */
-async function resolveRecipientUserIds(target: AlertDispatchTarget): Promise<number[]> {
+async function resolveRecipientUserIds(executor: DbExecutor, target: AlertDispatchTarget): Promise<number[]> {
   const userIds = uniquePositiveInts(target.recipientUserIds);
   const identifiers = [...new Set((target.recipients ?? []).map((recipient) => recipient.trim()).filter(Boolean))];
   const recipientConditions: SQL[] = [];
@@ -91,7 +96,7 @@ async function resolveRecipientUserIds(target: AlertDispatchTarget): Promise<num
   }
   if (recipientConditions.length === 0) return [];
 
-  const rows = await db
+  const rows = await executor
     .select({ id: users.id })
     .from(users)
     .where(buildWhere(
@@ -151,24 +156,20 @@ async function summarizeDispatch(
   };
 }
 
-/**
- * 按配置的渠道派发一条告警通知。
- *
- * 单个渠道失败不影响其他渠道；失败会记日志并反映在返回值里，但不抛出——
- * 告警评估器的状态机推进不应该因为下游通知不可用而中断。
- */
-export async function dispatchAlertChannels<K extends NotificationEventKey>(
+/** 解析接收人和渠道，在调用方的事务中登记通知意图。 */
+export async function enqueueAlertWithin<K extends NotificationEventKey>(
+  executor: DbExecutor,
   target: AlertDispatchTarget,
   payload: AlertDispatchPayload<K>,
-): Promise<AlertDispatchResult> {
+): Promise<QueuedAlertDispatch> {
   const channels = [...new Set((target.channels ?? []).filter(isSupportedChannel))];
   if (channels.length === 0) {
-    return { status: 'skipped', channels: [], error: null };
+    return { result: { status: 'skipped', channels: [], error: null } };
   }
 
   const recipients: NotificationRecipient[] = [];
   if (channels.includes('inapp') || channels.includes('email') || channels.includes('chat')) {
-    const userIds = await resolveRecipientUserIds(target);
+    const userIds = await resolveRecipientUserIds(executor, target);
     recipients.push(...userIds.map((id) => ({ type: 'user' as const, id })));
   }
   if (channels.includes('email')) {
@@ -185,10 +186,10 @@ export async function dispatchAlertChannels<K extends NotificationEventKey>(
   }
 
   if (recipients.length === 0) {
-    return { status: 'failed', channels, error: '没有匹配到任何可投递的接收人' };
+    return { result: { status: 'failed', channels, error: '没有匹配到任何可投递的接收人' } };
   }
 
-  const outboxId = await notifyWithin(db, payload.eventKey, {
+  const outboxId = await notifyWithin(executor, payload.eventKey, {
     recipients,
     vars: payload.vars,
     tenantId: target.tenantId,
@@ -202,9 +203,21 @@ export async function dispatchAlertChannels<K extends NotificationEventKey>(
   });
   // 幂等键命中：同一次触发已经派发过，重复调用不应该被记成失败
   if (outboxId === null) {
-    return { status: 'success', channels, error: null };
+    return { result: { status: 'success', channels, error: null } };
   }
 
-  await processNotificationOutbox(outboxId);
-  return summarizeDispatch(outboxId, channels, payload.logTag);
+  return { outboxId, channels, logTag: payload.logTag };
+}
+
+export async function dispatchQueuedAlert(queued: QueuedAlertDispatch): Promise<AlertDispatchResult> {
+  if ('result' in queued) return queued.result;
+  await processNotificationOutbox(queued.outboxId);
+  return summarizeDispatch(queued.outboxId, queued.channels, queued.logTag);
+}
+
+export async function dispatchAlertChannels<K extends NotificationEventKey>(
+  target: AlertDispatchTarget,
+  payload: AlertDispatchPayload<K>,
+): Promise<AlertDispatchResult> {
+  return dispatchQueuedAlert(await enqueueAlertWithin(db, target, payload));
 }

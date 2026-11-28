@@ -75,7 +75,10 @@ export async function startApiRole(): Promise<ApiRoleHandle> {
     .then(([users, members]) => { if (users + members > 0) logger.info(`[session] owner index rebuilt: ${users} admin / ${members} member sessions`); })
     .catch((err) => logger.warn('[session] owner index rebuild failed', err));
   // 纯 api 进程每分钟自查 worker 心跳：worker 全部下线时评估器已停，只有这里还能发出「worker 缺失」告警
-  startWorkerWatchdog();
+  startWorkerWatchdog(async () => {
+    const { evaluateMonitorAlerts } = await import('../services/platform/monitor-alert.service');
+    await evaluateMonitorAlerts({ workerWatchdog: true });
+  });
 
   // 终端会话持久化：先接生命周期回调，再结算上一轮遗留记录，最后启动活跃时间回写。
   // PTY 进程随本进程存在，只有 api 角色需要；独立 try/catch 以免失败牵连其他启动步骤。

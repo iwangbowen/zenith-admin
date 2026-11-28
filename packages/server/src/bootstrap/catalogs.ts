@@ -2,6 +2,7 @@
 import { registerImportDefinitions } from './import-definitions';
 import { registerExportDefinitions } from './export-definitions';
 import { registerJobSources } from './job-monitor-sources';
+import { registerMonitorMetricSources } from './monitor-metric-sources';
 import { sealImportRegistry } from '../lib/import-center/registry';
 import { sealExportRegistry } from '../lib/export-center/registry';
 import { sealJobSourceRegistry } from '../lib/job-monitor/registry';
@@ -22,6 +23,7 @@ export function declareApplicationCatalogs(): void {
   registerImportDefinitions();
   registerExportDefinitions();
   registerJobSources();
+  registerMonitorMetricSources();
   sealImportRegistry();
   sealExportRegistry();
   sealJobSourceRegistry();

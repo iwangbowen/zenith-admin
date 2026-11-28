@@ -107,8 +107,6 @@
 - `analyticsRollupDaily`
 - `analyticsSegmentRefresh`
 - `evaluateErrorAlerts`
-- `sampleSystemMetrics`
-- `evaluateMonitorAlerts`
 - `dispatchReportSubscriptions`
 - `refreshReportMaterializations`
 - `dispatchReportAlerts`
@@ -153,6 +151,8 @@
 | `export-file-cleanup` | 导出文件自动清理 | 导出中心 | `0 3 * * *` |
 | `async-tasks-drain` | 异步任务兜底扫描 | 任务中心 | `* * * * *` |
 | `scheduler-node-queue-gc` | 下线节点队列回收 | 任务中心 | `*/10 * * * *` |
+| `monitor-metrics-persist` | 系统指标与采样落库 | 系统监控 | `* * * * *` |
+| `monitor-alert-evaluate` | 监控告警评估 | 系统监控 | `* * * * *` |
 | `workflow-schedule-tick` | 工作流定时发起扫描 | 工作流 | `* * * * *` |
 | `workflow-jobs-drain` | 工作流作业兜底扫描 | 工作流 | `* * * * *` |
 | `workflow-engine-health-capture` | 流程引擎健康采集 | 工作流 | `*/5 * * * *` |

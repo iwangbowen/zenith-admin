@@ -1,10 +1,10 @@
 /**
  * 系统监控告警：规则 CRUD + 阈值评估器 + 多通道派发。
- * 评估器由 pg-boss 定时任务（默认每 30 秒）调用，针对指标即时值判定阈值，
+ * 评估器由系统调度每分钟调用，针对指标即时值判定阈值，
  * 支持「持续 N 分钟超阈才触发」抑制毛刺，并在指标恢复后自动解除告警。
  *
  * 指标全集与标签/单位/租户口径由 `@zenith/shared/platform` 的 MONITOR_METRIC_META 单点定义，
- * 取值由 `monitor-history.service` 汇总各域的告警指标源；新增指标不需要改动本文件。
+ * 指标由启动装配注册，按本轮启用的规则读取。
  */
 import { and, eq, desc, gte, inArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
@@ -20,10 +20,12 @@ import { buildWhere, dateRangeConditions, keywordCondition, withPagination } fro
 import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { requireFirstRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
-import { getMetricSnapshotsByTenant } from './monitor-history.service';
+import { collectMonitorMetrics } from './monitor-alert-metrics';
 import { validateAlertDelivery } from '../../lib/alert-validation';
-import { dispatchAlertChannels, type AlertDispatchResult } from '../../lib/alert-dispatch';
-import type { DbExecutor } from '../../db/types';
+import { dispatchAlertChannels, dispatchQueuedAlert, enqueueAlertWithin, type AlertDispatchResult, type QueuedAlertDispatch } from '../../lib/alert-dispatch';
+import { countActiveWorkerNodes } from '../../lib/pg-boss-scheduler';
+import logger from '../../lib/logger';
+import type { DbExecutor, DbTransaction } from '../../db/types';
 import { localDate } from "../../lib/datetime-sql";
 
 const OPERATOR_SYMBOL: Record<MonitorAlertOperator, string> = { gt: '>', gte: '≥', lt: '<', lte: '≤' };
@@ -453,14 +455,18 @@ export async function handleEvents(ids: number[], input: HandleMonitorAlertEvent
 }
 
 // ─── 派发 ────────────────────────────────────────────────────────────────
-async function dispatchAlert(
+function enqueueAlert(
+  executor: DbExecutor,
   rule: MonitorAlertRuleRow,
   message: string,
-  recovered: boolean,
-  triggeredAt: number,
-): Promise<AlertDispatchResult> {
+  transition: 'fired' | 'renotified' | 'resolved',
+  eventId: number | null,
+  at: Date,
+): Promise<QueuedAlertDispatch> {
+  const recovered = transition === 'resolved';
   const tag = recovered ? '已恢复' : '告警';
-  return dispatchAlertChannels(
+  return enqueueAlertWithin(
+    executor,
     {
       channels: rule.channels ?? [],
       webhookUrl: rule.webhookUrl,
@@ -473,14 +479,14 @@ async function dispatchAlert(
       vars: { ruleName: rule.name, tag, message },
       html: `<h3>系统监控${tag}</h3><p><b>规则：</b>${rule.name}</p><p><b>详情：</b>${message}</p><p>请前往后台「监控告警 / 告警记录」查看处理。</p>`,
       inAppType: recovered ? 'resolved' : rule.level === 'critical' ? 'error' : rule.level === 'info' ? 'info' : 'warning',
-      dedupeKey: `monitor-alert:${rule.id}:${recovered ? 'resolved' : 'firing'}:${triggeredAt}`,
+      dedupeKey: `monitor-alert:${rule.id}:${eventId ?? 'none'}:${transition}:${at.getTime()}`,
       webhookBody: {
         type: recovered ? 'monitor_recovered' : 'monitor_alert',
         rule: rule.name,
         metric: rule.metric,
         level: rule.level,
         message,
-        timestamp: formatDateTime(new Date(triggeredAt)),
+        timestamp: formatDateTime(at),
       },
       logTag: 'MonitorAlert',
     },
@@ -488,24 +494,24 @@ async function dispatchAlert(
 }
 
 /** 把真实派发结果落到事件行上，供告警事件列表展示「有没有通知到人」 */
-async function recordNotifyResult(eventId: number, result: AlertDispatchResult, at: Date): Promise<void> {
+async function recordNotifyResult(eventId: number, eventStatus: 'firing' | 'resolved', result: AlertDispatchResult): Promise<void> {
   await db
     .update(monitorAlertEvents)
     .set({
       notifyStatus: result.status,
       notifyChannels: result.channels,
       notifyError: result.error,
-      notifiedAt: at,
+      notifiedAt: new Date(),
     })
-    .where(eq(monitorAlertEvents.id, eventId));
+    .where(and(eq(monitorAlertEvents.id, eventId), eq(monitorAlertEvents.status, eventStatus)));
 }
 
 /**
  * 定位规则当前未恢复的事件。
  * 重复通知与恢复通知都不新建事件，其投递结果需要回写到这条正在告警的事件上。
  */
-async function findFiringEventId(ruleId: number): Promise<number | null> {
-  const [row] = await db
+async function findFiringEventId(executor: DbExecutor, ruleId: number): Promise<number | null> {
+  const [row] = await executor
     .select({ id: monitorAlertEvents.id })
     .from(monitorAlertEvents)
     .where(and(eq(monitorAlertEvents.ruleId, ruleId), eq(monitorAlertEvents.status, 'firing')))
@@ -648,104 +654,124 @@ export async function getAlertOverview(range: MonitorAlertOverviewRange): Promis
   };
 }
 
-// ─── 评估器（cron）─────────────────────────────────────────────────────────
+// ─── 评估器（系统调度与 API 兜底）─────────────────────────────────────────────────────────
 export interface EvaluateMonitorAlertsOptions {
-  /**
-   * 只评估这些指标的规则。api 进程的 worker watchdog 用它在 worker 全部下线时只评估 `schedulerWorkerNodes`——
-   * 此时 cron 评估器（跑在 worker 上）已停，而其他指标仍应留给 worker 侧评估，避免两处并发改同一条规则的状态。
-   */
   metrics?: readonly MonitorMetric[];
+  /** API 侧只处理 Worker 缺失，恢复时交回 Worker 的周期评估。 */
+  workerWatchdog?: boolean;
+}
+
+interface AlertTransition {
+  kind: 'fired' | 'renotified' | 'resolved';
+  eventId: number | null;
+  queued: QueuedAlertDispatch;
+}
+
+async function applyMetricObservation(
+  tx: DbTransaction,
+  rule: MonitorAlertRuleRow,
+  value: number,
+  at: Date,
+): Promise<AlertTransition | null> {
+  const ruleWhere = eq(monitorAlertRules.id, rule.id);
+  const breaching = compareNumber(value, rule.operator, rule.threshold);
+  const breachingSince = rule.breachingSince ?? at;
+  const durationReached = at.getTime() - breachingSince.getTime() >= rule.durationMinutes * 60_000;
+  const label = metricLabel(rule.metric);
+  const readableValue = formatMonitorMetricValue(rule.metric, value);
+  const readableThreshold = formatMonitorMetricValue(rule.metric, rule.threshold);
+
+  if (breaching && rule.state !== 'firing' && durationReached) {
+    const message = `${label} 当前 ${readableValue}，已满足条件 ${OPERATOR_SYMBOL[rule.operator]} ${readableThreshold}`
+      + (rule.durationMinutes > 0 ? `（持续 ${rule.durationMinutes} 分钟）` : '');
+    const [event] = await tx.insert(monitorAlertEvents).values({
+      tenantId: rule.tenantId,
+      ruleId: rule.id,
+      ruleName: rule.name,
+      metric: rule.metric,
+      level: rule.level,
+      operator: rule.operator,
+      threshold: rule.threshold,
+      value,
+      status: 'firing',
+      message,
+    }).returning({ id: monitorAlertEvents.id });
+    await tx.update(monitorAlertRules)
+      .set({ state: 'firing', breachingSince, lastTriggeredAt: at, lastValue: value })
+      .where(ruleWhere);
+    return { kind: 'fired', eventId: event.id, queued: await enqueueAlert(tx, rule, message, 'fired', event.id, at) };
+  }
+
+  const silenceMs = rule.silenceMinutes * 60_000;
+  if (breaching && rule.state === 'firing' && silenceMs > 0 && rule.lastTriggeredAt
+      && at.getTime() - rule.lastTriggeredAt.getTime() >= silenceMs) {
+    const message = `${label} 持续告警，当前 ${readableValue}（阈值 ${OPERATOR_SYMBOL[rule.operator]} ${readableThreshold}）`;
+    const eventId = await findFiringEventId(tx, rule.id);
+    await tx.update(monitorAlertRules).set({ lastTriggeredAt: at, lastValue: value }).where(ruleWhere);
+    return { kind: 'renotified', eventId, queued: await enqueueAlert(tx, rule, message, 'renotified', eventId, at) };
+  }
+
+  if (!breaching && rule.state === 'firing') {
+    const message = `${label} 已恢复，当前 ${readableValue}`;
+    const eventId = await findFiringEventId(tx, rule.id);
+    await resolveActiveRuleEvents(tx, rule.id, at);
+    await tx.update(monitorAlertRules)
+      .set({ state: 'ok', breachingSince: null, lastValue: value })
+      .where(ruleWhere);
+    return { kind: 'resolved', eventId, queued: await enqueueAlert(tx, rule, message, 'resolved', eventId, at) };
+  }
+
+  await tx.update(monitorAlertRules).set({
+    lastValue: value,
+    ...(rule.state === 'firing' ? {} : { breachingSince: breaching ? breachingSince : null }),
+  }).where(ruleWhere);
+  return null;
+}
+
+async function finishAlertDispatch(transition: AlertTransition): Promise<void> {
+  const { queued, eventId, kind } = transition;
+  try {
+    // The initiating process can deliver immediately, even while all Workers are offline.
+    const result = await dispatchQueuedAlert(queued);
+    if (eventId !== null) await recordNotifyResult(eventId, kind === 'resolved' ? 'resolved' : 'firing', result);
+  } catch (err) {
+    logger.error('[MonitorAlert] 告警通知派发或结果回写失败', { eventId, err });
+  }
 }
 
 export async function evaluateMonitorAlerts(options: EvaluateMonitorAlertsOptions = {}): Promise<{ evaluated: number; fired: number; resolved: number }> {
-  const rules = (await db.select().from(monitorAlertRules).where(eq(monitorAlertRules.enabled, true)))
-    .filter((rule) => !options.metrics || options.metrics.includes(rule.metric as MonitorMetric));
+  const metrics = options.workerWatchdog ? ['schedulerWorkerNodes'] as const : options.metrics;
+  const rules = await db.select().from(monitorAlertRules).where(buildWhere(
+    eq(monitorAlertRules.enabled, true),
+    metrics ? inArray(monitorAlertRules.metric, metrics) : undefined,
+  ));
   if (rules.length === 0) return { evaluated: 0, fired: 0, resolved: 0 };
 
-  // 按规则所属租户取快照：业务指标按租户过滤，宿主机 / 平台级指标共享同一次取数
-  const snapshots = await getMetricSnapshotsByTenant(rules.map((rule) => rule.tenantId));
-  const now = Date.now();
+  const snapshots = await collectMonitorMetrics(rules.map(({ metric, tenantId }) => ({ metric, tenantId })));
   let evaluated = 0;
   let fired = 0;
   let resolved = 0;
 
   for (const rule of rules) {
-    const snapshot = snapshots.get(rule.tenantId);
-    // 该租户本轮取数失败：跳过而不是按 0 处理，避免把采集故障误判成「指标已恢复」
-    if (!snapshot) continue;
-    const metric = rule.metric as MonitorMetric;
-    const rawValue = snapshot[metric];
-    if (rawValue === null || rawValue === undefined || !Number.isFinite(rawValue)) continue;
+    const value = snapshots.get(rule.tenantId)?.[rule.metric];
+    if (value == null) continue;
+
+    const result = await db.transaction(async (tx) => {
+      const [current] = await tx.select().from(monitorAlertRules)
+        .where(and(eq(monitorAlertRules.id, rule.id), eq(monitorAlertRules.enabled, true))).for('update');
+      if (!current || current.tenantId !== rule.tenantId || current.metric !== rule.metric) return null;
+
+      // The heartbeat may have changed while waiting for another API or Worker to release the rule.
+      const currentValue = current.metric === 'schedulerWorkerNodes' ? await countActiveWorkerNodes(tx) : value;
+      if (options.workerWatchdog && currentValue !== 0) return null;
+      return { transition: await applyMetricObservation(tx, current, currentValue, new Date()) };
+    });
+    if (!result) continue;
     evaluated += 1;
-    const value = rawValue;
-    const breaching = compareNumber(value, rule.operator as MonitorAlertOperator, rule.threshold);
-    const label = metricLabel(metric);
-    const sym = OPERATOR_SYMBOL[rule.operator as MonitorAlertOperator];
-
-    if (breaching) {
-      const breachingSince = rule.breachingSince ?? new Date(now);
-      const sustainedMs = now - breachingSince.getTime();
-      const durationOk = rule.durationMinutes <= 0 || sustainedMs >= rule.durationMinutes * 60_000;
-
-      if (rule.state !== 'firing' && durationOk) {
-        // 触发新告警
-        const message = `${label} 当前 ${formatMonitorMetricValue(metric, value)}，已满足条件 ${sym} ${formatMonitorMetricValue(metric, rule.threshold)}`
-          + (rule.durationMinutes > 0 ? `（持续 ${rule.durationMinutes} 分钟）` : '');
-        const [event] = await db.insert(monitorAlertEvents).values({
-          tenantId: rule.tenantId,
-          ruleId: rule.id,
-          ruleName: rule.name,
-          metric: rule.metric,
-          level: rule.level,
-          operator: rule.operator,
-          threshold: rule.threshold,
-          value,
-          status: 'firing',
-          message,
-        }).returning({ id: monitorAlertEvents.id });
-        await db.update(monitorAlertRules)
-          .set({ state: 'firing', breachingSince, lastTriggeredAt: new Date(now), lastValue: value })
-          .where(eq(monitorAlertRules.id, rule.id));
-        // 先建事件再派发：拿到 id 才能把真实投递结果写回这一行
-        await recordNotifyResult(event.id, await dispatchAlert(rule, message, false, now), new Date());
-        fired += 1;
-      } else if (rule.state === 'firing') {
-        // 已在告警中：静默期后重复通知
-        const silenceMs = rule.silenceMinutes * 60_000;
-        const shouldRenotify = rule.silenceMinutes > 0 && rule.lastTriggeredAt && now - rule.lastTriggeredAt.getTime() >= silenceMs;
-        if (shouldRenotify) {
-          const message = `${label} 持续告警，当前 ${formatMonitorMetricValue(metric, value)}（阈值 ${sym} ${formatMonitorMetricValue(metric, rule.threshold)}）`;
-          await db.update(monitorAlertRules).set({ lastTriggeredAt: new Date(now), lastValue: value }).where(eq(monitorAlertRules.id, rule.id));
-          const eventId = await findFiringEventId(rule.id);
-          const result = await dispatchAlert(rule, message, false, now);
-          if (eventId !== null) await recordNotifyResult(eventId, result, new Date());
-        } else {
-          await db.update(monitorAlertRules).set({ lastValue: value }).where(eq(monitorAlertRules.id, rule.id));
-        }
-      } else {
-        // 处于观察期（未达 duration）：仅记录起始时间与当前值
-        await db.update(monitorAlertRules).set({ breachingSince, lastValue: value }).where(eq(monitorAlertRules.id, rule.id));
-      }
-    } else {
-      // 未超阈
-      if (rule.state === 'firing') {
-        const message = `${label} 已恢复，当前 ${formatMonitorMetricValue(metric, value)}`;
-        // 恢复通知的投递结果仍要落到这条事件上，因此先取 id 再关闭
-        const eventId = await findFiringEventId(rule.id);
-        await db.update(monitorAlertEvents)
-          .set({ status: 'resolved', resolvedAt: new Date(now) })
-          .where(and(eq(monitorAlertEvents.ruleId, rule.id), eq(monitorAlertEvents.status, 'firing')));
-        await db.update(monitorAlertRules)
-          .set({ state: 'ok', breachingSince: null, lastValue: value })
-          .where(eq(monitorAlertRules.id, rule.id));
-        const result = await dispatchAlert(rule, message, true, now);
-        if (eventId !== null) await recordNotifyResult(eventId, result, new Date());
-        resolved += 1;
-      } else if (rule.breachingSince !== null) {
-        await db.update(monitorAlertRules).set({ breachingSince: null, lastValue: value }).where(eq(monitorAlertRules.id, rule.id));
-      } else {
-        await db.update(monitorAlertRules).set({ lastValue: value }).where(eq(monitorAlertRules.id, rule.id));
-      }
+    if (result.transition) {
+      if (result.transition.kind === 'fired') fired += 1;
+      if (result.transition.kind === 'resolved') resolved += 1;
+      await finishAlertDispatch(result.transition);
     }
   }
 

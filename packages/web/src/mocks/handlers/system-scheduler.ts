@@ -1,4 +1,4 @@
-import { systemSchedulerContract } from '@zenith/shared/platform';
+import { MONITOR_SYSTEM_TASKS, systemSchedulerContract } from '@zenith/shared/platform';
 import { mock } from '@/mocks/utils/contract';
 import { requireItem } from '@/mocks/utils/crud';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
@@ -55,6 +55,7 @@ function baseTask(extra: Partial<SystemSchedulerTask>): SystemSchedulerTask {
 }
 
 const tasks: SystemSchedulerTask[] = [
+  ...Object.values(MONITOR_SYSTEM_TASKS).map(task => baseTask({ ...task, nextRunAt: mockDateTimeOffset(60_000) })),
   baseTask({
     name: 'export-file-cleanup',
     title: '导出文件自动清理',

@@ -490,6 +490,26 @@ export const PROCESS_ROLE_LABELS: Record<ProcessRole, string> = {
 
 export const SYSTEM_SCHEDULER_TASK_TYPES = ['recurring', 'queue'] as const;
 
+export const MONITOR_SYSTEM_TASKS = {
+  sampling: {
+    name: 'monitor-metrics-persist',
+    title: '系统指标与采样落库',
+    module: '系统监控',
+    cronExpression: '* * * * *',
+    description: '每分钟将系统指标快照、pg_stat_statements Top SQL 采样与 WebSocket 连接趋势采样落库；SQL 采样间隔由「SQL 监控」设置控制。',
+    allowManualRun: true,
+  },
+  alerts: {
+    name: 'monitor-alert-evaluate',
+    title: '监控告警评估',
+    module: '系统监控',
+    cronExpression: '* * * * *',
+    description: '每分钟评估启用的监控告警规则，记录触发、持续和恢复状态。',
+    allowManualRun: true,
+    manualSingleton: true,
+  },
+} as const;
+
 export type SystemSchedulerTaskType = (typeof SYSTEM_SCHEDULER_TASK_TYPES)[number];
 
 export const SYSTEM_SCHEDULER_RUN_STATUSES = ['running', 'success', 'failed'] as const;

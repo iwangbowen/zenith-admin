@@ -4,6 +4,7 @@ import { getImportDefinition, registerImport } from '../lib/import-center/regist
 import { getExportDefinition, listExportDefinitions, registerExport } from '../lib/export-center/registry';
 import { getJobSource, listJobSources, registerJobSource } from '../lib/job-monitor/registry';
 import { getTaskHandler } from '../lib/task-center/registry';
+import { registerMonitorMetricSource } from '../services/platform/monitor-alert-metrics';
 
 describe('role-independent application catalogs', () => {
   it('declares worker import/export and monitor capabilities without loading HTTP routes', () => {
@@ -28,5 +29,6 @@ describe('role-independent application catalogs', () => {
     expect(() => registerExport(getExportDefinition('system.users'))).toThrow('冻结');
     expect(() => registerImport(getImportDefinition('identity.users'))).toThrow('冻结');
     expect(() => registerJobSource(getJobSource('async-task')!)).toThrow('冻结');
+    expect(() => registerMonitorMetricSource({ scope: 'global', metrics: ['cpu'], read: () => ({ cpu: 0 }) })).toThrow('冻结');
   });
 });

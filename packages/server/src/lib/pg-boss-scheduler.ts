@@ -16,6 +16,7 @@ import { uniquePositiveInts } from '@zenith/shared/core';
 import { PgBoss, type JobWithMetadata, type Queue, type QueueOptions, type SendOptions, type Warning } from 'pg-boss';
 import { eq, and, gte, inArray, isNull, or, desc, notInArray, sql, type SQL } from 'drizzle-orm';
 import { db } from '../db';
+import type { DbExecutor } from '../db/types';
 import { cronJobs, cronJobLogs, dbBackups, systemSchedulerNodes, systemSchedulerRuns, systemSchedulerTaskConfigs, users } from '../db/schema';
 import logger from './logger';
 import { createPgDumpBackup, createDrizzleExportBackup } from './db-backup';
@@ -791,19 +792,6 @@ handlerRegistry.set('evaluateErrorAlerts', async () => {
   return `错误告警评估：规则 ${r.evaluated} 条，触发 ${r.triggered} 条`;
 });
 
-handlerRegistry.set('sampleSystemMetrics', async () => {
-  const { persistMetricSample } = await import('../services/platform/monitor-history.service');
-  const result = await persistMetricSample();
-  if (!result.systemMetricStored && result.sqlQuerySamples === 0 && !result.wsTrendStored) return '采样器未预热或 pg_stat_statements 不可用，跳过';
-  return `已记录系统指标采样${result.systemMetricStored ? '' : '（系统指标未预热）'}，SQL 查询 ${result.sqlQuerySamples} 条，WS 趋势 ${result.wsTrendStored ? 1 : 0} 条`;
-});
-
-handlerRegistry.set('evaluateMonitorAlerts', async () => {
-  const { evaluateMonitorAlerts } = await import('../services/platform/monitor-alert.service');
-  const r = await evaluateMonitorAlerts();
-  return `监控告警评估：规则 ${r.evaluated} 条，触发 ${r.fired} 条，恢复 ${r.resolved} 条`;
-});
-
 handlerRegistry.set('dispatchReportSubscriptions', async () => {
   const { dispatchDueSubscriptions } = await import('../services/report/report-subscription.service');
   const r = await dispatchDueSubscriptions();
@@ -1109,9 +1097,9 @@ export async function isSchedulerNodeAlive(nodeId: string): Promise<boolean> {
  * 近期仍有心跳的 worker 角色进程数——「投递的作业有没有人执行」的判据。
  * 供 /api/health 的 workers 检查、监控指标 schedulerWorkerNodes 与 api 侧 watchdog 共用。
  */
-export async function countActiveWorkerNodes(): Promise<number> {
+export async function countActiveWorkerNodes(executor: DbExecutor = db): Promise<number> {
   const staleBefore = new Date(Date.now() - CRON_HEALTH_RULES.schedulerHeartbeatStaleMs);
-  return db.$count(systemSchedulerNodes, and(
+  return executor.$count(systemSchedulerNodes, and(
     eq(systemSchedulerNodes.active, true),
     gte(systemSchedulerNodes.lastHeartbeatAt, staleBefore),
     sql`${systemSchedulerNodes.roles} @> ARRAY['worker']::process_role[]`,

@@ -1,4 +1,5 @@
 import logger from '../lib/logger';
+import { MONITOR_SYSTEM_TASKS } from '@zenith/shared/platform';
 import { registerSystemRecurringJob } from '../lib/pg-boss-scheduler';
 
 /**
@@ -78,18 +79,22 @@ export async function registerSystemTasks(): Promise<void> {
     },
   });
 
-  const { persistMetricSample } = await import('../services/platform/monitor-history.service');
+  const { persistMetricSample } = await import('../services/platform/monitor-sampling.service');
   await registerSystemRecurringJob({
-    name: 'monitor-metrics-persist',
-    title: '系统指标与采样落库',
-    module: '系统监控',
-    cronExpression: '* * * * *',
-    description: '每分钟将系统指标快照、pg_stat_statements Top SQL 采样与 WebSocket 连接趋势采样落库；SQL 采样间隔由「SQL 监控」设置控制。',
-    allowManualRun: true,
+    ...MONITOR_SYSTEM_TASKS.sampling,
     run: async () => {
       const result = await persistMetricSample();
       if (!result.systemMetricStored && result.sqlQuerySamples === 0 && !result.wsTrendStored) return '本次无可用采样数据';
       return `已记录系统指标 ${result.systemMetricStored ? '1' : '0'} 条、SQL 查询 ${result.sqlQuerySamples} 条、WS 趋势 ${result.wsTrendStored ? '1' : '0'} 条`;
+    },
+  });
+
+  const { evaluateMonitorAlerts } = await import('../services/platform/monitor-alert.service');
+  await registerSystemRecurringJob({
+    ...MONITOR_SYSTEM_TASKS.alerts,
+    run: async () => {
+      const { evaluated, fired, resolved } = await evaluateMonitorAlerts();
+      return `规则 ${evaluated} 条，触发 ${fired} 条，恢复 ${resolved} 条`;
     },
   });
 

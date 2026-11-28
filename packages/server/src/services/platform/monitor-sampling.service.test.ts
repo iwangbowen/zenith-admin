@@ -18,14 +18,7 @@ vi.mock('../../lib/metrics-sampler', () => ({ metricsSampler: { getLatest: () =>
 vi.mock('../../lib/settings', () => ({ getSettings: async () => ({ enabled: false }) }));
 vi.mock('../../lib/logger', () => ({ default: { debug: vi.fn(), warn: vi.fn() } }));
 vi.mock('./monitor.service', () => ({ getDisks: vi.fn(), getLinuxMemInfo: vi.fn() }));
-vi.mock('../workflow/workflow-engine-ops.service', () => ({ getLatestEngineHealthMetrics: vi.fn() }));
-vi.mock('../workflow/workflow-jobs.service', () => ({ getWorkflowJobAlertMetrics: vi.fn() }));
-vi.mock('../payment/payment-alert-metrics.service', () => ({ getPaymentAlertMetrics: vi.fn() }));
-vi.mock('../open-platform/open-platform-alert-metrics.service', () => ({ getOpenPlatformAlertMetrics: vi.fn() }));
-vi.mock('./scheduler-alert-metrics.service', () => ({ getSchedulerAlertMetrics: vi.fn() }));
 vi.mock('./job-monitor-metrics.service', () => ({ getJobMonitorAlertMetrics: vi.fn() }));
-vi.mock('../analytics/session-replays.service', () => ({ getReplayStorageMbMetric: vi.fn() }));
-vi.mock('../../lib/log-metrics', () => ({ getLogAlertMetrics: vi.fn() }));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -76,7 +69,7 @@ async function worker(points: Array<[number, number]>) {
     state.snapshot.totalSent = sent;
     trend.recordWsTrendSample(t);
   }
-  const { persistMetricSample } = await import('./monitor-history.service');
+  const { persistMetricSample } = await import('./monitor-sampling.service');
   return { persistMetricSample, trend };
 }
 

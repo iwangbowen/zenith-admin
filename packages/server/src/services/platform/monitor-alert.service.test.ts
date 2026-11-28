@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MonitorAlertRuleRow } from '../../db/schema';
 import { monitorAlertEvents, monitorAlertRules } from '../../db/schema';
+import { PgDialect } from 'drizzle-orm/pg-core';
 
 vi.mock('../../db', () => {
   const db = {
     select: vi.fn(),
+    insert: vi.fn(),
     update: vi.fn(),
     // 单条规则响应要带上派生的事件数，走 $count；用例只关心事件关闭语义，统一给 0
     $count: vi.fn(),
@@ -18,12 +20,14 @@ vi.mock('../../lib/tenant', () => ({
   currentCreateTenantId: vi.fn(() => null),
 }));
 
-vi.mock('./monitor-history.service', () => ({
-  getMetricSnapshotsByTenant: vi.fn(),
+vi.mock('../../lib/pg-boss-scheduler', () => ({
+  countActiveWorkerNodes: vi.fn(),
 }));
 
 vi.mock('../../lib/alert-dispatch', () => ({
   dispatchAlertChannels: vi.fn(),
+  enqueueAlertWithin: vi.fn(),
+  dispatchQueuedAlert: vi.fn(),
 }));
 
 vi.mock('../../lib/context', () => ({
@@ -33,15 +37,16 @@ vi.mock('../../lib/context', () => ({
 
 import { db } from '../../db';
 import { evaluateMonitorAlerts, handleEvent, setRuleEnabled, setRulesEnabled, updateRule } from './monitor-alert.service';
-import { getMetricSnapshotsByTenant } from './monitor-history.service';
-import { dispatchAlertChannels } from '../../lib/alert-dispatch';
+import { registerMonitorMetricSource } from './monitor-alert-metrics';
+import { countActiveWorkerNodes } from '../../lib/pg-boss-scheduler';
+import { dispatchQueuedAlert, enqueueAlertWithin } from '../../lib/alert-dispatch';
 
 const dbMock = vi.mocked(db);
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function createChain(result: unknown[]): any {
   const chain: Record<string, unknown> = {};
-  for (const method of ['from', 'where', 'limit', 'set', 'returning']) {
+  for (const method of ['from', 'where', 'limit', 'set', 'returning', 'for', 'orderBy']) {
     chain[method] = vi.fn(() => chain);
   }
   chain.then = (resolve: (value: unknown) => unknown, reject?: (error: unknown) => unknown) =>
@@ -318,54 +323,95 @@ describe('handleEvent', () => {
   });
 });
 
-describe('evaluateMonitorAlerts 指标子集', () => {
-  it('作业指标采集失败时不触发也不恢复已有告警', async () => {
-    dbMock.select.mockReturnValueOnce(createChain([alertRule({ id: 21, metric: 'jobsStuck', state: 'firing', threshold: 0 })]));
-    vi.mocked(getMetricSnapshotsByTenant).mockResolvedValue(new Map([[null, { jobsStuck: null } as never]]));
+describe('evaluateMonitorAlerts', () => {
+  const cpu = vi.fn(() => ({ cpu: 10 }));
+  const job = vi.fn(() => ({ jobsStuck: 0 }));
+  const backlog = vi.fn(() => ({}));
+  registerMonitorMetricSource({ scope: 'global', metrics: ['cpu'], read: cpu });
+  registerMonitorMetricSource({ scope: 'global', metrics: ['jobsStuck'], read: job });
+  registerMonitorMetricSource({ scope: 'global', metrics: ['schedulerQueueBacklog'], read: backlog });
+  registerMonitorMetricSource({
+    scope: 'global', metrics: ['schedulerWorkerNodes'], read: async () => ({ schedulerWorkerNodes: await countActiveWorkerNodes() }),
+  });
+
+  const workerRule = alertRule({
+    id: 19, metric: 'schedulerWorkerNodes', operator: 'lt', threshold: 1, durationMinutes: 0,
+    state: 'ok', breachingSince: null, lastTriggeredAt: null,
+  });
+
+  it('keeps the current alarm state when a source fails', async () => {
+    dbMock.select.mockReturnValueOnce(createChain([alertRule({ metric: 'jobsStuck' })]));
+    job.mockImplementationOnce(() => { throw new Error('queue unavailable'); });
+
+    expect(await evaluateMonitorAlerts()).toEqual({ evaluated: 0, fired: 0, resolved: 0 });
+    expect(dbMock.transaction).not.toHaveBeenCalled();
+    expect(dbMock.update).not.toHaveBeenCalled();
+    expect(enqueueAlertWithin).not.toHaveBeenCalled();
+  });
+
+  it('leaves missing observations unevaluated', async () => {
+    dbMock.select.mockReturnValueOnce(createChain([alertRule({ metric: 'schedulerQueueBacklog' })]));
+
     expect(await evaluateMonitorAlerts()).toEqual({ evaluated: 0, fired: 0, resolved: 0 });
     expect(dbMock.update).not.toHaveBeenCalled();
-    expect(dispatchAlertChannels).not.toHaveBeenCalled();
   });
-  it('任意数值指标缺失时不回退为零，也不改变告警生命周期', async () => {
-    dbMock.select.mockReturnValueOnce(createChain([alertRule({ id: 22, metric: 'schedulerQueueBacklog', state: 'firing', threshold: 0 })]));
-    vi.mocked(getMetricSnapshotsByTenant).mockResolvedValue(new Map([[null, { schedulerQueueBacklog: undefined } as never]]));
-    expect(await evaluateMonitorAlerts()).toEqual({ evaluated: 0, fired: 0, resolved: 0 });
-    expect(dbMock.update).not.toHaveBeenCalled();
-  });
-  it('传入 metrics 时只评估这些指标的启用规则（api 侧 worker watchdog 只碰 schedulerWorkerNodes）', async () => {
-    const cpuRule = alertRule({ id: 1, metric: 'cpu', state: 'ok', breachingSince: null, lastTriggeredAt: null });
-    const workerRule = alertRule({
-      id: 19, metric: 'schedulerWorkerNodes', operator: 'lt', threshold: 1, durationMinutes: 0,
-      state: 'ok', breachingSince: null, lastTriggeredAt: null,
-    });
-    dbMock.select.mockReturnValueOnce(createChain([cpuRule, workerRule]));
-    // 只有 schedulerWorkerNodes 越界；cpu 也越界，但不在子集里不得被评估
-    const snapshot = { cpu: 99, schedulerWorkerNodes: 0 } as unknown as Record<string, number>;
-    vi.mocked(getMetricSnapshotsByTenant).mockResolvedValue(new Map([[null, snapshot as never]]));
-    const insert = createChain([{ id: 501 }]);
-    const insertValues = vi.fn(() => insert);
-    dbMock.insert = vi.fn(() => ({ values: insertValues })) as never;
+
+  it('only reads the Worker source for the watchdog and enqueues its zero-heartbeat alert inside the transaction', async () => {
+    const selection = createChain([workerRule]);
+    dbMock.select.mockReturnValueOnce(selection).mockReturnValueOnce(createChain([workerRule]));
+    vi.mocked(countActiveWorkerNodes).mockResolvedValue(0);
+    const insertValues = vi.fn(() => createChain([{ id: 501 }]));
+    dbMock.insert.mockReturnValue({ values: insertValues } as never);
     dbMock.update.mockReturnValue(createChain([]));
-    vi.mocked(dispatchAlertChannels).mockResolvedValue({ status: 'success', channels: ['inapp'], error: null } as never);
+    const notification = { status: 'success', channels: ['inapp'], error: null } as const;
+    vi.mocked(enqueueAlertWithin).mockResolvedValue({ outboxId: 8, channels: ['inapp'], logTag: 'MonitorAlert' });
+    vi.mocked(dispatchQueuedAlert).mockResolvedValue({ ...notification, channels: [...notification.channels] });
 
-    const result = await evaluateMonitorAlerts({ metrics: ['schedulerWorkerNodes'] });
+    expect(await evaluateMonitorAlerts({ workerWatchdog: true })).toEqual({ evaluated: 1, fired: 1, resolved: 0 });
 
-    expect(result).toEqual({ evaluated: 1, fired: 1, resolved: 0 });
-    expect(getMetricSnapshotsByTenant).toHaveBeenCalledWith([null]);
-    // 触发的是 worker 规则而不是 cpu 规则：落库的事件行指向 rule 19
-    expect(dispatchAlertChannels).toHaveBeenCalledTimes(1);
-    expect(insertValues).toHaveBeenCalledTimes(1);
+    expect(new PgDialect().sqlToQuery(selection.where.mock.calls[0][0]).params).toContain('schedulerWorkerNodes');
+    expect(cpu).not.toHaveBeenCalled();
+    expect(job).not.toHaveBeenCalled();
+    expect(backlog).not.toHaveBeenCalled();
+    expect(countActiveWorkerNodes).toHaveBeenNthCalledWith(2, db);
     expect(insertValues.mock.calls[0][0]).toMatchObject({ ruleId: 19, metric: 'schedulerWorkerNodes', value: 0, status: 'firing' });
+    expect(enqueueAlertWithin).toHaveBeenCalledWith(db, expect.objectContaining({ tenantId: null }), expect.objectContaining({
+      eventKey: 'ops.monitor.alert',
+      dedupeKey: expect.stringContaining('monitor-alert:19:501:fired:'),
+    }));
+    expect(dispatchQueuedAlert).toHaveBeenCalledOnce();
   });
 
-  it('不传 metrics 时评估全部启用规则', async () => {
-    dbMock.select.mockReturnValueOnce(createChain([
-      alertRule({ id: 1, metric: 'cpu', state: 'ok', breachingSince: null }),
-      alertRule({ id: 19, metric: 'schedulerWorkerNodes', operator: 'lt', threshold: 1, state: 'ok', breachingSince: null }),
+  it('leaves recovery to the Worker when heartbeat returns after watchdog collection', async () => {
+    dbMock.select.mockReturnValueOnce(createChain([workerRule])).mockReturnValueOnce(createChain([workerRule]));
+    vi.mocked(countActiveWorkerNodes).mockResolvedValueOnce(0).mockResolvedValueOnce(2);
+
+    expect(await evaluateMonitorAlerts({ workerWatchdog: true })).toEqual({ evaluated: 0, fired: 0, resolved: 0 });
+    expect(dbMock.insert).not.toHaveBeenCalled();
+    expect(dbMock.update).not.toHaveBeenCalled();
+  });
+
+  it('uses the current locked state when another evaluator already raised the alert', async () => {
+    dbMock.select.mockReturnValueOnce(createChain([workerRule])).mockReturnValueOnce(createChain([
+      { ...workerRule, state: 'firing', lastTriggeredAt: new Date() },
     ]));
-    vi.mocked(getMetricSnapshotsByTenant).mockResolvedValue(new Map([[null, { cpu: 10, schedulerWorkerNodes: 2 } as never]]));
+    vi.mocked(countActiveWorkerNodes).mockResolvedValue(0);
     dbMock.update.mockReturnValue(createChain([]));
-    const result = await evaluateMonitorAlerts();
-    expect(result).toEqual({ evaluated: 2, fired: 0, resolved: 0 });
+
+    expect(await evaluateMonitorAlerts({ workerWatchdog: true })).toEqual({ evaluated: 1, fired: 0, resolved: 0 });
+    expect(dbMock.insert).not.toHaveBeenCalled();
+    expect(enqueueAlertWithin).not.toHaveBeenCalled();
+  });
+
+  it('evaluates all available rules and skips only the unavailable source', async () => {
+    const cpuRule = alertRule({ metric: 'cpu', state: 'ok', breachingSince: null });
+    dbMock.select.mockReturnValueOnce(createChain([cpuRule, alertRule({ metric: 'jobsStuck' }), workerRule]))
+      .mockReturnValueOnce(createChain([cpuRule]))
+      .mockReturnValueOnce(createChain([workerRule]));
+    job.mockImplementationOnce(() => { throw new Error('queue unavailable'); });
+    vi.mocked(countActiveWorkerNodes).mockResolvedValue(2);
+    dbMock.update.mockReturnValue(createChain([]));
+
+    expect(await evaluateMonitorAlerts()).toEqual({ evaluated: 2, fired: 0, resolved: 0 });
   });
 });
